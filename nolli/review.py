@@ -472,20 +472,29 @@ Review the way they do:
 2. **Then the reasons, where they help.** Read the description below and, if needed, the
    code, to find out why a box or edge was added or removed.
 
-Look at every change, and give a verdict on each one you have something to say about:
+Give every changed box and edge a verdict:
 
-- `problem`: it makes the structure worse, and the reason you found does not justify it;
-- `question`: it is surprising or makes the structure worse, and you found no convincing
+- `fine`: expected for what the change is for, or surprising but justified by the reason
+  you found;
+- `question`: surprising, or it makes the structure worse, and you found no convincing
   reason; something to ask the author;
-- `fine`: it looks surprising or worse in the diagram, but the reason you found justifies it.
+- `problem`: it makes the structure worse, and the reason you found does not justify it.
 
-A change that is expected and leaves the structure as it was needs no verdict: leave it out.
+Leave a change out only when another verdict already covers it (the classes of a new
+module, when you judge the module).
 
-Each reason is about the box or edge it is on, at most three short sentences, in this order:
-how expected the change is, given the title; what it does to the structure of the graph,
-in terms of the diagram's boxes; and only if it adds something, the actual reason, phrased
-so that it needs no knowledge of the code. Name boxes as the diagram labels them, never by
-their node ids. A concern about a different box or edge goes on that one.
+Judge "expected" by the title literally: a change that is what the title describes (a new
+dependency on the thing the title says calls now go through) is expected. Say so in a few
+words; do not make it sound surprising.
+
+Each reason is about the box or edge it is on. It starts with a headline of one to four
+words and a colon that sums up the whole verdict, the point a reviewer takes away without
+reading on: "As intended:", "New cycle:", "Upward dependency:", "Redundant import:",
+"Domain rule in events/:". Then at most three short sentences, in this order: how expected
+the change is, given the title; what it does to the structure of the graph, in terms of the
+diagram's boxes; and only if it adds something, the actual reason, phrased so that it needs
+no knowledge of the code. Name boxes as the diagram labels them, never by their node ids. A
+concern about a different box or edge goes on that one.
 
 Answer with JSON only, saved as `verdicts.json` next to this file. `target` is a node id
 from the diagram (`n_fs_src_app_py`), or an edge as `source --> target` with the two node
