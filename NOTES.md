@@ -71,5 +71,5 @@ Nothing is a settled design.
 - Moving the roll-up out of the browser found one drift: the browser cut the `body:`
   prefix with the length of the older `files:` prefix, so a module's own-code anchor had
   no drawn parent there. Edges into it were never bundled or marked internal and it
-  could become a nameless "utility". The Python rules were right; the picture of
-  echotree, megatron-bridge and nolli itself changes accordingly.
+  could become a nameless "utility". The Python rules were right; default pictures
+  with such anchors change accordingly.
