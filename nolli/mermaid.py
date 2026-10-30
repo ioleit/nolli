@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from .changes import is_diff, node_diff
 from .rollup import HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, display_path, hidden_by_role, image_aliases, is_init
 from .model import Model
 
@@ -60,7 +61,6 @@ def label(m: Model, eid: str, ann: dict[str, int] | None, expanded: set[str] = f
 
 
 def render(m: Model, view: dict, rolled: RolledUp) -> str:
-    from .review import is_diff, node_diff
 
     diff = is_diff(m)
     status_of = lambda n: ((node_diff(m, n, rolled.internal_changes.get(n)) or {}).get("status") if diff else None)  # noqa: E731

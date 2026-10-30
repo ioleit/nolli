@@ -6,7 +6,7 @@ Static files come from this directory; ``/data/<name>/<file>`` serves the
 dataset directories under --data; ``/api/list`` lists them, newest first;
 ``/api/scene?d=<name>&...`` returns the scene for a view state (``nolli/scene.py``;
 the parameters are the viewer's location-hash keys); ``/api/node?d=<name>&id=<entity>``
-returns the details of one box in a diff dataset (``nolli/review.py``), ``/api/changes?d=``
+returns the details of one box in a diff dataset (``nolli/changes.py``), ``/api/changes?d=``
 its numbered changes, the review's verdicts and what to unfold to see all changes, and ``POST /api/verdicts?d=`` stores a
 review's verdicts.json next to the dataset. Needs only the standard library:
 the nolli package is imported from this checkout, not from an installed copy.
@@ -28,7 +28,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # the nolli package of this checkout
 
 from nolli.model import Model  # noqa: E402
-from nolli.review import change_items, details, read_verdicts, resolve_verdicts, review_expanded  # noqa: E402
+from nolli.changes import change_items, details  # noqa: E402
+from nolli.review import read_verdicts, resolve_verdicts, review_expanded  # noqa: E402
 from nolli.scene import scene, state_from_query  # noqa: E402
 
 _models: dict[str, tuple[float, Model]] = {}

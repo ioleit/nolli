@@ -95,7 +95,7 @@ def test_repository_untouched(repo):
 
 
 def test_scene_review(repo):
-    from nolli.review import Links, details
+    from nolli.changes import Links, details
     from nolli.scene import ViewState, scene
 
     path, base, head = repo
@@ -130,7 +130,8 @@ def test_scene_review(repo):
 def test_items_verdicts_and_export(repo):
     import json
 
-    from nolli.review import change_items, read_verdicts, resolve_verdicts, review_expanded, review_markdown
+    from nolli.changes import change_items
+    from nolli.review import read_verdicts, resolve_verdicts, review_expanded, review_markdown
     from nolli.scene import ViewState, scene
 
     path, base, head = repo

@@ -10,6 +10,7 @@ no internal structure (externals, env, endpoints) never unfold by themselves.
 
 from __future__ import annotations
 
+from .changes import change_scores, diff_index, is_diff
 from .rollup import hidden_by_role, image_aliases, init_anchor_dirs, is_init, reveal_scores, visible_from_expanded
 from .model import Model
 
@@ -32,7 +33,6 @@ def unfold_cost(m: Model, v: str, hidden: set[str], anchors: set[str] = frozense
 def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("fs:.",), hidden: set[str] | None = None) -> dict:
     """In a diff model the budget goes to the changes first (``review.change_scores``),
     then whatever is left to structure as usual."""
-    from .review import change_scores, diff_index, is_diff
 
     roles = tuple(hidden_roles) if hidden_roles is not None else hidden_by_role.__defaults__[0]
     if hidden is None:

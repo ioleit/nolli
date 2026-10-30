@@ -19,9 +19,8 @@ from .rollup import (
     HIDDEN_ROLES_DEFAULT, hidden_by_role, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
     representative, rollup, utility_badges, visible_from_expanded,
 )
-from .review import (
-    VERDICT_RANK, Links, change_items, diff_index, edge_review_info, fact_change, is_diff, node_diff, node_review_info, resolve_verdicts,
-)
+from .changes import Links, change_items, diff_index, fact_change, is_diff, node_diff
+from .review import VERDICT_RANK, edge_review_info, node_review_info, resolve_verdicts
 from .view import default_view
 from .labels import MODULE_LANGS, is_body, label_of, leaf_count
 from .info import Dependencies, edge_info, node_info

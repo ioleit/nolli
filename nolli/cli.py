@@ -84,7 +84,8 @@ def cmd_diff(args: argparse.Namespace) -> int:
     if args.title:
         m.meta["diff"]["title"] = args.title
     report = write_dataset(m, out, args.budget, {}, {"diff": summary})
-    from .review import change_items, review_expanded, review_markdown
+    from .changes import change_items
+    from .review import review_expanded, review_markdown
 
     (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
     st = ViewState(budget=args.budget, expanded=review_expanded(m))

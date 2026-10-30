@@ -237,7 +237,27 @@ select("direction").addEventListener("change", () => { state.direction = select(
 themeOptions();
 for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; select("engine").appendChild(o); }
 select("engine").addEventListener("change", () => { state.engine = select("engine").value; writeHash(); if (state.view === "diagram") render(); });
-select("dataset").addEventListener("change", () => { Object.assign(state, DEFAULTS, { name: select("dataset").value, item: null }); shown = null; refresh(); });
+select("dataset").addEventListener("change", async () => {
+  Object.assign(state, DEFAULTS, { name: select("dataset").value, item: null }); shown = null;
+  await enter();
+});
+
+/**
+ * Open the dataset in state.name. A review with verdicts starts folded and goes to the
+ * first (worst) verdict: the picture as a whole, then the first thing to look at. Anything
+ * else, or a link that says what to show, starts as it says.
+ * @param {string | null} [item] an item named in the link
+ */
+async function enter(item = null) {
+  const res = state.expanded === null && !item ? await fetch("/api/changes?d=" + encodeURIComponent(state.name || "")) : null;
+  const first = res && res.ok ? (await res.json()).verdicts.length > 0 : false;
+  if (first) state.expanded = ["fs:."];
+  await refresh();
+  const loaded = /** @type {Scene | null} */ (scene);  // set by refresh(); TypeScript cannot see that through the await
+  if (!loaded?.diff) return;
+  const to = item || (first ? visibleItems()[0]?.id : null);
+  if (to) jump(to);
+}
 for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListener("click", () => {
   const v = /** @type {import("./state.js").View} */ (/** @type {HTMLElement} */ (b).dataset.view);
   if (!VIEWS.includes(v) || v === state.view) return;
@@ -256,8 +276,6 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   Object.assign(state, h.st, { name, noLabels: h.noLabels, sameWidth: h.sameWidth, theme: initialTheme(h.theme), direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, view: h.view,
     item: h.item, dim: h.dim });
   applyTheme(state.theme);
-  await refresh();
-  // a link to an item: unfold what it needs (the hash may come from a different view state)
-  const loaded = /** @type {Scene | null} */ (scene);  // set by refresh(); TypeScript cannot see that through the await
-  if (h.item && loaded?.diff) jump(h.item);
+  // a link to an item unfolds what it needs (the hash may come from a different view state)
+  await enter(h.item);
 })();
