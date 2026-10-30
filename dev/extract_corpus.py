@@ -9,6 +9,7 @@ removed so the viewer shows one per repository.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -44,7 +45,9 @@ def main() -> int:
         name = r["name"]
         out = data_dir / f"{name}-{sha_of(repo)}"
         for old in data_dir.glob(f"{name}-*"):
-            if old != out:
+            # only this repository's earlier extracts (<name>-<short sha>, -wip, -nogit); other
+            # datasets that merely share the prefix (a change named <name>-pr48) stay
+            if old != out and re.fullmatch(r"[0-9a-f]{7,12}|wip|nogit", old.name[len(name) + 1:]):
                 shutil.rmtree(old)
         t0 = time.time()
         res = subprocess.run([str(nolli), "extract", str(repo), "-o", str(out)], capture_output=True, text=True)

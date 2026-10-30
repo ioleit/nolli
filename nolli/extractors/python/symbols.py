@@ -7,7 +7,7 @@ are the module's own body, so their references are attributed to the module
 itself. A module without classes therefore has nothing to unfold. This is
 deliberate: the picture is about architecture, not call graphs.
 
-References are ``use`` relations with subkind ``ref``: from the class whose
+References are ``use`` relations with subkind ``ref`` (attrs ``name``: the name used): from the class whose
 body mentions a name (methods count for their class) or from the module, to
 the class the name is bound to, or to the module that defines it when the
 name is a function, a variable or a submodule. Names bound by imports are
@@ -27,6 +27,49 @@ from ...model import USE, Entity, Provenance, Relation
 from .. import Context
 
 FUNC_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
+DOC_MAX = 240  # characters of a docstring's summary kept
+
+
+NAMES_MAX = 60  # names kept per list (functions, constants, re-exports)
+
+
+def own_code(tree: ast.Module, rel: str, pkg_parts: list[str], aliases: dict[str, tuple[str, str]], total_lines: int | None) -> dict:
+    """What a module holds outside its classes, for the hover text on its own-code dot:
+    top-level functions and constants (UPPER_CASE names) in source order, the lines not
+    inside a class, and for a package's __init__.py the names it re-exports from its own
+    package (relative imports, or absolute ones into the package's dotted path)."""
+    out: dict = {}
+    functions = [n.name for n in tree.body if isinstance(n, FUNC_DEFS)]
+    constants = []
+    for n in tree.body:
+        targets = n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(n, ast.AnnAssign) else []
+        for t in targets:
+            if isinstance(t, ast.Name) and t.id.isupper() and t.id not in constants:
+                constants.append(t.id)
+    if functions:
+        out["functions"] = functions[:NAMES_MAX]
+    if constants:
+        out["constants"] = constants[:NAMES_MAX]
+    if total_lines is not None:
+        in_classes = sum((n.end_lineno or n.lineno) - n.lineno + 1 for n in tree.body if isinstance(n, ast.ClassDef))
+        out["own_lines"] = max(0, total_lines - in_classes)
+    if rel.endswith("__init__.py"):
+        suffixes = {".".join(pkg_parts[i:]) for i in range(len(pkg_parts))}
+        reexports = [name for name, (mod, _) in aliases.items()
+                     if any(mod == s or mod.startswith(s + ".") for s in suffixes)]
+        if reexports:
+            out["reexports"] = reexports[:NAMES_MAX]
+    return out
+
+
+def doc_summary(node) -> str | None:
+    """A module's or class's docstring, read from the syntax tree (nothing is imported or
+    run): its first paragraph on one line, cut at DOC_MAX characters."""
+    text = ast.get_docstring(node, clean=True)
+    if not text:
+        return None
+    para = " ".join(text.strip().split("\n\n", 1)[0].split())
+    return para if len(para) <= DOC_MAX else para[: DOC_MAX - 1].rsplit(" ", 1)[0] + "…"
 
 
 class Refs(ast.NodeVisitor):
@@ -73,6 +116,9 @@ def run(ctx: Context) -> None:
             tree = ast.parse(ctx.read(rel), filename=rel)
         except (SyntaxError, ValueError):
             continue
+        doc = doc_summary(tree)
+        if doc:
+            m.entities[fid].attrs["doc"] = doc
         pkg_parts = rel.split("/")[:-1]
         bindings: dict[str, tuple] = {}
         aliases: dict[str, tuple[str, str]] = {}
@@ -102,14 +148,17 @@ def run(ctx: Context) -> None:
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
                 sid = f"py:{rel}#{node.name}"
-                m.add_entity(Entity(sid, "class", node.name, {"path": rel, "line": node.lineno, "language": "python"},
-                                    Provenance("python-symbols", rel, node.lineno)))
+                attrs = {"path": rel, "line": node.lineno, "language": "python"}
+                if doc_summary(node):
+                    attrs["doc"] = doc_summary(node)
+                m.add_entity(Entity(sid, "class", node.name, attrs, Provenance("python-symbols", rel, node.lineno)))
                 m.contain(fid, sid, "python-symbols")
                 classes[node.name] = sid
             elif isinstance(node, FUNC_DEFS):
-                bindings[node.name] = ("local", fid)  # a module's functions are the module's own body
+                bindings[node.name] = ("local", fid, node.name)  # a module's functions are the module's own body
         for name, sid in classes.items():
-            bindings[name] = ("local", sid)
+            bindings[name] = ("local", sid, name)
+        m.entities[fid].attrs.update(own_code(tree, rel, pkg_parts, aliases, m.entities[fid].attrs.get("lines")))
         for node in tree.body:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
@@ -122,11 +171,13 @@ def run(ctx: Context) -> None:
                 pending[(src, b)] += n
     ctx.notes["py-aliases"] = aliases_by_file
     for (src, b), n in pending.items():
+        name = {"local": lambda: b[2], "from": lambda: b[2], "module": lambda: b[1], "chain": lambda: b[1].rsplit(".", 1)[-1]}[b[0]]()
         if b[0] == "local":
-            m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", src.split("#")[0][3:] if src.startswith("py:") else src[3:])))
+            m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", src.split("#")[0][3:] if src.startswith("py:") else src[3:]),
+                                    {"name": name}))
             continue
         key = f"{b[1]}:{b[2]}" if b[0] == "from" else f"{b[1]}:"
         uid = f"unresolved:pyref:{key}"
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", key, {"language": "python", "ref": True}, Provenance("python-symbols")))
-        m.add_relation(Relation(USE, src, uid, "ref", n, "exact", Provenance("python-symbols")))
+        m.add_relation(Relation(USE, src, uid, "ref", n, "exact", Provenance("python-symbols"), {"name": name}))

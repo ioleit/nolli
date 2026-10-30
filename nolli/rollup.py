@@ -49,10 +49,18 @@ class RolledEdge:
     count: int = 0
     confidence: str = "exact"
     via: set[str] = field(default_factory=set)
+    names: dict[str, int] = field(default_factory=dict)  # referenced names (Python refs) -> references
 
     def to_dict(self) -> dict:
         return {"kind": self.kind, "src": self.src, "dst": self.dst, "subkind": self.subkind, "count": self.count,
-                "confidence": self.confidence, "via": sorted(self.via)}
+                "confidence": self.confidence, "via": sorted(self.via), "names": dict(self.names)}
+
+    def absorb(self, other: "RolledEdge") -> None:
+        """Count, interfaces and names of an edge folded into this one."""
+        self.count += other.count
+        self.via |= other.via
+        for k, v in other.names.items():
+            self.names[k] = self.names.get(k, 0) + v
 
 
 @dataclass
@@ -390,8 +398,7 @@ def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int
             _, other, c, kind, sub = key
             merged = RolledEdge(kind, other if side == "dst" else c, c if side == "dst" else other, sub, 0, "exact")
             for e in es:
-                merged.count += e.count
-                merged.via |= e.via
+                merged.absorb(e)
                 if CONF_RANK[e.confidence] > CONF_RANK[merged.confidence]:
                     merged.confidence = e.confidence
             merged.via.add(f"fan:{len(es)}")
@@ -405,8 +412,7 @@ def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int
                 end = e.dst if side == "dst" else e.src
                 o = e.src if side == "dst" else e.dst
                 if e.kind == kind and e.subkind == sub and o == other and end != c and is_inside(end, c):
-                    merged.count += e.count
-                    merged.via |= e.via
+                    merged.absorb(e)
                 else:
                     rest.append(e)
             out = rest
@@ -428,7 +434,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
     hidden_count = 0
     unresolved: dict[str, int] = defaultdict(int)
 
-    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, via: str | None = None) -> None:
+    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, via: str | None = None, name: str | None = None) -> None:
         if kind == PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
         if a == b or owner_of(a) == owner_of(b):
@@ -445,6 +451,8 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
             e.confidence = conf
         if via:
             e.via.add(via)
+        if name:
+            e.names[name] = e.names.get(name, 0) + count
 
     users: dict[str, list] = defaultdict(list)
     providers: dict[str, list] = defaultdict(list)
@@ -469,7 +477,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
         if a is None or b is None:
             hidden_count += r.count
             continue
-        add(r.kind, a, b, r.subkind, r.count, r.confidence)
+        add(r.kind, a, b, r.subkind, r.count, r.confidence, name=r.attrs.get("name"))
 
     for iface in set(users) | set(providers):
         us, ps = users.get(iface, []), providers.get(iface, [])
