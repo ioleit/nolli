@@ -2,14 +2,13 @@
    be said with a variable (a border that a theme leaves off but some boxes keep) is a rule.
    Add one: a block here plus its name in js/theme.js. */
 
-/* Textbook: white paper, indigo ink, serif labels; boxes have no border and sit on the
-   box below them with a 2px shade, so nesting reads as layers. */
+/* Textbook: white paper, indigo ink; boxes have no border and float over the box below
+   them, lit from the top left (a 2px shade to the bottom right), so nesting reads as layers. */
 :root[data-theme=textbook] {
   color-scheme: light;
   --bg: #fcfcff; --ink: #1e1b4b; --muted: #6b6f9a; --line: #d9dcf0; --hover-bg: #eceefe;
-  --font-diagram: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --box-fill: #ffffff; --box-stroke: transparent; --box-radius: 2px;
-  --box-shadow: drop-shadow(0 2px 0 #312e8130) drop-shadow(0 0 .5px #312e8140);
+  --box-shadow: drop-shadow(2px 2px 0 #312e8130) drop-shadow(0 0 .5px #312e8140);
   --container-fill: #4f46e50b; --container-stroke: transparent;
   --files-fill: #4f46e512; --files-stroke: #a5a8d6;
   --package-fill: #ffffff; --file-stroke: transparent;
@@ -23,7 +22,6 @@
   --cycle: #b91c1c; --hover: #e11d48;
   --e-other: #9396c4; --e-import: #5d6199; --e-http: #4338ca; --e-env: #0f766e; --e-deploy: #7e22ce; --e-provide: #4f46e5; --e-dangling: #a5a8d6;
 }
-:root[data-theme=textbook] aside h1 { font-family: var(--font-diagram); font-size: 17px; letter-spacing: .02em; }
-:root[data-theme=textbook] .node.container > rect { filter: drop-shadow(0 2px 0 #312e8118); }
+:root[data-theme=textbook] .node.container > rect { filter: drop-shadow(2px 2px 0 #312e8118); }
 /* the borders that carry meaning stay: package, utility */
 :root[data-theme=textbook] .node.package > rect, :root[data-theme=textbook] .node.utility > rect { stroke: var(--muted); }
