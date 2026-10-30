@@ -2,9 +2,10 @@
 
     nolli extract <repo> -o <out_dir> [--budget N]
 
-Writes model.json (all facts), view.json (the default cut), default.mmd
-(Mermaid of that cut), rollup.json (the rolled graph of the cut) and
-report.json (counts, unresolved references, extractor notes).
+Writes model.json (all facts), view.json (the default cut), scene.json (the
+scene of that cut, exactly what the viewer's /api/scene returns for it),
+default.mmd (Mermaid of that cut) and report.json (counts, unresolved
+references, extractor notes).
 """
 
 from __future__ import annotations
@@ -18,10 +19,9 @@ from pathlib import Path
 
 from . import match
 from .extractors import Context, all_extractors
-from .rollup import bundle, hidden_by_role, image_aliases, rollup, utility_badges
 from .mermaid import render
 from .model import Model
-from .view import default_view
+from .scene import ALL_ROLES, DEFAULT_ROLES, ViewState, compute, scene
 
 
 def tracked_files(repo: Path) -> list[Path]:
@@ -62,12 +62,13 @@ def cmd_extract(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     m, ctx = extract(repo)
     m.save(out / "model.json")
-    view = default_view(m, budget=args.budget)
-    rolled = rollup(m, set(view["visible"]), hidden_by_role(m) | set(image_aliases(m)))
-    rolled.edges = bundle(m, rolled.edges, set(view["expanded"]))
-    utility_badges(m, rolled, set(view["expanded"]))
+    st = ViewState(budget=args.budget)
+    expanded, _hidden, visible, rolled, _utilities = compute(m, st)
+    view = {"budget": args.budget, "expanded": sorted(expanded), "visible": sorted(visible),
+            "hidden_roles": [r for r in ALL_ROLES if r not in DEFAULT_ROLES]}
     (out / "view.json").write_text(json.dumps(view, indent=1))
-    (out / "rollup.json").write_text(json.dumps(rolled.to_dict(), indent=1))
+    (out / "scene.json").write_text(json.dumps(scene(m, st), indent=1))
+    (out / "rollup.json").unlink(missing_ok=True)  # replaced by scene.json
     (out / "default.mmd").write_text(render(m, view, rolled))
     report = {
         "meta": m.meta,

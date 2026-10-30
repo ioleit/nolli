@@ -36,9 +36,13 @@ python -m venv .venv && .venv/bin/pip install -e .
 python -I viewer/serve.py --data <parent of out_dirs> --host 127.0.0.1 --port 8720
 ```
 
-`extract` writes `model.json` (facts), `view.json` (the default cut), `rollup.json`
-(the rolled-up graph of that cut), `default.mmd` (Mermaid of it) and `report.json`
+`extract` writes `model.json` (facts), `view.json` (the default cut), `scene.json`
+(what the viewer draws for that cut), `default.mmd` (Mermaid of it) and `report.json`
 (counts, residue, extractor notes). The viewer lists every out_dir under `--data`.
+
+The viewer computes nothing itself: on every click it asks the server for the scene
+(`/api/scene?d=<dataset>&x=<unfolded ids>&…`, the same keys as its location hash) and
+lays it out with ELK. "raw JSON" in its options shows the response instead of a drawing.
 
 ## State of each part
 
@@ -53,9 +57,10 @@ Honest marks on how much thought each part has had. Treat everything as open.
 | `nolli/match.py` | resolution of placeholders to files, classes and endpoints; grew by patching cases the test repos broke |
 | `nolli/rollup.py`, `nolli/rollup.md` | the roll-up from facts to a picture and the rules tuned on top of it; the central idea, but every rule is a judgement call from one afternoon — see `NOTES.md` |
 | `nolli/view.py` | one greedy heuristic for the default cut, with magic numbers |
+| `nolli/scene.py` | a view state in, everything the viewer draws out (nodes with their drawn parent, edges, labels, badges, emphasis, tooltips); ids are stable across states so two scenes can be diffed |
 | `nolli/mermaid.py` | static export of the default cut so a README or PR can show it |
-| `viewer/index.html` | temporary throwaway visualization; re-implements the roll-up in JavaScript (the main debt, see `BACKLOG.md`); ELK.js layout, orthogonal edges that look like a circuit board |
-| `viewer/serve.py` | tiny static server for local use |
+| `viewer/index.html` | temporary throwaway visualization; fetches the scene, ELK.js layout, orthogonal edges that look like a circuit board; redraws from scratch on every change |
+| `viewer/serve.py` | tiny server for local use: static files, datasets, and `/api/scene` (standard library only; imports `nolli` from the checkout it sits in) |
 | `tests/test_smoke.py` | one synthetic mixed repo pinning the seams that broke once; nothing tests the roll-up rules |
 | `dev/` | local workflow: extract a set of repositories you keep outside this repo (`corpus.example.toml`) |
 

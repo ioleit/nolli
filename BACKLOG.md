@@ -5,10 +5,6 @@ solution; solutions are for whoever picks it up.
 
 ## Next
 
-- **One roll-up implementation.** The browser re-implements the roll-up (`nolli/rollup.md`)
-  in JavaScript so it can unfold boxes without a server round-trip; every rule exists
-  twice and the two have drifted once. Likely shape: the browser asks the Python side for
-  the rolled-up graph for a given view state and only draws it.
 - **Deployment relationships.** Compose services, images, `COPY` allocation, env
   wiring and runtime URLs are extracted and look valuable, but the current rendering
   (chips on code boxes, hidden env wiring, a folded "Deployment" group) is a first guess.
@@ -16,7 +12,8 @@ solution; solutions are for whoever picks it up.
 - **Rendering, open-ended.** The ELK orthogonal edge routing reads like a circuit board
   once there are more than a few dozen edges; labels are tiny; layout direction, edge
   routing (splines, bundling along the containment tree), emphasis and reading order are
-  all unexplored beyond defaults.
+  all unexplored beyond defaults. Every change redraws from scratch; scenes carry stable node and edge keys, so
+  the step between two can be animated (boxes grow out of the one unfolded).
 - **Tests for the roll-up rules.** Only extraction is tested; none of the rules in
   `nolli/rollup.md` has a test, and two broke silently while they were being built.
 

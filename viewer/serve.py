@@ -3,27 +3,54 @@
     python -I serve.py --data ~/data/nolli [--host 127.0.0.1] [--port 8720]
 
 Static files come from this directory; ``/data/<name>/<file>`` serves the
-dataset directories under --data; ``/api/list`` lists them, newest first.
+dataset directories under --data; ``/api/list`` lists them, newest first;
+``/api/scene?d=<name>&...`` returns the scene for a view state (``nolli/scene.py``;
+the parameters are the viewer's location-hash keys). Needs only the standard library:
+the nolli package is imported from this checkout, not from an installed copy.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
+import threading
+import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qsl, unquote
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))  # the nolli package of this checkout
+
+from nolli.model import Model  # noqa: E402
+from nolli.scene import scene, state_from_query  # noqa: E402
+
+_models: dict[str, tuple[float, Model]] = {}
+_models_lock = threading.Lock()
+
+
+def load_model(path: Path) -> Model:
+    """model.json, parsed once per file version."""
+    mtime = path.stat().st_mtime
+    with _models_lock:
+        hit = _models.get(str(path))
+        if hit and hit[0] == mtime:
+            return hit[1]
+    m = Model.load(path)
+    m.roots()  # build the containment index before threads share the model
+    with _models_lock:
+        _models[str(path)] = (mtime, m)
+    return m
 
 
 class Handler(SimpleHTTPRequestHandler):
     data_root: Path = HERE / "data"
 
-    def send_json(self, obj) -> None:
+    def send_json(self, obj, status: int = 200) -> None:
         body = json.dumps(obj).encode()
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -43,6 +70,26 @@ class Handler(SimpleHTTPRequestHandler):
                     sets.append({"name": d.name, "mtime": int((d / "model.json").stat().st_mtime), "meta": meta})
             sets.sort(key=lambda s: -s["mtime"])
             self.send_json(sets)
+            return
+        if path == "/api/scene":
+            q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+            ds = self.data_root / q.get("d", "")
+            if not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
+                self.send_json({"error": f"no dataset {q.get('d')!r}"}, 404)
+                return
+            try:
+                t0 = time.perf_counter()
+                m = load_model(ds / "model.json")
+                t1 = time.perf_counter()
+                out = scene(m, state_from_query(q))
+            except (ValueError, KeyError) as exc:
+                self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
+                return
+            meta = m.meta or {}
+            out["dataset"] = {"name": q["d"], "repo": meta.get("repo"), "commit": meta.get("commit"), "files": meta.get("files"),
+                              "entities": len(m.entities), "relations": len(m.relations)}
+            out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
+            self.send_json(out)
             return
         if path.startswith("/data/"):
             rel = path[len("/data/"):]

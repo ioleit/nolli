@@ -57,3 +57,19 @@ Nothing is a settled design.
   the same thing. Both are open for different rendering (backlog).
 - Numbers that are guesses: budget 34, utility threshold a third and at least 3, weak
   edge under 5% and fewer than 3 references, fan bundling from 3 children.
+
+## Viewer and server
+
+- One implementation of the roll-up, in Python. The viewer sends its state (unfolded
+  boxes, roles, options) to `/api/scene` and draws the answer; it computes no edges,
+  labels or badges. Cost: one request per click, 10–60 ms on the corpus, ~200 ms when
+  the server has to compute a default cut on the largest repository.
+- The server normalises the unfolded set to the containers actually reached, so folding a
+  box drops whatever was unfolded inside it, and the client adopts that set.
+- The scene is flat (nodes in drawing order, each naming its drawn parent) rather than
+  nested, so two scenes can be diffed by id; edges are keyed `kind|src|dst|subkind`.
+- Moving the roll-up out of the browser found one drift: the browser cut the `body:`
+  prefix with the length of the older `files:` prefix, so a module's own-code anchor had
+  no drawn parent there. Edges into it were never bundled or marked internal and it
+  could become a nameless "utility". The Python rules were right; default pictures
+  with such anchors change accordingly.
