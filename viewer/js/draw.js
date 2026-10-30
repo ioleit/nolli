@@ -77,6 +77,14 @@ function cardOnMark(mark, card, target) {
   mark.addEventListener("click", ev => { ev.stopPropagation(); pinTip(card, target); });
 }
 
+/** An edge's label in a review: ▲ / ▼ and the change in its references, in percent. @param {import("../types/nolli").EdgeDiff} d */
+function diffLabel(d) {
+  if (d.status === "added") return "";
+  if (d.status === "removed") return "🚫";
+  const pct = Math.round(Math.abs(d.head - d.base) / Math.max(1, d.base) * 100);
+  return `${d.head > d.base ? "▲" : "▼"}${pct}%`;
+}
+
 /** Opacity as the SVG attribute (null removes it). @param {SVGElement[]} els @returns {(o: number | null) => void} */
 const fader = els => o => { for (const x of els) if (o === null) x.removeAttribute("opacity"); else x.setAttribute("opacity", String(o)); };
 
@@ -238,9 +246,9 @@ export function draw(g, scene, laid, handlers, sameWidth = false) {
       ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
       const a = pts[Math.floor((pts.length - 1) / 2)], b = pts[Math.ceil((pts.length - 1) / 2)]; mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
-    // in a review a changed edge says how its references changed; unchanged ones stay quiet
-    const label = e.diff ? (e.diff.status === "changed" ? `${e.diff.base}→${e.diff.head}` : e.diff.status === "added" ? `+${e.diff.head}` : `−${e.diff.base}`)
-      : review ? "" : e.label;
+    // in a review a changed edge says how much its references grew or shrank, a removed one is
+    // crossed out, a new one needs no label (its colour says it); unchanged ones stay quiet
+    const label = e.diff ? diffLabel(e.diff) : review ? "" : e.label;
     if (label && mid && (e.diff || (!e.weak && !e.local))) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = label; ge.appendChild(t); }
     if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
     ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e, null, ge));

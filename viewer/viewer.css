@@ -128,7 +128,7 @@ button { font: inherit; padding: 2px 8px; }
 .chip button { padding: 0 6px; font-size: 11px; }
 
 /* ---------- review mode (diff datasets) ---------- */
-:root { --add: #2e9b4f; --rem: #c94040; --chg: #d08a1a; }
+:root { --add: #2e9b4f; --rem: #c94040; --chg: #6f8fb4; --question: #d08a1a; }  /* changed: a quiet slate blue, away from the orange glow */
 .review-only { display: none; }
 body.reviewing .review-only { display: block; }
 #review { display: none; border-left: 1px solid var(--line); overflow: hidden; flex-direction: column; min-height: 0; }
@@ -159,7 +159,7 @@ label.file input { display: none; }
 .st { font-weight: 700; width: 1em; text-align: center; display: inline-block; }
 .st.added { color: var(--add); } .st.removed { color: var(--rem); } .st.changed { color: var(--chg); }
 .vd, .vtxt { font-weight: 700; display: inline-block; min-width: 1.2em; text-align: center; border-radius: 8px; color: white; font-size: 11px; }
-.vd.problem, .vtxt.problem { background: var(--rem); } .vd.question, .vtxt.question { background: var(--chg); } .vd.fine, .vtxt.fine { background: var(--add); }
+.vd.problem, .vtxt.problem { background: var(--rem); } .vd.question, .vtxt.question { background: var(--question); } .vd.fine, .vtxt.fine { background: var(--add); }
 .dt-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 8px 0 2px; }
 .dt-verdict { margin: 4px 0; padding: 4px 6px; border-radius: 4px; background: #8881; }
 .dt-hint, .muted { color: var(--muted); }
@@ -173,8 +173,8 @@ ul.facts li, ul.files li { padding: 1px 0; word-break: break-all; }
 .node.d-added > rect { stroke: var(--add); stroke-width: 2; fill: #2e9b4f14; }
 .node.d-removed > rect { stroke: var(--rem); stroke-width: 2; stroke-dasharray: 5 3; fill: #c9404010; }
 .node.d-removed > text { text-decoration: line-through; fill: var(--rem); }
-.node.d-changed > rect { stroke: var(--chg); stroke-width: 2; }
-.node.container.d-changed > rect { stroke: var(--chg); stroke-width: 1.4; }
+.node.d-changed > rect { stroke: var(--chg); stroke-width: 1.5; }
+.node.container.d-changed > rect { stroke: var(--chg); stroke-width: 1.2; }
 .node .stats { font-size: 10px; font-variant-numeric: tabular-nums; }
 .node .stats .plus { fill: var(--add); } .node .stats .minus { fill: var(--rem); }
 .edge.d-added { color: var(--add); --eo: 1 !important; }
@@ -191,7 +191,7 @@ body.dim .node.container.d-same > text { opacity: .55; }
 body.dim .edge.d-same { opacity: .18; }
 .verdict circle { stroke: Canvas; stroke-width: 1.5; }
 .verdict text { font: 700 10px system-ui, sans-serif; fill: white; pointer-events: none; }
-.verdict.problem circle { fill: var(--rem); } .verdict.question circle { fill: var(--chg); } .verdict.fine circle { fill: var(--add); }
+.verdict.problem circle { fill: var(--rem); } .verdict.question circle { fill: var(--question); } .verdict.fine circle { fill: var(--add); }
 /* changed counts matter less than dependencies that appear or disappear */
 .edge.d-changed path { stroke-width: 1.4px !important; }  /* changed counts matter less than dependencies that appear or disappear */
 .legend span.plus, .legend span.minus { display: inline; width: auto; border: 0; margin: 0; }
