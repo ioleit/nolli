@@ -6,7 +6,7 @@ changes, and how much each one changed.
 
 ![A pull request in Nolli's viewer: changed boxes and edges in orange, a removed dependency dashed red, verdict markers from a review agent](docs/review.png)
 
-## A pull request in the viewer
+## How to use
 
 ```
 nolli diff <repo> <base> <head> -o data/pr
@@ -23,17 +23,11 @@ To install, from a clone of this repository (Python 3.11 or later):
 pip install -e .
 ```
 
-## What the viewer shows
+A single commit, without the diff:
 
-A diff opens unfolded towards the change. Boxes are directories, modules and classes;
-an edge means that code in one box references names in the other. Each box carries
-its added and removed lines; an edge's label gives its reference count before and
-after (`11→13`), a removed edge is dashed red, and unchanged parts are greyed out.
-Click a box to unfold it, − to fold it again.
-
-The column on the right lists the numbered changes and links each one to the files in
-the PR (with `--pr <number>`). `1` / `2` / `3` switch between before, changes and
-after; `j` / `k` step through the list.
+```
+nolli extract <repo> -o data/<name>
+```
 
 ## Reviewing with an agent
 
@@ -55,27 +49,19 @@ markers on the boxes and edges they are about, and the review column lists them 
 their reasons, worst first. Nolli itself calls no model: the diagram is computed from
 the code, and the same two commits always give the same picture.
 
-## One commit
-
-```
-nolli extract <repo> -o data/<name>
-```
-
-draws a single commit the same way, without the diff.
-
 ## What it reads
 
-| Framework | Support level / note |
-|---|---|
-| Python | imports, classes and references between them |
-| FastAPI, Starlette | routes from `@router.get(...)`-style decorators, `APIRouter` prefixes, `include_router` chains |
-| Flask | partial: `@app.get(...)`-style routes; `@app.route` and blueprint prefixes are not read |
-| `os.environ`, `os.getenv` | environment variables a module reads |
-| TypeScript, JavaScript | imports between modules (`.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`) |
-| `fetch`, axios, `EventSource`, `WebSocket` | HTTP calls, bound to the backend route with the same path shape; one level of helper function is followed |
-| `process.env`, `import.meta.env` | environment variables a module reads |
-| docker-compose | services, `depends_on`, service URLs in environment values, the variables each service sets |
-| Dockerfile | which directories go into an image (`COPY`, `ADD`) and its entrypoint |
+| Framework | Status | Note |
+|---|---|---|
+| Python | ![supported](https://img.shields.io/badge/supported-2ea44f) | imports, classes and references between them |
+| FastAPI, Starlette | ![supported](https://img.shields.io/badge/supported-2ea44f) | routes from `@router.get(...)`-style decorators, `APIRouter` prefixes, `include_router` chains |
+| Flask | ![partial](https://img.shields.io/badge/partial-e36209) | `@app.get(...)`-style routes; `@app.route` and blueprint prefixes are not read |
+| `os.environ`, `os.getenv` | ![supported](https://img.shields.io/badge/supported-2ea44f) | environment variables a module reads |
+| TypeScript, JavaScript | ![supported](https://img.shields.io/badge/supported-2ea44f) | imports between modules (`.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`) |
+| `fetch`, axios, `EventSource`, `WebSocket` | ![heuristic](https://img.shields.io/badge/heuristic-dbab09) | HTTP calls, bound to the backend route with the same path shape; one level of helper function is followed |
+| `process.env`, `import.meta.env` | ![supported](https://img.shields.io/badge/supported-2ea44f) | environment variables a module reads |
+| docker-compose | ![supported](https://img.shields.io/badge/supported-2ea44f) | services, `depends_on`, service URLs in environment values, the variables each service sets |
+| Dockerfile | ![supported](https://img.shields.io/badge/supported-2ea44f) | which directories go into an image (`COPY`, `ADD`) and its entrypoint |
 
 Other languages show up as files and directories only.
 
