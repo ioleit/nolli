@@ -41,7 +41,7 @@ const fader = els => o => { for (const x of els) if (o === null) x.removeAttribu
  */
 function buildAnchor(n, p, live) {
   const grp = el("g", { class: "node folded files ", transform: at(p) });
-  if (live) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
+  if (live) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.info)); grp.addEventListener("mouseleave", hideTip); }
   grp.appendChild(el("circle", { cx: 7, cy: 7, r: 5, class: "anchor" }));
   return { els: [grp], update: b => grp.setAttribute("transform", at(b)) };
 }
@@ -56,7 +56,7 @@ function buildAnchor(n, p, live) {
 function buildBox(n, p, onToggle) {
   const isC = n.container;
   const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind, n.cycle ? "cycle" : ""].join(" "), transform: at(p) });
-  if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
+  if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.info)); grp.addEventListener("mouseleave", hideTip); }
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
   const icon = n.icon;
   const centred = !isC && !icon;
@@ -151,7 +151,7 @@ export function draw(g, scene, laid, onToggle) {
       const a = pts[Math.floor((pts.length - 1) / 2)], b = pts[Math.ceil((pts.length - 1) / 2)]; mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
     if (e.label && mid && !e.weak && !e.local) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = e.label; ge.appendChild(t); }
-    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.tip));
+    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.info));
     ge.addEventListener("mouseleave", hideTip);
     g.appendChild(ge); edges.push(ge);
   }

@@ -2,7 +2,7 @@
 
 A view state is the set of unfolded containers plus the display options. ``scene``
 turns it into a flat list of nodes (in drawing order, each naming its drawn parent) and
-a list of edges, with labels, badges, emphasis flags and tooltips already decided. The
+a list of edges, with labels, badges, emphasis flags and hover descriptions (info.py) already decided. The
 viewer only lays this out (ELK) and draws it; ``nolli extract`` writes the scene of the
 default cut. Ids are stable across states (entity ids, ``body:<id>`` for a module's own
 code, ``kind|src|dst|subkind`` for edges), so a client can diff two scenes to animate
@@ -20,12 +20,13 @@ from .rollup import (
     rollup, utility_badges, visible_from_expanded,
 )
 from .view import default_view
+from .labels import MODULE_LANGS, is_body, label_of, leaf_count
+from .info import edge_info, node_info
 
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
 GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "http": "api"}
-MODULE_LANGS = ("python", "typescript", "javascript")
 
 
 @dataclass
@@ -72,10 +73,6 @@ def compute(m: Model, st: ViewState) -> tuple[set[str], set[str], set[str], Roll
 
 # ---------- labels ----------
 
-def is_body(x: str) -> bool:
-    return x.startswith("body:")
-
-
 def icon_of(m: Model, x: str) -> str:
     if is_body(x):
         return ""
@@ -87,40 +84,6 @@ def icon_of(m: Model, x: str) -> str:
     if e.kind == "class":
         return "C"
     return ""
-
-
-def label_of(m: Model, x: str, expanded: set[str]) -> str:
-    if is_body(x):
-        return ""
-    e = m.entities[x]
-    if e.kind == "directory":
-        return e.name if e.attrs.get("root") else display_path(m, x, expanded)
-    if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
-        return e.name.rsplit(".", 1)[0] if "." in e.name else e.name  # a source file is its module
-    if e.kind == "service":
-        return "svc " + e.name
-    if e.kind == "image":
-        return "img " + e.name.removesuffix("/Dockerfile")
-    return e.name
-
-
-def leaf_count(m: Model, x: str) -> int:
-    """Files below a directory; leaves below anything else."""
-    is_dir = m.entities[x].kind == "directory"
-    n, stack = 0, list(m.children(x))
-    while stack:
-        c = stack.pop()
-        k = m.entities[c].kind
-        if is_dir:
-            if k == "file":
-                n += 0 if is_init(m, c) else 1
-            elif k == "directory":
-                stack.extend(m.children(c))
-        elif not m.children(c):
-            n += 1
-        else:
-            stack.extend(m.children(c))
-    return n
 
 
 def badge_text(m: Model, x: str, rolled: RolledUp, expanded: set[str]) -> str:
@@ -154,52 +117,6 @@ def edge_style(e) -> str:
     if s == "env":
         return "env"
     return "deploy"
-
-
-def node_tip(m: Model, x: str, rolled: RolledUp, utilities: set[str]) -> str:
-    if is_body(x):
-        o = m.entities[x[5:]]
-        if o.kind == "directory":
-            return f"the package's own code: {o.attrs.get('path')}/__init__.py\n(what it does beyond re-exporting its own modules)"
-        return f"the module's own code: {o.attrs.get('path')}\n(functions, constants and statements outside any class)"
-    e = m.entities[x]
-    kids = m.children(x)
-    lines = [f"{e.kind}  {x}"]
-    if e.kind == "file" and kids:
-        lines.append(f"{len(kids)} classes (click to unfold)")
-    for key, fmt in (("line", "line {}"), ("path", "{}")):
-        if e.attrs.get(key):
-            lines.append(fmt.format(e.attrs[key]))
-    if e.attrs.get("language"):
-        langs = e.attrs.get("languages")
-        extra = "  " + ", ".join(f"{k} {v / 1000:.0f}k" for k, v in langs.items()) if langs else ""
-        lines.append("language: " + e.attrs["language"] + extra)
-    if e.attrs.get("role"):
-        lines.append("role: " + e.attrs["role"])
-    if kids:
-        lines.append(f"{len(kids)} children, {leaf_count(m, x)} leaves, {rolled.internal.get(x, 0)} internal relations")
-    for g, c in (rolled.annotations.get(x) or {}).items():
-        if g.startswith("util:"):
-            lines.append(f"{c} references to {label_of(m, g[5:], set())} (utility, drawn as badge)")
-        else:
-            lines.append(f"{c} relations with {m.entities[g].name} (folded)")
-    if x in utilities:
-        lines.append("utility: used by at least a third of the top-level components; incoming edges are badges on the users")
-    if rolled.allocations.get(x):
-        lines.append("deployed in: " + ", ".join(m.entities[s].name for s in rolled.allocations[x]))
-    if e.attrs.get("image"):
-        lines.append("image: " + str(e.attrs["image"]))
-    if e.attrs.get("ports"):
-        lines.append("ports: " + ", ".join(map(str, e.attrs["ports"])))
-    return "\n".join(lines)
-
-
-def edge_tip(e) -> str:
-    lines = [f"{e.kind} {e.subkind}  ×{e.count}  ({e.confidence})", f"{e.src} → {e.dst}"]
-    via = sorted(e.via)
-    if via:
-        lines.append("via: " + "\n     ".join(via[:14]) + (f"\n     … {len(via) - 14} more" if len(via) > 14 else ""))
-    return "\n".join(lines)
 
 
 def cycle_members(nodes: list[str], edges) -> set[str]:
@@ -281,7 +198,7 @@ def scene(m: Model, st: ViewState) -> dict:
 
     def node(x: str, parent: str | None, container: bool) -> dict:
         if is_body(x):
-            return {"id": x, "kind": "anchor", "parent": parent, "tip": node_tip(m, x, rolled, utilities)}
+            return {"id": x, "kind": "anchor", "parent": parent, "info": node_info(m, x, rolled, expanded, utilities, False, False)}
         e = m.entities[x]
         badge = badge_text(m, x, rolled, expanded)
         if container and st.hide_internal and internal_drawn.get(x):
@@ -295,7 +212,7 @@ def scene(m: Model, st: ViewState) -> dict:
                       for s in rolled.allocations.get(x, [])],
             "service_color": services.index(x) if x in services else None,
             "internal": internal_drawn.get(x, 0) if container else None,
-            "tip": node_tip(m, x, rolled, utilities),
+            "info": node_info(m, x, rolled, expanded, utilities, x in in_cycle, container),
         }
 
     def build(x: str, parent: str | None) -> bool:
@@ -337,12 +254,14 @@ def scene(m: Model, st: ViewState) -> dict:
     edge_out = []
     for e in edges:
         ot = out_total.get(e.src, 0)
+        weak = bool(ot) and e.kind == USE and e.count / ot < 0.05 and e.count < 3
         edge_out.append({
             "key": f"{e.kind}|{e.src}|{e.dst}|{e.subkind}", "kind": e.kind, "subkind": e.subkind, "src": e.src, "dst": e.dst,
             "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": edge_style(e), "label": edge_label(e),
             "local": local(e), "single": e.count == 1,
-            "weak": bool(ot) and e.kind == USE and e.count / ot < 0.05 and e.count < 3,
-            "dangling": e.subkind.endswith("-dangling"), "heuristic": e.confidence == "heuristic", "tip": edge_tip(e),
+            "weak": weak,
+            "dangling": e.subkind.endswith("-dangling"), "heuristic": e.confidence == "heuristic",
+            "info": edge_info(m, e, expanded, drawn_parent(m, e.src, expanded) if local(e) else None, weak),
         })
 
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]

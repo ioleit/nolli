@@ -57,7 +57,25 @@ svg.nolabels .edge text { display: none; }
 #rawpane pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
 #rawpane .req { font: 12px system-ui, sans-serif; color: var(--muted); margin-bottom: 6px; word-break: break-all; }
 #rawpane .unfold { color: #2a7fd4; cursor: pointer; text-decoration: underline dotted; }
-#tip { position: absolute; pointer-events: none; background: Canvas; border: 1px solid var(--line); padding: 6px 8px; font-size: 11px; max-width: 460px; display: none; white-space: pre-wrap; z-index: 2; }
+/* hover card (js/tip.js) */
+#tip { position: absolute; pointer-events: none; display: none; z-index: 2; box-sizing: border-box; max-width: 380px; min-width: 200px;
+  background: Canvas; color: CanvasText; border: 1px solid #8885; border-radius: 6px; padding: 8px 10px 9px;
+  box-shadow: 0 4px 16px #0002, 0 1px 3px #0001; font-size: 12px; line-height: 1.4; }
+#tip .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+#tip .kind { font-size: 10px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+#tip .title { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+#tip .path { margin-top: 1px; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); overflow-wrap: anywhere; }
+#tip .summary { margin-top: 6px; }
+#tip .v { font-weight: 600; background: #4a90e21f; border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
+#tip .facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 7px 0 0; }
+#tip .facts dt { color: var(--muted); }
+#tip .facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#tip .list { margin-top: 7px; }
+#tip .list .label { color: var(--muted); }
+#tip .list ul { margin: 2px 0 0; padding: 0; list-style: none; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+#tip .list li.more { font-family: inherit; color: var(--muted); }
+#tip .hint { margin-top: 6px; font-size: 11px; color: var(--muted); }
+#tip .hint .v { background: none; padding: 0; color: CanvasText; font-weight: 500; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: 1px 0; }
 .legend span { display: inline-block; width: 22px; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }

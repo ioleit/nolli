@@ -2,8 +2,22 @@
 
 export interface Chip { id: string; name: string; color: number }
 
+/** Prose with data in it: plain strings, and { v } for a value to set apart. */
+export type Parts = (string | { v: string })[];
+
+/** What hovering over a box or an edge shows (nolli/info.py). */
+export interface Info {
+  kind: string;  // what sort of thing: "Python module", "HTTP calls"
+  title: string;
+  path: string | null;
+  summary: Parts | null;
+  facts: { label: string; value: string }[];
+  list: { label: string; items: string[]; more: number } | null;
+  hints: Parts[];
+}
+
 /** A module's own code: a small dot inside the module. */
-export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; tip: string }
+export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; info: Info }
 
 export interface BoxNode {
   id: string;
@@ -20,7 +34,7 @@ export interface BoxNode {
   chips: Chip[];
   service_color: number | null;
   internal: number | null;
-  tip: string;
+  info: Info;
 }
 
 export type SceneNode = AnchorNode | BoxNode;
@@ -41,7 +55,7 @@ export interface SceneEdge {
   weak: boolean;
   dangling: boolean;
   heuristic: boolean;
-  tip: string;
+  info: Info;
 }
 
 export interface SceneState {
