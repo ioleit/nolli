@@ -56,6 +56,7 @@ export function syncControls() {
   for (const [id, k] of Object.entries(OPTIONS)) input(id).checked = state[k];
   input("nolabels").checked = state.noLabels; byId("g").classList.toggle("nolabels", state.noLabels);
   input("samewidth").checked = state.sameWidth;
+  select("theme").value = state.theme;
   input("animate").checked = state.animate;
   select("direction").value = state.direction;
   select("engine").value = state.engine;

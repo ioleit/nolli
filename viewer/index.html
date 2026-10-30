@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>nolli</title>
 <link rel="stylesheet" href="viewer.css">
+<link rel="stylesheet" href="themes.css">
 </head>
 <body>
 <aside>
@@ -41,16 +42,17 @@
   <h2>Layout</h2>
   <label class="opt row" data-help="How the diagram is laid out. Layered (ELK) puts callers above what they call.">engine <select id="engine"></select></label>
   <label class="opt row" data-help="Direction of the layered layouts.">direction <select id="direction"><option value="DOWN">top → down</option><option value="RIGHT">left → right</option></select></label>
+  <label class="opt row" data-help="Colours, fonts and box style. Kept in this browser and in the link (th=).">theme <select id="theme"></select></label>
   <label class="opt" data-help="Animate unfolding and folding, keeping the clicked box in place."><input type="checkbox" id="animate"> Animate</label>
 
   <h2>Legend</h2>
   <div class="legend">
-    <div><span style="border-color:#888b"></span>import</div>
-    <div><span style="border-color:#2a7fd4"></span>http: caller → handler</div>
-    <div><span style="border-color:#3a9d5d"></span>env: reader → setter</div>
-    <div><span style="border-color:#8e5bd6"></span>deploy: depends_on, url, copies, entrypoint</div>
-    <div><span style="border-color:#2aa8a8;border-top-style:dashed"></span>interface → the module that realises it</div>
-    <div><span style="border-color:#8886;border-top-style:dashed"></span>one-sided interface</div>
+    <div><span class="import"></span>import</div>
+    <div><span class="http"></span>http: caller → handler</div>
+    <div><span class="env"></span>env: reader → setter</div>
+    <div><span class="deploy"></span>deploy: depends_on, url, copies, entrypoint</div>
+    <div><span class="provide"></span>interface → the module that realises it</div>
+    <div><span class="dangling"></span>one-sided interface</div>
     <div style="margin-top:4px;color:var(--muted)">D directory · m module · C class · dot in a module header = the module's own code<br>width = log(count), unless Same width · pale = heuristic match · red border = in a cycle<br>click a box: unfold all its children · click its − : fold · drag: pan · wheel: zoom</div>
   </div>
   <h2>Residue</h2>

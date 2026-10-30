@@ -114,7 +114,7 @@ function buildBox(n, p, onToggle) {
   /** @param {number} w */
   const badgeX = w => isC ? w - 28 : (w + n.chips.length * 11) / 2;
   if (fitted(p.w)) { badge = el("text", { class: "badge", x: badgeX(p.w), y: isC ? 18 : 33, "text-anchor": isC ? "end" : "middle" }); badge.textContent = fitted(p.w); if (isC) badge.appendChild(el("title")).textContent = n.badge; grp.appendChild(badge); }
-  n.chips.forEach((c, i) => { const ch = el("circle", { cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), stroke: "Canvas", "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
+  n.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
   if (n.service_color !== null && n.service_color !== undefined) rect.setAttribute("stroke", color(n.service_color));
   if (onToggle && !isC && n.foldable) grp.addEventListener("click", ev => { ev.stopPropagation(); onToggle(n.id); });
 

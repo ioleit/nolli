@@ -21,6 +21,7 @@ import { sidebar, syncControls } from "./sidebar.js";
 import { fit } from "./panzoom.js";
 import { hideMermaid, showMermaid } from "./mermaid.js";
 import "./help.js";
+import { applyTheme, initialTheme, themeOptions } from "./theme.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
 
@@ -101,8 +102,10 @@ byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; re
 for (const [id, k] of Object.entries(OPTIONS)) input(id).addEventListener("change", () => { state[k] = input(id).checked; refresh(true); });
 input("nolabels").addEventListener("change", () => { state.noLabels = input("nolabels").checked; byId("g").classList.toggle("nolabels", state.noLabels); writeHash(); });
 input("samewidth").addEventListener("change", () => { state.sameWidth = input("samewidth").checked; writeHash(); if (state.view === "diagram") render(true); });
+select("theme").addEventListener("change", () => { state.theme = select("theme").value; applyTheme(state.theme); writeHash(); });
 input("animate").addEventListener("change", () => { state.animate = input("animate").checked; writeHash(); });
 select("direction").addEventListener("change", () => { state.direction = select("direction").value === "RIGHT" ? "RIGHT" : "DOWN"; writeHash(); if (state.view === "diagram") render(); });
+themeOptions();
 for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; select("engine").appendChild(o); }
 select("engine").addEventListener("change", () => { state.engine = select("engine").value; writeHash(); if (state.view === "diagram") render(); });
 select("dataset").addEventListener("change", () => { Object.assign(state, DEFAULTS, { name: select("dataset").value }); shown = null; refresh(); });
@@ -121,6 +124,7 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
   if (!name) { byId("status").textContent = "no datasets"; return; }
   sel.value = name;
-  Object.assign(state, h.st, { name, noLabels: h.noLabels, sameWidth: h.sameWidth, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, view: h.view });
+  Object.assign(state, h.st, { name, noLabels: h.noLabels, sameWidth: h.sameWidth, theme: initialTheme(h.theme), direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, view: h.view });
+  applyTheme(state.theme);
   await refresh();
 })();
