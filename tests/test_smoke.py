@@ -181,3 +181,29 @@ def test_utilities_by_incoming_edges(repo: Path):
     assert any(k.startswith("util:") for k in rolled.annotations[src])
     _x, _h, _v, rolled, _u = compute(m, ViewState(utilities=0))
     assert utility_badges(m, rolled, min_in=1) == set()  # nothing has more than one
+
+
+def test_focus_unfolds_to_members_and_connects_them(repo: Path):
+    """Focus on the frontend app and the store class: both are drawn as their own boxes,
+    the handler module between them is on the path, and unrelated boxes are context."""
+    from nolli.focus import connect
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    app = next(e for e in m.entities if e.endswith("App.tsx"))
+    store = next(e for e in m.entities if e.endswith("#Store"))
+    c = connect(m, [app, store])
+    assert c.pairs[tuple(sorted((app, store)))] == "path"
+    assert any(v.endswith("worlds.py") for v in c.connectors)
+
+    sc = scene(m, ViewState(focus=[app, store], budget=12))
+    rel = {n["id"]: n.get("relevance") for n in sc["nodes"]}
+    assert rel[app] == "focus" and rel[store] == "focus"
+    assert any(r == "path" for i, r in rel.items() if "worlds.py" in i)
+    assert any(e["relevance"] == "path" for e in sc["edges"])
+    assert sc["focus"]["members"] == sorted([app, store])
+    # the cut the client sends back keeps the members drawn, and folding their parent can't hide them
+    again = scene(m, ViewState(focus=[app, store], expanded=["fs:."], budget=12))
+    assert {n["id"] for n in again["nodes"]} >= {app, store}
+    # without a focus nothing is graded
+    assert all("relevance" not in n for n in scene(m, ViewState(budget=12))["nodes"])

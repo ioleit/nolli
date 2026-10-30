@@ -4,14 +4,14 @@
 /**
  * @typedef {"diagram" | "json" | "mermaid"} View
  * @typedef {{ expanded: string[] | null, roles: string[] | null, groups: string[] | null, budget: number | null, through: boolean, danglingUse: boolean,
- *             envEdges: boolean, bundle: boolean, utilities: number | null, hideInternal: boolean }} SceneQuery
+ *             envEdges: boolean, bundle: boolean, utilities: number | null, hideInternal: boolean, focus: string[] }} SceneQuery
  * @typedef {SceneQuery & { name: string | null, noLabels: boolean, sameWidth: boolean, theme: string, direction: "DOWN" | "RIGHT", engine: string, animate: boolean, view: View }} ViewState
  * @typedef {"through" | "danglingUse" | "envEdges" | "bundle" | "hideInternal"} OptionKey
  */
 
 // expanded / roles / groups / budget null: let the server choose (default cut, roles, groups)
 /** @type {SceneQuery} */
-export const DEFAULTS = { expanded: null, roles: null, groups: null, budget: null, through: true, danglingUse: false, envEdges: false, bundle: true, utilities: null, hideInternal: false };
+export const DEFAULTS = { expanded: null, roles: null, groups: null, budget: null, through: true, danglingUse: false, envEdges: false, bundle: true, utilities: null, hideInternal: false, focus: [] };
 /** @type {ViewState} */
 export const state = { name: null, ...DEFAULTS, noLabels: true, sameWidth: false, theme: "default", direction: "DOWN", engine: "elk", animate: true, view: "diagram" };
 /** @type {View[]} */
@@ -35,6 +35,7 @@ export function query() {
   if (!state.bundle) p.set("nb", "1");
   if (state.utilities !== null) p.set("ut", String(state.utilities));
   if (state.hideInternal) p.set("hi", "1");
+  if (state.focus.length) p.set("f", state.focus.join(","));
   return p;
 }
 
@@ -55,6 +56,7 @@ export function readHash(h) {
   if (b) st.budget = +b;
   st.through = p.get("t") !== "0"; st.danglingUse = p.get("u") === "1"; st.envEdges = p.get("ev") === "1";
   st.bundle = p.get("nb") !== "1"; st.utilities = p.get("nu") === "1" ? 0 : p.get("ut") ? +(p.get("ut") || 0) : null; st.hideInternal = p.get("hi") === "1";
+  st.focus = (p.get("f") || "").split(",").filter(Boolean);
   // older links: raw=1, mmd=1
   const v = p.get("v") || (p.get("raw") === "1" ? "json" : p.get("mmd") === "1" ? "mermaid" : "diagram");
   return { name: p.get("d"), st, noLabels: p.get("nl") !== "0", sameWidth: p.get("sw") === "1", theme: p.get("th"), direction: /** @type {"DOWN" | "RIGHT"} */ (p.get("dir") === "RIGHT" ? "RIGHT" : "DOWN"), engine: p.get("lay") || "elk", animate: p.get("an") !== "0",

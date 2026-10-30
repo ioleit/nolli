@@ -14,10 +14,11 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 
+from .focus import Connections, connect, focus_cut, relevance
 from .model import USE, Model
 from .rollup import (
     HIDDEN_ROLES_DEFAULT, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
-    rollup, utility_badges, visible_from_expanded,
+    representative, rollup, utility_badges, visible_from_expanded,
 )
 from .view import default_view
 
@@ -43,6 +44,7 @@ class ViewState:
     bundle: bool = True  # fan-out edges to a container's boundary
     utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
     hide_internal: bool = False  # drop edges inside a container, count them in its header
+    focus: list[str] = field(default_factory=list)  # entities to understand: unfolded to, connected, the rest faded
 
 
 def hidden_for(m: Model, roles) -> set[str]:
@@ -57,12 +59,29 @@ def is_root_group(m: Model, x: str) -> bool:
     return m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None
 
 
-def compute(m: Model, st: ViewState) -> tuple[set[str], set[str], set[str], RolledUp, set[str]]:
+def compute(m: Model, st: ViewState, focus_out: list | None = None) -> tuple[set[str], set[str], set[str], RolledUp, set[str]]:
     """(expanded, hidden, visible, rolled, utilities) for a state; expanded is normalised to
-    the containers actually reached, so folding a box also folds everything inside it."""
+    the containers actually reached, so folding a box also folds everything inside it.
+
+    With a focus, ``expanded=None`` means the focus cut instead of the default cut (fold
+    all, then unfold to each member and to what connects them, see ``focus.py``), and an
+    explicit ``expanded`` is still unfolded far enough to draw every member. A member in a
+    group the filter hides shows that group. ``focus_out`` receives the ``Connections``."""
     hidden = hidden_for(m, st.roles)
+    conn = connect(m, st.focus, hidden) if st.focus else None
+    if conn is not None:
+        for f in conn.members:
+            top = ([f] + list(m.ancestors(f)))[-1]
+            if is_root_group(m, top) and top not in st.groups:
+                st.groups = [*st.groups, top]
+        if focus_out is not None:
+            focus_out.append(conn)
     shown_groups = set(st.groups)
-    if st.expanded is None:
+    if conn is not None and conn.members:
+        start = {x for x in st.expanded if m.has(x)} if st.expanded is not None else {"fs:."}
+        expanded = focus_cut(m, conn, hidden, st.budget, start) if st.expanded is None else \
+            start | {a for f in conn.members for a in m.ancestors(f)}
+    elif st.expanded is None:
         hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
         expanded = set(default_view(m, budget=st.budget, hidden_roles=hidden_roles)["expanded"])
     else:
@@ -216,7 +235,8 @@ def edge_tip(e) -> str:
 # ---------- the scene ----------
 
 def scene(m: Model, st: ViewState) -> dict:
-    expanded, hidden, visible, rolled, utilities = compute(m, st)
+    focus: list[Connections] = []
+    expanded, hidden, visible, rolled, utilities = compute(m, st, focus)
     shown_groups = set(st.groups)
     # a root group is drawn when the filter shows it and it has something to unfold; a group
     # the filter hides is drawn only if an edge still ends on it (both ends in groups)
@@ -342,10 +362,23 @@ def scene(m: Model, st: ViewState) -> dict:
         residue.append("utilities (badges): " + ", ".join(label_of(m, u, expanded) for u in sorted(utilities)))
     residue += [f"{v} {k} wiring edges not drawn (option)" for k, v in rolled.suppressed.items()]
 
+    focus_summary = None
+    if focus:
+        rep = representative(m, visible, hidden, image_aliases(m))
+        drawn_ids = {n["id"] for n in nodes}
+        focus_summary = relevance(m, focus[0], lambda x: (r if (r := rep(x)) in drawn_ids else None), nodes, edge_out)
+        focus_summary["labels"] = {f: label_of(m, f, expanded) for f in focus[0].members}
+        for (a, b), how in sorted(focus[0].pairs.items()):
+            if how == "none":
+                residue.append(f"focus: no connection between {label_of(m, a, expanded)} and {label_of(m, b, expanded)} within 6 steps")
+        for f in focus[0].members:
+            if f in hidden or any(a in hidden for a in m.ancestors(f)):
+                residue.append(f"focus: {label_of(m, f, expanded)} is hidden by its role")
+
     groups = [{"id": r, "name": m.entities[r].name, "size": len(m.children(r)), "shown": r in shown_groups}
               for r in m.roots() if m.entities[r].kind == "group" and r != "unresolved" and m.children(r)]
     state = asdict(st) | {"expanded": sorted(expanded)}
-    return {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "residue": residue,
+    return {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "residue": residue, "focus": focus_summary,
             "stats": {"nodes": len(drawn), "edges": len(edge_out)}}
 
 
@@ -366,4 +399,6 @@ def state_from_query(q: dict[str, str]) -> ViewState:
     st.bundle = q.get("nb") != "1"
     st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
     st.hide_internal = q.get("hi") == "1"
+    if q.get("f"):
+        st.focus = [f for f in q["f"].split(",") if f]
     return st

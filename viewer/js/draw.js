@@ -48,20 +48,22 @@ const at = b => `translate(${b.x},${b.y})`;
 
 /** @param {SceneEdge} e */
 function edgeClass(e) {
-  return ["edge", e.local && "local", e.single && "single", e.weak && "weak", e.style, e.dangling && "dangling", e.heuristic && "heuristic"].filter(Boolean).join(" ");
+  return ["edge", e.relevance && "rel-" + e.relevance, e.local && "local", e.single && "single", e.weak && "weak", e.style, e.dangling && "dangling", e.heuristic && "heuristic"].filter(Boolean).join(" ");
 }
 
 /** Opacity as the SVG attribute (null removes it). @param {SVGElement[]} els @returns {(o: number | null) => void} */
 const fader = els => o => { for (const x of els) if (o === null) x.removeAttribute("opacity"); else x.setAttribute("opacity", String(o)); };
 
 /**
- * A module's own code: a dot that edges attach to.
+ * A module's own code: a dot that edges attach to. Shift-click focuses the module.
  * @param {import("../types/nolli").AnchorNode} n @param {Box} p @param {boolean} live with tooltip
+ * @param {((id: string) => void) | null} [onFocus] add to or remove from the focus
  * @returns {Built}
  */
-function buildAnchor(n, p, live) {
-  const grp = el("g", { class: "node folded files ", transform: at(p) });
+function buildAnchor(n, p, live, onFocus) {
+  const grp = el("g", { class: "node folded files " + (n.relevance ? "rel-" + n.relevance : ""), transform: at(p) });
   if (live) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
+  if (onFocus) grp.addEventListener("click", ev => { if (/** @type {MouseEvent} */ (ev).shiftKey) { ev.stopPropagation(); onFocus(n.id.slice(5)); } });
   grp.appendChild(el("circle", { cx: 7, cy: 7, r: 5, class: "anchor" }));
   return { els: [grp], update: b => grp.setAttribute("transform", at(b)) };
 }
@@ -70,12 +72,14 @@ function buildAnchor(n, p, live) {
  * A box: folded (a leaf) or unfolded (a container whose children are drawn separately).
  * Built at box p; update(b) moves and resizes it, recomputing everything that depends on
  * its size (centred label, badges, the − button).
+ * Shift-click adds it to the focus or takes it out.
  * @param {BoxNode} n @param {Box} p @param {((id: string) => void) | null} onToggle null: not interactive
+ * @param {((id: string) => void) | null} [onFocus]
  * @returns {Built}
  */
-function buildBox(n, p, onToggle) {
+function buildBox(n, p, onToggle, onFocus) {
   const isC = n.container;
-  const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind].join(" "), transform: at(p) });
+  const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind, n.relevance ? "rel-" + n.relevance : ""].join(" "), transform: at(p) });
   if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
   const icon = n.icon;
@@ -122,7 +126,10 @@ function buildBox(n, p, onToggle) {
   const placeUses = b => uses.forEach((x, i) => { x.setAttribute("x", String(b.w - 8)); x.setAttribute("y", String(b.h - 8 - (uses.length - 1 - i) * USES_LINE)); });
   placeUses(p);
   if (n.service_color !== null && n.service_color !== undefined) rect.setAttribute("stroke", color(n.service_color));
-  if (onToggle && !isC && n.foldable) grp.addEventListener("click", ev => { ev.stopPropagation(); onToggle(n.id); });
+  if (onToggle) grp.addEventListener("click", ev => {
+    if (/** @type {MouseEvent} */ (ev).shiftKey) { if (onFocus) { ev.stopPropagation(); onFocus(n.id); } return; }
+    if (!isC && n.foldable) { ev.stopPropagation(); onToggle(n.id); }
+  });
 
   /** @param {Box} b */
   const update = b => {
@@ -137,8 +144,8 @@ function buildBox(n, p, onToggle) {
   return { els: top ? [grp, top] : [grp], update };
 }
 
-/** @param {SceneNode} n @param {Box} p @param {((id: string) => void) | null} onToggle */
-const build = (n, p, onToggle) => isAnchor(n) ? buildAnchor(n, p, !!onToggle) : buildBox(n, p, onToggle);
+/** @param {SceneNode} n @param {Box} p @param {((id: string) => void) | null} onToggle @param {((id: string) => void) | null} [onFocus] */
+const build = (n, p, onToggle, onFocus) => isAnchor(n) ? buildAnchor(n, p, !!onToggle, onFocus) : buildBox(n, p, onToggle, onFocus);
 
 /**
  * @param {Element} g the root group
@@ -146,9 +153,10 @@ const build = (n, p, onToggle) => isAnchor(n) ? buildAnchor(n, p, !!onToggle) : 
  * @param {Laid} laid
  * @param {(id: string) => void} onToggle unfold or fold a node
  * @param {boolean} [sameWidth] every edge one width instead of growing with its count
+ * @param {((id: string) => void) | null} [onFocus] shift-click: add to or remove from the focus
  * @returns {Drawn}
  */
-export function draw(g, scene, laid, onToggle, sameWidth = false) {
+export function draw(g, scene, laid, onToggle, sameWidth = false, onFocus = null) {
   g.innerHTML = "";
   /** @type {SVGElement[]} */
   const foldLayer = [];
@@ -161,7 +169,7 @@ export function draw(g, scene, laid, onToggle, sameWidth = false) {
   for (const n of scene.nodes) {
     const p = laid.nodes.get(n.id);
     if (!p) continue;
-    const { els, update } = build(n, p, onToggle);
+    const { els, update } = build(n, p, onToggle, onFocus);
     g.appendChild(els[0]);
     if (els[1]) foldLayer.push(els[1]);
     nodes.set(n.id, { update, opacity: fader(els) });

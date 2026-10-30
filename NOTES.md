@@ -58,6 +58,25 @@ Nothing is a settled design.
 - Numbers that are guesses: budget 34, utility threshold more than 6 incoming edges, weak
   edge under 5% and fewer than 3 references, fan bundling from 3 children.
 
+## Focus
+
+- A focus is a set of entities at any depth. Connections are looked for in the fact graph,
+  not the drawn one, so a big folded box can't make two members look connected; everything
+  inside a focused box counts as that box.
+- "Connected" means every shortest directed path (use, provide reversed to interface →
+  realiser) from one member to another, at most 6 steps, not walking through a third
+  member; for a pair with none in either direction, the nearest shared dependency or user
+  (up to 3). Shared dependencies are often widely used modules; whether that is
+  an explanation or noise is open.
+- The focus cut starts from "fold all", not the default cut: unfolding unrelated boxes
+  works against the point. Members are always unfolded to; connectors only while the
+  picture stays within the budget, nearest connections first.
+- Five grades: focus, path, near (one drawn edge from a member), frame (a container
+  around any of these) and context. Faded, not removed, so the layout keeps its shape and
+  hovering brings anything back. Opacities are guesses.
+- Shift-click as the gesture, because a plain click already unfolds. Changing the focus
+  recomputes the cut; clearing it keeps the picture.
+
 ## Viewer and server
 
 - One implementation of the roll-up, in Python. The viewer sends its state (unfolded

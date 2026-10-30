@@ -113,3 +113,16 @@ ul.plain li { padding: 1px 0; }
 button { font: inherit; padding: 2px 8px; }
 .chip { display: inline-flex; gap: 6px; align-items: center; border: 1px dashed var(--files-stroke); border-radius: 4px; padding: 2px 6px; margin: 2px 2px 2px 0; font-size: 12px; }
 .chip button { padding: 0 6px; font-size: 11px; }
+/* focus (svg.focusing, nolli/focus.py): members ringed, what connects them at full strength,
+   direct neighbours dimmed, the rest faded; hovering anything brings it back (.lit, :hover) */
+:root { --focus-color: #e0a100; }
+svg.focusing .node.rel-focus > rect, svg.focusing .node.rel-focus > circle.anchor { stroke: var(--focus-color); stroke-width: 3px; }
+svg.focusing .edge.rel-path path { stroke-width: 2.2px; }
+svg.focusing .edge.rel-path { --eo: 1; }
+svg.focusing .node.rel-near > * { opacity: .6; }
+svg.focusing .node.rel-context > * { opacity: .2; }
+svg.focusing .node.container.rel-context > * { opacity: .35; }
+svg.focusing .edge.rel-near > * { opacity: .45; }
+svg.focusing .edge.rel-context > * { opacity: .1; }
+svg.focusing .node.lit > *, svg.focusing .edge.lit > *, svg.focusing .edge:hover > * { opacity: 1; }
+.chip.focus { border-style: solid; border-color: var(--focus-color); }

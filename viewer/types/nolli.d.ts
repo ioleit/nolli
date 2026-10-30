@@ -3,7 +3,10 @@
 export interface Chip { id: string; name: string; color: number }
 
 /** A module's own code: a small dot inside the module. */
-export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; tip: string }
+export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; tip: string; relevance?: Relevance }
+
+/** With a focus: how a node or edge relates to it (nolli/focus.py). Absent without a focus. */
+export type Relevance = "focus" | "path" | "near" | "frame" | "context";
 
 export interface BoxNode {
   id: string;
@@ -22,6 +25,7 @@ export interface BoxNode {
   uses: string[];  // unfolded boxes: utilities their children use, one line each at the bottom right
   utilities_used: string[];  // ids of the utilities whose edges from this box became badges
   tip: string;
+  relevance?: Relevance;
 }
 
 export type SceneNode = AnchorNode | BoxNode;
@@ -43,6 +47,7 @@ export interface SceneEdge {
   dangling: boolean;
   heuristic: boolean;
   tip: string;
+  relevance?: Relevance;
 }
 
 export interface SceneState {
@@ -64,6 +69,7 @@ export interface Scene {
   edges: SceneEdge[];
   groups: { id: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
   residue: string[];
+  focus: { members: string[]; drawn: string[]; connectors: number; labels: Record<string, string>; pairs: { a: string; b: string; how: "path" | "meet" | "none" }[] } | null;
   stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
   dataset: { name: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
   url?: string;  // added by the viewer: the request that produced it
