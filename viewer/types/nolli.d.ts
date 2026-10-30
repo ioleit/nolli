@@ -3,7 +3,7 @@
 export interface Chip { id: string; name: string; color: number }
 
 /** A module's own code: a small dot inside the module. */
-export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; tip: string }
+export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; tip: string }
 
 export interface BoxNode {
   id: string;
@@ -20,6 +20,7 @@ export interface BoxNode {
   service_color: number | null;
   internal: number | null;
   uses: string[];  // unfolded boxes: utilities their children use, one line each at the bottom right
+  utilities_used: string[];  // ids of the utilities whose edges from this box became badges
   tip: string;
 }
 

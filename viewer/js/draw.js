@@ -154,6 +154,8 @@ export function draw(g, scene, laid, onToggle, sameWidth = false) {
   const foldLayer = [];
   /** @type {Map<string, Handle>} */
   const nodes = new Map();
+  /** @type {Map<string, Element>} */
+  const boxEl = new Map();
 
   // scene nodes come in drawing order: a container before what it contains
   for (const n of scene.nodes) {
@@ -163,10 +165,19 @@ export function draw(g, scene, laid, onToggle, sameWidth = false) {
     g.appendChild(els[0]);
     if (els[1]) foldLayer.push(els[1]);
     nodes.set(n.id, { update, opacity: fader(els) });
+    boxEl.set(n.id, els[0]);
   }
 
   /** @type {SVGElement[]} */
   const edges = [];
+  /** @type {Map<string, SVGElement[]>} the edges at each node */
+  const edgesAt = new Map();
+  // a glowing edge goes on top of the other edges (still below the fold buttons), so its glow isn't covered
+  /** @param {Element} ge */
+  const raise = ge => {
+    const after = foldLayer[0] && foldLayer[0].parentNode === g ? foldLayer[0] : null;
+    if (ge.nextSibling !== after) g.insertBefore(ge, after);
+  };
   for (const { edge: e, sections } of laid.edges) {
     const ge = el("g", { class: edgeClass(e), "data-key": e.key });
     /** @type {{ x: number, y: number } | null} */
@@ -182,16 +193,43 @@ export function draw(g, scene, laid, onToggle, sameWidth = false) {
     }
     if (e.label && mid && !e.weak && !e.local) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = e.label; ge.appendChild(t); }
     ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.tip));
-    // the hovered edge goes on top of the other edges (still below the fold buttons), so its glow isn't covered
-    ge.addEventListener("mouseenter", () => {
-      const after = foldLayer[0] && foldLayer[0].parentNode === g ? foldLayer[0] : null;
-      if (ge.nextSibling !== after) g.insertBefore(ge, after);
-    });
+    ge.addEventListener("mouseenter", () => raise(ge));
     ge.addEventListener("mouseleave", hideTip);
     g.appendChild(ge); edges.push(ge);
+    for (const id of [e.src, e.dst]) { const l = edgesAt.get(id); if (l) l.push(ge); else edgesAt.set(id, [ge]); }
   }
   foldLayer.forEach(f => g.appendChild(f));
+  lightOnHover(scene, boxEl, edgesAt, raise);
   return { nodes, edges, firstEdge: edges[0] || foldLayer[0] || null };
+}
+
+/**
+ * Hovering a box lights it up (.lit, viewer.css), with its incoming and outgoing edges and
+ * the utilities it uses; for an unfolded box, also those of everything inside it.
+ * @param {Scene} scene @param {Map<string, Element>} boxEl @param {Map<string, SVGElement[]>} edgesAt
+ * @param {(ge: Element) => void} raise
+ */
+function lightOnHover(scene, boxEl, edgesAt, raise) {
+  const kids = new Map();
+  for (const n of scene.nodes) if (n.parent) { const l = kids.get(n.parent); if (l) l.push(n); else kids.set(n.parent, [n]); }
+  /** @type {Element[]} */
+  let lit = [];
+  for (const n of scene.nodes) {
+    const box = boxEl.get(n.id);
+    if (!box) continue;
+    box.addEventListener("mouseenter", () => {
+      /** @type {SceneNode[]} */
+      const inside = [n];
+      for (let i = 0; i < inside.length; i++) inside.push(...(kids.get(inside[i].id) || []));
+      const els = new Set([box]);
+      for (const x of inside) {
+        for (const u of x.utilities_used || []) { const b = boxEl.get(u); if (b) els.add(b); }
+        for (const ge of edgesAt.get(x.id) || []) { els.add(ge); raise(ge); }
+      }
+      lit = [...els]; for (const x of lit) x.classList.add("lit");
+    });
+    box.addEventListener("mouseleave", () => { for (const x of lit) x.classList.remove("lit"); lit = []; });
+  }
 }
 
 /**

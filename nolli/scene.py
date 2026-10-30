@@ -246,9 +246,12 @@ def scene(m: Model, st: ViewState) -> dict:
     services = [c for c in m.children("deploy") if m.entities[c].kind == "service"] if m.has("deploy") else []
     nodes: list[dict] = []
 
+    def used_utils(x: str) -> list[str]:
+        return sorted(g[5:] for g in (rolled.annotations.get(x) or {}) if g.startswith("util:"))
+
     def node(x: str, parent: str | None, container: bool) -> dict:
         if is_body(x):
-            return {"id": x, "kind": "anchor", "parent": parent, "tip": node_tip(m, x, rolled, utilities)}
+            return {"id": x, "kind": "anchor", "parent": parent, "utilities_used": used_utils(x), "tip": node_tip(m, x, rolled, utilities)}
         e = m.entities[x]
         badge = badge_text(m, x, rolled, used_by.get(x, 0))
         if container and st.hide_internal and internal_drawn.get(x):
@@ -263,6 +266,7 @@ def scene(m: Model, st: ViewState) -> dict:
             "service_color": services.index(x) if x in services else None,
             "internal": internal_drawn.get(x, 0) if container else None,
             "uses": [],  # unfolded boxes: the utilities their children use (filled in below)
+            "utilities_used": used_utils(x),  # ids of the utilities whose edges from this box became badges
             "tip": node_tip(m, x, rolled, utilities),
         }
 
