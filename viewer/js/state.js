@@ -6,8 +6,8 @@
  * @typedef {{ expanded: string[] | null, roles: string[] | null, groups: string[] | null, budget: number | null, through: boolean, danglingUse: boolean,
  *             envEdges: boolean, bundle: boolean, utilities: number | null, hideInternal: boolean, side: "both" | "base" | "head" }} SceneQuery
  * @typedef {SceneQuery & { name: string | null, noLabels: boolean, sameWidth: boolean, theme: string, direction: "DOWN" | "RIGHT", engine: string, animate: boolean, view: View,
- *             sel: string | null, dim: boolean }} ViewState
- *   sel: what the review panel shows, "item:C3", "node:<entity id>" or "edge:<edge key>"; dim: fade what did not change (diff datasets)
+ *             item: string | null, dim: boolean }} ViewState
+ *   item: the review item last gone to ("C3"); dim: fade what did not change (diff datasets)
  * @typedef {"through" | "danglingUse" | "envEdges" | "bundle" | "hideInternal"} OptionKey
  */
 
@@ -15,7 +15,7 @@
 /** @type {SceneQuery} */
 export const DEFAULTS = { expanded: null, roles: null, groups: null, budget: null, through: true, danglingUse: false, envEdges: false, bundle: true, utilities: null, hideInternal: false, side: "both" };
 /** @type {ViewState} */
-export const state = { name: null, ...DEFAULTS, noLabels: true, sameWidth: false, theme: "default", direction: "DOWN", engine: "elk", animate: true, view: "diagram", sel: null, dim: true };
+export const state = { name: null, ...DEFAULTS, noLabels: true, sameWidth: false, theme: "default", direction: "DOWN", engine: "elk", animate: true, view: "diagram", item: null, dim: true };
 /** @type {View[]} */
 export const VIEWS = ["diagram", "json", "mermaid"];
 export const ALL_ROLES = ["source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other"];
@@ -44,7 +44,7 @@ export function query() {
 export function writeHash() {
   const p = query();
   if (!state.noLabels) p.set("nl", "0"); if (state.sameWidth) p.set("sw", "1"); if (state.theme !== "default") p.set("th", state.theme); if (state.direction !== "DOWN") p.set("dir", state.direction); if (state.engine !== "elk") p.set("lay", state.engine); if (!state.animate) p.set("an", "0"); if (state.view !== "diagram") p.set("v", state.view);
-  if (state.sel) p.set("sel", state.sel); if (!state.dim) p.set("nodim", "1");
+  if (state.item) p.set("item", state.item); if (!state.dim) p.set("nodim", "1");
   history.replaceState(null, "", "#" + p.toString());
 }
 
@@ -63,5 +63,5 @@ export function readHash(h) {
   // older links: raw=1, mmd=1
   const v = p.get("v") || (p.get("raw") === "1" ? "json" : p.get("mmd") === "1" ? "mermaid" : "diagram");
   return { name: p.get("d"), st, noLabels: p.get("nl") !== "0", sameWidth: p.get("sw") === "1", theme: p.get("th"), direction: /** @type {"DOWN" | "RIGHT"} */ (p.get("dir") === "RIGHT" ? "RIGHT" : "DOWN"), engine: p.get("lay") || "elk", animate: p.get("an") !== "0",
-    view: /** @type {View} */ (VIEWS.includes(/** @type {View} */ (v)) ? v : "diagram"), sel: p.get("sel"), dim: p.get("nodim") !== "1" };
+    view: /** @type {View} */ (VIEWS.includes(/** @type {View} */ (v)) ? v : "diagram"), item: p.get("item"), dim: p.get("nodim") !== "1" };
 }

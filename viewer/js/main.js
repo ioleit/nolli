@@ -14,7 +14,7 @@
 import { byId, input, select } from "./dom.js";
 import { ALL_ROLES, DEFAULTS, OPTIONS, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { ENGINES, layout } from "./layout/index.js";
-import { draw, drawGhosts } from "./draw.js";
+import { draw, drawGhosts, light } from "./draw.js";
 import { plan } from "./transition.js";
 import { finish, play } from "./animate.js";
 import { hideRaw, onRawToggle, showRaw } from "./raw.js";
@@ -23,7 +23,7 @@ import { fit, focusOn } from "./panzoom.js";
 import { hideMermaid, showMermaid } from "./mermaid.js";
 import "./help.js";
 import { applyTheme, initialTheme, themeOptions } from "./theme.js";
-import { clearDetails, itemById, loadItems, renderPanel, showEdge, showItem, showNode, showPanel, visibleItems } from "./review.js";
+import { itemById, loadItems, renderPanel, scrollToCurrent, showPanel, visibleItems } from "./review.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
 
@@ -41,7 +41,7 @@ let fitted = false;
 let shown = null;
 /** @type {string | null} the box whose click led to the next picture */
 let clicked = null;
-/** centre on the selection after the next drawing (a jump to an item, not a click on a box) */
+/** after the next drawing, centre on the item gone to and flash it */
 let focusNext = false;
 /** @type {string | null} the dataset whose review items are loaded */
 let itemsFor = null;
@@ -76,95 +76,69 @@ async function show(keepZoom = false) {
   else await render(keepZoom);
 }
 
-// ---------- review: selection ----------
+// ---------- review: going to an item ----------
 
 /** @type {import("./review.js").ReviewHandlers} */
 const reviewHandlers = {
-  selectItem: id => selectItem(id),
-  select: what => selectWhat(what),
+  jump: id => jump(id),
+  hover: id => { if (!scene || !shown) return; const t = id ? targets(id) : { ids: [], keys: [] }; light(byId("root"), t.ids, t.keys); },
   side: s => { state.side = s; refresh(true); },
   dim: on => { state.dim = on; document.body.classList.toggle("dim", on); writeHash(); },
   reload: () => { itemsFor = null; refresh(true); },
   roles: all => { state.roles = all ? [...ALL_ROLES] : null; refresh(true); },
 };
 
-/** Show an item: unfold what it needs, then centre on it. @param {string} id */
-function selectItem(id) {
+/** The drawn boxes and edges that show an item (scene.nodes[].items, scene.edges[].items). @param {string} id */
+function targets(id) {
+  if (!scene) return { ids: [], keys: [] };
+  return { ids: scene.nodes.filter(n => "items" in n && n.items?.includes(id)).map(n => n.id), keys: scene.edges.filter(e => e.items?.includes(id)).map(e => e.key) };
+}
+
+/** Go to an item: unfold what it needs, then (once drawn) centre on it and flash it. @param {string} id */
+function jump(id) {
   const it = itemById(id);
   if (!it) return;
-  state.sel = "item:" + id;
+  state.item = id;
   const have = new Set(state.expanded || []);
   const missing = it.reveal.filter(x => !have.has(x));
   focusNext = true;
   if (missing.length) { state.expanded = [...have, ...missing]; refresh(true); return; }
   if (scene) renderPanel(scene, reviewHandlers);
-  applySelection();
+  pointAtItem();
   writeHash();
 }
 
-/** Select a box or an edge ("node:<id>", "edge:<key>"): highlight and details, no unfolding. @param {string} what */
-function selectWhat(what) {
-  state.sel = what;
-  if (scene) renderPanel(scene, reviewHandlers);
-  applySelection();
-  writeHash();
-}
-
-/** Highlight the selection in the drawing, fill the details pane, centre on it if asked. */
-function applySelection() {
-  const root = byId("root");
-  root.querySelectorAll(".hl").forEach(x => x.classList.remove("hl"));
-  root.classList.toggle("selecting", !!state.sel);
-  if (!scene || !shown || !state.sel) { if (scene?.diff) clearDetails(); focusNext = false; return; }
-  const [kind, ...rest] = state.sel.split(":"), id = rest.join(":");
-  /** @type {string[]} */
-  let nodeIds = [];
-  /** @type {string[]} */
-  let edgeKeys = [];
-  if (kind === "item") {
-    nodeIds = scene.nodes.filter(n => "items" in n && n.items?.includes(id)).map(n => n.id);
-    edgeKeys = scene.edges.filter(e => e.items?.includes(id)).map(e => e.key);
-    const it = itemById(id);
-    if (it && scene.diff) showItem(it);
-  } else if (kind === "node") {
-    nodeIds = [id];
-    if (scene.diff && state.name) showNode(state.name, id);
-  } else if (kind === "edge") {
-    edgeKeys = [id];
-    const e = scene.edges.find(x => x.key === id);
-    if (e && scene.diff) showEdge(e);
-  }
-  for (const n of nodeIds) root.querySelectorAll(`[data-id="${CSS.escape(n)}"]`).forEach(x => x.classList.add("hl"));
-  for (const k of edgeKeys) root.querySelectorAll(`[data-key="${CSS.escape(k)}"]`).forEach(x => x.classList.add("hl"));
-  if (focusNext) {
-    focusNext = false;
-    const laid = shown.laid;
-    const ends = scene.edges.filter(e => edgeKeys.includes(e.key)).flatMap(e => [e.src, e.dst]);
-    const boxes = [...nodeIds, ...ends].map(x => laid.nodes.get(x)).filter(/** @returns {b is import("../types/nolli").Box} */ b => !!b);
-    focusOn(boxes);
-  }
+/** After a jump: centre on the item's boxes and edges and flash them. */
+function pointAtItem() {
+  if (!focusNext || !scene || !shown || !state.item) { focusNext = false; return; }
+  focusNext = false;
+  const { ids, keys } = targets(state.item);
+  const laid = shown.laid;
+  const ends = scene.edges.filter(e => keys.includes(e.key)).flatMap(e => [e.src, e.dst]);
+  focusOn([...ids, ...ends].map(x => laid.nodes.get(x)).filter(/** @returns {b is import("../types/nolli").Box} */ b => !!b));
+  light(byId("root"), ids, keys, true);
+  scrollToCurrent();
 }
 
 /** @param {number} step +1 next, -1 previous */
 function stepItem(step) {
   const list = visibleItems();
   if (!list.length) return;
-  const cur = state.sel && state.sel.startsWith("item:") ? list.findIndex(it => "item:" + it.id === state.sel) : -1;
+  const cur = state.item ? list.findIndex(it => it.id === state.item) : -1;
   const next = cur < 0 ? (step > 0 ? 0 : list.length - 1) : (cur + step + list.length) % list.length;
-  selectItem(list[next].id);
+  jump(list[next].id);
 }
 
 window.addEventListener("keydown", ev => {
   const t = /** @type {HTMLElement} */ (ev.target);
-  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") || ev.metaKey || ev.ctrlKey) return;
-  if (!scene?.diff && !["f", "Escape"].includes(ev.key)) return;
+  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (!scene?.diff && ev.key !== "f") return;
   if (ev.key === "j" || ev.key === "n") stepItem(1);
   else if (ev.key === "k" || ev.key === "p") stepItem(-1);
   else if (ev.key === "1") reviewHandlers.side("base");
   else if (ev.key === "2") reviewHandlers.side("both");
   else if (ev.key === "3") reviewHandlers.side("head");
   else if (ev.key === "f" && shown) fit(shown.laid.width, shown.laid.height);
-  else if (ev.key === "Escape") { state.sel = null; if (scene?.diff) renderPanel(scene, reviewHandlers); applySelection(); writeHash(); }
   else return;
   ev.preventDefault();
 });
@@ -185,7 +159,7 @@ async function render(keepZoom = false) {
   if (sc !== scene) return;  // a newer scene arrived while this one was laid out
   finish();
   const root = byId("root");
-  const drawn = draw(root, sc, laid, { toggle, select: selectWhat, review: !!sc.diff }, state.sameWidth);
+  const drawn = draw(root, sc, laid, { toggle, review: !!sc.diff }, state.sameWidth);
   shown = { scene: sc, laid };
   if (keepZoom && fitted && prev) {
     // a step from the picture on screen: move from there, keeping the clicked box in place
@@ -193,7 +167,7 @@ async function render(keepZoom = false) {
     play(p, drawn, drawGhosts(root, prev.scene, prev.laid, p.leaving.keys(), drawn.firstEdge), state.animate && !reducedMotion.matches ? undefined : 0);
   } else fit(laid.width, laid.height);
   fitted = true;
-  applySelection();
+  pointAtItem();
   const s = byId("status"); s.style.color = "";
   s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms.scene} ms, round trip ${scene.stats.ms.roundtrip} ms`;
 }
@@ -214,7 +188,7 @@ select("direction").addEventListener("change", () => { state.direction = select(
 themeOptions();
 for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; select("engine").appendChild(o); }
 select("engine").addEventListener("change", () => { state.engine = select("engine").value; writeHash(); if (state.view === "diagram") render(); });
-select("dataset").addEventListener("change", () => { Object.assign(state, DEFAULTS, { name: select("dataset").value, sel: null }); shown = null; refresh(); });
+select("dataset").addEventListener("change", () => { Object.assign(state, DEFAULTS, { name: select("dataset").value, item: null }); shown = null; refresh(); });
 for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListener("click", () => {
   const v = /** @type {import("./state.js").View} */ (/** @type {HTMLElement} */ (b).dataset.view);
   if (!VIEWS.includes(v) || v === state.view) return;
@@ -231,11 +205,10 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   if (!name) { byId("status").textContent = "no datasets"; return; }
   sel.value = name;
   Object.assign(state, h.st, { name, noLabels: h.noLabels, sameWidth: h.sameWidth, theme: initialTheme(h.theme), direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, view: h.view,
-    sel: h.sel, dim: h.dim });
+    item: h.item, dim: h.dim });
   applyTheme(state.theme);
-  focusNext = !!h.sel;
   await refresh();
   // a link to an item: unfold what it needs (the hash may come from a different view state)
   const loaded = /** @type {Scene | null} */ (scene);  // set by refresh(); TypeScript cannot see that through the await
-  if (h.sel && h.sel.startsWith("item:") && loaded?.diff) selectItem(h.sel.slice(5));
+  if (h.item && loaded?.diff) jump(h.item);
 })();

@@ -329,13 +329,14 @@ def change_items(m: Model) -> list[dict]:
             word = {"added": "now realised by", "removed": "no longer realised by", "changed": "realisation changed"}[st]
         targets = sorted({f"{'+' if r.attrs['diff']['status'] == 'added' else '−' if r.attrs['diff']['status'] == 'removed' else '~'}"
                           f"{short(m, r.dst if kind != 'provide' else r.src)}" for r in rs})
-        first = fact_change(m, rs[0], links)
+        changes = sorted((fact_change(m, r, links) for r in rs), key=lambda c: ({"added": 0, "removed": 1, "changed": 2}[c["status"]], c["dst"]))
+        first = changes[0]
         deps.append({"category": "dependency", "status": st, "title": f"{short(m, a)} → {short(m, b)}: {word}",
                      "area": area_of(m, a), "role": role_of(m, a) if role_of(m, a) != "source" else role_of(m, b),
                      "kind": kind, "subkind": sub, "base": base, "head": head,
                      "targets": targets[:12], "entities": [a, b], "facts": [fact_key(r) for r in rs],
                      "reveal": sorted(set(ancestors_to_unfold(m, a)) | set(ancestors_to_unfold(m, b))), "focus": [a, b],
-                     "link": first["link"]})
+                     "link": first["link"], "changes": changes[:12], "more": max(0, len(changes) - 12)})
     # content: every edited file that is neither added nor removed
     for e in sorted(m.entities.values(), key=lambda e: e.id):
         d = e.attrs.get("diff") or {}
@@ -346,9 +347,12 @@ def change_items(m: Model) -> list[dict]:
                for c in m.children(e.id) if (m.entities[c].attrs.get("diff") or {}).get("status") == "same"
                and (m.entities[c].attrs["diff"].get("added") or m.entities[c].attrs["diff"].get("removed"))]
         path = e.attrs.get("path")
+        hunks = [{"new": h["new"], "old": h["old"], "added": len(h["added"]), "removed": len(h["removed"]),
+                  "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0], "head" if h["added"] else "base")}
+                 for h in d.get("hunks", [])] if path else []
         content.append({"category": "content", "status": "changed", "title": f"edited {path} (+{d.get('added', 0)} −{d.get('removed', 0)})",
                         "area": area_of(m, e.id), "role": role_of(m, e.id), "added": d.get("added", 0), "removed": d.get("removed", 0),
-                        "classes": cls, "entities": [e.id], "facts": [],
+                        "classes": cls, "entities": [e.id], "facts": [], "hunks": hunks[:30], "more_hunks": max(0, len(hunks) - 30),
                         "reveal": ancestors_to_unfold(m, e.id), "focus": [e.id], "link": links.diff(path) if path else None})
     # source changes first in every category, then tests, docs, config, data; numbered in that order
     items = []

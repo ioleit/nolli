@@ -409,7 +409,7 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
         if it["id"] in placed and it["category"] == "dependency":
             continue
         for x in it["focus"]:
-            r = rep(x)
+            r = x if x in drawn else rep(x)  # an unfolded module is its box, not its own-code dot
             if r is not None and r in drawn:
                 node_items[r].add(it["id"])
                 break

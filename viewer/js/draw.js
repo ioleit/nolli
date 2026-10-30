@@ -15,8 +15,8 @@ import { wasDrag } from "./panzoom.js";
  * @typedef {{ els: SVGElement[], update: (b: Box) => void }} Built
  * @typedef {{ update: (b: Box) => void, opacity: (o: number | null) => void }} Handle
  * @typedef {{ nodes: Map<string, Handle>, edges: SVGElement[], firstEdge: Element | null }} Drawn
- * @typedef {{ toggle: (id: string) => void, select?: (what: string) => void, review?: boolean }} Handlers
- *   select: "node:<id>" or "edge:<key>"; review: a diff scene, where what did not change is drawn as such
+ * @typedef {{ toggle: (id: string) => void, review?: boolean }} Handlers
+ *   review: a diff scene, where what did not change is drawn as such
  */
 
 const VERDICT_GLYPH = { fine: "✓", question: "?", problem: "!" };
@@ -74,7 +74,7 @@ const fader = els => o => { for (const x of els) if (o === null) x.removeAttribu
  * @returns {Built}
  */
 function buildAnchor(n, p, live) {
-  const grp = el("g", { class: "node folded files ", transform: at(p) });
+  const grp = el("g", { class: "node folded files ", transform: at(p), "data-id": n.id });
   if (live) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
   grp.appendChild(el("circle", { cx: 7, cy: 7, r: 5, class: "anchor" }));
   return { els: [grp], update: b => grp.setAttribute("transform", at(b)) };
@@ -152,20 +152,7 @@ function buildBox(n, p, h) {
   const placeUses = b => uses.forEach((x, i) => { x.setAttribute("x", String(b.w - 8)); x.setAttribute("y", String(b.h - 8 - (uses.length - 1 - i) * USES_LINE)); });
   placeUses(p);
   if (n.service_color !== null && n.service_color !== undefined) rect.setAttribute("stroke", color(n.service_color));
-  // click: select (the review panel shows it) and unfold a folded box; alt-click only selects.
-  // a container is selected by its header strip, so clicks inside it stay free for what it holds
-  /** @type {SVGElement | null} */
-  let header = null;
-  if (h) {
-    const target = isC ? (header = el("rect", { class: "header", width: p.w, height: 26 })) : grp;
-    if (header) grp.insertBefore(header, rect.nextSibling);
-    target.addEventListener("click", ev => {
-      if (wasDrag()) return;
-      ev.stopPropagation();
-      if (h.select) h.select("node:" + n.id);
-      if (!isC && n.foldable && !/** @type {MouseEvent} */ (ev).altKey && onToggle) onToggle(n.id);
-    });
-  }
+  if (onToggle && !isC && n.foldable) grp.addEventListener("click", ev => { if (wasDrag()) return; ev.stopPropagation(); onToggle(n.id); });
 
   /** @param {Box} b */
   const update = b => {
@@ -177,7 +164,6 @@ function buildBox(n, p, h) {
     if (leaves) leaves.setAttribute("x", String(b.w - 5));
     if (badge) { badge.setAttribute("x", String(badgeX(b.w))); if (isC) badge.firstChild && (badge.firstChild.textContent = fitted(b.w)); }
     if (mark) mark.setAttribute("transform", `translate(${b.x + b.w - 1},${b.y + 1})`);
-    if (header) header.setAttribute("width", String(b.w));
   };
   if (mark) { mark.setAttribute("transform", `translate(${p.x + p.w - 1},${p.y + 1})`); mark.setAttribute("data-id", n.id); }
   const extra = [top, mark].filter(/** @returns {x is SVGElement} */ x => x !== null);
@@ -191,7 +177,7 @@ const build = (n, p, h) => isAnchor(n) ? buildAnchor(n, p, !!h) : buildBox(n, p,
  * @param {Element} g the root group
  * @param {Scene} scene
  * @param {Laid} laid
- * @param {((id: string) => void) | Handlers} handlers unfold or fold a node, and optionally select one
+ * @param {((id: string) => void) | Handlers} handlers unfold or fold a node
  * @param {boolean} [sameWidth] every edge one width instead of growing with its count
  * @returns {Drawn}
  */
@@ -249,13 +235,33 @@ export function draw(g, scene, laid, handlers, sameWidth = false) {
     ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.tip));
     ge.addEventListener("mouseenter", () => raise(ge));
     ge.addEventListener("mouseleave", hideTip);
-    if (h.select) { const sel = h.select; ge.addEventListener("click", ev => { if (wasDrag()) return; ev.stopPropagation(); sel("edge:" + e.key); }); }
     g.appendChild(ge); edges.push(ge);
     for (const id of [e.src, e.dst]) { const l = edgesAt.get(id); if (l) l.push(ge); else edgesAt.set(id, [ge]); }
   }
   foldLayer.forEach(f => g.appendChild(f));
+  raiseEdge = raise;
   lightOnHover(scene, boxEl, edgesAt, raise);
   return { nodes, edges, firstEdge: edges[0] || foldLayer[0] || null };
+}
+
+/** @type {(ge: Element) => void} the last drawing's way of putting an edge on top of the others */
+let raiseEdge = () => {};
+/** @type {ReturnType<typeof setTimeout> | null} */
+let flashTimer = null;
+
+/**
+ * Light boxes and edges from outside the drawing: the review list points at an item while
+ * its row is hovered, or flashes it after a jump (a few pulses of the hover glow, then
+ * nothing stays lit). Same .lit as hovering a box.
+ * @param {Element} g the root group @param {string[]} ids box ids @param {string[]} keys edge keys @param {boolean} [flash]
+ */
+export function light(g, ids, keys, flash = false) {
+  unlight();
+  if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
+  for (const id of ids) g.querySelectorAll(`.node[data-id="${CSS.escape(id)}"]`).forEach(x => lit.add(x));
+  for (const k of keys) g.querySelectorAll(`.edge[data-key="${CSS.escape(k)}"]`).forEach(x => { lit.add(x); raiseEdge(x); });
+  for (const x of lit) { x.classList.add("lit"); if (flash) x.classList.add("flash"); }
+  if (flash) flashTimer = setTimeout(() => { flashTimer = null; unlight(); }, 2400);
 }
 
 /**
@@ -282,7 +288,7 @@ function lightOnHover(scene, boxEl, edgesAt, raise) {
 
 /** What is lit now: one set for the whole page, so a missed mouseleave can't leave anything lit. @type {Set<Element>} */
 const lit = new Set();
-function unlight() { for (const x of lit) x.classList.remove("lit"); lit.clear(); }
+function unlight() { for (const x of lit) x.classList.remove("lit", "flash"); lit.clear(); }
 document.getElementById("g")?.addEventListener("mouseleave", unlight);
 
 /**

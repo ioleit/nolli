@@ -51,8 +51,9 @@ answer is a JSON list of `{id, verdict: fine | question | problem, reason}`; sav
 `verdicts.json` next to the dataset, or load it in the viewer. Nolli calls no model itself.
 
 In the viewer a diff dataset opens in review mode: the default view unfolds towards the
-change, and boxes and edges are coloured by what happened to them. j / k step through the
-items, 1 / 2 / 3 switch between before, changes and after.
+change, and boxes and edges are coloured by what happened to them. Hovering an item in the
+list lights it in the drawing; clicking it, or j / k, goes there and flashes it; 1 / 2 / 3
+switch between before, changes and after.
 
 `extract` writes `model.json` (facts), `view.json` (the default cut), `scene.json`
 (what the viewer draws for that cut), `default.mmd` (Mermaid of it) and `report.json`
@@ -84,7 +85,7 @@ Honest marks on how much thought each part has had. Treat everything as open.
 | `nolli/view.py` | one greedy heuristic for the default cut, with magic numbers |
 | `nolli/scene.py` | a view state in, everything the viewer draws out (nodes with their drawn parent, edges, labels, badges, emphasis, tooltips); ids are stable across states so two scenes can be diffed |
 | `nolli/mermaid.py` | static export of the default cut so a README or PR can show it |
-| `viewer/` | temporary throwaway visualization: `index.html` (markup), `viewer.css` (every colour a variable) and `themes.css` (themes that override them, chosen under Layout), and ES modules in `js/` loaded without a build step (`layout/` scene → positions and edge routes, no DOM, one module per engine: ELK.js layered (one layout over all levels, or each box separately), or Cytoscape.js fCoSE force-directed, chosen in the sidebar; `draw.js` → SVG; `main.js` wiring; state, sidebar, JSON and Mermaid views, pan/zoom); orthogonal edges that look like a circuit board; redraws from scratch on every change; for a diff dataset a review column (`js/review.js`): the change, a before / changes / after switch, the numbered items, details with links into the PR, verdict markers, keyboard navigation |
+| `viewer/` | temporary throwaway visualization: `index.html` (markup), `viewer.css` (every colour a variable) and `themes.css` (themes that override them, chosen under Layout), and ES modules in `js/` loaded without a build step (`layout/` scene → positions and edge routes, no DOM, one module per engine: ELK.js layered (one layout over all levels, or each box separately), or Cytoscape.js fCoSE force-directed, chosen in the sidebar; `draw.js` → SVG; `main.js` wiring; state, sidebar, JSON and Mermaid views, pan/zoom); orthogonal edges that look like a circuit board; redraws from scratch on every change; for a diff dataset a review column (`js/review.js`): the change, a before / changes / after switch, the numbered items with their links into the PR, verdict markers; hovering an item lights it in the drawing, going to it (click, j / k) flashes it |
 | `viewer/package.json`, `tsconfig.json`, `types/`, `test/` | Node is only for development: `npm install`, then `npm run check` (TypeScript checks the JavaScript through its JSDoc types, strict) and `npm test` (unit tests of the pure modules). The browser loads the `.js` files as they are |
 | `viewer/serve.py` | tiny server for local use: static files, datasets, and `/api/scene` (standard library only; imports `nolli` from the checkout it sits in) |
 | `tests/test_smoke.py` | one synthetic mixed repo pinning the seams that broke once; nothing tests the roll-up rules |

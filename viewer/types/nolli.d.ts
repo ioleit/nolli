@@ -49,6 +49,8 @@ export interface ReviewItem {
   lines?: number;
   added?: number; removed?: number;
   base?: number; head?: number; targets?: string[];
+  changes?: FactChange[]; more?: number;  // dependency: the references that changed, with links
+  hunks?: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[]; more_hunks?: number;  // edited file
   verdict: { verdict: Verdict; reason: string } | null;
 }
 

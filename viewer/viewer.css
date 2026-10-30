@@ -116,7 +116,7 @@ button { font: inherit; padding: 2px 8px; }
 .chip button { padding: 0 6px; font-size: 11px; }
 
 /* ---------- review mode (diff datasets) ---------- */
-:root { --add: #2e9b4f; --rem: #c94040; --chg: #d08a1a; --sel: #2a7fd4; }
+:root { --add: #2e9b4f; --rem: #c94040; --chg: #d08a1a; }
 .review-only { display: none; }
 body.reviewing .review-only { display: block; }
 #review { display: none; border-left: 1px solid var(--line); overflow: hidden; flex-direction: column; min-height: 0; }
@@ -125,18 +125,21 @@ body.reviewing #review { display: flex; }
 .rv-head { padding: 10px 12px 6px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
 .rv-title { font-weight: 600; font-size: 14px; }
 .rv-sub, .rv-verdicts { font-size: 12px; color: var(--muted); }
-.rv-sub a, .rv-verdicts a { color: var(--sel); }
+.rv-sub a, .rv-verdicts a, .rv-more a { color: var(--e-http); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; width: max-content; margin: 2px 0; }
 .seg button { border: 0; background: transparent; padding: 3px 12px; cursor: pointer; }
-.seg button.on { background: var(--sel); color: white; }
-label.file { color: var(--sel); cursor: pointer; display: inline; }
+.seg button.on { background: var(--ink); color: var(--bg); }
+label.file { color: var(--e-http); cursor: pointer; display: inline; }
 label.file input { display: none; }
 .rv-keys { font-size: 10.5px; color: var(--muted); padding: 4px 12px; border-bottom: 1px solid var(--line); }
-.rv-list { overflow: auto; flex: 1 1 50%; min-height: 80px; padding: 4px 0; }
+.rv-list { overflow: auto; flex: 1 1 auto; min-height: 80px; padding: 4px 0; }
 .rv-group { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px 12px 2px; }
-.rv-item { display: flex; gap: 6px; align-items: baseline; padding: 2px 12px; cursor: pointer; font-size: 12px; }
-.rv-item:hover { background: #8881; }
-.rv-item.sel { background: #2a7fd422; }
+.rv-item { display: flex; gap: 6px; align-items: baseline; padding: 2px 12px 2px 4px; cursor: pointer; font-size: 12px; }
+.rv-row:hover > .rv-item { background: var(--hover-bg); }
+.rv-row.current > .rv-item { box-shadow: inset 3px 0 0 var(--glow-color); background: var(--hover-bg); }  /* the item last gone to */
+.rv-item .tw { border: 0; background: transparent; color: var(--muted); padding: 0 2px; cursor: pointer; font-size: 10px; width: 1.4em; }
+.rv-more { padding: 2px 12px 6px 3.6em; font-size: 12px; }
+.rv-more a { text-decoration: none; } .rv-more a:hover { text-decoration: underline; }
 .rv-item .id { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2.6em; }
 .rv-item .t { flex: 1; word-break: break-all; }
 .rv-item .role { font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; }
@@ -145,9 +148,6 @@ label.file input { display: none; }
 .st.added { color: var(--add); } .st.removed { color: var(--rem); } .st.changed { color: var(--chg); }
 .vd, .vtxt { font-weight: 700; display: inline-block; min-width: 1.2em; text-align: center; border-radius: 8px; color: white; font-size: 11px; }
 .vd.problem, .vtxt.problem { background: var(--rem); } .vd.question, .vtxt.question { background: var(--chg); } .vd.fine, .vtxt.fine { background: var(--add); }
-.rv-details { border-top: 1px solid var(--line); overflow: auto; flex: 1 1 50%; padding: 8px 12px; font-size: 12px; }
-.rv-details a { color: var(--sel); text-decoration: none; } .rv-details a:hover { text-decoration: underline; }
-.dt-title { font-weight: 600; margin-bottom: 4px; word-break: break-all; }
 .dt-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 8px 0 2px; }
 .dt-verdict { margin: 4px 0; padding: 4px 6px; border-radius: 4px; background: #8881; }
 .dt-hint, .muted { color: var(--muted); }
@@ -165,7 +165,6 @@ ul.facts li, ul.files li { padding: 1px 0; word-break: break-all; }
 .node.container.d-changed > rect { stroke: var(--chg); stroke-width: 1.4; }
 .node .stats { font-size: 10px; font-variant-numeric: tabular-nums; }
 .node .stats .plus { fill: var(--add); } .node .stats .minus { fill: var(--rem); }
-.node rect.header { fill: transparent; stroke: none; cursor: pointer; }
 .edge.d-added { color: var(--add); --eo: 1 !important; }
 .edge.d-removed { color: var(--rem); --eo: 1 !important; }
 .edge.d-changed { color: var(--chg); --eo: 1 !important; }
@@ -181,13 +180,9 @@ body.dim .edge.d-same { opacity: .18; }
 .verdict circle { stroke: Canvas; stroke-width: 1.5; }
 .verdict text { font: 700 10px system-ui, sans-serif; fill: white; pointer-events: none; }
 .verdict.problem circle { fill: var(--rem); } .verdict.question circle { fill: var(--chg); } .verdict.fine circle { fill: var(--add); }
-.edge path { cursor: pointer; }
-/* selection */
-.node.hl > rect { stroke: var(--sel) !important; stroke-width: 3 !important; }
-.edge.hl { color: var(--sel) !important; --eo: 1 !important; }
-.edge.hl path { stroke-width: 3px !important; }
-#root.selecting .edge.hl { opacity: 1 !important; }
-#root.selecting .node.hl { opacity: 1 !important; }
 /* changed counts matter less than dependencies that appear or disappear */
 .edge.d-changed path { stroke-width: 1.4px !important; }  /* changed counts matter less than dependencies that appear or disappear */
 .legend span.plus, .legend span.minus { display: inline; width: auto; border: 0; margin: 0; }
+/* a jump to a review item flashes it: the hover glow, pulsing a few times (draw.js light) */
+@keyframes nolli-flash { 0%, 100% { filter: none; } 50% { filter: drop-shadow(0 0 3px var(--glow-color)) drop-shadow(0 0 9px var(--glow-color)); } }
+.edge.lit.flash, .node.lit.flash > rect, .node.lit.flash > circle.anchor { animation: nolli-flash .6s ease-in-out 4; }

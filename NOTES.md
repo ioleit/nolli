@@ -107,5 +107,10 @@ Nothing is a settled design.
 - Default view of a diff: unfold containers with changes first; unchanged boxes count half
   against the budget because they are faded.
 - In review mode red means removed, so cycles get a dotted border instead of a red one.
-- Clicking a box selects it and unfolds it; alt-click only selects; a container is
-  selected by its header. Pretty arbitrary, chosen so the old click-to-unfold still works.
+- No selection: the drawing has one highlight, the hover glow. The review list points at
+  an item with it: hovering a row lights the item's boxes and edges, going to an item (a
+  click on the row, j / k, or `item=C3` in a link) unfolds what it needs, centres on it and
+  flashes it; nothing stays lit. An item's links (diff, hunks, the references that
+  changed) open in place under its row. A selection with its own colour and a details pane
+  for any clicked box was tried first and dropped: two highlight concepts, and the item
+  list already covers every change.
