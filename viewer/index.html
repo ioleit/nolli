@@ -11,46 +11,65 @@
   <h1>nolli</h1>
   <select id="dataset" style="width:100%"></select>
   <div id="meta" style="color:var(--muted);font-size:11px"></div>
+
   <h2>Detail</h2>
-  <div style="display:flex;gap:6px;align-items:center">budget <input id="budget" type="number" min="4" max="300" value="28" style="width:60px"> <button id="reset">default cut</button> <button id="collapse">fold all</button></div>
-  <h2>Folded groups</h2>
+  <div class="row">
+    <label class="opt" data-help="How many boxes the default cut may show. Changing it recomputes the default cut.">budget <input id="budget" type="number" min="4" max="300" value="28" style="width:52px"></label>
+    <button id="reset" data-help="Back to the default cut for this budget.">default cut</button>
+    <button id="collapse" data-help="Fold everything down to the top-level entries.">fold all</button>
+  </div>
+
+  <h2>Show</h2>
   <div id="groups"></div>
-  <h2>Show roles</h2>
-  <div id="roles"></div>
-  <h2>Options</h2>
-  <label><input type="checkbox" id="through" checked> derive through interfaces</label>
-  <label><input type="checkbox" id="dangling"> show unbound env reads</label>
-  <label><input type="checkbox" id="bundle" checked> bundle fan-out edges to the container</label>
-  <label><input type="checkbox" id="envedges"> show env wiring (reader → setter)</label>
-  <label><input type="checkbox" id="utilities" checked> utilities as badges (used by ≥ a third of the components)</label>
-  <label><input type="checkbox" id="hideinternal"> hide internal edges (count in header)</label>
-  <label><input type="checkbox" id="nolabels"> hide all edge labels</label>
-  <label><input type="checkbox" id="animate" checked> animate unfold and fold</label>
-  <label><input type="checkbox" id="raw"> raw JSON (no drawing)</label>
-  <label>layout <select id="engine"></select></label>
-  <label>direction (layered) <select id="direction"><option value="DOWN">top → down</option><option value="RIGHT">left → right</option></select></label>
+  <details id="rolesbox">
+    <summary data-help="Files and directories by role. A hidden role's boxes are left out, and so are their edges (counted under Residue).">Files by role <span id="rolesum" class="muted"></span></summary>
+    <div id="roles"></div>
+  </details>
+
+  <h2>Edges</h2>
+  <label class="opt" data-help="Hide the count and kind written on each edge. Hover an edge for its details."><input type="checkbox" id="nolabels"> Hide labels</label>
+  <label class="opt" data-help="When one box depends on three or more children of another unfolded box, draw one edge to that box's border instead of one per child."><input type="checkbox" id="bundle"> Bundle fan-out</label>
+  <label class="opt" data-help="Edges between boxes inside the same unfolded box are dropped; their count is shown in that box's header."><input type="checkbox" id="hideinternal"> Hide internal</label>
+  <label class="opt" data-help="For endpoints and env variables whose group is not shown: connect the caller (or reader) straight to the handler (or setter). Off: they become badges."><input type="checkbox" id="through"> Through interfaces</label>
+  <label class="opt" data-help="Draw env wiring, reader → setter. Off by default: it mostly repeats what deployment says; the count is under Residue."><input type="checkbox" id="envedges"> Env wiring</label>
+  <label class="opt" data-help="Draw interfaces with one side only: reads of env variables nothing sets, calls to endpoints nothing in the repo serves."><input type="checkbox" id="dangling"> One-sided interfaces</label>
+
+  <h2>Boxes</h2>
+  <label class="opt" data-help="A box used by at least a third of the top-level components is a utility: instead of edges into it, its users carry a badge (→ name)."><input type="checkbox" id="utilities"> Utilities as badges</label>
+
+  <h2>Layout</h2>
+  <label class="opt row" data-help="How the diagram is laid out. Layered (ELK) puts callers above what they call.">engine <select id="engine"></select></label>
+  <label class="opt row" data-help="Direction of the layered layouts.">direction <select id="direction"><option value="DOWN">top → down</option><option value="RIGHT">left → right</option></select></label>
+  <label class="opt" data-help="Animate unfolding and folding, keeping the clicked box in place."><input type="checkbox" id="animate"> Animate</label>
+
   <h2>Legend</h2>
   <div class="legend">
     <div><span style="border-color:#888b"></span>import</div>
     <div><span style="border-color:#2a7fd4"></span>http: caller → handler</div>
     <div><span style="border-color:#3a9d5d"></span>env: reader → setter</div>
     <div><span style="border-color:#8e5bd6"></span>deploy: depends_on, url, copies, entrypoint</div>
-    <div><span style="border-color:#2aa8a8;border-top-style:dashed"></span>interface → the module that realises it (hollow head)</div>
-    <div><span style="border-color:#8886;border-top-style:dashed"></span>unbound half of an interface</div>
+    <div><span style="border-color:#2aa8a8;border-top-style:dashed"></span>interface → the module that realises it</div>
+    <div><span style="border-color:#8886;border-top-style:dashed"></span>one-sided interface</div>
     <div style="margin-top:4px;color:var(--muted)">D directory · m module · C class · dot in a module header = the module's own code<br>width = log(count) · pale = heuristic match · red border = in a cycle<br>click a box: unfold all its children · click its − : fold · drag: pan · wheel: zoom</div>
   </div>
   <h2>Residue</h2>
   <ul class="plain" id="residue"></ul>
-  <h2>Export</h2>
-  <button id="mmd">show Mermaid export</button>
 </aside>
 <main>
-  <svg id="g"><g id="root"></g></svg>
-  <div id="status"></div>
-  <div id="tip"></div>
-  <div id="rawpane"></div>
-  <div id="mmdpane" style="display:none;position:absolute;inset:0;overflow:auto;background:Canvas;padding:8px"></div>
+  <nav id="views" role="tablist">
+    <button role="tab" data-view="diagram" data-help="The scene laid out and drawn (ELK.js or fCoSE, see Layout).">Diagram</button>
+    <button role="tab" data-view="json" data-help="The scene the server sent, as JSON. Click an id to unfold or fold it.">JSON</button>
+    <button role="tab" data-view="mermaid" data-help="The static Mermaid export written by nolli extract (default.mmd): always the default cut, ignores the controls.">Mermaid</button>
+  </nav>
+  <div id="stage">
+    <svg id="g" class="nolabels"><g id="root"></g></svg>
+    <div id="status"></div>
+    <div id="tip"></div>
+    <div id="rawpane"></div>
+    <div id="mmdpane"></div>
+  </div>
 </main>
+<div id="help"></div>
 <script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>

@@ -12,13 +12,14 @@ Two conventions keep the picture readable:
   ``files:<dir>`` inside it rather than one box per file (a directory's own
   files are its "body"; its subdirectories are its parts). Groups (externals,
   interfaces, deployment) unfold to individual children.
-- Edges to a *folded* group (External packages, Environment, Deployment,
-  HTTP API) are not drawn; they become annotations on the other node
-  ("uses 42 external packages"). Unfolding the group turns them back into
-  edges. Cross-cutting things are omnipresent; drawn, they hide the structure.
+- Groups (External packages, Environment, Deployment, HTTP API) are a filter:
+  a group the viewer shows is a box like any other, folded or unfolded; edges to
+  a group it doesn't show are not drawn and become annotations on the other node
+  ("uses 42 external packages"). Cross-cutting things are omnipresent; drawn,
+  they hide the structure.
 
-Interfaces (endpoints, env variables) that are not themselves visible are
-derived through: ``use(a, I)`` plus ``provide(b, I)`` yields
+Interfaces (endpoints, env variables) whose group is not shown are derived
+through: ``use(a, I)`` plus ``provide(b, I)`` yields
 ``use(rep a, rep b)`` with the interface as ``via``. An interface with only
 one side keeps an edge to the interface's visible group for the kinds where
 the dangling half is informative (an endpoint nobody in the repo calls is
@@ -279,7 +280,8 @@ def utility_badges(m: Model, rolled: "RolledUp", expanded: set[str], min_users: 
             users[e.dst].add(ts)
     # a third of the code components (groups don't count), and at least min_users
     threshold = max(min_users, -(-len(code_tops) // 3))
-    utilities = {d for d, us in users.items() if len(us) >= threshold}
+    utilities = {d for d, us in users.items() if len(us) >= threshold
+                 and not (m.has(top_of(m, d, expanded)) and m.entities[top_of(m, d, expanded)].kind == "group")}
     if not utilities:
         return utilities
     kept = []
@@ -413,7 +415,10 @@ def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int
 
 def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_interfaces: bool = True,
          dangling_use_kinds=DANGLING_USE_KINDS, dangling_provide_kinds=DANGLING_PROVIDE_KINDS,
-         annotate_folded_groups: bool = True, env_edges: bool = False) -> RolledUp:
+         annotate_folded_groups: bool = True, env_edges: bool = False, shown_groups=frozenset()) -> RolledUp:
+    """``shown_groups``: root groups the viewer draws as boxes (folded or not); edges to them
+    are drawn, and interfaces inside them are not derived through. Other root groups are
+    filtered out of the picture: their edges become annotations."""
     alias = image_aliases(m)
     rep = representative(m, visible, hidden, alias)
     edges: dict[tuple, RolledEdge] = {}
@@ -453,9 +458,9 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
             continue
         if through_interfaces and dst_ent.kind in DERIVE_KINDS and r.dst not in visible:
             g = rep(r.dst)
-            # derive through the interface unless the user unfolded its group: then the
-            # route group / variable is a node and call and handler attach to it directly
-            if g is None or (m.entities[g].kind == "group" and m.parent(g) is None):
+            # derive through the interface unless its group is drawn: then the group, route
+            # group or variable is a node and call and handler attach to it directly
+            if g is None or (m.entities[g].kind == "group" and m.parent(g) is None and g not in shown_groups):
                 (users if r.kind == USE else providers)[r.dst].append(r)
                 continue
         a, b = rep(r.src), rep(r.dst)
@@ -488,7 +493,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
                     continue
                 add(r.kind, a, g, sub + "-dangling", r.count, r.confidence, iface)
 
-    # Edges touching a folded group become annotations on the other end; a code node copied
+    # Edges touching a filtered-out group become annotations on the other end; a code node copied
     # into a drawn service gets a chip instead of an edge; env wiring (reader -> setter) says
     # the same as allocation and is suppressed unless asked for.
     annotations: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -496,7 +501,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
     suppressed: dict[str, int] = defaultdict(int)
     kept: list[RolledEdge] = []
     def root_group(x: str) -> bool:
-        return m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None
+        return m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None and x not in shown_groups
 
     for e in edges.values():
         sg, dg = root_group(e.src), root_group(e.dst)

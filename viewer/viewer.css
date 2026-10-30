@@ -6,7 +6,23 @@ aside h1 { font-size: 14px; margin: 0; }
 aside h2 { font-size: 11px; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 select, input[type=number] { font: inherit; }
 label { display: block; margin: 1px 0; }
-main { position: relative; overflow: hidden; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+label.row select { margin-left: auto; }
+.muted { color: var(--muted); }
+[data-help] { cursor: help; }
+label.opt input, details summary, button[data-help] { cursor: pointer; }
+label.opt:hover, details summary:hover { background: #8881; }
+details summary { list-style-position: inside; padding: 1px 0; }
+details > div { padding-left: 14px; }
+#groups label .muted { font-size: 11px; }
+#help { position: fixed; z-index: 10; display: none; max-width: 300px; background: Canvas; color: CanvasText; border: 1px solid var(--line);
+  box-shadow: 0 2px 8px #0003; padding: 6px 8px; font-size: 12px; line-height: 1.4; pointer-events: none; }
+main { display: grid; grid-template-rows: auto 1fr; overflow: hidden; min-width: 0; }
+#views { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); }
+#views button { border: 1px solid transparent; border-bottom: none; background: none; padding: 4px 14px; border-radius: 4px 4px 0 0; color: var(--muted); margin-bottom: -1px; }
+#views button:hover { color: var(--ink); }
+#views button[aria-selected=true] { border-color: var(--line); background: Canvas; color: var(--ink); font-weight: 600; }
+#stage { position: relative; overflow: hidden; }
 svg#g { width: 100%; height: 100%; display: block; cursor: grab; }
 svg#g:active { cursor: grabbing; }
 .node rect { fill: Canvas; stroke: var(--ink); stroke-width: 1; rx: 4; }
@@ -49,10 +65,13 @@ svg#g:active { cursor: grabbing; }
 .edge.weak path { stroke-opacity: .22; stroke-width: .7px !important; }
 .edge.local.single path, .edge.local.weak path { stroke-opacity: .2; }
 svg.nolabels .edge text { display: none; }
+.node.group > rect { fill: #2a7fd408; stroke: #2a7fd4aa; stroke-dasharray: 6 3; }
 .node.utility > rect { stroke-dasharray: 1 3; }
 .edge text { font-size: 9.5px; fill: var(--muted); paint-order: stroke; stroke: Canvas; stroke-width: 3px; }
 .edge:hover path { stroke: #d9534f; stroke-opacity: 1; }
 #status { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
+#mmdpane { position: absolute; inset: 0; overflow: auto; background: Canvas; padding: 8px; display: none; }
+#mmdpane .req { color: var(--muted); margin-bottom: 6px; }
 #rawpane { position: absolute; inset: 0; overflow: auto; background: Canvas; padding: 8px 12px; display: none; font: 11.5px/1.45 ui-monospace, monospace; }
 #rawpane pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
 #rawpane .req { font: 12px system-ui, sans-serif; color: var(--muted); margin-bottom: 6px; word-break: break-all; }

@@ -24,6 +24,7 @@ from .view import default_view
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
+DEFAULT_GROUPS = ("http",)  # root groups drawn as boxes; the others are badges on their users
 GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "http": "api"}
 MODULE_LANGS = ("python", "typescript", "javascript")
 
@@ -34,6 +35,7 @@ class ViewState:
     expanded: list[str] | None = None
     roles: list[str] = field(default_factory=lambda: list(DEFAULT_ROLES))  # shown roles
     budget: int = DEFAULT_BUDGET
+    groups: list[str] = field(default_factory=lambda: list(DEFAULT_GROUPS))  # shown root groups
     through: bool = True  # derive caller -> handler through interfaces
     dangling_use: bool = False  # show reads of env variables nobody sets
     env_edges: bool = False  # draw env wiring (reader -> setter)
@@ -50,20 +52,27 @@ def hidden_for(m: Model, roles) -> set[str]:
     return out | set(image_aliases(m))
 
 
+def is_root_group(m: Model, x: str) -> bool:
+    return m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None
+
+
 def compute(m: Model, st: ViewState) -> tuple[set[str], set[str], set[str], RolledUp, set[str]]:
     """(expanded, hidden, visible, rolled, utilities) for a state; expanded is normalised to
     the containers actually reached, so folding a box also folds everything inside it."""
     hidden = hidden_for(m, st.roles)
+    shown_groups = set(st.groups)
     if st.expanded is None:
         hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
         expanded = set(default_view(m, budget=st.budget, hidden_roles=hidden_roles)["expanded"])
     else:
         expanded = {x for x in st.expanded if m.has(x)}
+    expanded = {x for x in expanded if not (is_root_group(m, x) and x not in shown_groups)}  # filtered out: stays folded
     walked: set[str] = set()
     visible = visible_from_expanded(m, expanded, hidden, walked=walked)
     expanded = walked
     rolled = rollup(m, visible, hidden, through_interfaces=st.through,
-                    dangling_use_kinds=("endpoint", "env") if st.dangling_use else (), env_edges=st.env_edges)
+                    dangling_use_kinds=("endpoint", "env") if st.dangling_use else (), env_edges=st.env_edges,
+                    shown_groups=shown_groups)
     if st.bundle:
         rolled.edges = bundle(m, rolled.edges, expanded)
     utilities = utility_badges(m, rolled, expanded) if st.utilities else set()
@@ -257,7 +266,10 @@ def cycle_members(nodes: list[str], edges) -> set[str]:
 
 def scene(m: Model, st: ViewState) -> dict:
     expanded, hidden, visible, rolled, utilities = compute(m, st)
-    root_group = lambda x: m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None  # noqa: E731
+    shown_groups = set(st.groups)
+    # a root group is drawn when the filter shows it and it has something to unfold; a group
+    # the filter hides is drawn only if an edge still ends on it (both ends in groups)
+    root_group = lambda x: is_root_group(m, x) and (x not in shown_groups or not m.children(x))  # noqa: E731
 
     def local(e) -> bool:
         ps = drawn_parent(m, e.src, expanded)
@@ -356,8 +368,8 @@ def scene(m: Model, st: ViewState) -> dict:
     if in_cycle:
         residue.append(f"{len(in_cycle)} drawn nodes take part in cycles")
 
-    groups = [{"id": r, "name": m.entities[r].name, "size": len(m.children(r)), "open": r in expanded}
-              for r in m.roots() if m.entities[r].kind == "group" and r != "unresolved"]
+    groups = [{"id": r, "name": m.entities[r].name, "size": len(m.children(r)), "shown": r in shown_groups}
+              for r in m.roots() if m.entities[r].kind == "group" and r != "unresolved" and m.children(r)]
     state = asdict(st) | {"expanded": sorted(expanded)}
     return {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "residue": residue,
             "stats": {"nodes": len(drawn), "edges": len(edge_out)}}
@@ -372,6 +384,8 @@ def state_from_query(q: dict[str, str]) -> ViewState:
         st.roles = [r for r in q["r"].split(",") if r]
     if q.get("b"):
         st.budget = int(q["b"])
+    if q.get("g") is not None:
+        st.groups = [g for g in q["g"].split(",") if g]
     st.through = q.get("t", "1") != "0"
     st.dangling_use = q.get("u") == "1"
     st.env_edges = q.get("ev") == "1"

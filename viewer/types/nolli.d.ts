@@ -47,6 +47,7 @@ export interface SceneEdge {
 export interface SceneState {
   expanded: string[];
   roles: string[];
+  groups: string[];  // root groups drawn as boxes; the others are badges
   budget: number;
   through: boolean;
   dangling_use: boolean;
@@ -60,7 +61,7 @@ export interface Scene {
   state: SceneState;
   nodes: SceneNode[];  // drawing order: a container before what it contains
   edges: SceneEdge[];
-  groups: { id: string; name: string; size: number; open: boolean }[];
+  groups: { id: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
   residue: string[];
   stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
   dataset: { name: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
