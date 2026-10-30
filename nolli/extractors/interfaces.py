@@ -1,7 +1,7 @@
 """Interface families shared by adapters: how an endpoint, an env variable or a host is
 named, so that a provider in one language and a user in another meet on the same entity.
-Only the env family needs a helper so far; endpoints are created by the route adapters
-and matched in ``nolli.match``."""
+Only the env family needs a helper here; APIs (endpoints) have their own shared
+structure in ``api.py``."""
 
 from __future__ import annotations
 

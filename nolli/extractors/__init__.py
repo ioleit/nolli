@@ -35,8 +35,9 @@ class Context:
 
 def all_extractors():
     """Extraction order: the file tree first (everything attaches to it), then per
-    language the front-end (imports, symbols) and its adapters, then infrastructure."""
-    from . import fs
+    language the front-end (imports, symbols) and its adapters, then infrastructure, then
+    the shared structures the adapters reported into (``api``)."""
+    from . import api, fs
     from .infra import compose, dockerfile
     from .python import env as py_env, fastapi, imports as py_imports, symbols as py_symbols
     from .typescript import env as ts_env, fetch, imports as ts_imports
@@ -52,6 +53,7 @@ def all_extractors():
         ("typescript-env", ts_env.run),
         ("compose", compose.run),
         ("dockerfile", dockerfile.run),
+        ("api", api.build),  # the shared API structure from what the adapters reported
     ]
 
 

@@ -33,7 +33,7 @@ RELATION_KINDS = (CONTAIN, USE, PROVIDE, ALLOCATE)
 ARTIFACT_KINDS = ("directory", "file")
 SYMBOL_KINDS = ("class", "function")  # module-viewtype elements inside a file
 COMPONENT_KINDS = ("service", "image")
-INTERFACE_KINDS = ("endpoint", "env", "host")
+INTERFACE_KINDS = ("api", "resource", "endpoint", "env", "host")  # api > resource > endpoint: extractors/api.py
 OTHER_KINDS = ("package", "group", "unresolved")
 ENTITY_KINDS = ARTIFACT_KINDS + SYMBOL_KINDS + COMPONENT_KINDS + INTERFACE_KINDS + OTHER_KINDS
 

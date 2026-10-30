@@ -30,8 +30,14 @@ solution; solutions are for whoever picks it up.
   the file again (a 3,000-file repo takes 21 s, most of it parsing).
 - The role rule hides a directory whose logic lives in HTML (the viewer's own directory
   disappears from the picture of this repo).
-- Root routes (`GET /`, the SPA catch-all) sit as bare endpoints among the route groups;
-  a "/" group, and recognising that a backend serves the frontend build.
+- Root routes (`GET /`, the SPA catch-all) sit as bare operations in the app box; the
+  catch-all `/{path:path}` matches every frontend call the real routes don't; recognising
+  that a backend serves the frontend build.
+- APIs (`extractors/api.py`): put an API under the component that serves it instead of
+  (or as well as) the APIs group; a second adapter (Express, Flask `@app.route`) and a
+  second protocol (gRPC from `.proto`, exact matching is there) to test the shared
+  structure; WebSocket calls from the frontend arrive as `GET` and don't meet
+  `WEBSOCKET` routes.
 - Re-exports as the package's provided interface (`provide(package, Name)`), the same for
   TypeScript `index.ts` barrels; today re-export edges are simply dropped.
 - TypeScript classes and types as atoms; a TS-only repo currently has nothing to unfold

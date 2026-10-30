@@ -3,10 +3,10 @@
 Finds ``@<router>.<method>("<path>")`` decorators, ``APIRouter(prefix=...)``
 declarations and ``<parent>.include_router(<child>, prefix=...)`` calls, and
 composes full paths by following include chains from ``FastAPI()`` apps.
-Each endpoint becomes an ``endpoint`` entity under the ``http`` group, with a
-``provide`` relation from the file that defines the handler. Routers that are
-never included anywhere are treated as roots (their prefix stands alone) and
-marked heuristic.
+Each route is reported to the shared API structure (``extractors/api.py``) as an
+operation of the app it is mounted in, provided by the file that defines the
+handler. Routers that are never included anywhere are APIs of their own (their
+prefix stands alone), marked heuristic.
 """
 
 from __future__ import annotations
@@ -14,8 +14,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
-from ...model import CONTAIN, PROVIDE, Entity, Provenance, Relation
-from .. import Context
+from .. import Context, api
 from ...match import module_candidates
 from .imports import module_name_of
 
@@ -156,44 +155,24 @@ def run(ctx: Context) -> None:
             else:
                 ctx.notes.setdefault("http-routes-unresolved-includes", []).append((rv.file, raw))
 
-    group = m.add_entity(Entity("http", "group", "HTTP API", {"synthetic": True}, Provenance("http-routes")))
+    def api_of(key: tuple[str, str]) -> tuple[str, str]:
+        """(key, label) of the API a root serves: the app, or a router nobody mounts."""
+        rv = routers[key]
+        return f"{rv.file}:{rv.name}", f"{rv.name} · {rv.file}" + ("" if rv.is_app else " (never mounted)")
 
-    def route_group(path: str) -> str:
-        """Endpoints are grouped by their leading static segments (``/api/story``), so the
-        HTTP API group has structure worth unfolding; parameters end the prefix."""
-        segs = [s for s in path.split("/") if s]
-        prefix: list[str] = []
-        for s in segs[:2]:
-            if s.startswith("{"):
-                break
-            prefix.append(s)
-        if len(prefix) < 1 or len(segs) <= 1:
-            return group.id
-        gid = "http:/" + "/".join(prefix)
-        if not m.has(gid):
-            m.add_entity(Entity(gid, "group", "/" + "/".join(prefix), {"synthetic": True}, Provenance("http-routes")))
-            m.add_relation(Relation(CONTAIN, group.id, gid, provenance=Provenance("http-routes")))
-        return gid
-
-    def emit(key: tuple[str, str], base: str, exact: bool, depth: int = 0) -> None:
+    def emit(key: tuple[str, str], api_key: tuple[str, str], base: str, exact: bool, depth: int = 0) -> None:
         rv = routers[key]
         here = base + rv.prefix
+        api_id, api_label = api_of(api_key)
         for method, path, line, handler in rv.routes:
-            full = (here + path) or "/"
-            eid = f"http:{method} {full}"
-            if not m.has(eid):
-                m.add_entity(Entity(eid, "endpoint", f"{method} {full}", {"method": method, "path": full}, Provenance("http-routes", rv.file, line)))
-                m.add_relation(Relation(CONTAIN, route_group(full), eid, provenance=Provenance("http-routes")))
-            m.add_relation(
-                Relation(PROVIDE, ctx.fs_id(rv.file), eid, "route", confidence="exact" if exact else "heuristic",
-                         provenance=Provenance("http-routes", rv.file, line), attrs={"handler": handler})
-            )
+            api.provide(ctx, api.Operation("http", api_id, api_label, method, (here + path) or "/", rv.file, line,
+                                           handler, exact, "python-fastapi"))
         if depth > 10:
             return
         for child, pfx in resolved_includes.get(key, []):
-            emit(child, here + pfx, exact, depth + 1)
+            emit(child, api_key, here + pfx, exact, depth + 1)
 
     roots = [k for k, rv in routers.items() if rv.is_app or rv.included_by == 0]
     for key in sorted(roots):
-        emit(key, "", routers[key].is_app)
+        emit(key, key, "", routers[key].is_app)
     ctx.notes["http-routers"] = {f"{k[0]}:{k[1]}": {"prefix": v.prefix, "app": v.is_app, "routes": len(v.routes), "included_by": v.included_by} for k, v in routers.items()}

@@ -10,8 +10,9 @@ Two passes over the frontend's syntax trees:
    parameters into such a URL is a *helper*; every call to a function of that
    name elsewhere contributes its argument as a URL.
 
-Calls become ``use`` relations to ``unresolved:http:<METHOD or ?> <pattern>``
-placeholders; ``nolli.match`` binds them to endpoints.
+Calls are reported to the shared API structure (``extractors/api.py``) as
+``unresolved:http:<METHOD or ?> <pattern>`` placeholders; ``nolli.match`` binds them
+to endpoints.
 """
 
 from __future__ import annotations
@@ -19,8 +20,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ...model import USE, Entity, Provenance, Relation
-from .. import Context
+from .. import Context, api
 from .imports import parser_for, walk
 
 AXIOS_METHODS = {"get", "post", "put", "patch", "delete"}
@@ -266,10 +266,4 @@ def run(ctx: Context) -> None:
     ctx.notes["http-helpers"] = helpers
     ctx.notes["http-calls"] = [c.__dict__ for c in calls]
     for c in calls:
-        uid = f"unresolved:http:{c.method} {c.pattern}"
-        if not m.has(uid):
-            m.add_entity(Entity(uid, "unresolved", f"{c.method} {c.pattern}", {"method": c.method, "pattern": c.pattern}, Provenance("http-calls")))
-        m.add_relation(
-            Relation(USE, ctx.fs_id(c.file), uid, "http", confidence="heuristic",
-                     provenance=Provenance("http-calls", c.file, c.line), attrs={"via": c.via})
-        )
+        api.call(ctx, api.Call("http", c.method, c.pattern, c.file, c.line, c.via, "http-calls"))

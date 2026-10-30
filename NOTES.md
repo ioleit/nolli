@@ -44,6 +44,16 @@ Nothing is a settled design.
 - Dockerfile `COPY` is `allocate(directory, image)`; `CMD`/`ENTRYPOINT` naming a module
   is `use(image, module)`.
 
+- APIs are one structure for every framework and protocol (`extractors/api.py`): adapters
+  only report operations (protocol, which API they belong to, verb, path, handler file)
+  and calls; one builder makes APIs → one box per served API (a FastAPI app; a router
+  nobody mounts is its own, heuristic) → its path as a tree → operations. Path steps
+  without operations of their own are merged (`conversations/{project_name}`), a step with
+  one operation is that operation (`GET health`), an operation inside a step is labelled
+  by its verb; parameters at one position are one step whatever their names. Protocol
+  knowledge left: splitting a path, and the matcher (HTTP path patterns; exact names for
+  anything else so far).
+
 ## Picture
 
 - Default cut: unfold the box that reveals the most edges per node it adds (edges whose

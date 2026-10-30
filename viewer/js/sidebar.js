@@ -7,7 +7,7 @@ import { ALL_ROLES, OPTIONS, state } from "./state.js";
 
 /** @type {Record<string, string>} what showing a group means; the server names the groups */
 const GROUP_HELP = {
-  http: "Routes this repo serves, as one box you can unfold into route groups and endpoints. Calls go into it, and from it to the handlers that realise them. Off: calls are drawn straight to the handler (Through interfaces) or become badges.",
+  api: "What this repo serves for others to call: one box per app, unfolding along its paths to the operations. Calls go into it, and from it to the handlers that realise them. Off: calls are drawn straight to the handler (Through interfaces) or become badges.",
   env: "Environment variables, as one box you can unfold. Readers point into it, and from it to whatever sets them. Off: badges (\"N env\") on the readers.",
   deploy: "Compose services and images, as one box you can unfold. Off: badges on the code they touch.",
   ext: "Third-party packages, as one box you can unfold. Off: badges (\"N pkgs\") on the importers.",
