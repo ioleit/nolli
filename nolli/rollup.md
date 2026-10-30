@@ -22,8 +22,9 @@ readable. Each was a judgement call on a few repositories (reasons in `NOTES.md`
   same target;
 - **groups are a filter**: a group (external packages, environment, deployment, HTTP
   API) the view shows is a box like any other, folded or unfolded; one it doesn't show
-  becomes **badges instead of edges**, as do *utilities*, boxes that a third or more of
-  the top-level components use. By default only HTTP API is shown;
+  becomes **badges instead of edges**, as do *utilities*, boxes with more than N
+  incoming edges in the picture (N = 6 by default, a viewer option): all their incoming
+  edges become "→ name" badges on the sources. By default only HTTP API is shown;
 - **internal edges** (both ends inside the same unfolded box) are hairlines, or hidden
   with a count in the box header;
 - **weak edges** (a small share of their source's references) are faint and unlabeled;

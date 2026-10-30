@@ -24,6 +24,7 @@ from .view import default_view
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
+DEFAULT_UTILITY_IN = 6  # more incoming edges than this: a utility, drawn as badges
 DEFAULT_GROUPS = ("http",)  # root groups drawn as boxes; the others are badges on their users
 GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "http": "api"}
 MODULE_LANGS = ("python", "typescript", "javascript")
@@ -40,7 +41,7 @@ class ViewState:
     dangling_use: bool = False  # show reads of env variables nobody sets
     env_edges: bool = False  # draw env wiring (reader -> setter)
     bundle: bool = True  # fan-out edges to a container's boundary
-    utilities: bool = True  # widely used nodes as badges on their users
+    utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
     hide_internal: bool = False  # drop edges inside a container, count them in its header
 
 
@@ -75,7 +76,7 @@ def compute(m: Model, st: ViewState) -> tuple[set[str], set[str], set[str], Roll
                     shown_groups=shown_groups)
     if st.bundle:
         rolled.edges = bundle(m, rolled.edges, expanded)
-    utilities = utility_badges(m, rolled, expanded) if st.utilities else set()
+    utilities = utility_badges(m, rolled, st.utilities) if st.utilities > 0 else set()
     return expanded, hidden, visible, rolled, utilities
 
 
@@ -193,7 +194,7 @@ def node_tip(m: Model, x: str, rolled: RolledUp, utilities: set[str]) -> str:
         else:
             lines.append(f"{c} relations with {m.entities[g].name} (folded)")
     if x in utilities:
-        lines.append("utility: used by at least a third of the top-level components; incoming edges are badges on the users")
+        lines.append("utility: more incoming edges than the threshold; they are badges on the boxes that use it")
     if rolled.allocations.get(x):
         lines.append("deployed in: " + ", ".join(m.entities[s].name for s in rolled.allocations[x]))
     if e.attrs.get("image"):
@@ -336,6 +337,6 @@ def state_from_query(q: dict[str, str]) -> ViewState:
     st.dangling_use = q.get("u") == "1"
     st.env_edges = q.get("ev") == "1"
     st.bundle = q.get("nb") != "1"
-    st.utilities = q.get("nu") != "1"
+    st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
     st.hide_internal = q.get("hi") == "1"
     return st

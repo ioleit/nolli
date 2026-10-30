@@ -37,7 +37,7 @@
   <label class="opt" data-help="Draw interfaces with one side only: reads of env variables nothing sets, calls to endpoints nothing in the repo serves."><input type="checkbox" id="dangling"> One-sided interfaces</label>
 
   <h2>Boxes</h2>
-  <label class="opt" data-help="A box used by at least a third of the top-level components is a utility: instead of edges into it, its users carry a badge (→ name)."><input type="checkbox" id="utilities"> Utilities as badges</label>
+  <label class="opt row" data-help="A box with more than this many incoming edges is a utility: instead of the edges, the boxes that use it carry a badge (→ name), and its border is dotted. 0: off.">utilities above <input id="utilities" type="number" min="0" max="99" style="width:52px;margin-left:auto"> edges</label>
 
   <h2>Layout</h2>
   <label class="opt row" data-help="How the diagram is laid out. Layered (ELK) puts callers above what they call.">engine <select id="engine"></select></label>

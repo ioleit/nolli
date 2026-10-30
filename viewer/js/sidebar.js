@@ -53,6 +53,7 @@ function check(parent, text, checked, help, note) {
 
 export function syncControls() {
   input("budget").value = String(state.budget);
+  input("utilities").value = String(state.utilities ?? "");
   for (const [id, k] of Object.entries(OPTIONS)) input(id).checked = state[k];
   input("nolabels").checked = state.noLabels; byId("g").classList.toggle("nolabels", state.noLabels);
   input("samewidth").checked = state.sameWidth;

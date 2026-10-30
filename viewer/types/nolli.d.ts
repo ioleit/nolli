@@ -52,7 +52,7 @@ export interface SceneState {
   dangling_use: boolean;
   env_edges: boolean;
   bundle: boolean;
-  utilities: boolean;
+  utilities: number;  // more incoming edges than this: a utility; 0: off
   hide_internal: boolean;
 }
 

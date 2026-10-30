@@ -265,28 +265,30 @@ def top_of(m: Model, node: str, expanded: set[str]) -> str:
         cur = p
 
 
-def utility_badges(m: Model, rolled: "RolledUp", expanded: set[str], min_users: int = 3) -> set[str]:
-    """Nodes used by at least half of the top-level components (and at least ``min_users``)
-    are utilities: their incoming cross-component edges become badges on the users
-    ("→ observability/"), like externals. Returns the utility nodes."""
-    tops = {top_of(m, v, expanded) for v in rolled.visible if not v.startswith("body:")}
-    code_tops = {t for t in tops if not (m.has(t) and m.entities[t].kind == "group")}
-    users: dict[str, set[str]] = defaultdict(set)
+def utility_badges(m: Model, rolled: "RolledUp", min_in: int = 6) -> set[str]:
+    """Boxes with more than ``min_in`` incoming dependency edges in the picture are
+    utilities: all those edges become badges on their sources ("→ observability"), like
+    externals, since a box that many arrows point at mostly adds clutter. Edges are counted
+    as drawn (one per arrow, whatever its count); groups and what's inside them are never
+    utilities, so a shown group keeps its edges. Returns the utility nodes."""
+    def in_group(x: str) -> bool:
+        cur: str | None = owner_of(x)
+        while cur is not None and m.has(cur):
+            if m.entities[cur].kind == "group":
+                return True
+            cur = m.parent(cur)
+        return False
+
+    incoming: dict[str, int] = defaultdict(int)
     for e in rolled.edges:
-        if e.kind != USE:
-            continue
-        ts, td = top_of(m, e.src, expanded), top_of(m, e.dst, expanded)
-        if ts != td:
-            users[e.dst].add(ts)
-    # a third of the code components (groups don't count), and at least min_users
-    threshold = max(min_users, -(-len(code_tops) // 3))
-    utilities = {d for d, us in users.items() if len(us) >= threshold
-                 and not (m.has(top_of(m, d, expanded)) and m.entities[top_of(m, d, expanded)].kind == "group")}
+        if e.kind == USE:
+            incoming[e.dst] += 1
+    utilities = {d for d, n in incoming.items() if n > min_in and not in_group(d)}
     if not utilities:
         return utilities
     kept = []
     for e in rolled.edges:
-        if e.kind == USE and e.dst in utilities and top_of(m, e.src, expanded) != top_of(m, e.dst, expanded):
+        if e.kind == USE and e.dst in utilities:
             rolled.annotations.setdefault(e.src, {})
             rolled.annotations[e.src]["util:" + e.dst] = rolled.annotations[e.src].get("util:" + e.dst, 0) + e.count
         else:

@@ -51,7 +51,7 @@ async function refresh(keepZoom = false) {
   /** @type {Scene} */
   const sc = body; sc.url = url; scene = sc;
   // adopt the server's normalised state (default cut resolved, folded descendants dropped)
-  state.expanded = sc.state.expanded; state.roles = sc.state.roles; state.groups = sc.state.groups; state.budget = sc.state.budget;
+  state.expanded = sc.state.expanded; state.roles = sc.state.roles; state.groups = sc.state.groups; state.budget = sc.state.budget; state.utilities = sc.state.utilities;
   syncControls(); sidebar(sc, () => refresh(true));
   await show(keepZoom);
   writeHash();
@@ -96,6 +96,7 @@ async function render(keepZoom = false) {
 function showRawPane() { if (scene) showRaw(scene); byId("status").textContent = ""; }
 
 onRawToggle(toggle);
+input("utilities").addEventListener("change", () => { state.utilities = Math.max(0, Math.round(+input("utilities").value || 0)); refresh(true); });
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; state.expanded = null; refresh(); });
 byId("reset").addEventListener("click", () => { state.expanded = null; refresh(); });
 byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; refresh(); });
