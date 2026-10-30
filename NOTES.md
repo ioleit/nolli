@@ -55,7 +55,7 @@ Nothing is a settled design.
 - Allocation (what is copied into which service) is drawn as coloured chips on the
   code box, not edges; env wiring (reader → setter) is hidden by default because it says
   the same thing. Both are open for different rendering (backlog).
-- Numbers that are guesses: budget 34, utility threshold a third and at least 3, weak
+- Numbers that are guesses: budget 34, utility threshold more than 6 incoming edges, weak
   edge under 5% and fewer than 3 references, fan bundling from 3 children.
 
 ## Viewer and server

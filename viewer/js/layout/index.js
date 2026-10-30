@@ -58,6 +58,13 @@ export const isContainer = n => !isAnchor(n) && n.container;
 
 // room around a container's children: the header with title, badges and − sits on top
 export const CONTAINER_PAD = { top: 30, left: 10, bottom: 10, right: 10 };
+export const USES_LINE = 13;  // one line per utility used, bottom right
+
+/** A container's padding: CONTAINER_PAD, plus room at the bottom for its uses list. @param {SceneNode} n */
+export function containerPad(n) {
+  const k = isAnchor(n) ? 0 : (n.uses || []).length;
+  return k ? { ...CONTAINER_PAD, bottom: CONTAINER_PAD.bottom + 4 + k * USES_LINE } : CONTAINER_PAD;
+}
 
 /** Where the segment from a box's centre towards (tx, ty) leaves the box. @param {import("../../types/nolli").Box} b @param {number} tx @param {number} ty @returns {import("../../types/nolli").Point} */
 function exitPoint(b, tx, ty) {

@@ -1,20 +1,22 @@
-// The static Mermaid export (default.mmd, written by nolli extract) in an overlay pane.
+// The Mermaid view: the static export (default.mmd, written by nolli extract), rendered once per dataset.
 
 import { byId } from "./dom.js";
 
 const pane = byId("mmdpane");
+let rendered = "";
 
 /** @param {string} dataset */
-export async function toggleMermaid(dataset) {
-  if (pane.style.display === "block") { pane.style.display = "none"; return; }
-  pane.style.display = "block"; pane.innerHTML = "rendering…";
+export async function showMermaid(dataset) {
+  pane.style.display = "block";
+  if (rendered === dataset) return;
+  rendered = dataset; pane.innerHTML = "rendering…";
   const src = await (await fetch(`/data/${dataset}/default.mmd`)).text();
   try {
     const mermaid = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default;
     mermaid.initialize({ startOnLoad: false, securityLevel: "loose", maxTextSize: 200000 });
     const { svg } = await mermaid.render("mmd" + Date.now(), src);
-    pane.innerHTML = `<div style="position:sticky;top:0;background:Canvas;padding:4px;color:var(--muted)">default.mmd (static export of the default cut) · click to close</div>` + svg;
+    if (rendered === dataset) pane.innerHTML = `<div class="req">default.mmd: the static export of the default cut, written by nolli extract; the controls don't apply</div>` + svg;
   } catch (e) { pane.innerHTML = `<pre style="color:#c33">${String(e)}</pre><pre>${src.replace(/</g, "&lt;")}</pre>`; }
 }
 
-pane.addEventListener("click", ev => { if (/** @type {Element} */ (ev.target).closest("div[style*=sticky]")) pane.style.display = "none"; });
+export function hideMermaid() { pane.style.display = "none"; }

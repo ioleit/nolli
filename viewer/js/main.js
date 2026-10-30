@@ -5,14 +5,14 @@
 //   layout/     scene -> positions and edge routes, no DOM; one module per engine
 //   draw.js     scene + layout -> SVG, with a handle per node to move and fade it
 //   transition.js, animate.js: the step between two pictures (plan, then play)
-//   raw.js      scene -> JSON pane
+//   raw.js      scene -> JSON view;  mermaid.js: the static export as a view
 //   review.js   diff datasets: the review panel, items, details, verdicts
-//   sidebar.js, panzoom.js, tip.js, mermaid.js, dom.js
+//   sidebar.js, help.js (explanations on hover), panzoom.js, tip.js, dom.js
 //   stability.js, bench.js (bench.html): how well layouts keep the picture across a step
 // Types: types/nolli.d.ts, checked with `npm run check`.
 
 import { byId, input, select } from "./dom.js";
-import { ALL_ROLES, DEFAULTS, OPTIONS, query, readHash, state, writeHash } from "./state.js";
+import { ALL_ROLES, DEFAULTS, OPTIONS, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { ENGINES, layout } from "./layout/index.js";
 import { draw, drawGhosts } from "./draw.js";
 import { plan } from "./transition.js";
@@ -20,8 +20,10 @@ import { finish, play } from "./animate.js";
 import { hideRaw, onRawToggle, showRaw } from "./raw.js";
 import { sidebar, syncControls } from "./sidebar.js";
 import { fit, focusOn } from "./panzoom.js";
+import { hideMermaid, showMermaid } from "./mermaid.js";
+import "./help.js";
+import { applyTheme, initialTheme, themeOptions } from "./theme.js";
 import { clearDetails, itemById, loadItems, renderPanel, showEdge, showItem, showNode, showPanel, visibleItems } from "./review.js";
-import { toggleMermaid } from "./mermaid.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
 
@@ -55,15 +57,23 @@ async function refresh(keepZoom = false) {
   /** @type {Scene} */
   const sc = body; sc.url = url; scene = sc;
   // adopt the server's normalised state (default cut resolved, folded descendants dropped)
-  state.expanded = sc.state.expanded; state.roles = sc.state.roles; state.budget = sc.state.budget;
-  syncControls(); sidebar(sc, toggle, () => refresh());
+  state.expanded = sc.state.expanded; state.roles = sc.state.roles; state.groups = sc.state.groups; state.budget = sc.state.budget; state.utilities = sc.state.utilities;
+  syncControls(); sidebar(sc, () => refresh(true));
   if (sc.diff) {
     if (itemsFor !== state.name) { await loadItems(state.name || ""); itemsFor = state.name; }
     renderPanel(sc, reviewHandlers);
   } else showPanel(false);
   document.body.classList.toggle("dim", !!sc.diff && state.dim);
-  if (state.raw) showRawPane(); else await render(keepZoom && !focusNext);
+  await show(keepZoom && !focusNext);
   writeHash();
+}
+
+/** Bring the current view up to date: the diagram, the scene as JSON, or the Mermaid export. */
+async function show(keepZoom = false) {
+  if (state.view !== "mermaid") hideMermaid();
+  if (state.view === "json") showRawPane();
+  else if (state.view === "mermaid") { hideRaw(); byId("status").textContent = ""; if (state.name) await showMermaid(state.name); }
+  else await render(keepZoom);
 }
 
 // ---------- review: selection ----------
@@ -175,7 +185,7 @@ async function render(keepZoom = false) {
   if (sc !== scene) return;  // a newer scene arrived while this one was laid out
   finish();
   const root = byId("root");
-  const drawn = draw(root, sc, laid, { toggle, select: selectWhat, review: !!sc.diff });
+  const drawn = draw(root, sc, laid, { toggle, select: selectWhat, review: !!sc.diff }, state.sameWidth);
   shown = { scene: sc, laid };
   if (keepZoom && fitted && prev) {
     // a step from the picture on screen: move from there, keeping the clicked box in place
@@ -191,18 +201,25 @@ async function render(keepZoom = false) {
 function showRawPane() { if (scene) showRaw(scene); byId("status").textContent = ""; }
 
 onRawToggle(toggle);
+input("utilities").addEventListener("change", () => { state.utilities = Math.max(0, Math.round(+input("utilities").value || 0)); refresh(true); });
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; state.expanded = null; refresh(); });
 byId("reset").addEventListener("click", () => { state.expanded = null; refresh(); });
 byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; refresh(); });
 for (const [id, k] of Object.entries(OPTIONS)) input(id).addEventListener("change", () => { state[k] = input(id).checked; refresh(true); });
 input("nolabels").addEventListener("change", () => { state.noLabels = input("nolabels").checked; byId("g").classList.toggle("nolabels", state.noLabels); writeHash(); });
+input("samewidth").addEventListener("change", () => { state.sameWidth = input("samewidth").checked; writeHash(); if (state.view === "diagram") render(true); });
+select("theme").addEventListener("change", () => { state.theme = select("theme").value; applyTheme(state.theme); writeHash(); });
 input("animate").addEventListener("change", () => { state.animate = input("animate").checked; writeHash(); });
-input("raw").addEventListener("change", () => { state.raw = input("raw").checked; writeHash(); if (state.raw) showRawPane(); else render(); });
-select("direction").addEventListener("change", () => { state.direction = select("direction").value === "RIGHT" ? "RIGHT" : "DOWN"; writeHash(); render(); });
+select("direction").addEventListener("change", () => { state.direction = select("direction").value === "RIGHT" ? "RIGHT" : "DOWN"; writeHash(); if (state.view === "diagram") render(); });
+themeOptions();
 for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; select("engine").appendChild(o); }
-select("engine").addEventListener("change", () => { state.engine = select("engine").value; writeHash(); render(); });
+select("engine").addEventListener("change", () => { state.engine = select("engine").value; writeHash(); if (state.view === "diagram") render(); });
 select("dataset").addEventListener("change", () => { Object.assign(state, DEFAULTS, { name: select("dataset").value, sel: null }); shown = null; refresh(); });
-byId("mmd").addEventListener("click", () => { if (state.name) toggleMermaid(state.name); });
+for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListener("click", () => {
+  const v = /** @type {import("./state.js").View} */ (/** @type {HTMLElement} */ (b).dataset.view);
+  if (!VIEWS.includes(v) || v === state.view) return;
+  state.view = v; syncControls(); writeHash(); show();
+});
 
 (async () => {
   /** @type {{ name: string }[]} */
@@ -213,11 +230,12 @@ byId("mmd").addEventListener("click", () => { if (state.name) toggleMermaid(stat
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
   if (!name) { byId("status").textContent = "no datasets"; return; }
   sel.value = name;
-  Object.assign(state, h.st, { name, noLabels: h.noLabels, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, raw: h.raw, sel: h.sel, dim: h.dim });
+  Object.assign(state, h.st, { name, noLabels: h.noLabels, sameWidth: h.sameWidth, theme: initialTheme(h.theme), direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, view: h.view,
+    sel: h.sel, dim: h.dim });
+  applyTheme(state.theme);
   focusNext = !!h.sel;
   await refresh();
   // a link to an item: unfold what it needs (the hash may come from a different view state)
   const loaded = /** @type {Scene | null} */ (scene);  // set by refresh(); TypeScript cannot see that through the await
   if (h.sel && h.sel.startsWith("item:") && loaded?.diff) selectItem(h.sel.slice(5));
-  if (h.mmd) byId("mmd").click();
 })();
