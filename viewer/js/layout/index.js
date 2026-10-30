@@ -32,8 +32,14 @@ export async function layout(scene, opts) {
 /** @param {SceneNode} n @returns {n is import("../../types/nolli").AnchorNode} */
 export const isAnchor = n => n.kind === "anchor";
 
-/** @param {string} s @param {string} icon */
-const textW = (s, icon) => Math.max(56, s.length * 6.4 + 22 + (icon ? 16 : 0));
+// a box's name is its icons (small tags saying what it is), then a readable label
+export const ICON_H = 12, ICON_GAP = 3;
+/** @param {string} icon */
+export const iconW = icon => Math.max(ICON_H, icon.length * 5.6 + 5);
+/** Width the icons take before the label, gap included. @param {string[]} icons */
+export const iconsW = icons => icons.reduce((w, i) => w + iconW(i) + ICON_GAP, 0) + (icons.length ? 1 : 0);
+/** @param {string} s @param {string[]} icons */
+const textW = (s, icons) => Math.max(icons.length && !s ? 20 : 56, s.length * 6.4 + 22 + iconsW(icons));
 
 /** "+12 −3" for a box whose lines changed, "" otherwise. @param {import("../../types/nolli").BoxNode} n */
 export function statsText(n) {
@@ -48,7 +54,7 @@ export function leafSize(n) {
   const sub = n.leaves ? "+" + n.leaves : "";
   const stats = statsText(n);
   return {
-    w: Math.max(textW(n.label + sub, n.icon), (n.badge ? n.badge.length * 5.4 : 0) + stats.length * 6 + (stats ? 10 : 0) + n.chips.length * 11 + 20),
+    w: Math.max(textW(n.label + sub, n.icons), (n.badge ? n.badge.length * 5.4 : 0) + stats.length * 6 + (stats ? 10 : 0) + n.chips.length * 11 + 20),
     h: (n.badge || n.chips.length || stats) ? 40 : 30,
   };
 }

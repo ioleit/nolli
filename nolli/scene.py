@@ -22,7 +22,7 @@ from .rollup import (
 from .changes import Links, change_items, diff_index, fact_change, is_diff, node_diff
 from .review import VERDICT_RANK, edge_review_info, node_review_info, resolve_verdicts
 from .view import default_view
-from .labels import MODULE_LANGS, is_body, label_of, leaf_count
+from .labels import icons_of, is_body, label_of, leaf_count, name_of
 from .info import Dependencies, edge_info, node_info
 from .prose import Ctx
 
@@ -88,19 +88,6 @@ def compute(m: Model, st: ViewState) -> tuple[set[str], set[str], set[str], Roll
 
 
 # ---------- labels ----------
-
-def icon_of(m: Model, x: str) -> str:
-    if is_body(x):
-        return ""
-    e = m.entities[x]
-    if e.kind == "directory":
-        return "D"
-    if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
-        return "m"
-    if e.kind == "class":
-        return "C"
-    return ""
-
 
 def badge_text(used_by: int = 0) -> str:
     """For a utility, how many boxes use it. What a box itself depends on outside the
@@ -188,8 +175,8 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
             badge = " · ".join(filter(None, [badge, f"{internal_drawn[x]} internal"]))
         kids = bool(m.children(x))
         return {
-            "id": x, "kind": e.kind, "parent": parent, "container": container, "label": label_of(m, x, expanded),
-            "icon": icon_of(m, x), "foldable": kids, "leaves": leaf_count(m, x) if kids and not container else None,
+            "id": x, "kind": e.kind, "parent": parent, "container": container, "label": name_of(m, x, expanded),
+            "icons": icons_of(m, x), "foldable": kids, "leaves": leaf_count(m, x) if kids and not container else None,
             "badge": badge, "utility": x in utilities,
             "chips": [{"id": s, "name": m.entities[s].name, "color": services.index(s) if s in services else -1}
                       for s in rolled.allocations.get(x, [])],
