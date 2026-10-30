@@ -56,7 +56,7 @@ def all_extractors():
 
 
 def describers():
-    """Each language's hover vocabulary (``noun``, ``kind``, ``describe``, ``doc``), asked in this order;
+    """Each language's hover vocabulary (``noun``, ``kind``, ``describe``, ``doc``, ``own_code``), asked in this order;
     the first that knows an entity answers (see nolli/info.py)."""
     from .python import describe as python
     from .typescript import describe as typescript

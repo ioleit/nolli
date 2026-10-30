@@ -241,3 +241,25 @@ def test_docstrings(tmp_path: Path):
     docs = {n["id"]: [p["doc"] for line in n["info"] for p in line if isinstance(p, dict) and "doc" in p] for n in sc["nodes"]}
     assert docs["fs:pkg"] == ["Tools for frobbing."]  # first paragraph only
     assert docs["py:pkg/core.py#Frob"] == ["Frobs one thing at a time."]
+
+
+def test_own_code_dot(tmp_path: Path):
+    """A module's own-code dot names its functions (most referenced first) and constants;
+    a package's names what its __init__.py defines and re-exports."""
+    from nolli.scene import ViewState, scene
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/__init__.py").write_text("from .core import Frob, frob\n\ndef setup():\n    return Frob()\n")
+    (tmp_path / "pkg/core.py").write_text("LIMIT = 3\n\ndef helper():\n    pass\n\ndef frob():\n    return Frob()\n\n"
+                                          "class Frob:\n    def go(self):\n        return frob()\n")
+    (tmp_path / "pkg/use.py").write_text("from .core import frob\nfrob(); frob()\n")
+    m, _ = extract(tmp_path)
+    core = m.entities["fs:pkg/core.py"].attrs
+    assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
+    assert m.entities["fs:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
+    sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
+    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
+    info = {n["id"]: [text(l) for l in n["info"]] for n in sc["nodes"]}
+    assert info["body:fs:pkg/core.py"][0] == "core defines frob and helper"  # frob is referenced, helper not
+    assert "the constant LIMIT" in info["body:fs:pkg/core.py"][1]
+    assert any("re-exports Frob and frob" in t for t in info.get("body:fs:pkg", [])) or "body:fs:pkg" not in info

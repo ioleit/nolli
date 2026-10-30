@@ -133,9 +133,12 @@ class Dependencies:
 def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
     m = ctx.m
     if is_body(x):
+        said = first("own_code", ctx, x[5:])
+        if said:
+            return said
         owner = ctx.name(x[5:])
         if m.entities[x[5:]].kind == "directory":
-            return [say("The code in {}'s __init__.py beyond re-exporting its modules", owner)]
+            return [say("The code in {}'s __init__ file beyond re-exporting its modules", owner)]
         return [say("The code in {} outside any class", owner)]
     e = m.entities[x]
     lines: list[list] = []

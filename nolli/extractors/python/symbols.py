@@ -30,6 +30,38 @@ FUNC_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 DOC_MAX = 240  # characters of a docstring's summary kept
 
 
+NAMES_MAX = 60  # names kept per list (functions, constants, re-exports)
+
+
+def own_code(tree: ast.Module, rel: str, pkg_parts: list[str], aliases: dict[str, tuple[str, str]], total_lines: int | None) -> dict:
+    """What a module holds outside its classes, for the hover text on its own-code dot:
+    top-level functions and constants (UPPER_CASE names) in source order, the lines not
+    inside a class, and for a package's __init__.py the names it re-exports from its own
+    package (relative imports, or absolute ones into the package's dotted path)."""
+    out: dict = {}
+    functions = [n.name for n in tree.body if isinstance(n, FUNC_DEFS)]
+    constants = []
+    for n in tree.body:
+        targets = n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(n, ast.AnnAssign) else []
+        for t in targets:
+            if isinstance(t, ast.Name) and t.id.isupper() and t.id not in constants:
+                constants.append(t.id)
+    if functions:
+        out["functions"] = functions[:NAMES_MAX]
+    if constants:
+        out["constants"] = constants[:NAMES_MAX]
+    if total_lines is not None:
+        in_classes = sum((n.end_lineno or n.lineno) - n.lineno + 1 for n in tree.body if isinstance(n, ast.ClassDef))
+        out["own_lines"] = max(0, total_lines - in_classes)
+    if rel.endswith("__init__.py"):
+        suffixes = {".".join(pkg_parts[i:]) for i in range(len(pkg_parts))}
+        reexports = [name for name, (mod, _) in aliases.items()
+                     if any(mod == s or mod.startswith(s + ".") for s in suffixes)]
+        if reexports:
+            out["reexports"] = reexports[:NAMES_MAX]
+    return out
+
+
 def doc_summary(node) -> str | None:
     """A module's or class's docstring, read from the syntax tree (nothing is imported or
     run): its first paragraph on one line, cut at DOC_MAX characters."""
@@ -126,6 +158,7 @@ def run(ctx: Context) -> None:
                 bindings[node.name] = ("local", fid, node.name)  # a module's functions are the module's own body
         for name, sid in classes.items():
             bindings[name] = ("local", sid, name)
+        m.entities[fid].attrs.update(own_code(tree, rel, pkg_parts, aliases, m.entities[fid].attrs.get("lines")))
         for node in tree.body:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue

@@ -19,6 +19,10 @@ def kind(ctx: Ctx, x: str) -> str | None:
     return None
 
 
+def own_code(ctx: Ctx, owner: str) -> list | None:
+    return None
+
+
 def doc(ctx: Ctx, x: str) -> str | None:
     return None
 
