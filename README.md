@@ -62,6 +62,7 @@ Honest marks on how much thought each part has had. Treat everything as open.
 | `nolli/scene.py` | a view state in, everything the viewer draws out (nodes with their drawn parent, edges, labels, badges, emphasis, tooltips); ids are stable across states so two scenes can be diffed |
 | `nolli/mermaid.py` | static export of the default cut so a README or PR can show it |
 | `viewer/` | temporary throwaway visualization: `index.html` (markup), `viewer.css`, and ES modules in `js/` loaded without a build step (`layout/` scene → positions and edge routes, no DOM, one module per engine: ELK.js layered or Cytoscape.js fCoSE force-directed, chosen in the sidebar; `draw.js` → SVG; `main.js` wiring; state, sidebar, raw JSON, pan/zoom); orthogonal edges that look like a circuit board; redraws from scratch on every change |
+| `viewer/package.json`, `tsconfig.json`, `types/`, `test/` | Node is only for development: `npm install`, then `npm run check` (TypeScript checks the JavaScript through its JSDoc types, strict) and `npm test` (unit tests of the pure modules). The browser loads the `.js` files as they are |
 | `viewer/serve.py` | tiny server for local use: static files, datasets, and `/api/scene` (standard library only; imports `nolli` from the checkout it sits in) |
 | `tests/test_smoke.py` | one synthetic mixed repo pinning the seams that broke once; nothing tests the roll-up rules |
 | `dev/` | local workflow: extract a set of repositories you keep outside this repo (`corpus.example.toml`) |

@@ -13,42 +13,53 @@
 //             onto the old one, root-mean-square, as a share of the old picture's
 //             diagonal. 0 = the new picture is the old one moved and scaled.
 
+/**
+ * @typedef {import("../types/nolli").Scene} Scene
+ * @typedef {import("../types/nolli").Laid} Laid
+ * @typedef {import("../types/nolli").Box} Box
+ * @typedef {import("../types/nolli").Point} Point
+ * @typedef {{ n: number, order: number, knn: number, residual: number }} Stability
+ */
+
 const K = 3;
 
+/** @param {number} a0 @param {number} a1 @param {number} b0 @param {number} b1 */
 function relation(a0, a1, b0, b1) { return a1 <= b0 ? -1 : b1 <= a0 ? 1 : 0; }
 
-// ancestors(id) -> Set of the drawn containers around id
+/** ancestors(id) -> the drawn containers around id. @param {Scene} scene */
 function ancestry(scene) {
   const parent = new Map(scene.nodes.map(n => [n.id, n.parent]));
-  return id => { const out = new Set(); let p = parent.get(id); while (p) { out.add(p); p = parent.get(p); } return out; };
+  return (/** @type {string} */ id) => { /** @type {Set<string>} */ const out = new Set(); let p = parent.get(id); while (p) { out.add(p); p = parent.get(p); } return out; };
 }
 
+/** @param {Laid} before @param {Laid} after @param {Scene} sceneBefore @param {Scene} sceneAfter @returns {Stability} */
 export function compare(before, after, sceneBefore, sceneAfter) {
   const anc0 = ancestry(sceneBefore), anc1 = ancestry(sceneAfter);
   const ids = [...before.nodes.keys()].filter(id => after.nodes.has(id) && !id.startsWith("body:"));
   const n = ids.length;
   if (n < 2) return { n, order: 1, knn: 1, residual: 0 };
-  const A = ids.map(id => before.nodes.get(id)), B = ids.map(id => after.nodes.get(id));
+  const A = ids.map(id => /** @type {Box} */ (before.nodes.get(id))), B = ids.map(id => /** @type {Box} */ (after.nodes.get(id)));
   const ancA = ids.map(anc0), ancB = ids.map(anc1);
 
   let kept = 0, total = 0;
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
     if (ancA[i].has(ids[j]) || ancA[j].has(ids[i]) || ancB[i].has(ids[j]) || ancB[j].has(ids[i])) continue;
     const a = A[i], b = A[j], c = B[i], d = B[j];
-    kept += relation(a.x, a.x + a.w, b.x, b.x + b.w) === relation(c.x, c.x + c.w, d.x, d.x + d.w);
-    kept += relation(a.y, a.y + a.h, b.y, b.y + b.h) === relation(c.y, c.y + c.h, d.y, d.y + d.h);
+    kept += Number(relation(a.x, a.x + a.w, b.x, b.x + b.w) === relation(c.x, c.x + c.w, d.x, d.x + d.w));
+    kept += Number(relation(a.y, a.y + a.h, b.y, b.y + b.h) === relation(c.y, c.y + c.h, d.y, d.y + d.h));
     total += 2;
   }
 
-  const centre = b => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+  const centre = (/** @type {Box} */ b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
   const P = A.map(centre), Q = B.map(centre);
-  const nearest = pts => pts.map((p, i) => pts.map((q, j) => [j, (p.x - q.x) ** 2 + (p.y - q.y) ** 2]).filter(([j]) => j !== i).sort((u, v) => u[1] - v[1] || u[0] - v[0]).slice(0, K).map(([j]) => j));
+  /** @param {Point[]} pts @returns {number[][]} */
+  const nearest = pts => pts.map((p, i) => pts.map((q, j) => /** @type {[number, number]} */ ([j, (p.x - q.x) ** 2 + (p.y - q.y) ** 2])).filter(([j]) => j !== i).sort((u, v) => u[1] - v[1] || u[0] - v[0]).slice(0, K).map(([j]) => j));
   const k = Math.min(K, n - 1), nP = nearest(P), nQ = nearest(Q);
   let knn = 0;
   for (let i = 0; i < n; i++) { const s = new Set(nQ[i]); knn += nP[i].filter(j => s.has(j)).length / k; }
 
   // best shift + uniform scale of Q onto P (least squares), then the RMS of what is left
-  const mean = pts => ({ x: pts.reduce((s, p) => s + p.x, 0) / n, y: pts.reduce((s, p) => s + p.y, 0) / n });
+  const mean = (/** @type {Point[]} */ pts) => ({ x: pts.reduce((s, p) => s + p.x, 0) / n, y: pts.reduce((s, p) => s + p.y, 0) / n });
   const mp = mean(P), mq = mean(Q);
   let num = 0, den = 0;
   for (let i = 0; i < n; i++) { const qx = Q[i].x - mq.x, qy = Q[i].y - mq.y; num += (P[i].x - mp.x) * qx + (P[i].y - mp.y) * qy; den += qx * qx + qy * qy; }

@@ -1,13 +1,16 @@
 // Pan (drag) and zoom (wheel) by a transform on the root group.
 
-const svg = document.getElementById("g");
-const root = document.getElementById("root");
+import { byId } from "./dom.js";
+
+const svg = byId("g");
+const root = byId("root");
 let zoom = { k: 1, x: 0, y: 0 };
+/** @type {{ x: number, y: number } | null} */
 let drag = null;
 
 function apply() { root.setAttribute("transform", `translate(${zoom.x},${zoom.y}) scale(${zoom.k})`); }
 
-// fit a w × h drawing into the canvas, never magnifying beyond 1.5
+/** Fit a w × h drawing into the canvas, never magnifying beyond 1.5. @param {number} w @param {number} h */
 export function fit(w, h) {
   const r = svg.getBoundingClientRect(); const k = Math.min((r.width - 24) / w, (r.height - 24) / h, 1.5);
   zoom = { k, x: (r.width - w * k) / 2, y: 12 }; apply();

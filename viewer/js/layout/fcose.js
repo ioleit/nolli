@@ -4,13 +4,22 @@
 
 import cytoscape from "https://cdn.jsdelivr.net/npm/cytoscape@3.34.4/+esm";
 import fcose from "https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/+esm";
-import { CONTAINER_PAD, childrenOf, leafSize } from "./index.js";
+import { CONTAINER_PAD, childrenOf, isContainer, leafSize } from "./index.js";
+
+/**
+ * @typedef {import("../../types/nolli").Scene} Scene
+ * @typedef {import("../../types/nolli").SceneNode} SceneNode
+ * @typedef {import("../../types/nolli").Laid} Laid
+ * @typedef {import("../../types/nolli").Box} Box
+ * @typedef {import("../../types/nolli").Point} Point
+ * @typedef {import("../../types/nolli").LayoutOptions} LayoutOptions
+ */
 
 cytoscape.use(fcose);
 const P = CONTAINER_PAD;
 const MARGIN = 12;
 
-// fCoSE draws on Math.random; a seeded generator keeps the picture deterministic
+/** fCoSE draws on Math.random; a seeded generator keeps the picture deterministic. @param {string} str */
 function seeded(str) {
   let h = 1779033703 ^ str.length;
   for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
@@ -26,17 +35,20 @@ export const OPTIONS = {
   tilingPaddingVertical: 12, tilingPaddingHorizontal: 12,
 };
 
-// where the segment from a box's centre towards (tx, ty) leaves the box
+/** Where the segment from a box's centre towards (tx, ty) leaves the box. @param {Box} b @param {number} tx @param {number} ty @returns {Point} */
 function exitPoint(b, tx, ty) {
   const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = tx - cx, dy = ty - cy;
   if (!dx && !dy) return { x: cx, y: cy };
   const s = Math.min(dx ? (b.w / 2) / Math.abs(dx) : Infinity, dy ? (b.h / 2) / Math.abs(dy) : Infinity);
   return { x: cx + dx * s, y: cy + dy * s };
 }
+/** @param {Box} b @param {number} x @param {number} y */
 const inside = (b, x, y) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h;
 
+/** @param {Scene} scene @param {LayoutOptions} opts @returns {Promise<Laid>} */
 export async function layout(scene, { seed = "" } = {}) {
-  const sizes = new Map(scene.nodes.filter(n => !n.container).map(n => [n.id, leafSize(n)]));
+  const sizes = new Map(scene.nodes.filter(n => !isContainer(n)).map(n => [n.id, leafSize(n)]));
+  const size = (/** @type {string} */ id) => sizes.get(id) || { w: 20, h: 20 };
   const cy = cytoscape({
     headless: true, styleEnabled: true,
     elements: [
@@ -44,27 +56,31 @@ export async function layout(scene, { seed = "" } = {}) {
       ...scene.edges.map((e, i) => ({ data: { id: "e" + i, source: e.src, target: e.dst } })),
     ],
     style: [
-      { selector: "node", style: { width: n => (sizes.get(n.id()) || { w: 20 }).w, height: n => (sizes.get(n.id()) || { h: 20 }).h, shape: "rectangle" } },
+      { selector: "node", style: { width: (/** @type {cytoscape.NodeSingular} */ n) => size(n.id()).w, height: (/** @type {cytoscape.NodeSingular} */ n) => size(n.id()).h, shape: "rectangle" } },
       // uniform padding as large as the header, so our own (header-on-top) box fits inside
-      { selector: ":parent", style: { padding: P.top } },
+      { selector: ":parent", style: { padding: `${P.top}px` } },
     ],
   });
   const random = Math.random;
   Math.random = seeded(seed + "|" + scene.state.expanded.join(","));
-  try { cy.layout(OPTIONS).run(); } finally { Math.random = random; }
+  try { cy.layout(/** @type {any} */ (OPTIONS)).run(); } finally { Math.random = random; }
 
   // leaves from cytoscape (centre + size), containers as the union of their children plus padding
-  const nodes = new Map(), kids = childrenOf(scene);
+  /** @type {Map<string, Box>} */
+  const nodes = new Map();
+  const kids = childrenOf(scene);
+  /** @param {SceneNode} n @returns {Box} */
   const box = n => {
-    if (nodes.has(n.id)) return nodes.get(n.id);
+    const known = nodes.get(n.id);
+    if (known) return known;
     let b;
-    if (n.container) {
+    if (isContainer(n)) {
       const cs = (kids.get(n.id) || []).map(box);
       const x0 = Math.min(...cs.map(c => c.x)), y0 = Math.min(...cs.map(c => c.y));
       const x1 = Math.max(...cs.map(c => c.x + c.w)), y1 = Math.max(...cs.map(c => c.y + c.h));
       b = { x: x0 - P.left, y: y0 - P.top, w: x1 - x0 + P.left + P.right, h: y1 - y0 + P.top + P.bottom };
     } else {
-      const p = cy.getElementById(n.id).position(), s = sizes.get(n.id);
+      const p = cy.getElementById(n.id).position(), s = size(n.id);
       b = { x: p.x - s.w / 2, y: p.y - s.h / 2, w: s.w, h: s.h };
     }
     nodes.set(n.id, b); return b;
@@ -77,7 +93,7 @@ export async function layout(scene, { seed = "" } = {}) {
   const width = Math.max(...all.map(b => b.x + b.w)) + MARGIN, height = Math.max(...all.map(b => b.y + b.h)) + MARGIN;
 
   const edges = scene.edges.map(e => {
-    const a = nodes.get(e.src), b = nodes.get(e.dst);
+    const a = /** @type {Box} */ (nodes.get(e.src)), b = /** @type {Box} */ (nodes.get(e.dst));
     const ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
     // an edge into the container it sits in ends on that container's header
     const start = inside(a, bc.x, bc.y) ? { x: bc.x, y: a.y } : exitPoint(a, bc.x, bc.y);

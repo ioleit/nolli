@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 dev/corpus.local.toml
 viewer/data/
+node_modules/

@@ -1,8 +1,11 @@
 // Tooltip next to the pointer, positioned within the canvas.
 
-const tipEl = document.getElementById("tip");
-const svg = document.getElementById("g");
+import { byId } from "./dom.js";
 
+const tipEl = byId("tip");
+const svg = byId("g");
+
+/** @param {MouseEvent} ev @param {string} text */
 export function showTip(ev, text) {
   tipEl.style.display = "block"; tipEl.textContent = text;
   const r = svg.getBoundingClientRect();

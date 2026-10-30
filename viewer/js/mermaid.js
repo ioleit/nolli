@@ -1,7 +1,10 @@
 // The static Mermaid export (default.mmd, written by nolli extract) in an overlay pane.
 
-const pane = document.getElementById("mmdpane");
+import { byId } from "./dom.js";
 
+const pane = byId("mmdpane");
+
+/** @param {string} dataset */
 export async function toggleMermaid(dataset) {
   if (pane.style.display === "block") { pane.style.display = "none"; return; }
   pane.style.display = "block"; pane.innerHTML = "rendering…";
@@ -14,4 +17,4 @@ export async function toggleMermaid(dataset) {
   } catch (e) { pane.innerHTML = `<pre style="color:#c33">${String(e)}</pre><pre>${src.replace(/</g, "&lt;")}</pre>`; }
 }
 
-pane.addEventListener("click", ev => { if (ev.target.closest("div[style*=sticky]")) ev.currentTarget.style.display = "none"; });
+pane.addEventListener("click", ev => { if (/** @type {Element} */ (ev.target).closest("div[style*=sticky]")) pane.style.display = "none"; });
