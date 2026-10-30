@@ -22,15 +22,18 @@ const color = i => PALETTE[(i < 0 ? 7 : i) % PALETTE.length];
 const ns = "http://www.w3.org/2000/svg";
 /** @param {string} t @param {Record<string, string | number>} [a] @returns {SVGElement} */
 const el = (t, a = {}) => { const x = /** @type {SVGElement} */ (document.createElementNS(ns, t)); for (const [k, v] of Object.entries(a)) x.setAttribute(k, String(v)); return x; };
-// Arrowheads: one size for every edge (in drawing units, so they zoom with the boxes), in
-// the edge's colour; the line stops at the head's base so a thick line can't show through
-// the point. HEAD is the head's length.
-const HEAD = 9;
-/** @type {Record<string, string>} edge style -> colour, as in viewer.css */
-const HEAD_COLOR = { import: "#999", http: "#2a7fd4", env: "#3a9d5d", deploy: "#8e5bd6" };
-const MARKERS = Object.entries(HEAD_COLOR).map(([k, c]) =>
-  `<marker id="arr-${k}" viewBox="0 0 10 10" refX="0" refY="5" markerUnits="userSpaceOnUse" markerWidth="${HEAD}" markerHeight="${HEAD}" orient="auto"><path d="M0 1L10 5L0 9z" fill="${c}"/></marker>`).join("")
-  + `<marker id="arr-provide" viewBox="0 0 10 10" refX="0" refY="5" markerUnits="userSpaceOnUse" markerWidth="${HEAD}" markerHeight="${HEAD}" orient="auto"><path d="M0.5 1L9.5 5L0.5 9z" fill="Canvas" stroke="#2aa8a8" stroke-width="1"/></marker>`;
+// Arrowheads: one size for every edge (in drawing units, so they zoom with the boxes),
+// drawn as part of the edge so they share its colour, opacity and hover (viewer.css); the
+// line stops at the head's base so a thick line can't show through the point.
+const HEAD = 9, HALF = 3.6;  // length, half width
+
+/** The head at the end of a route, as polygon points. @param {{ x: number, y: number }[]} pts */
+function head(pts) {
+  const n = pts.length, a = pts[n - 2], b = pts[n - 1], len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len, l = Math.min(HEAD, len * 0.9);
+  const bx = b.x - ux * l, by = b.y - uy * l;
+  return `${b.x},${b.y} ${bx - uy * HALF},${by + ux * HALF} ${bx + uy * HALF},${by - ux * HALF}`;
+}
 
 /** The route with its last segment shortened by the head's length. @param {{ x: number, y: number }[]} pts */
 function shortened(pts) {
@@ -140,7 +143,6 @@ const build = (n, p, onToggle) => isAnchor(n) ? buildAnchor(n, p, !!onToggle) : 
  */
 export function draw(g, scene, laid, onToggle, sameWidth = false) {
   g.innerHTML = "";
-  const defs = el("defs"); defs.innerHTML = MARKERS; g.appendChild(defs);
   /** @type {SVGElement[]} */
   const foldLayer = [];
   /** @type {Map<string, Handle>} */
@@ -166,7 +168,8 @@ export function draw(g, scene, laid, onToggle, sameWidth = false) {
       const d = "M" + pts.map(p => `${p.x},${p.y}`).join("L");
       const line = "M" + shortened(pts).map(p => `${p.x},${p.y}`).join("L");
       const width = sameWidth ? 1.2 : Math.min(2.6, 0.8 + 0.4 * Math.log2(e.count));
-      ge.appendChild(el("path", { d: line, "marker-end": `url(#arr-${e.style in HEAD_COLOR || e.style === "provide" ? e.style : "import"})`, "stroke-width": width }));
+      ge.appendChild(el("path", { d: line, "stroke-width": width }));
+      if (pts.length > 1) ge.appendChild(el("polygon", { class: "head", points: head(pts) }));
       ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
       const a = pts[Math.floor((pts.length - 1) / 2)], b = pts[Math.ceil((pts.length - 1) / 2)]; mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }

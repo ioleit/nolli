@@ -51,24 +51,30 @@ svg#g:active { cursor: grabbing; }
 .node text { font-size: 12px; fill: var(--ink); pointer-events: none; }
 .node text.badge { font-size: 9.5px; fill: var(--muted); }
 .node { cursor: pointer; }
-.edge path { fill: none; stroke: #8889; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.edge { color: #8889; --eo: 1; }
+.edge path { fill: none; stroke: currentColor; stroke-opacity: var(--eo); stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .node rect { vector-effect: non-scaling-stroke; }
-.edge.import path { stroke: #888b; }
-.edge.http path { stroke: #2a7fd4; }
-.edge.env path { stroke: #3a9d5d; }
-.edge.deploy path { stroke: #8e5bd6; }
-.edge.provide path { stroke: #2aa8a8; stroke-dasharray: 5 3; }
+/* the arrowhead is part of the edge: same colour, same opacity, same hover */
+.edge polygon.head { fill: currentColor; fill-opacity: var(--eo); stroke: none; }
+.edge.provide polygon.head { fill: Canvas; fill-opacity: 1; stroke: currentColor; stroke-opacity: var(--eo); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.edge.import { color: #888b; }
+.edge.http { color: #2a7fd4; }
+.edge.env { color: #3a9d5d; }
+.edge.deploy { color: #8e5bd6; }
+.edge.provide { color: #2aa8a8; }
+.edge.provide path { stroke-dasharray: 5 3; }
 .edge.dangling path { stroke-dasharray: 3 3; }
-.edge.heuristic path { stroke-opacity: .65; }
-.edge.local path { stroke-opacity: .3; stroke-width: .7px !important; }
-.edge.single path { stroke-opacity: .55; }
-.edge.weak path { stroke-opacity: .22; stroke-width: .7px !important; }
-.edge.local.single path, .edge.local.weak path { stroke-opacity: .2; }
+.edge.heuristic { --eo: .65; }
+.edge.local { --eo: .3; }
+.edge.single { --eo: .55; }
+.edge.weak { --eo: .22; }
+.edge.local.single, .edge.local.weak { --eo: .2; }
+.edge.local path, .edge.weak path { stroke-width: .7px !important; }
 svg.nolabels .edge text { display: none; }
 .node.group > rect { fill: #2a7fd408; stroke: #2a7fd4aa; stroke-dasharray: 6 3; }
 .node.utility > rect { stroke-dasharray: 1 3; }
 .edge text { font-size: 9.5px; fill: var(--muted); paint-order: stroke; stroke: Canvas; stroke-width: 3px; }
-.edge:hover path { stroke: #d9534f; stroke-opacity: 1; }
+.edge:hover { color: #d9534f; --eo: 1; }
 #status { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
 #mmdpane { position: absolute; inset: 0; overflow: auto; background: Canvas; padding: 8px; display: none; }
 #mmdpane .req { color: var(--muted); margin-bottom: 6px; }
