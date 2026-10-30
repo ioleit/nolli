@@ -59,7 +59,7 @@ Honest marks on how much thought each part has had. Treat everything as open.
 | `nolli/view.py` | one greedy heuristic for the default cut, with magic numbers |
 | `nolli/scene.py` | a view state in, everything the viewer draws out (nodes with their drawn parent, edges, labels, badges, emphasis, tooltips); ids are stable across states so two scenes can be diffed |
 | `nolli/mermaid.py` | static export of the default cut so a README or PR can show it |
-| `viewer/index.html` | temporary throwaway visualization; fetches the scene, ELK.js layout, orthogonal edges that look like a circuit board; redraws from scratch on every change |
+| `viewer/` | temporary throwaway visualization: `index.html` (markup), `viewer.css`, and ES modules in `js/` loaded without a build step (`layout.js` scene → positions and edge routes via ELK.js, no DOM; `draw.js` → SVG; `main.js` wiring; state, sidebar, raw JSON, pan/zoom); orthogonal edges that look like a circuit board; redraws from scratch on every change |
 | `viewer/serve.py` | tiny server for local use: static files, datasets, and `/api/scene` (standard library only; imports `nolli` from the checkout it sits in) |
 | `tests/test_smoke.py` | one synthetic mixed repo pinning the seams that broke once; nothing tests the roll-up rules |
 | `dev/` | local workflow: extract a set of repositories you keep outside this repo (`corpus.example.toml`) |

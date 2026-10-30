@@ -1,0 +1,66 @@
+/* nolli viewer */
+:root { color-scheme: light dark; --line: #8884; --ink: CanvasText; --muted: #888; }
+body { margin: 0; font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 290px 1fr; height: 100vh; }
+aside { border-right: 1px solid var(--line); padding: 10px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+aside h1 { font-size: 14px; margin: 0; }
+aside h2 { font-size: 11px; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+select, input[type=number] { font: inherit; }
+label { display: block; margin: 1px 0; }
+main { position: relative; overflow: hidden; }
+svg#g { width: 100%; height: 100%; display: block; cursor: grab; }
+svg#g:active { cursor: grabbing; }
+.node rect { fill: Canvas; stroke: var(--ink); stroke-width: 1; rx: 4; }
+.node.container > rect { fill: #80808012; stroke: #8887; }
+.node.container.cycle > rect { stroke: #d9534f; }
+.node.files > rect { fill: #80808018; stroke: #8886; stroke-dasharray: 2 2; }
+.node.files text { fill: var(--muted); }
+.node.package > rect { stroke-dasharray: 4 3; fill: #80808008; }
+.node.service > rect, .node.image > rect, .node.host > rect { fill: #4a90e218; stroke: #4a90e2; }
+.node.endpoint > rect, .node.env > rect { fill: #2a7fd410; stroke: #2a7fd4aa; }
+.node.env > rect { fill: #3a9d5d10; stroke: #3a9d5daa; }
+.node.cycle > rect { stroke: #d9534f; stroke-width: 1.6; }
+.node.class > rect { fill: #c9a22714; stroke: #c9a227; }
+.node.file > rect { stroke: #8888; }
+.node .icon rect { fill: #8884; stroke: none; }
+.node .icon text { font-size: 9px; font-weight: 700; fill: var(--ink); }
+.node .icon.C rect { fill: #c9a22744; }
+.node .icon.D rect { fill: #8886; }
+.node .icon.m rect { fill: #4a90e233; }
+.node circle.anchor { fill: #8886; stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.node g.fold { cursor: pointer; pointer-events: all; }
+.node g.fold rect { fill: transparent; stroke: none; }
+.node g.fold:hover rect { fill: #8883; }
+.node g.fold text { font-size: 14px; fill: var(--muted); }
+.node g.fold:hover text { fill: var(--ink); }
+.node text { font-size: 12px; fill: var(--ink); pointer-events: none; }
+.node text.badge { font-size: 9.5px; fill: var(--muted); }
+.node { cursor: pointer; }
+.edge path { fill: none; stroke: #8889; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.node rect { vector-effect: non-scaling-stroke; }
+.edge.import path { stroke: #888b; }
+.edge.http path { stroke: #2a7fd4; }
+.edge.env path { stroke: #3a9d5d; }
+.edge.deploy path { stroke: #8e5bd6; }
+.edge.provide path { stroke: #2aa8a8; stroke-dasharray: 5 3; }
+.edge.dangling path { stroke-dasharray: 3 3; }
+.edge.heuristic path { stroke-opacity: .65; }
+.edge.local path { stroke-opacity: .3; stroke-width: .7px !important; }
+.edge.single path { stroke-opacity: .55; }
+.edge.weak path { stroke-opacity: .22; stroke-width: .7px !important; }
+.edge.local.single path, .edge.local.weak path { stroke-opacity: .2; }
+svg.nolabels .edge text { display: none; }
+.node.utility > rect { stroke-dasharray: 1 3; }
+.edge text { font-size: 9.5px; fill: var(--muted); paint-order: stroke; stroke: Canvas; stroke-width: 3px; }
+.edge:hover path { stroke: #d9534f; stroke-opacity: 1; }
+#status { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
+#rawpane { position: absolute; inset: 0; overflow: auto; background: Canvas; padding: 8px 12px; display: none; font: 11.5px/1.45 ui-monospace, monospace; }
+#rawpane pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+#rawpane .req { font: 12px system-ui, sans-serif; color: var(--muted); margin-bottom: 6px; word-break: break-all; }
+#rawpane .unfold { color: #2a7fd4; cursor: pointer; text-decoration: underline dotted; }
+#tip { position: absolute; pointer-events: none; background: Canvas; border: 1px solid var(--line); padding: 6px 8px; font-size: 11px; max-width: 460px; display: none; white-space: pre-wrap; z-index: 2; }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ul.plain li { padding: 1px 0; }
+.legend span { display: inline-block; width: 22px; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+button { font: inherit; padding: 2px 8px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px dashed #8886; border-radius: 4px; padding: 2px 6px; margin: 2px 2px 2px 0; font-size: 12px; }
+.chip button { padding: 0 6px; font-size: 11px; }
