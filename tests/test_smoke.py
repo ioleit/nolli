@@ -110,3 +110,33 @@ def test_default_cut_lifts_frontend_to_backend(repo: Path):
     assert "fs:backend/tests" not in view["visible"]
     assert not any(e.dst == "ext" or e.src == "ext" for e in rolled.edges)
     assert any("ext" in a for a in rolled.annotations.values())
+
+
+def test_scene_of_default_cut(repo: Path):
+    """The scene the viewer draws: stable ids, every node's parent drawn before it, edges
+    between drawn nodes, and a state the client can send back unchanged."""
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    sc = scene(m, ViewState(budget=12))
+    ids = [n["id"] for n in sc["nodes"]]
+    assert len(ids) == len(set(ids))
+    seen: set[str] = set()
+    for n in sc["nodes"]:
+        assert n["parent"] is None or n["parent"] in seen
+        seen.add(n["id"])
+    assert all(e["src"] in seen and e["dst"] in seen for e in sc["edges"])
+    assert len({e["key"] for e in sc["edges"]}) == len(sc["edges"])
+    assert any(e["style"] == "http" for e in sc["edges"])
+    again = scene(m, ViewState(expanded=sc["state"]["expanded"], budget=12))
+    assert again["nodes"] == sc["nodes"] and again["edges"] == sc["edges"]
+
+
+def test_folding_drops_what_was_unfolded_inside(repo: Path):
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    inner = ViewState(expanded=["fs:.", "fs:backend", "fs:backend/store.py"])
+    assert "fs:backend/store.py" in scene(m, inner)["state"]["expanded"]
+    folded = scene(m, ViewState(expanded=["fs:.", "fs:backend/store.py"]))
+    assert folded["state"]["expanded"] == ["fs:."]

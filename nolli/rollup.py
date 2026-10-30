@@ -162,7 +162,8 @@ def shown_files(m: Model, d: str, hidden: set[str], k: int, degree: dict[str, in
     return loose[:k], loose[k:]
 
 
-def visible_from_expanded(m: Model, expanded: set[str], hidden: set[str], show_files=None, degree=None) -> set[str]:
+def visible_from_expanded(m: Model, expanded: set[str], hidden: set[str], show_files=None, degree=None,
+                          walked: set[str] | None = None) -> set[str]:
     """The cut for a set of unfolded containers.
 
     An unfolded container shows *all* its non-hidden children (a partially opened
@@ -171,12 +172,15 @@ def visible_from_expanded(m: Model, expanded: set[str], hidden: set[str], show_f
     directory chains are compressed to their end, so ``expanded`` should name chain ends.
     A package's ``__init__`` is not a node: its classes are children of the package and its
     body is the package's anchor ``body:<dir>``, present only if it has edges.
-    ``show_files`` and ``degree`` are accepted for compatibility and ignored.
+    ``show_files`` and ``degree`` are accepted for compatibility and ignored. ``walked``,
+    if given, receives the unfolded containers actually reached (the effective unfold set).
     """
     visible: set[str] = set()
     anchors = init_anchor_dirs(m, hidden)
 
     def walk(n: str) -> None:
+        if walked is not None:
+            walked.add(n)
         kind = m.entities[n].kind
         if kind == "file":
             visible.add(f"body:{n}")
