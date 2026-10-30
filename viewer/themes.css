@@ -9,19 +9,21 @@
   --bg: #fcfcff; --ink: #1e1b4b; --muted: #6b6f9a; --line: #d9dcf0; --hover-bg: #eceefe;
   --box-fill: #ffffff; --box-stroke: transparent; --box-radius: 2px;
   --box-shadow: drop-shadow(2px 2px 0 #312e8130) drop-shadow(0 0 .5px #312e8140);
-  --container-fill: #4f46e50b; --container-stroke: transparent;
-  --files-fill: #4f46e512; --files-stroke: #a5a8d6;
+  --container-fill: #f3f3fd; --container-stroke: transparent;
+  --files-fill: #ececfa; --files-stroke: #a5a8d6;
   --package-fill: #ffffff; --file-stroke: transparent;
   --deploy-fill: #f4efff; --deploy-stroke: transparent;
   --iface-fill: #eef3ff; --iface-stroke: transparent;
   --env-fill: #ecf8f3; --env-stroke: transparent;
   --class-fill: #fffaf0; --class-stroke: transparent;
-  --group-fill: #4f46e506; --group-stroke: #818cf8;
+  --group-fill: #f5f5fe; --group-stroke: #818cf8;
   --icon: #e3e5f8; --icon-D: #c9cdf0; --icon-m: #dbe3ff; --icon-C: #fbe5bd;
   --anchor: #a5a8d6;
   --cycle: #b91c1c; --hover: #e11d48;
   --e-other: #9396c4; --e-import: #5d6199; --e-http: #4338ca; --e-env: #0f766e; --e-deploy: #7e22ce; --e-provide: #4f46e5; --e-dangling: #a5a8d6;
 }
 :root[data-theme=textbook] .node.container > rect { filter: drop-shadow(2px 2px 0 #312e8118); }
+/* fills are opaque: a drop shadow follows the shape's opacity, so a translucent box
+   would cast almost nothing but the shade of its outline */
 /* the borders that carry meaning stay: package, utility */
 :root[data-theme=textbook] .node.package > rect, :root[data-theme=textbook] .node.utility > rect { stroke: var(--muted); }
