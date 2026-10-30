@@ -155,17 +155,18 @@ def run(ctx: Context) -> None:
             else:
                 ctx.notes.setdefault("http-routes-unresolved-includes", []).append((rv.file, raw))
 
-    def api_of(key: tuple[str, str]) -> tuple[str, str]:
-        """(key, label) of the API a root serves: the app, or a router nobody mounts."""
+    def api_of(key: tuple[str, str]) -> tuple[str, str, str]:
+        """(key, file, about) of the API a root serves: the app, or a router nobody mounts."""
         rv = routers[key]
-        return f"{rv.file}:{rv.name}", f"{rv.name} · {rv.file}" + ("" if rv.is_app else " (never mounted)")
+        what = "app" if rv.is_app else "router, never mounted,"
+        return f"{rv.file}:{rv.name}", rv.file, f"FastAPI {what} `{rv.name}` in {rv.file}"
 
     def emit(key: tuple[str, str], api_key: tuple[str, str], base: str, exact: bool, depth: int = 0) -> None:
         rv = routers[key]
         here = base + rv.prefix
-        api_id, api_label = api_of(api_key)
+        api_id, api_file, api_about = api_of(api_key)
         for method, path, line, handler in rv.routes:
-            api.provide(ctx, api.Operation("http", api_id, api_label, method, (here + path) or "/", rv.file, line,
+            api.provide(ctx, api.Operation("http", api_id, api_file, api_about, method, (here + path) or "/", rv.file, line,
                                            handler, exact, "python-fastapi"))
         if depth > 10:
             return

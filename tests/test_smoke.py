@@ -87,7 +87,7 @@ def test_model_binds_the_seams(repo: Path):
     app = "api:http:backend/main.py:app"
     assert m.parent(app) == "api" and m.entities[app].kind == "api"
     worlds = app + "/api/worlds"
-    assert m.parent(worlds) == app and m.entities[worlds].name == "/api/worlds"
+    assert m.parent(worlds) == app and m.entities[worlds].name == "api/worlds"
     assert sorted(m.entities[c].name for c in m.children(worlds)) == ["GET {world}/echoes", "POST"]
     # env read meets env set; compose and Dockerfile give allocation and runtime use
     assert ("fs:backend/main.py", "env:REDIS_URL") in rel_set(m, "use", "env")
@@ -284,3 +284,19 @@ def test_directory_with_source_inside_stays_shown():
     for parent, child in [("fs:.", "fs:evals"), ("fs:evals", "fs:evals/probe.py"), ("fs:evals", "fs:evals/runs.json"), ("fs:.", "fs:docs"), ("fs:docs", "fs:docs/a.md")]:
         m.contain(parent, child, "t")
     assert hidden_by_role(m) == {"fs:evals/runs.json", "fs:docs", "fs:docs/a.md"}
+
+
+def test_box_names_are_icons_then_a_name(repo: Path):
+    """Every box: small icons saying what it is, then a readable name."""
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    app = "api:http:backend/main.py:app"
+    worlds = app + "/api/worlds"
+    sc = scene(m, ViewState(expanded=["fs:.", "fs:backend", "api", app, worlds], groups=["api"]))
+    names = {n["id"]: (n["icons"], n["label"]) for n in sc["nodes"] if "icons" in n}
+    assert names["fs:backend/store.py"] == (["m"], "store")
+    assert names[app] == (["API"], "backend")
+    assert names[worlds] == (["/"], "api/worlds")
+    assert names[app + " POST /api/worlds"] == (["POST"], "")
+    assert names[app + " GET /api/worlds/{world}/echoes"] == (["GET"], "{world}/echoes")

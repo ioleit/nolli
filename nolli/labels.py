@@ -1,4 +1,9 @@
-"""How the picture names things: shared by the scene and the hover descriptions."""
+"""How the picture names things: shared by the scene and the hover descriptions.
+
+Every box is named the same way: zero or more small icons that say what it is (``D``
+directory, ``m`` module, ``C`` class, ``svc``/``img`` deployment, ``API``, ``/`` a path step
+of an API, the verbs of an operation), then a readable name (``icons_of``, ``name_of``).
+Text that has no icons (hover descriptions, residue) uses ``label_of``."""
 
 from __future__ import annotations
 
@@ -12,7 +17,34 @@ def is_body(x: str) -> bool:
     return x.startswith("body:")
 
 
-def label_of(m: Model, x: str, expanded: set[str]) -> str:
+VERB_ICON = {"WEBSOCKET": "WS", "DELETE": "DEL", "OPTIONS": "OPT"}
+
+
+def icons_of(m: Model, x: str) -> list[str]:
+    if is_body(x):
+        return []
+    e = m.entities[x]
+    if e.kind == "directory":
+        return ["D"]
+    if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
+        return ["m"]
+    if e.kind == "class":
+        return ["C"]
+    if e.kind == "service":
+        return ["svc"]
+    if e.kind == "image":
+        return ["img"]
+    if e.kind == "api":
+        return ["API"]
+    if e.kind == "resource":
+        return ["/"]
+    if e.kind == "endpoint":
+        return [VERB_ICON.get(v, v) for v in e.attrs.get("method", "").split(",") if v]
+    return []
+
+
+def name_of(m: Model, x: str, expanded: set[str]) -> str:
+    """The readable name drawn after the icons."""
     if is_body(x):
         return ""
     e = m.entities[x]
@@ -20,11 +52,20 @@ def label_of(m: Model, x: str, expanded: set[str]) -> str:
         return e.name if e.attrs.get("root") else display_path(m, x, expanded)
     if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
         return e.name.rsplit(".", 1)[0] if "." in e.name else e.name  # a source file is its module
-    if e.kind == "service":
-        return "svc " + e.name
     if e.kind == "image":
-        return "img " + e.name.removesuffix("/Dockerfile")
+        return e.name.removesuffix("/Dockerfile")
+    if e.kind == "endpoint" and "name" in e.attrs:
+        return e.attrs["name"]  # the path below its step, often nothing: the verb says it all
     return e.name
+
+
+def label_of(m: Model, x: str, expanded: set[str]) -> str:
+    """The name in running text: the word-like icons stay in front ("svc api", "GET health")."""
+    if m.has(x) and m.entities[x].kind == "endpoint":
+        return m.entities[x].name
+    icons = [i for i in icons_of(m, x) if i not in ("D", "m", "C", "/")]
+    name = name_of(m, x, expanded)
+    return " ".join(icons + ([name] if name else []))
 
 
 def leaf_count(m: Model, x: str) -> int:

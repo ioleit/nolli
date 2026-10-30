@@ -17,11 +17,15 @@ The structure (entity kind, id):
     resource  api:<protocol>:<key>/<seg>/<seg>     a step in the API's path tree (a parameter is ``{}``)
     endpoint  api:<protocol>:<key> <VERB> <path>   one operation
 
-A resource is labelled by its own segments (relative to its parent, which is drawn
-whenever it is), an operation inside a resource by its verb alone. Path steps without an
-operation of their own and with one step below are merged with it
+Names follow the picture's pattern, icons then a readable name (``nolli/labels.py``):
+an API is named after the directory it is declared in (``API server``), a resource by
+its own segments relative to its parent, which is drawn whenever it is (``/ assistant``,
+``/ api`` at the top),
+an operation by its verb and the path below its step, usually nothing (``GET``). Path
+steps without an operation of their own and with one step below are merged with it
 (``conversations/{project_name}``); a step with one operation and nothing below is no
-box: the operation takes its place, labelled ``<VERB> <segments>``.
+box: the operation takes its place (``GET setup/status``). The entity's ``name`` is the
+whole text (``GET setup/status``), ``attrs["name"]`` the part after the verb.
 
 Relations: ``provide(handler file, endpoint)`` and, after matching,
 ``use(caller file, endpoint)``. Unmatched calls stay ``unresolved:<protocol>:...``.
@@ -42,7 +46,8 @@ GROUP = "api"
 class Operation:
     protocol: str  # "http"; later "grpc", "graphql", ...
     api: str  # the served API's key, unique within the protocol (e.g. "server/main.py:app")
-    api_label: str  # how the API box is labelled ("FastAPI app · server/main.py")
+    api_file: str  # where the API is declared: it is named after that place ("server")
+    api_about: str  # what it is, for the hover text ("FastAPI app `app` in server/main.py")
     verb: str  # GET, POST, WEBSOCKET, ... or an RPC method name
     path: str  # "/api/projects/{name}"; for RPC "Service/Method"
     file: str  # the file that provides it (the handler's)
@@ -103,6 +108,23 @@ def _step() -> _Step:
     return _Step({}, [], defaultdict(int))
 
 
+def api_names(files: dict[tuple[str, str], str]) -> dict[tuple[str, str], str]:
+    """(protocol, key) -> a readable name: the directory the API is declared in (its
+    module at the top level), the whole path without extension where that is taken."""
+    def short(f: str) -> str:
+        d, _, base = f.rpartition("/")
+        return d or base.rsplit(".", 1)[0]
+
+    out = {k: short(f) for k, f in files.items()}
+    taken: dict[str, int] = defaultdict(int)
+    for n in out.values():
+        taken[n] += 1
+    for k, f in files.items():
+        if taken[out[k]] > 1:
+            out[k] = f.rsplit(".", 1)[0] + ("" if k[1].endswith(":app") else ":" + k[1].rsplit(":", 1)[-1])
+    return out
+
+
 def build(ctx: Context) -> None:
     ops: list[Operation] = ctx.notes.pop("api-operations", [])
     if not ops:
@@ -115,10 +137,12 @@ def build(ctx: Context) -> None:
     for op in ops:
         by_api[(op.protocol, op.api)].append(op)
 
+    names = api_names({k: v[0].api_file for k, v in by_api.items()})
     for (protocol, key), api_ops in sorted(by_api.items()):
         aid = f"api:{protocol}:{key}"
-        m.add_entity(Entity(aid, "api", api_ops[0].api_label,
-                            {"protocol": protocol, "key": key, "operations": len(api_ops)}, prov))
+        m.add_entity(Entity(aid, "api", names[(protocol, key)],
+                            {"protocol": protocol, "key": key, "file": api_ops[0].api_file,
+                             "about": api_ops[0].api_about, "operations": len(api_ops)}, prov))
         m.add_relation(Relation(CONTAIN, GROUP, aid, provenance=prov))
 
         root = _step()
@@ -129,11 +153,11 @@ def build(ctx: Context) -> None:
                 s.names[seg] += 1
             s.ops.append(op)
 
-        def endpoint(op: Operation, parent: str, label: str) -> None:
+        def endpoint(op: Operation, parent: str, name: str) -> None:
             eid = f"{aid} {op.verb} {op.path}"
             if not m.has(eid):
-                m.add_entity(Entity(eid, "endpoint", label,
-                                    {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid},
+                m.add_entity(Entity(eid, "endpoint", f"{op.verb} {name}".rstrip(),
+                                    {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "name": name},
                                     Provenance(op.extractor, op.file, op.line)))
                 m.add_relation(Relation(CONTAIN, parent, eid, provenance=prov))
             m.add_relation(Relation(PROVIDE, ctx.fs_id(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
@@ -144,22 +168,22 @@ def build(ctx: Context) -> None:
             while not s.ops and len(s.children) == 1:
                 seg, s = next(iter(s.children.items()))
                 path, label = path + [seg], label + [s.label()]
-            text = ("/" if parent == aid else "") + "/".join(label)
+            text = "/".join(label)  # relative to its parent; the "/" icon says it is a path
             verbs = sorted({op.verb for op in s.ops})
             if len(verbs) == 1 and not s.children:
                 for op in s.ops:
-                    endpoint(op, parent, f"{op.verb} {text}")
+                    endpoint(op, parent, text)
                 return
             rid = f"{aid}/" + "/".join(path)
             m.add_entity(Entity(rid, "resource", text, {"protocol": protocol, "path": "/" + "/".join(path), "api": aid}, prov))
             m.add_relation(Relation(CONTAIN, parent, rid, provenance=prov))
             for op in sorted(s.ops, key=lambda o: o.verb):
-                endpoint(op, rid, op.verb)
+                endpoint(op, rid, "")
             for seg, child in sorted(s.children.items()):
                 emit(child, rid, path + [seg], [child.label()])
 
         for op in sorted(root.ops, key=lambda o: o.verb):
-            endpoint(op, aid, f"{op.verb} /")
+            endpoint(op, aid, "/")
         for seg, child in sorted(root.children.items()):
             emit(child, aid, [seg], [child.label()])
 

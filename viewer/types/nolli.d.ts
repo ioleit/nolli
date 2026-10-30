@@ -98,7 +98,7 @@ export interface BoxNode {
   parent: string | null;  // the drawn container, null at the top
   container: boolean;  // unfolded with drawn children
   label: string;
-  icon: string;  // "D", "m", "C" or ""
+  icons: string[];  // what it is, drawn before the label: "D", "m", "C", "svc", "img", "API", "/", verbs ("GET", "WS")
   foldable: boolean;  // has children: clicking unfolds (or − folds)
   leaves: number | null;  // folded: how much is inside
   badge: string;
