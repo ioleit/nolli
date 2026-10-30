@@ -80,7 +80,7 @@ async function render(keepZoom = false) {
   if (sc !== scene) return;  // a newer scene arrived while this one was laid out
   finish();
   const root = byId("root");
-  const drawn = draw(root, sc, laid, toggle);
+  const drawn = draw(root, sc, laid, toggle, state.sameWidth);
   shown = { scene: sc, laid };
   if (keepZoom && fitted && prev) {
     // a step from the picture on screen: move from there, keeping the clicked box in place
@@ -100,6 +100,7 @@ byId("reset").addEventListener("click", () => { state.expanded = null; refresh()
 byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; refresh(); });
 for (const [id, k] of Object.entries(OPTIONS)) input(id).addEventListener("change", () => { state[k] = input(id).checked; refresh(true); });
 input("nolabels").addEventListener("change", () => { state.noLabels = input("nolabels").checked; byId("g").classList.toggle("nolabels", state.noLabels); writeHash(); });
+input("samewidth").addEventListener("change", () => { state.sameWidth = input("samewidth").checked; writeHash(); if (state.view === "diagram") render(true); });
 input("animate").addEventListener("change", () => { state.animate = input("animate").checked; writeHash(); });
 select("direction").addEventListener("change", () => { state.direction = select("direction").value === "RIGHT" ? "RIGHT" : "DOWN"; writeHash(); if (state.view === "diagram") render(); });
 for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; select("engine").appendChild(o); }
@@ -120,6 +121,6 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
   if (!name) { byId("status").textContent = "no datasets"; return; }
   sel.value = name;
-  Object.assign(state, h.st, { name, noLabels: h.noLabels, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, view: h.view });
+  Object.assign(state, h.st, { name, noLabels: h.noLabels, sameWidth: h.sameWidth, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, view: h.view });
   await refresh();
 })();

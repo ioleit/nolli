@@ -28,6 +28,7 @@
 
   <h2>Edges</h2>
   <label class="opt" data-help="Hide the count and kind written on each edge. Hover an edge for its details."><input type="checkbox" id="nolabels"> Hide labels</label>
+  <label class="opt" data-help="Draw every edge at one width. Off: an edge is wider the more references it stands for (logarithmic)."><input type="checkbox" id="samewidth"> Same width</label>
   <label class="opt" data-help="When one box depends on three or more children of another unfolded box, draw one edge to that box's border instead of one per child."><input type="checkbox" id="bundle"> Bundle fan-out</label>
   <label class="opt" data-help="Edges between boxes inside the same unfolded box are dropped; their count is shown in that box's header."><input type="checkbox" id="hideinternal"> Hide internal</label>
   <label class="opt" data-help="For endpoints and env variables whose group is not shown: connect the caller (or reader) straight to the handler (or setter). Off: they become badges."><input type="checkbox" id="through"> Through interfaces</label>
@@ -50,7 +51,7 @@
     <div><span style="border-color:#8e5bd6"></span>deploy: depends_on, url, copies, entrypoint</div>
     <div><span style="border-color:#2aa8a8;border-top-style:dashed"></span>interface → the module that realises it</div>
     <div><span style="border-color:#8886;border-top-style:dashed"></span>one-sided interface</div>
-    <div style="margin-top:4px;color:var(--muted)">D directory · m module · C class · dot in a module header = the module's own code<br>width = log(count) · pale = heuristic match · red border = in a cycle<br>click a box: unfold all its children · click its − : fold · drag: pan · wheel: zoom</div>
+    <div style="margin-top:4px;color:var(--muted)">D directory · m module · C class · dot in a module header = the module's own code<br>width = log(count), unless Same width · pale = heuristic match · red border = in a cycle<br>click a box: unfold all its children · click its − : fold · drag: pan · wheel: zoom</div>
   </div>
   <h2>Residue</h2>
   <ul class="plain" id="residue"></ul>
