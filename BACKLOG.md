@@ -12,8 +12,7 @@ solution; solutions are for whoever picks it up.
 - **Rendering, open-ended.** The ELK orthogonal edge routing reads like a circuit board
   once there are more than a few dozen edges; labels are tiny; layout direction, edge
   routing (splines, bundling along the containment tree), emphasis and reading order are
-  all unexplored beyond defaults. Edges can lie over a container's − and swallow the
-  click. Every change redraws from scratch; scenes carry stable node and edge keys, so
+  all unexplored beyond defaults. Every change redraws from scratch; scenes carry stable node and edge keys, so
   the step between two can be animated (boxes grow out of the one unfolded).
 - **Tests for the roll-up rules.** Only extraction is tested; none of the rules in
   `nolli/rollup.md` has a test, and two broke silently while they were being built.
