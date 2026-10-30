@@ -5,7 +5,10 @@
 Static files come from this directory; ``/data/<name>/<file>`` serves the
 dataset directories under --data; ``/api/list`` lists them, newest first;
 ``/api/scene?d=<name>&...`` returns the scene for a view state (``nolli/scene.py``;
-the parameters are the viewer's location-hash keys). Needs only the standard library:
+the parameters are the viewer's location-hash keys); ``/api/node?d=<name>&id=<entity>``
+returns the details of one box in a diff dataset (``nolli/changes.py``), ``/api/changes?d=``
+its numbered changes, the review's verdicts and what to unfold to see all changes, and ``POST /api/verdicts?d=`` stores a
+review's verdicts.json next to the dataset. Needs only the standard library:
 the nolli package is imported from this checkout, not from an installed copy.
 """
 
@@ -25,6 +28,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # the nolli package of this checkout
 
 from nolli.model import Model  # noqa: E402
+from nolli.changes import change_items, details  # noqa: E402
+from nolli.review import read_verdicts, resolve_verdicts, review_expanded  # noqa: E402
 from nolli.scene import scene, state_from_query  # noqa: E402
 
 _models: dict[str, tuple[float, Model]] = {}
@@ -43,6 +48,17 @@ def load_model(path: Path) -> Model:
     with _models_lock:
         _models[str(path)] = (mtime, m)
     return m
+
+
+def load_verdicts(ds: Path) -> list[dict]:
+    """verdicts.json in a dataset directory, if there is a valid one."""
+    f = ds / "verdicts.json"
+    if not f.is_file():
+        return []
+    try:
+        return read_verdicts(f.read_text())
+    except (ValueError, OSError):
+        return []
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -81,7 +97,7 @@ class Handler(SimpleHTTPRequestHandler):
                 t0 = time.perf_counter()
                 m = load_model(ds / "model.json")
                 t1 = time.perf_counter()
-                out = scene(m, state_from_query(q))
+                out = scene(m, state_from_query(q), load_verdicts(ds))
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
@@ -90,6 +106,31 @@ class Handler(SimpleHTTPRequestHandler):
                               "entities": len(m.entities), "relations": len(m.relations)}
             out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
             self.send_json(out)
+            return
+        if path == "/api/changes":
+            q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+            ds = self.data_root / q.get("d", "")
+            if not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
+                self.send_json({"error": f"no dataset {q.get('d')!r}"}, 404)
+                return
+            m = load_model(ds / "model.json")
+            diff = bool(m.meta.get("diff"))
+            self.send_json({"items": change_items(m) if diff else [],
+                            "verdicts": resolve_verdicts(m, load_verdicts(ds)) if diff else [],
+                            "all_changes": review_expanded(m) if diff else []})
+            return
+        if path == "/api/node":
+            q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+            ds = self.data_root / q.get("d", "")
+            if not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
+                self.send_json({"error": f"no dataset {q.get('d')!r}"}, 404)
+                return
+            m = load_model(ds / "model.json")
+            x = q.get("id", "")
+            if not m.has(x[5:] if x.startswith("body:") else x):
+                self.send_json({"error": f"no entity {x!r}"}, 404)
+                return
+            self.send_json(details(m, x))
             return
         if path.startswith("/data/"):
             rel = path[len("/data/"):]
@@ -106,6 +147,23 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
             return
         super().do_GET()
+
+    def do_POST(self) -> None:  # noqa: N802
+        """POST /api/verdicts?d=<name>: store a review's verdicts.json in the dataset (validated)."""
+        path = unquote(self.path.split("?")[0])
+        q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+        ds = self.data_root / q.get("d", "")
+        if path != "/api/verdicts" or not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
+            self.send_json({"error": "POST /api/verdicts?d=<dataset> only"}, 404)
+            return
+        body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
+        try:
+            v = read_verdicts(body)
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, 400)
+            return
+        (ds / "verdicts.json").write_text(json.dumps([{k: x[k] for k in ("target", "verdict", "reason")} for x in v], indent=1))
+        self.send_json({"saved": len(v)})
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")

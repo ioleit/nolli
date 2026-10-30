@@ -50,17 +50,39 @@ class RolledEdge:
     confidence: str = "exact"
     via: set[str] = field(default_factory=set)
     names: dict[str, int] = field(default_factory=dict)  # referenced names (Python refs) -> references
+    # in a diff model (nolli/diff.py): references before and after, and the changed facts
+    # underneath (fact key -> added / removed / changed); in a plain model base == head == count
+    base: int = 0
+    head: int = 0
+    changed: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def status(self) -> str | None:
+        """added / removed / changed, or None when nothing underneath changed."""
+        if self.base == 0 and self.head > 0:
+            return "added"
+        if self.head == 0 and self.base > 0:
+            return "removed"
+        if self.changed or self.base != self.head:
+            return "changed"
+        return None
 
     def to_dict(self) -> dict:
         return {"kind": self.kind, "src": self.src, "dst": self.dst, "subkind": self.subkind, "count": self.count,
-                "confidence": self.confidence, "via": sorted(self.via), "names": dict(self.names)}
+                "confidence": self.confidence, "via": sorted(self.via), "names": dict(self.names),
+                "base": self.base, "head": self.head, "changed": dict(sorted(self.changed.items()))}
 
     def absorb(self, other: "RolledEdge") -> None:
-        """Count, interfaces and names of an edge folded into this one."""
+        """Count, interfaces, names, confidence and changes of an edge folded into this one."""
         self.count += other.count
         self.via |= other.via
         for k, v in other.names.items():
             self.names[k] = self.names.get(k, 0) + v
+        self.base += other.base
+        self.head += other.head
+        self.changed.update(other.changed)
+        if CONF_RANK[other.confidence] > CONF_RANK[self.confidence]:
+            self.confidence = other.confidence
 
 
 @dataclass
@@ -73,6 +95,8 @@ class RolledUp:
     hidden_relations: int
     unresolved: dict[str, int]
     suppressed: dict[str, int] = field(default_factory=dict)  # edge subkind -> count, hidden by option
+    internal_changes: dict[str, dict[str, str]] = field(default_factory=dict)  # box -> changed facts inside it
+    annotation_changes: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)  # node -> group -> changed facts
 
     def to_dict(self) -> dict:
         return {"visible": self.visible, "edges": [e.to_dict() for e in self.edges], "internal": self.internal,
@@ -90,8 +114,19 @@ def image_aliases(m: Model) -> dict[str, str]:
 
 
 def hidden_by_role(m: Model, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
+    """Files whose role is hidden, and directories whose role is hidden unless a file with a
+    shown role is somewhere inside: a directory's role is by bytes, so ``evals/`` full of
+    result files is "config" while its Python modules are source, and those must stay."""
     rs = set(roles)
-    return {e.id for e in m.entities.values() if e.kind in ("file", "directory") and e.attrs.get("role") in rs and not e.attrs.get("root")}
+    keep: set[str] = set()
+    for e in m.entities.values():
+        if e.kind == "file" and e.attrs.get("role") not in rs:
+            p = m.parent(e.id)
+            while p is not None and p not in keep:
+                keep.add(p)
+                p = m.parent(p)
+    return {e.id for e in m.entities.values() if e.kind in ("file", "directory") and e.attrs.get("role") in rs
+            and not e.attrs.get("root") and e.id not in keep}
 
 
 def chain_end(m: Model, n: str, hidden: set[str]) -> str:
@@ -259,6 +294,11 @@ def representative(m: Model, visible: set[str], hidden: set[str], alias: dict[st
     return rep
 
 
+def fact_key(r) -> str:
+    """A stored relation's id: unique per (kind, src, dst, subkind) in a diff model."""
+    return f"{r.kind}|{r.src}|{r.dst}|{r.subkind}"
+
+
 def owner_of(node: str) -> str:
     return node.split(":", 1)[1] if node.startswith(("files:", "body:")) else node
 
@@ -296,7 +336,7 @@ def utility_badges(m: Model, rolled: "RolledUp", min_in: int = 6) -> set[str]:
         return utilities
     kept = []
     for e in rolled.edges:
-        if e.kind == USE and e.dst in utilities:
+        if e.kind == USE and e.dst in utilities and not e.status:  # a changed dependency on a utility stays an edge, so a review sees it
             rolled.annotations.setdefault(e.src, {})
             rolled.annotations[e.src]["util:" + e.dst] = rolled.annotations[e.src].get("util:" + e.dst, 0) + e.count
         else:
@@ -399,8 +439,6 @@ def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int
             merged = RolledEdge(kind, other if side == "dst" else c, c if side == "dst" else other, sub, 0, "exact")
             for e in es:
                 merged.absorb(e)
-                if CONF_RANK[e.confidence] > CONF_RANK[merged.confidence]:
-                    merged.confidence = e.confidence
             merged.via.add(f"fan:{len(es)}")
             merged_edges.append((other, c, kind, sub, merged))
         # a bundle that attaches to a container's boundary absorbs every edge from deeper
@@ -423,10 +461,13 @@ def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int
 
 def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_interfaces: bool = True,
          dangling_use_kinds=DANGLING_USE_KINDS, dangling_provide_kinds=DANGLING_PROVIDE_KINDS,
-         annotate_folded_groups: bool = True, env_edges: bool = False, shown_groups=frozenset()) -> RolledUp:
+         annotate_folded_groups: bool = True, env_edges: bool = False, shown_groups=frozenset(),
+         side: str = "both") -> RolledUp:
     """``shown_groups``: root groups the viewer draws as boxes (folded or not); edges to them
     are drawn, and interfaces inside them are not derived through. Other root groups are
-    filtered out of the picture: their edges become annotations."""
+    filtered out of the picture: their edges become annotations.
+    ``side``: in a diff model, "base" or "head" draws one commit only; "both" draws the
+    merged picture, with removed facts counted on their base side."""
     alias = image_aliases(m)
     rep = representative(m, visible, hidden, alias)
     edges: dict[tuple, RolledEdge] = {}
@@ -434,11 +475,16 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
     hidden_count = 0
     unresolved: dict[str, int] = defaultdict(int)
 
-    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, via: str | None = None, name: str | None = None) -> None:
+    internal_changes: dict[str, dict[str, str]] = defaultdict(dict)
+
+    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, via: str | None = None, name: str | None = None,
+            base: int | None = None, head: int | None = None, changed: dict[str, str] | None = None) -> None:
         if kind == PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
         if a == b or owner_of(a) == owner_of(b):
             internal[owner_of(a)] += count
+            if changed:
+                internal_changes[owner_of(a)].update(changed)
             return
         if sub == "ref":
             sub = "import"  # references are the fine-grained form of imports; one edge kind in the picture
@@ -446,18 +492,27 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
         e = edges.get(key)
         if e is None:
             e = edges[key] = RolledEdge(kind, a, b, sub, 0, conf)
-        e.count += count
-        if CONF_RANK[conf] > CONF_RANK[e.confidence]:
-            e.confidence = conf
-        if via:
-            e.via.add(via)
-        if name:
-            e.names[name] = e.names.get(name, 0) + count
+        e.absorb(RolledEdge(kind, a, b, sub, count, conf, via={via} if via else set(), names={name: count} if name else {},
+                            base=count if base is None else base, head=count if head is None else head, changed=changed or {}))
+
+    def sides(r) -> tuple[int, int, str | None]:
+        """(references before, after, change status) of a fact; status None when unchanged."""
+        d = r.attrs.get("diff")
+        if not d:
+            return r.count, r.count, None
+        return d.get("base", 0), d.get("head", 0), d["status"]
+
+    def drawn_count(b: int, h: int) -> int:
+        return b if side == "base" else h if side == "head" else (h or b)
+
+    def on_side(r) -> bool:
+        st = (r.attrs.get("diff") or {}).get("status")
+        return not ((side == "base" and st == "added") or (side == "head" and st == "removed"))
 
     users: dict[str, list] = defaultdict(list)
     providers: dict[str, list] = defaultdict(list)
     for r in m.relations:
-        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(m, r):
+        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(m, r) or not on_side(r):
             continue
         dst_ent = m.entities[r.dst]
         if dst_ent.kind == "unresolved":
@@ -477,7 +532,9 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
         if a is None or b is None:
             hidden_count += r.count
             continue
-        add(r.kind, a, b, r.subkind, r.count, r.confidence, name=r.attrs.get("name"))
+        rb, rh, st = sides(r)
+        add(r.kind, a, b, r.subkind, drawn_count(rb, rh), r.confidence, None, r.attrs.get("name"), rb, rh,
+            {fact_key(r): st} if st else None)
 
     for iface in set(users) | set(providers):
         us, ps = users.get(iface, []), providers.get(iface, [])
@@ -488,11 +545,17 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
                 if a is None:
                     hidden_count += u.count
                     continue
+                ub, uh, ust = sides(u)
                 for p in ps:
                     b = rep(p.src)
                     if b is None:
                         continue
-                    add(USE, a, b, sub, u.count, "heuristic" if "heuristic" in (u.confidence, p.confidence) else "exact", iface)
+                    pb, ph, pst = sides(p)
+                    # the derived edge exists on a side where both the call and the handler do
+                    db, dh = (ub if pb else 0), (uh if ph else 0)
+                    ch = {k: v for k, v in ((fact_key(u), ust), (fact_key(p), pst)) if v}
+                    add(USE, a, b, sub, drawn_count(db, dh), "heuristic" if "heuristic" in (u.confidence, p.confidence) else "exact",
+                        iface, base=db, head=dh, changed=ch)
         else:
             g = rep(iface)
             keep = (us if sub in dangling_use_kinds else []) + (ps if sub in dangling_provide_kinds else [])
@@ -501,12 +564,15 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
                 if a is None or g is None:
                     hidden_count += r.count
                     continue
-                add(r.kind, a, g, sub + "-dangling", r.count, r.confidence, iface)
+                rb, rh, st = sides(r)
+                add(r.kind, a, g, sub + "-dangling", drawn_count(rb, rh), r.confidence, iface, base=rb, head=rh,
+                    changed={fact_key(r): st} if st else None)
 
     # Edges touching a filtered-out group become annotations on the other end; a code node copied
     # into a drawn service gets a chip instead of an edge; env wiring (reader -> setter) says
     # the same as allocation and is suppressed unless asked for.
     annotations: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    annotation_changes: dict[str, dict[str, dict[str, str]]] = defaultdict(lambda: defaultdict(dict))
     allocations: dict[str, list[str]] = defaultdict(list)
     suppressed: dict[str, int] = defaultdict(int)
     kept: list[RolledEdge] = []
@@ -518,6 +584,8 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
         if annotate_folded_groups and (sg or dg) and not (sg and dg):
             node, group = (e.dst, e.src) if sg else (e.src, e.dst)
             annotations[node][group] += e.count
+            if e.changed:
+                annotation_changes[node][group].update(e.changed)
         elif e.kind == ALLOCATE and e.subkind == "copies" and m.has(e.dst) and m.entities[e.dst].kind == "service":
             allocations[e.src].append(e.dst)
         elif e.subkind == "env" and not env_edges:
@@ -527,4 +595,6 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
 
     return RolledUp(sorted(visible), sorted(kept, key=lambda e: (e.src, e.dst, e.kind, e.subkind)),
                   dict(internal), {k: dict(v) for k, v in annotations.items()},
-                  {k: sorted(v) for k, v in allocations.items()}, hidden_count, dict(unresolved), dict(suppressed))
+                  {k: sorted(v) for k, v in allocations.items()}, hidden_count, dict(unresolved), dict(suppressed),
+                  {k: dict(v) for k, v in internal_changes.items()},
+                  {k: {g: dict(c) for g, c in v.items()} for k, v in annotation_changes.items()})

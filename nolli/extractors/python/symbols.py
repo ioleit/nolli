@@ -148,7 +148,7 @@ def run(ctx: Context) -> None:
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
                 sid = f"py:{rel}#{node.name}"
-                attrs = {"path": rel, "line": node.lineno, "language": "python"}
+                attrs = {"path": rel, "line": node.lineno, "end_line": node.end_lineno, "language": "python"}
                 if doc_summary(node):
                     attrs["doc"] = doc_summary(node)
                 m.add_entity(Entity(sid, "class", node.name, attrs, Provenance("python-symbols", rel, node.lineno)))

@@ -3,13 +3,94 @@
 export interface Chip { id: string; name: string; color: number }
 
 /** Prose with data in it: plain strings, { v } for a value to set apart, { doc } for what the code says about itself (a docstring). */
-export type Parts = (string | { v: string } | { doc: string })[];
+export type Parts = (string | { v: string } | { doc: string } | { verdict: Verdict })[];
 
 /** What hovering over a box or an edge shows (nolli/info.py): sentences, one per line. */
 export type Info = Parts[];
 
+// ---------- review mode (diff datasets, nolli/review.py) ----------
+
+export type Status = "added" | "removed" | "changed";
+export type Verdict = "fine" | "question" | "problem";
+
+/** A box's change: its own status, and totals in its subtree. */
+export interface NodeDiff {
+  status: Status;
+  added: number; removed: number;  // changed lines
+  files: number;  // changed files
+  new: number; gone: number;  // entities added / removed
+  internal: number;  // changed facts between its own children
+  git?: string; old_path?: string; renamed_to?: string;
+}
+
+/** One stored fact that changed, with a link to where. */
+export interface FactChange {
+  fact: string; status: Status; kind: string; subkind: string; src: string; dst: string;
+  base: number; head: number; path: string | null; line: number | null; link: string | null;
+}
+
+export interface EdgeDiff { status: Status; base: number; head: number; facts: string[]; changes: FactChange[]; more: number }
+
+/** The diff summary of a scene: the two commits and the change as a whole. */
+export interface SceneDiff {
+  base: string; head: string; base_short: string; head_short: string; remote: string | null; pr: number | null;
+  title: string | null; files_changed: number; added: number; removed: number; link: string | null;
+  drawn: Partial<Record<Status, number>>; changed_entities: number;
+}
+
+/** A numbered review item (GET /api/changes). */
+export interface ReviewItem {
+  id: string;
+  category: "component" | "dependency" | "content";
+  status: Status;
+  title: string;
+  area: string;
+  role: string;
+  link: string | null;
+  entities: string[];
+  facts: string[];
+  reveal: string[];  // boxes to unfold so it can be seen
+  focus: string[];
+  classes?: (string | { name: string; added: number; removed: number })[];
+  lines?: number;
+  added?: number; removed?: number;
+  base?: number; head?: number; targets?: string[];
+  changes?: FactChange[]; more?: number;  // dependency: the references that changed, with links
+  hunks?: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[]; more_hunks?: number;  // edited file
+}
+
+/** A review agent's verdict on a node or edge of the review diagram (review.mmd), resolved. */
+export interface ReviewVerdict {
+  id: string;  // V1, V2, … in file order
+  target: string;  // as written: a diagram node id, or "n_a --> n_b"
+  verdict: Verdict;
+  reason: string;
+  ends: string[];  // what it is about: one entity (a box) or two (an edge); empty if the diagram has no such target
+  edge: boolean;
+  reveal: string[];  // boxes to unfold so it can be seen
+  label: string;  // how to name it: "path" or "a → b"
+}
+
+/** GET /api/node: everything about one box in a diff dataset. */
+export interface Details {
+  id: string; kind: string; name: string; path: string | null; link: string | null;
+  diff: NodeDiff | null;
+  files: { id: string; path: string; git: string; old_path: string | null; added: number; removed: number; binary: boolean;
+           link: string | null; blob: string | null; hunks: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[];
+           more_hunks: number }[];
+  more_files: number;
+  classes: { id: string; name: string; path: string | null; added: number; removed: number; lines: (number | null)[]; link: string | null }[];
+  entities: { id: string; kind: string; name: string; status: Status; path: string | null; link: string | null }[];
+  more_entities: number;
+  dependencies: FactChange[];
+  more_dependencies: number;
+}
+
 /** A module's own code: a small dot inside the module. */
-export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; info: Info }
+export interface AnchorNode {
+  id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; info: Info;
+  items?: string[]; verdicts?: string[]; verdict?: Verdict | null; review?: Info;  // review mode only, as on a box
+}
 
 export interface BoxNode {
   id: string;
@@ -28,6 +109,11 @@ export interface BoxNode {
   uses: string[];  // unfolded boxes: utilities their children use, one line each at the bottom right
   utilities_used: string[];  // ids of the utilities whose edges from this box became badges
   info: Info;
+  diff?: NodeDiff | null;  // review mode only
+  items?: string[];  // review items shown on this box
+  verdicts?: string[];  // the review's verdicts on it (V ids)
+  review?: Info;  // the card's second part, under a line: what the change did to it, and the verdicts on it
+  verdict?: Verdict | null;  // the worst of them
 }
 
 export type SceneNode = AnchorNode | BoxNode;
@@ -49,6 +135,11 @@ export interface SceneEdge {
   dangling: boolean;
   heuristic: boolean;
   info: Info;
+  diff?: EdgeDiff | null;
+  items?: string[];
+  verdicts?: string[];
+  review?: Info;
+  verdict?: Verdict | null;
 }
 
 export interface SceneState {
@@ -62,6 +153,7 @@ export interface SceneState {
   bundle: boolean;
   utilities: number;  // more incoming edges than this: a utility; 0: off
   hide_internal: boolean;
+  side: "both" | "base" | "head";
 }
 
 export interface Scene {
@@ -73,6 +165,7 @@ export interface Scene {
   stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
   dataset: { name: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
   url?: string;  // added by the viewer: the request that produced it
+  diff?: SceneDiff;  // a diff dataset: the review mode
 }
 
 export interface Point { x: number; y: number }

@@ -10,6 +10,7 @@ no internal structure (externals, env, endpoints) never unfold by themselves.
 
 from __future__ import annotations
 
+from .changes import change_scores, diff_index, is_diff
 from .rollup import hidden_by_role, image_aliases, init_anchor_dirs, is_init, reveal_scores, visible_from_expanded
 from .model import Model
 
@@ -29,27 +30,46 @@ def unfold_cost(m: Model, v: str, hidden: set[str], anchors: set[str] = frozense
     return n + (1 if v in anchors else 0) - 1
 
 
-def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("fs:.",)) -> dict:
+def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("fs:.",), hidden: set[str] | None = None) -> dict:
+    """In a diff model the budget goes to the changes first (``changes.change_scores``),
+    then whatever is left to structure as usual."""
+
     roles = tuple(hidden_roles) if hidden_roles is not None else hidden_by_role.__defaults__[0]
-    hidden = hidden_by_role(m, roles) | set(image_aliases(m))
+    if hidden is None:
+        hidden = hidden_by_role(m, roles) | set(image_aliases(m))
     lca, _loose = reveal_scores(m, hidden)
     anchors = init_anchor_dirs(m, hidden)
     expanded: set[str] = {e for e in always_expand if m.has(e)}
-    while True:
-        visible = visible_from_expanded(m, expanded, hidden)
-        room = budget - len(visible)
-        best, best_key = None, (0.0, 0)
-        for v in visible:
-            if v.startswith("body:") or m.entities[v].kind not in ("directory", "group", "file") or not m.children(v):
-                continue
-            score, delta = lca.get(v, 0), unfold_cost(m, v, hidden, anchors)
-            if score <= 0 or delta < 1 or delta > room:
-                continue
-            key = (score / delta, score)
-            if key > best_key or (key == best_key and best is not None and v < best):
-                best, best_key = v, key
-        if best is None:
-            break
-        expanded.add(best)
+    diff = is_diff(m)
+    phases = [change_scores(m, hidden), lca] if diff else [lca]
+    # in a review, boxes where nothing changed are faded and cost half a box of attention
+    changed = diff_index(m) if diff else {}
+    weight = (lambda x: 1.0 if x in changed or x.startswith("body:") else 0.5) if diff else (lambda x: 1.0)  # noqa: E731
+
+    def cost_of_unfolding(v: str) -> float:
+        if not diff:
+            return unfold_cost(m, v, hidden, anchors)
+        after = visible_from_expanded(m, expanded | {v}, hidden)
+        return sum(weight(x) for x in after) - sum(weight(x) for x in visible)
+
+    for scores in phases:
+        while True:
+            visible = visible_from_expanded(m, expanded, hidden)
+            room = budget - sum(weight(x) for x in visible)
+            best, best_key = None, (0.0, 0.0)
+            for v in visible:
+                if v.startswith("body:") or m.entities[v].kind not in ("directory", "group", "file") or not m.children(v):
+                    continue
+                if scores.get(v, 0) <= 0:
+                    continue
+                score, delta = scores.get(v, 0), cost_of_unfolding(v)
+                if score <= 0 or delta <= 0 or delta > room:
+                    continue
+                key = (score / delta, score)
+                if key > best_key or (key == best_key and best is not None and v < best):
+                    best, best_key = v, key
+            if best is None:
+                break
+            expanded.add(best)
     visible = visible_from_expanded(m, expanded, hidden)
     return {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible), "hidden_roles": list(roles)}

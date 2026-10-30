@@ -263,3 +263,17 @@ def test_own_code_dot(tmp_path: Path):
     assert info["body:fs:pkg/core.py"][0] == "core defines frob and helper"  # frob is referenced, helper not
     assert "the constant LIMIT" in info["body:fs:pkg/core.py"][1]
     assert any("re-exports Frob and frob" in t for t in info.get("body:fs:pkg", [])) or "body:fs:pkg" not in info
+
+
+def test_directory_with_source_inside_stays_shown():
+    """A directory whose bytes are mostly config is still drawn when it holds source files."""
+    from nolli.model import Entity, Model, Provenance
+    from nolli.rollup import hidden_by_role
+
+    m = Model()
+    for eid, kind, role in [("fs:.", "directory", "mixed"), ("fs:evals", "directory", "config"), ("fs:evals/probe.py", "file", "source"),
+                            ("fs:evals/runs.json", "file", "config"), ("fs:docs", "directory", "docs"), ("fs:docs/a.md", "file", "docs")]:
+        m.add_entity(Entity(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "fs:." else {})}, Provenance("t")))
+    for parent, child in [("fs:.", "fs:evals"), ("fs:evals", "fs:evals/probe.py"), ("fs:evals", "fs:evals/runs.json"), ("fs:.", "fs:docs"), ("fs:docs", "fs:docs/a.md")]:
+        m.contain(parent, child, "t")
+    assert hidden_by_role(m) == {"fs:evals/runs.json", "fs:docs", "fs:docs/a.md"}

@@ -42,5 +42,3 @@ solution; solutions are for whoever picks it up.
   configuration.
 - A place for a declared architecture (layers, allowed dependencies) next to the
   extracted one.
-- The per-change structural diff and the justification flow around it: not started; the
-  picture was built to make it possible.
