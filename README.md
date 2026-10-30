@@ -44,8 +44,6 @@ python -I viewer/serve.py --data <parent of out_dirs> --host 127.0.0.1 --port 87
 
 Unfolding and folding animate (`viewer/js/transition.js` plans, `animate.js` plays): new boxes open out of the box they belong to, leaving ones shrink into it, the rest slide, and the view moves with the clicked box so it stays where it was on screen. "Animate" under Layout (or `an=0`) turns the motion off; the clicked box still stays in place.
 
-Focus: shift-click boxes (or put entity ids in the link, `f=<id>,<id>`) to say which ones you want to understand. The picture folds everything, unfolds down to each of them and, as far as the budget allows, to what connects them; the view fits that part, the members are ringed, the connections drawn strong, direct neighbours dimmed and the rest faded (`nolli/focus.py`).
-
 The viewer computes nothing itself: on every click it asks the server for the scene
 (`/api/scene?d=<dataset>&x=<unfolded ids>&…`, the same keys as its location hash) and
 lays it out with ELK. Tabs above the canvas switch between the drawing ("Diagram"), the
@@ -65,7 +63,6 @@ Honest marks on how much thought each part has had. Treat everything as open.
 | `nolli/rollup.py`, `nolli/rollup.md` | the roll-up from facts to a picture and the rules tuned on top of it; the central idea, but every rule is a judgement call from one afternoon — see `NOTES.md` |
 | `nolli/view.py` | one greedy heuristic for the default cut, with magic numbers |
 | `nolli/scene.py` | a view state in, everything the viewer draws out (nodes with their drawn parent, edges, labels, badges, emphasis, tooltips); ids are stable across states so two scenes can be diffed |
-| `nolli/focus.py` | a focus set in, the containers to unfold and a grade for each drawn node and edge out; connections are shortest paths in the fact graph (or a shared dependency or user), so they don't depend on the cut; one evening's design, untested on real questions |
 | `nolli/mermaid.py` | static export of the default cut so a README or PR can show it |
 | `viewer/` | temporary throwaway visualization: `index.html` (markup), `viewer.css` (every colour a variable) and `themes.css` (themes that override them, chosen under Layout), and ES modules in `js/` loaded without a build step (`layout/` scene → positions and edge routes, no DOM, one module per engine: ELK.js layered (one layout over all levels, or each box separately), or Cytoscape.js fCoSE force-directed, chosen in the sidebar; `draw.js` → SVG; `main.js` wiring; state, sidebar, JSON and Mermaid views, pan/zoom); orthogonal edges that look like a circuit board; redraws from scratch on every change |
 | `viewer/package.json`, `tsconfig.json`, `types/`, `test/` | Node is only for development: `npm install`, then `npm run check` (TypeScript checks the JavaScript through its JSDoc types, strict) and `npm test` (unit tests of the pure modules). The browser loads the `.js` files as they are |

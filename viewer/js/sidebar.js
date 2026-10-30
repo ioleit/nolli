@@ -16,26 +16,8 @@ const GROUP_HELP = {
 /**
  * @param {Scene} scene
  * @param {() => void} onFilter the shown groups or roles changed
- * @param {(id: string | null) => void} onFocus take one member out of the focus; null: clear it
  */
-export function sidebar(scene, onFilter, onFocus) {
-  const fd = byId("focus"); fd.innerHTML = "";
-  const f = scene.focus;
-  if (!f || !f.members.length) fd.innerHTML = `<div class="muted">shift-click boxes to focus on them</div>`;
-  else {
-    for (const id of f.members) {
-      const chip = document.createElement("span"); chip.className = "chip focus"; chip.dataset.help = id;
-      const b = document.createElement("button"); b.textContent = "×"; b.title = "take out of the focus"; b.addEventListener("click", () => onFocus(id));
-      chip.append(f.labels[id] || id, b); fd.appendChild(chip);
-    }
-    const how = f.pairs.map(p => p.how);
-    const s = document.createElement("div"); s.className = "muted";
-    s.textContent = f.members.length < 2 ? "one box: add another to see how they connect" :
-      `${how.filter(h => h === "path").length} pairs by a path, ${how.filter(h => h === "meet").length} by a shared box, ${how.filter(h => h === "none").length} not connected · ${f.connectors} in between`;
-    const clear = document.createElement("button"); clear.textContent = "clear"; clear.addEventListener("click", () => onFocus(null));
-    fd.append(s, clear);
-  }
-
+export function sidebar(scene, onFilter) {
   const d = scene.dataset;
   byId("meta").textContent = `${(d.repo || "").split("/").pop()} @ ${d.commit || "?"} · ${d.files ?? "?"} files · ${d.entities} entities · ${d.relations} relations`;
   const ul = byId("residue"); ul.innerHTML = "";

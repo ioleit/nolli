@@ -18,7 +18,7 @@ import { plan } from "./transition.js";
 import { finish, play } from "./animate.js";
 import { hideRaw, onRawToggle, showRaw } from "./raw.js";
 import { sidebar, syncControls } from "./sidebar.js";
-import { fit, fitBox } from "./panzoom.js";
+import { fit } from "./panzoom.js";
 import { hideMermaid, showMermaid } from "./mermaid.js";
 import "./help.js";
 import { applyTheme, initialTheme, themeOptions } from "./theme.js";
@@ -52,7 +52,7 @@ async function refresh(keepZoom = false) {
   const sc = body; sc.url = url; scene = sc;
   // adopt the server's normalised state (default cut resolved, folded descendants dropped)
   state.expanded = sc.state.expanded; state.roles = sc.state.roles; state.groups = sc.state.groups; state.budget = sc.state.budget; state.utilities = sc.state.utilities;
-  syncControls(); sidebar(sc, () => refresh(true), id => id === null ? clearFocus() : focusOn(id));
+  syncControls(); sidebar(sc, () => refresh(true));
   await show(keepZoom);
   writeHash();
 }
@@ -72,26 +72,6 @@ function toggle(id) {
   state.expanded = [...x]; clicked = id; refresh(true);
 }
 
-/** Shift-click: add a box to the focus or take it out; the cut is recomputed for the new focus. @param {string} id */
-function focusOn(id) {
-  state.focus = state.focus.includes(id) ? state.focus.filter(x => x !== id) : [...state.focus, id];
-  if (state.focus.length) state.expanded = null;  // the focus cut
-  refresh(false);
-}
-
-function clearFocus() { state.focus = []; refresh(true); }
-
-/** The part of the picture the focus is about: its boxes and what connects them. @param {Scene} sc @param {Laid} laid */
-function focusBox(sc, laid) {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const n of sc.nodes) {
-    const b = laid.nodes.get(n.id);
-    if (!b || (n.relevance !== "focus" && n.relevance !== "path")) continue;
-    x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h);
-  }
-  return x0 === Infinity ? null : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-}
-
 async function render(keepZoom = false) {
   if (!scene) return;
   hideRaw();
@@ -101,17 +81,13 @@ async function render(keepZoom = false) {
   if (sc !== scene) return;  // a newer scene arrived while this one was laid out
   finish();
   const root = byId("root");
-  const drawn = draw(root, sc, laid, toggle, state.sameWidth, focusOn);
-  byId("g").classList.toggle("focusing", !!sc.focus);
+  const drawn = draw(root, sc, laid, toggle, state.sameWidth);
   shown = { scene: sc, laid };
   if (keepZoom && fitted && prev) {
     // a step from the picture on screen: move from there, keeping the clicked box in place
     const p = plan(prev.scene, prev.laid, sc, laid, from);
     play(p, drawn, drawGhosts(root, prev.scene, prev.laid, p.leaving.keys(), drawn.firstEdge), state.animate && !reducedMotion.matches ? undefined : 0);
-  } else {
-    const fb = sc.focus && focusBox(sc, laid);
-    if (fb) fitBox(fb); else fit(laid.width, laid.height);
-  }
+  } else fit(laid.width, laid.height);
   fitted = true;
   const s = byId("status"); s.style.color = "";
   s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms.scene} ms, round trip ${scene.stats.ms.roundtrip} ms`;
