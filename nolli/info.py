@@ -2,74 +2,159 @@
 
 A description is a list of lines; a line is a list of parts, plain strings and
 {"v": value} for the data in it ("api-mock references 1 name in lib/"). The viewer sets
-the values apart. One sentence each for now; more lines can be added.
+the values apart.
+
+What a box *is* comes from its language's describe module next to its extractors
+(extractors/python/describe.py, …); this module adds what is the same for every
+language: what unfolding a folder shows, its size, and what a box depends on outside the
+picture (external packages, utilities, environment, deployment, HTTP), which the boxes
+themselves no longer carry as badges.
 """
 
 from __future__ import annotations
 
-from .model import Model
-from .rollup import RolledUp
-from .labels import is_body, label_of, leaf_count
+from collections import defaultdict
 
-LANGUAGE = {"python": "Python", "typescript": "TypeScript", "javascript": "JavaScript", "shell": "shell", "go": "Go",
-            "rust": "Rust", "java": "Java", "js": "JavaScript", "py": "Python"}
+from .extractors import describers
+from .labels import is_body
+from .model import ALLOCATE, PROVIDE, USE
+from .prose import Ctx, count, listing, say
 
-
-def say(template: str, *values) -> list:
-    """A sentence as parts: the template's text, and each {} filled with a value part."""
-    parts: list = []
-    for i, text in enumerate(template.split("{}")):
-        if text:
-            parts.append(text)
-        if i < len(values):
-            parts.append({"v": str(values[i])})
-    return parts
+GENERIC_NOUN = {"directory": "folder", "file": "file", "class": "class", "endpoint": "endpoint", "group": "group",
+                "env": "variable", "service": "service", "image": "image", "package": "package", "host": "host"}
+WHAT = {"endpoint": "an HTTP endpoint", "env": "an environment variable", "service": "a Compose service",
+        "image": "a Docker image", "package": "an external package", "host": "a host"}
+NOUN_ORDER = ["package", "folder", "module", "class"]  # earlier in a list; the rest by count
 
 
-def count(n: int, one: str, many: str | None = None) -> str:
-    return f"{n} {one if n == 1 else (many or one + 's')}"
+def noun(ctx: Ctx, x: str) -> str:
+    for d in describers():
+        n = d.noun(ctx, x)
+        if n:
+            return n
+    return GENERIC_NOUN.get(ctx.m.entities[x].kind, ctx.m.entities[x].kind)
 
 
-def end_label(m: Model, x: str, expanded: set[str]) -> str:
-    """A box as the picture names it: directories end in "/", a module's own code says so."""
+def what_unfolding_shows(ctx: Ctx, x: str) -> list | None:
+    kids = ctx.shown_children(x)
+    if not kids:
+        return None
+    by: dict[str, int] = defaultdict(int)
+    for c in kids:
+        by[noun(ctx, c)] += 1
+    order = sorted(by, key=lambda k: (NOUN_ORDER.index(k) if k in NOUN_ORDER else len(NOUN_ORDER), -by[k], k))
+    return listing("Unfolding shows {}", [count(by[k], k) for k in order], limit=6)
+
+
+def size(ctx: Ctx, x: str) -> list | None:
+    files = ctx.files_below(x)
+    if not files:
+        return None
+    lines = sum(ctx.m.entities[f].attrs.get("lines") or 0 for f in files)
+    if lines:
+        return say("{} with {} in all", count(len(files), "file"), count(lines, "line"))
+    return say("{} in all", count(len(files), "file"))
+
+
+class Dependencies:
+    """What each drawn box uses outside the picture, from the facts (not the badges): the
+    external packages, environment variables, endpoints and deployment its code touches,
+    collected once per scene for every drawn box."""
+
+    def __init__(self, ctx: Ctx, drawn: set[str]):
+        m = ctx.m
+        self.ext: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        self.env: dict[str, set[str]] = defaultdict(set)
+        self.serves: dict[str, set[str]] = defaultdict(set)
+        self.calls: dict[str, set[str]] = defaultdict(set)
+        self.deployed: dict[str, set[str]] = defaultdict(set)
+
+        def boxes(code: str):
+            """The drawn boxes holding code (itself included), unless it is hidden."""
+            chain, cur = [], code
+            while cur is not None:
+                if cur in ctx.hidden:
+                    return []
+                if cur in drawn:
+                    chain.append(cur)
+                cur = m.parent(cur)
+            return chain
+
+        for r in m.relations:
+            if r.kind not in (USE, PROVIDE, ALLOCATE) or not m.has(r.dst) or not m.has(r.src):
+                continue
+            d, s = m.entities[r.dst], m.entities[r.src]
+            if d.kind == "package" and r.kind == USE:
+                for b in boxes(r.src):
+                    self.ext[b][d.name] += r.count
+            elif d.kind == "env" and r.kind == USE:
+                for b in boxes(r.src):
+                    self.env[b].add(d.name)
+            elif d.kind == "endpoint":
+                target = self.serves if r.kind == PROVIDE else self.calls if r.kind == USE else None
+                if target is not None:
+                    for b in boxes(r.src):
+                        target[b].add(d.id)
+            elif d.kind in ("service", "image") and r.kind == ALLOCATE:
+                for b in boxes(r.src):
+                    self.deployed[b].add(d.name.removesuffix("/Dockerfile"))
+            elif s.kind in ("service", "image") and r.subkind == "entrypoint":
+                for b in boxes(r.dst):
+                    self.deployed[b].add(s.name.removesuffix("/Dockerfile"))
+
+    def lines(self, ctx: Ctx, x: str) -> list[list]:
+        out = []
+        ext = self.ext.get(x)
+        if ext:
+            names = sorted(ext, key=lambda k: (-ext[k], k))
+            out.append(say("Uses {} ({}): ", count(len(names), "external package"), count(sum(ext.values()), "import"))
+                       + listing("{}", names, "more"))
+        utils = sorted({g[5:] for g in (ctx.rolled.annotations.get(x) or {}) if g.startswith("util:")})
+        if utils:
+            out.append(listing("Uses the utilit" + ("y" if len(utils) == 1 else "ies") + " {}", [ctx.name(u) for u in utils]))
+        if self.env.get(x):
+            out.append(say("Reads {}", count(len(self.env[x]), "environment variable")))
+        if self.serves.get(x):
+            out.append(say("Serves {}", count(len(self.serves[x]), "HTTP endpoint")))
+        if self.calls.get(x):
+            out.append(say("Calls {}", count(len(self.calls[x]), "HTTP endpoint")))
+        if self.deployed.get(x):
+            out.append(listing("Deployed in {}", sorted(self.deployed[x])))
+        return out
+
+
+def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
+    m = ctx.m
     if is_body(x):
-        return f"{end_label(m, x[5:], expanded)} (own code)"
-    e = m.entities[x]
-    if e.kind in ("service", "image"):
-        return e.name.removesuffix("/Dockerfile")  # no "svc " / "img " prefix in prose
-    if e.kind == "endpoint":
-        return f"{e.attrs.get('method', '')} {e.attrs.get('path', e.name)}".strip()
-    label = label_of(m, x, expanded)
-    return label + "/" if e.kind == "directory" and not label.endswith("/") else label
-
-
-def node_info(m: Model, x: str, rolled: RolledUp, expanded: set[str], utilities: set[str], container: bool) -> list:
-    if is_body(x):
-        owner = end_label(m, x[5:], expanded)
+        owner = ctx.name(x[5:])
         if m.entities[x[5:]].kind == "directory":
             return [say("The code in {}'s __init__.py beyond re-exporting its modules", owner)]
         return [say("The code in {} outside any class", owner)]
     e = m.entities[x]
-    name, kids = end_label(m, x, expanded), m.children(x)
-    lang = LANGUAGE.get(e.attrs.get("language") or "", "")
+    lines: list[list] = []
+    for d in describers():
+        said = d.describe(ctx, x)
+        if said:
+            lines += said
+            break
+    else:
+        if e.kind == "directory":
+            lines.append(say("{} is the repository", ctx.name(x)) if e.attrs.get("root") else say("{} is a folder", ctx.name(x)))
+        elif e.kind == "file":
+            lines.append(say("{} is a file with {}", ctx.name(x), count(e.attrs["lines"], "line"))
+                         if e.attrs.get("lines") is not None else say("{} is a file", ctx.name(x)))
+        elif e.kind == "group":
+            lines.append(say("{} holds {}", ctx.name(x), count(len(m.children(x)), "entry", "entries")))
+        else:
+            lines.append(say("{} is " + WHAT.get(e.kind, "a " + e.kind), ctx.name(x)))
     if e.kind == "directory":
-        files = leaf_count(m, x)
-        folders = sum(1 for c in kids if m.entities[c].kind == "directory")
-        if folders:
-            return [say("{} holds {} in {}", name, count(files, "file"), count(folders, "folder"))]
-        return [say("{} holds {}", name, count(files, "file"))]
-    if e.kind == "file":
-        if kids:
-            return [say("{} is a " + (lang + " " if lang else "") + "module with {}", name, count(len(kids), "class", "classes"))]
-        return [say("{} is a " + lang + " module", name)] if lang else [say("{} is a file", name)]
-    if e.kind == "class":
-        where = (e.attrs.get("path") or "").rsplit("/", 1)[-1]
-        return [say("{} is a class in {}", name, where)] if where else [say("{} is a class", name)]
-    if e.kind == "group":
-        return [say("{} holds {}", name, count(len(kids), "entry", "entries"))]
-    what = {"endpoint": "an HTTP endpoint", "env": "an environment variable", "service": "a Compose service",
-            "image": "a Docker image", "package": "an external package", "host": "a host"}.get(e.kind, "a " + e.kind)
-    return [say("{} is " + what, name)]
+        for extra in (what_unfolding_shows(ctx, x), size(ctx, x)):
+            if extra:
+                lines.append(extra)
+    lines += deps.lines(ctx, x)
+    if used_by:
+        lines.append(say("A utility, used by {}: their arrows into it are left out", count(used_by, "box", "boxes")))
+    return lines
 
 
 # per edge subkind: a sentence with {} for source, count and target
@@ -89,8 +174,8 @@ PLAIN = {
 }
 
 
-def edge_info(m: Model, e, expanded: set[str], local_in: str | None, weak: bool) -> list:
-    src, dst = end_label(m, e.src, expanded), end_label(m, e.dst, expanded)
+def edge_info(ctx: Ctx, e) -> list:
+    src, dst = ctx.name(e.src), ctx.name(e.dst)
     sub = e.subkind.removesuffix("-dangling")
     dangling = e.subkind.endswith("-dangling")
     if e.kind == "provide":
@@ -99,6 +184,6 @@ def edge_info(m: Model, e, expanded: set[str], local_in: str | None, weak: bool)
         return [say("{} reads {} that nothing here sets", src, count(e.count, "variable"))] if sub == "env" \
             else [say("{} uses {} that nothing here provides", src, count(e.count, "interface"))]
     if sub in COUNTED:
-        template, noun = COUNTED[sub]
-        return [say(template, src, count(e.count, noun), dst)]
+        template, noun_ = COUNTED[sub]
+        return [say(template, src, count(e.count, noun_), dst)]
     return [say(PLAIN.get(sub, "{} uses {}"), src, dst)]

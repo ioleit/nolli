@@ -61,7 +61,7 @@ const fader = els => o => { for (const x of els) if (o === null) x.removeAttribu
  */
 function buildAnchor(n, p, live) {
   const grp = el("g", { class: "node folded files ", transform: at(p) });
-  if (live) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.info)); grp.addEventListener("mouseleave", hideTip); }
+  if (live) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.info, grp)); grp.addEventListener("mouseleave", hideTip); }
   grp.appendChild(el("circle", { cx: 7, cy: 7, r: 5, class: "anchor" }));
   return { els: [grp], update: b => grp.setAttribute("transform", at(b)) };
 }
@@ -76,7 +76,7 @@ function buildAnchor(n, p, live) {
 function buildBox(n, p, onToggle) {
   const isC = n.container;
   const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind].join(" "), transform: at(p) });
-  if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.info)); grp.addEventListener("mouseleave", hideTip); }
+  if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.info, grp)); grp.addEventListener("mouseleave", hideTip); }
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
   const icon = n.icon;
   const centred = !isC && !icon;

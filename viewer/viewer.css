@@ -18,6 +18,7 @@
   --icon: #8884; --icon-D: #8886; --icon-m: #4a90e233; --icon-C: #c9a22744;
   --anchor: #8886;
   --glow-color: #ff5a1f;  /* highlight: a hovered edge or box, its edges and the utilities it uses */
+  --glow: drop-shadow(0 0 1px color-mix(in srgb, var(--glow-color) 75%, transparent)) drop-shadow(0 0 3px color-mix(in srgb, var(--glow-color) 40%, transparent));
   --e-other: #8889; --e-import: #888b; --e-http: #2a7fd4; --e-env: #3a9d5d; --e-deploy: #8e5bd6; --e-provide: #2aa8a8; --e-dangling: #8886;
 }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 290px 1fr; height: 100vh; }
@@ -94,8 +95,8 @@ svg#g:active { cursor: grabbing; }
 svg.nolabels .edge text { display: none; }
 .edge text { font-size: 9.5px; font-family: var(--font-diagram); fill: var(--muted); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
 /* glow: a hovered edge; a hovered leaf box (or own-code dot), its edges and the utilities it uses (.lit, draw.js) */
-.edge:hover, .edge.lit { --eo: 1 !important; filter: drop-shadow(0 0 1.5px var(--glow-color)) drop-shadow(0 0 4px var(--glow-color)); }  /* beats the faint local/single/weak levels */
-.node.lit > rect, .node.lit > circle.anchor { filter: drop-shadow(0 0 2px var(--glow-color)) drop-shadow(0 0 6px var(--glow-color)); }
+.edge:hover, .edge.lit { --eo: 1 !important; filter: var(--glow); }  /* beats the faint local/single/weak levels */
+.node.lit > rect, .node.lit > circle.anchor { filter: var(--glow); }
 #status { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
 #mmdpane { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 8px; display: none; }
 #mmdpane .req { color: var(--muted); margin-bottom: 6px; }
@@ -106,7 +107,8 @@ svg.nolabels .edge text { display: none; }
 /* hover text (js/tip.js): sentences, values set apart */
 #tip { position: absolute; pointer-events: none; display: none; z-index: 2; box-sizing: border-box; max-width: 380px;
   background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
-  box-shadow: 0 4px 16px #0002, 0 1px 3px #0001; font-size: 12.5px; line-height: 1.5; }
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--glow-color) 55%, transparent), 0 0 7px color-mix(in srgb, var(--glow-color) 35%, transparent);
+  font-size: 12.5px; line-height: 1.5; }
 #tip p { margin: 0; }
 #tip p + p { margin-top: 3px; }
 #tip .v { font-weight: 600; background: color-mix(in srgb, var(--e-http) 14%, transparent); border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }

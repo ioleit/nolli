@@ -21,14 +21,14 @@ from .rollup import (
 )
 from .view import default_view
 from .labels import MODULE_LANGS, is_body, label_of, leaf_count
-from .info import edge_info, node_info
+from .info import Dependencies, edge_info, node_info
+from .prose import Ctx
 
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
 DEFAULT_UTILITY_IN = 6  # more incoming edges than this: a utility, drawn as badges
 DEFAULT_GROUPS = ("http",)  # root groups drawn as boxes; the others are badges on their users
-GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "http": "api"}
 
 
 @dataclass
@@ -96,13 +96,11 @@ def icon_of(m: Model, x: str) -> str:
     return ""
 
 
-def badge_text(m: Model, x: str, rolled: RolledUp, used_by: int = 0) -> str:
-    """Counts of edges to filtered-out groups ("19 pkgs"), and for a utility how many boxes
-    use it. Which utilities a box uses is not here: that is the container's ``uses`` list."""
-    ann = rolled.annotations.get(x) or {}
-    parts = [f"used by {used_by}"] if used_by else []
-    parts += [f"{c} {GROUP_SHORT.get(g, g)}" for g, c in sorted(ann.items()) if not g.startswith("util:")]
-    return " · ".join(parts)
+def badge_text(used_by: int = 0) -> str:
+    """For a utility, how many boxes use it. What a box itself depends on outside the
+    picture (external packages, environment, deployment, utilities) is not drawn on it:
+    the hover text says it (info.py)."""
+    return f"used by {used_by}" if used_by else ""
 
 
 def edge_label(e) -> str:
@@ -164,15 +162,17 @@ def scene(m: Model, st: ViewState) -> dict:
                 used_by[g[5:]] += 1
     services = [c for c in m.children("deploy") if m.entities[c].kind == "service"] if m.has("deploy") else []
     nodes: list[dict] = []
+    ctx = Ctx(m, rolled, expanded, hidden, utilities)
+    deps = Dependencies(ctx, set(visible) | expanded)
 
     def used_utils(x: str) -> list[str]:
         return sorted(g[5:] for g in (rolled.annotations.get(x) or {}) if g.startswith("util:"))
 
     def node(x: str, parent: str | None, container: bool) -> dict:
         if is_body(x):
-            return {"id": x, "kind": "anchor", "parent": parent, "utilities_used": used_utils(x), "info": node_info(m, x, rolled, expanded, utilities, False)}
+            return {"id": x, "kind": "anchor", "parent": parent, "utilities_used": used_utils(x), "info": node_info(ctx, deps, x)}
         e = m.entities[x]
-        badge = badge_text(m, x, rolled, used_by.get(x, 0))
+        badge = badge_text(used_by.get(x, 0))
         if container and st.hide_internal and internal_drawn.get(x):
             badge = " · ".join(filter(None, [badge, f"{internal_drawn[x]} internal"]))
         kids = bool(m.children(x))
@@ -184,9 +184,9 @@ def scene(m: Model, st: ViewState) -> dict:
                       for s in rolled.allocations.get(x, [])],
             "service_color": services.index(x) if x in services else None,
             "internal": internal_drawn.get(x, 0) if container else None,
-            "uses": [],  # unfolded boxes: the utilities their children use (filled in below)
+            "uses": [],  # kept for the viewer; empty: utilities used are in the hover text (info.py)
             "utilities_used": used_utils(x),  # ids of the utilities whose edges from this box became badges
-            "info": node_info(m, x, rolled, expanded, utilities, container),
+            "info": node_info(ctx, deps, x, used_by.get(x, 0)),
         }
 
     def build(x: str, parent: str | None) -> bool:
@@ -225,21 +225,8 @@ def scene(m: Model, st: ViewState) -> dict:
         if r not in hidden:
             build(r, None)
 
-    # the utilities a box's children use are listed in that box once it is unfolded (one
-    # line each, bottom right); a folded box lists none, and nothing is summed upwards
-    by_id = {n["id"]: n for n in nodes}
-    uses: dict[str, set[str]] = defaultdict(set)
-    for src, ann in rolled.annotations.items():
-        rec = by_id.get(src)
-        if rec is None:
-            continue
-        holder = src if rec.get("container") else rec["parent"]
-        for g in ann:
-            if g.startswith("util:") and holder is not None:
-                uses[holder].add(g[5:])
-    for rec in nodes:
-        if rec.get("container"):
-            rec["uses"] = sorted((label_of(m, u, expanded) for u in uses.get(rec["id"], ())), key=str.lower)
+    # what a box uses outside the picture (utilities among it) is in its hover text, not
+    # drawn in it: "uses" stays empty, so the layout reserves no room for a list
 
     edge_out = []
     for e in edges:
@@ -251,7 +238,7 @@ def scene(m: Model, st: ViewState) -> dict:
             "local": local(e), "single": e.count == 1,
             "weak": weak,
             "dangling": e.subkind.endswith("-dangling"), "heuristic": e.confidence == "heuristic",
-            "info": edge_info(m, e, expanded, drawn_parent(m, e.src, expanded) if local(e) else None, weak),
+            "info": edge_info(ctx, e),
         })
 
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]

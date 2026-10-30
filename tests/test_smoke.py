@@ -202,3 +202,23 @@ def test_utilities_by_incoming_edges(repo: Path):
     assert any(k.startswith("util:") for k in rolled.annotations[src])
     _x, _h, _v, rolled, _u = compute(m, ViewState(utilities=0))
     assert utility_badges(m, rolled, min_in=1) == set()  # nothing has more than one
+
+
+def test_folder_text_matches_unfolding(repo: Path):
+    """'Unfolding shows …' counts exactly the boxes that unfolding then draws, and modules
+    report their lines (from the Python front-end's describe module)."""
+    import re
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
+    before = scene(m, ViewState(expanded=["fs:."]))
+    backend = next(n for n in before["nodes"] if n["id"] == "fs:backend")
+    said = next(text(l) for l in backend["info"] if text(l).startswith("Unfolding shows"))
+    promised = sum(int(n) for n in re.findall(r"(\d+) ", said))
+    after = scene(m, ViewState(expanded=["fs:.", "fs:backend"]))
+    drawn = [n for n in after["nodes"] if n["parent"] == "fs:backend" and n["kind"] != "anchor"]
+    assert promised == len(drawn), (said, [n["id"] for n in drawn])
+    store = next(n for n in after["nodes"] if n["id"] == "fs:backend/store.py")
+    assert re.search(r"is a Python module with \d+ lines? and 1 class", text(store["info"][0])), store["info"]
+    assert not any("pkgs" in (n.get("badge") or "") for n in after["nodes"])  # dependencies are in the text, not on the box
