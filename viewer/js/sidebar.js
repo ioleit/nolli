@@ -31,4 +31,5 @@ export function syncControls() {
   $("nolabels").checked = state.noLabels; $("g").classList.toggle("nolabels", state.noLabels);
   $("raw").checked = state.raw;
   $("direction").value = state.direction;
+  $("engine").value = state.engine;
 }

@@ -3,7 +3,7 @@
 
 // expanded / roles / budget null: let the server choose (default cut, default roles)
 export const DEFAULTS = { expanded: null, roles: null, budget: null, through: true, danglingUse: false, envEdges: false, bundle: true, utilities: true, hideInternal: false };
-export const state = { name: null, ...DEFAULTS, noLabels: false, direction: "DOWN", raw: false };
+export const state = { name: null, ...DEFAULTS, noLabels: false, direction: "DOWN", engine: "elk", raw: false };
 export const ALL_ROLES = ["source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other"];
 // option checkbox id -> state key; each is a scene parameter
 export const OPTIONS = { through: "through", dangling: "danglingUse", bundle: "bundle", envedges: "envEdges", utilities: "utilities", hideinternal: "hideInternal" };
@@ -26,7 +26,7 @@ export function query() {
 
 export function writeHash() {
   const p = query();
-  if (state.noLabels) p.set("nl", 1); if (state.direction !== "DOWN") p.set("dir", state.direction); if (state.raw) p.set("raw", 1);
+  if (state.noLabels) p.set("nl", 1); if (state.direction !== "DOWN") p.set("dir", state.direction); if (state.engine !== "elk") p.set("lay", state.engine); if (state.raw) p.set("raw", 1);
   history.replaceState(null, "", "#" + p.toString());
 }
 
@@ -38,5 +38,5 @@ export function readHash(h) {
   if (p.get("b")) st.budget = +p.get("b");
   st.through = p.get("t") !== "0"; st.danglingUse = p.get("u") === "1"; st.envEdges = p.get("ev") === "1";
   st.bundle = p.get("nb") !== "1"; st.utilities = p.get("nu") !== "1"; st.hideInternal = p.get("hi") === "1";
-  return { name: p.get("d"), st, noLabels: p.get("nl") === "1", direction: p.get("dir") === "RIGHT" ? "RIGHT" : "DOWN", raw: p.get("raw") === "1", mmd: p.get("mmd") === "1" };
+  return { name: p.get("d"), st, noLabels: p.get("nl") === "1", direction: p.get("dir") === "RIGHT" ? "RIGHT" : "DOWN", engine: p.get("lay") || "elk", raw: p.get("raw") === "1", mmd: p.get("mmd") === "1" };
 }

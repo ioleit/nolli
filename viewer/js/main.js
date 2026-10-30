@@ -2,13 +2,13 @@
 // every label, badge and emphasis flag come from the server: /api/scene (nolli/scene.py).
 //
 //   state.js    view state, URL hash, scene query
-//   layout.js   scene -> positions and edge routes (ELK), no DOM
+//   layout/     scene -> positions and edge routes, no DOM; one module per engine
 //   draw.js     scene + layout -> SVG
 //   raw.js      scene -> JSON pane
 //   sidebar.js, panzoom.js, tip.js, mermaid.js
 
 import { DEFAULTS, OPTIONS, query, readHash, state, writeHash } from "./state.js";
-import { layout } from "./layout.js";
+import { ENGINES, layout } from "./layout/index.js";
 import { draw } from "./draw.js";
 import { hideRaw, onRawToggle, showRaw } from "./raw.js";
 import { sidebar, syncControls } from "./sidebar.js";
@@ -48,7 +48,7 @@ function toggle(id) {
 
 async function render(keepZoom = false) {
   hideRaw();
-  const laid = await layout(scene, state.direction);
+  const laid = await layout(scene, { engine: state.engine, direction: state.direction, seed: state.name });
   draw($("root"), scene, laid, toggle);
   if (!keepZoom || !fitted) fit(laid.width, laid.height);
   fitted = true;
@@ -66,6 +66,8 @@ for (const [id, k] of Object.entries(OPTIONS)) $(id).addEventListener("change", 
 $("nolabels").addEventListener("change", ev => { state.noLabels = ev.target.checked; $("g").classList.toggle("nolabels", state.noLabels); writeHash(); });
 $("raw").addEventListener("change", ev => { state.raw = ev.target.checked; writeHash(); if (state.raw) showRawPane(); else render(); });
 $("direction").addEventListener("change", ev => { state.direction = ev.target.value; writeHash(); render(); });
+for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; $("engine").appendChild(o); }
+$("engine").addEventListener("change", ev => { state.engine = ev.target.value; writeHash(); render(); });
 $("dataset").addEventListener("change", ev => { Object.assign(state, DEFAULTS, { name: ev.target.value }); refresh(); });
 $("mmd").addEventListener("click", () => toggleMermaid(state.name));
 
@@ -77,7 +79,7 @@ $("mmd").addEventListener("click", () => toggleMermaid(state.name));
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
   if (!name) { $("status").textContent = "no datasets"; return; }
   sel.value = name;
-  Object.assign(state, h.st, { name, noLabels: h.noLabels, direction: h.direction, raw: h.raw });
+  Object.assign(state, h.st, { name, noLabels: h.noLabels, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", raw: h.raw });
   await refresh();
   if (h.mmd) $("mmd").click();
 })();

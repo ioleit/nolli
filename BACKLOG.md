@@ -14,6 +14,8 @@ solution; solutions are for whoever picks it up.
   routing (splines, bundling along the containment tree), emphasis and reading order are
   all unexplored beyond defaults. Every change redraws from scratch; scenes carry stable node and edge keys, so
   the step between two can be animated (boxes grow out of the one unfolded).
+  The force layout (fCoSE) can leave sibling boxes overlapping (0–4 pairs on the
+  corpus); it has no overlap-removal pass, and its edges are straight, not routed.
 - **Tests for the roll-up rules.** Only extraction is tested; none of the rules in
   `nolli/rollup.md` has a test, and two broke silently while they were being built.
 

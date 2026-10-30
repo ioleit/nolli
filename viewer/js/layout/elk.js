@@ -1,29 +1,25 @@
-// Layout: scene -> positions. No DOM; ELK (a global from its script tag) does the work.
-//
-// Returns { width, height, nodes, edges }: nodes maps id -> { x, y, w, h } in absolute
-// coordinates; edges lists { edge, sections } with each section's points absolute too.
-// A different layout or edge routing only has to produce the same shape.
+// Layered layout with ELK (Sugiyama): layers in one direction, orthogonal edge routes.
+// ELK is a global from its script tag in index.html.
+
+import { CONTAINER_PAD, childrenOf, leafSize } from "./index.js";
 
 const elk = new ELK();
-
-const textW = (s, icon) => Math.max(56, s.length * 6.4 + 22 + (icon ? 16 : 0));
+const P = CONTAINER_PAD;
 
 export function elkGraph(scene, direction) {
-  const kidsOf = new Map();
-  for (const n of scene.nodes) { const k = n.parent || "ROOT"; if (!kidsOf.has(k)) kidsOf.set(k, []); kidsOf.get(k).push(n); }
+  const kidsOf = childrenOf(scene);
   const build = n => {
     const node = { id: n.id, layoutOptions: {} };
-    if (n.kind === "anchor") { node.width = 14; node.height = 14; node.layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST"; return node; }
     if (n.container) {
       node.children = (kidsOf.get(n.id) || []).map(build);
-      node.layoutOptions["elk.padding"] = "[top=30,left=10,bottom=10,right=10]";
+      node.layoutOptions["elk.padding"] = `[top=${P.top},left=${P.left},bottom=${P.bottom},right=${P.right}]`;
       node.layoutOptions["elk.spacing.nodeNode"] = "16";
       node.layoutOptions["elk.layered.spacing.nodeNodeBetweenLayers"] = "26";
       return node;
     }
-    const sub = n.leaves ? "+" + n.leaves : "";
-    node.width = Math.max(textW(n.label + sub, n.icon), (n.badge ? n.badge.length * 5.4 : 0) + n.chips.length * 11 + 20);
-    node.height = (n.badge || n.chips.length) ? 40 : 30;
+    const { w, h } = leafSize(n);
+    node.width = w; node.height = h;
+    if (n.kind === "anchor") node.layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST";
     if (n.utility) node.layoutOptions["elk.layered.layering.layerConstraint"] = "LAST";  // utilities sit at the bottom
     return node;
   };
@@ -41,7 +37,7 @@ export function elkGraph(scene, direction) {
   };
 }
 
-export async function layout(scene, direction) {
+export async function layout(scene, { direction = "DOWN" } = {}) {
   const laid = await elk.layout(elkGraph(scene, direction));
   const nodes = new Map();
   const place = (n, ox, oy) => { const x = ox + (n.x || 0), y = oy + (n.y || 0); nodes.set(n.id, { x, y, w: n.width, h: n.height }); (n.children || []).forEach(c => place(c, x, y)); };
