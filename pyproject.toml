@@ -27,6 +27,7 @@ packages = ["nolli", "nolli.extractors", "nolli.extractors.infra", "nolli.extrac
 "nolli.viewer" = "viewer"
 
 [tool.setuptools.package-data]
+"nolli" = ["skill/SKILL.md"]
 "nolli.viewer" = ["*.html", "*.css", "js/*.js", "js/layout/*.js", "vendor/*.js", "vendor/*.mjs", "vendor/LICENSES.txt"]
 
 [tool.ruff]
