@@ -1,0 +1,13 @@
+# Local development corpus: repositories to extract after every change, kept outside
+# this repository. Copy to dev/corpus.local.toml (gitignored) and edit the paths.
+
+# where extracted datasets go; the viewer serves this directory with --data
+data_dir = "~/data/nolli"
+
+[[repo]]
+name = "nolli"
+path = "."
+
+[[repo]]
+name = "some-python-service"
+path = "~/src/some-python-service"
