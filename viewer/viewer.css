@@ -93,9 +93,9 @@ svg#g:active { cursor: grabbing; }
 .edge.local path, .edge.weak path { stroke-width: .7px !important; }
 svg.nolabels .edge text { display: none; }
 .edge text { font-size: 9.5px; font-family: var(--font-diagram); fill: var(--muted); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
-/* glow: a hovered edge; a hovered box, its edges and the utilities it uses (.lit, draw.js) */
+/* glow: a hovered edge; a hovered leaf box (or own-code dot), its edges and the utilities it uses (.lit, draw.js) */
 .edge:hover, .edge.lit { --eo: 1 !important; filter: drop-shadow(0 0 1.5px var(--glow-color)) drop-shadow(0 0 4px var(--glow-color)); }  /* beats the faint local/single/weak levels */
-.node.lit > rect { filter: drop-shadow(0 0 2px var(--glow-color)) drop-shadow(0 0 6px var(--glow-color)); }
+.node.lit > rect, .node.lit > circle.anchor { filter: drop-shadow(0 0 2px var(--glow-color)) drop-shadow(0 0 6px var(--glow-color)); }
 #status { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
 #mmdpane { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 8px; display: none; }
 #mmdpane .req { color: var(--muted); margin-bottom: 6px; }

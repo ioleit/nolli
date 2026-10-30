@@ -204,28 +204,21 @@ export function draw(g, scene, laid, onToggle, sameWidth = false) {
 }
 
 /**
- * Hovering a box lights it up (.lit, viewer.css), with its incoming and outgoing edges and
- * the utilities it uses; for an unfolded box, also those of everything inside it.
+ * Hovering a leaf (a folded box, or a module's own-code dot) lights it up (.lit, viewer.css),
+ * with its incoming and outgoing edges and the utilities it uses. Unfolded boxes don't light.
  * @param {Scene} scene @param {Map<string, Element>} boxEl @param {Map<string, SVGElement[]>} edgesAt
  * @param {(ge: Element) => void} raise
  */
 function lightOnHover(scene, boxEl, edgesAt, raise) {
-  const kids = new Map();
-  for (const n of scene.nodes) if (n.parent) { const l = kids.get(n.parent); if (l) l.push(n); else kids.set(n.parent, [n]); }
   unlight();  // a redraw starts dark
   for (const n of scene.nodes) {
     const box = boxEl.get(n.id);
-    if (!box) continue;
+    if (!box || ("container" in n && n.container)) continue;
     box.addEventListener("mouseenter", () => {
       unlight();
-      /** @type {SceneNode[]} */
-      const inside = [n];
-      for (let i = 0; i < inside.length; i++) inside.push(...(kids.get(inside[i].id) || []));
       lit.add(box);
-      for (const x of inside) {
-        for (const u of x.utilities_used || []) { const b = boxEl.get(u); if (b) lit.add(b); }
-        for (const ge of edgesAt.get(x.id) || []) { lit.add(ge); raise(ge); }
-      }
+      for (const u of n.utilities_used || []) { const b = boxEl.get(u); if (b) lit.add(b); }
+      for (const ge of edgesAt.get(n.id) || []) { lit.add(ge); raise(ge); }
       for (const x of lit) x.classList.add("lit");
     });
     box.addEventListener("mouseleave", unlight);
