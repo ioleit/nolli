@@ -1,62 +1,34 @@
-// The card shown next to the pointer over a box or an edge (Info, from nolli/info.py):
-// kind and title, where it lives, one sentence, facts as label/value pairs, a list, hints.
-// Everything goes in as text (textContent), never as HTML: names come from the repository.
+// The text shown next to the pointer over a box or an edge (Info, from nolli/info.py):
+// one paragraph per sentence, the data in it set apart. Everything goes in as text
+// (textContent), never as HTML: names come from the repository.
 
 import { byId } from "./dom.js";
 
-/** @typedef {import("../types/nolli").Info} Info @typedef {import("../types/nolli").Parts} Parts */
+/** @typedef {import("../types/nolli").Info} Info */
 
 const tipEl = byId("tip");
 const svg = byId("g");
 
-/** @param {string} tag @param {string} [cls] @param {string} [text] */
-function el(tag, cls, text) {
-  const x = document.createElement(tag);
-  if (cls) x.className = cls;
-  if (text !== undefined) x.textContent = text;
-  return x;
-}
-
-/** Prose with values set apart. @param {Parts} parts @param {string} cls */
-function sentence(parts, cls) {
-  const p = el("div", cls);
-  for (const part of parts) p.appendChild(typeof part === "string" ? document.createTextNode(part) : el("span", "v", part.v));
-  return p;
-}
-
 /** @param {Info} info */
-function card(info) {
+function render(info) {
   const f = document.createDocumentFragment();
-  const head = el("div", "head");
-  head.appendChild(el("span", "kind", info.kind));
-  head.appendChild(el("span", "title", info.title));
-  f.appendChild(head);
-  if (info.path) f.appendChild(el("div", "path", info.path));
-  if (info.summary) f.appendChild(sentence(info.summary, "summary"));
-  if (info.facts.length) {
-    const dl = el("dl", "facts");
-    for (const { label, value } of info.facts) { dl.appendChild(el("dt", "", label)); dl.appendChild(el("dd", "", value)); }
-    f.appendChild(dl);
+  for (const line of info) {
+    const p = document.createElement("p");
+    for (const part of line) {
+      if (typeof part === "string") { p.appendChild(document.createTextNode(part)); continue; }
+      const v = document.createElement("span"); v.className = "v"; v.textContent = part.v; p.appendChild(v);
+    }
+    f.appendChild(p);
   }
-  if (info.list) {
-    const box = el("div", "list");
-    box.appendChild(el("div", "label", info.list.label));
-    const ul = el("ul");
-    for (const item of info.list.items) ul.appendChild(el("li", "", item));
-    if (info.list.more) ul.appendChild(el("li", "more", `and ${info.list.more} more`));
-    box.appendChild(ul);
-    f.appendChild(box);
-  }
-  for (const h of info.hints) f.appendChild(sentence(h, "hint"));
   return f;
 }
 
-/** @type {Info | null} the card on show, so moving within one box does not rebuild it */
+/** @type {Info | null} the text on show, so moving within one box does not rebuild it */
 let shown = null;
 
 /** @param {MouseEvent} ev @param {Info} info */
 export function showTip(ev, info) {
-  if (info !== shown) { tipEl.replaceChildren(card(info)); shown = info; }
+  if (info !== shown) { tipEl.replaceChildren(render(info)); shown = info; }
   tipEl.style.display = "block";
   // next to the pointer, flipped to the other side near the canvas's right or bottom edge
   const r = svg.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;

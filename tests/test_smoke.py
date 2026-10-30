@@ -143,24 +143,24 @@ def test_folding_drops_what_was_unfolded_inside(repo: Path):
 
 
 def test_hover_descriptions(repo: Path):
-    """Every drawn box and edge describes itself in plain words, with data set apart."""
+    """Every drawn box and edge describes itself in plain sentences, with the data set apart."""
     from nolli.scene import ViewState, scene
 
     m, _ = extract(repo)
+    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
     sc = scene(m, ViewState(budget=12))
     for item in sc["nodes"] + sc["edges"]:
-        info = item["info"]
-        assert info["kind"] and info["title"], item["id"] if "id" in item else item["key"]
-        assert not info["title"].startswith(("fs:", "py:", "svc ", "img ")), info["title"]
-        for parts in [info["summary"] or []] + info["hints"]:
-            assert all(isinstance(p, str) or set(p) == {"v"} for p in parts)
-    # with the HTTP API group hidden, calls are derived through to the handler: the card
-    # names the endpoints the arrow stands for
+        assert item["info"], item.get("id") or item.get("key")
+        for line in item["info"]:
+            assert all(isinstance(p, str) or set(p) == {"v"} for p in line)
+            assert not any(t in text(line) for t in ("fs:", "py:", "svc ", "img ")), text(line)
+    # with the HTTP API group hidden, calls are derived through to the handler
     derived = scene(m, ViewState(budget=12, groups=[]))
     http = next(e for e in derived["edges"] if e["style"] == "http")
-    words = "".join(p if isinstance(p, str) else p["v"] for p in http["info"]["summary"])
-    assert "calls HTTP endpoints served by" in words
-    assert http["info"]["list"] and all(not i.startswith("http:") for i in http["info"]["list"]["items"])
+    assert "to endpoints served by" in text(http["info"][0])
+    imp = next(e for e in sc["edges"] if e["style"] == "import")
+    line = imp["info"][0]
+    assert " references " in text(line) and any(isinstance(p, dict) and p["v"].split()[0].isdigit() for p in line)
 
 
 def test_groups_are_a_filter(repo: Path):
