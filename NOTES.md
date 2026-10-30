@@ -95,22 +95,34 @@ Nothing is a settled design.
 - The change rolls up with the picture: a drawn edge knows its references before and
   after and the facts that changed under it, also after bundling; a box knows the
   changed lines, files and entities inside it. Status follows: added, removed, changed.
-- Review items are numbered per dataset in a fixed order (components, dependencies between
-  modules, edited files; source code before tests, docs, config, data), so a verdict can
-  name an item. A dependency item's status covers all references between the two modules,
+- Changes are numbered per dataset in a fixed order (components, dependencies between
+  modules, edited files; source code before tests, docs, config, data), for the list and
+  for links (`item=C3`). A dependency item's status covers all references between the two modules,
   not only the changed ones: a module that already used another and gains one more
   reference is "changed", not "new".
-- Every edited file is an item, structural change or not, so a review can point at it.
-- Verdicts attach to the entities and facts of an item, so they stay on whatever box or
-  edge contains them, at any depth. Only question and problem are marked in the drawing.
+- Every edited file is an item, structural change or not, so it can be found in the list.
+- The review agent sees what a reviewer sees: one diagram with every area that changed in
+  source code unfolded (what going to each change unfolds, together). It answers on the
+  diagram's own node and edge ids, not on the numbered changes: an earlier brief listed
+  the numbered changes next to the diagram, and the agent reviewed the list instead of
+  the picture and cited ids that mean nothing to someone looking at the drawing.
+- A verdict maps back through the Mermaid id to an entity (or two, for an edge), so it
+  stays on whatever box or edge stands for it, at any depth. Only question and problem are
+  marked in the drawing.
+- The brief asks for the diagram first (how expected is this, given the title; what does
+  it do to the graph: cycles, layer direction, hubs, boundaries), then the description and
+  the code only for the reasons; each reason is read alone on its box or edge, starts with
+  a headline, and writes names in backticks. Tried on one PR. Open: with every change
+  needing a verdict and "question" only where no reason can be found, the agent found a
+  reason for everything and answered "fine" throughout.
 - Nolli prepares (`review.md`) and displays (verdicts) but calls no model.
 - Default view of a diff: unfold containers with changes first; unchanged boxes count half
   against the budget because they are faded.
 - In review mode red means removed, so cycles get a dotted border instead of a red one.
 - No selection: the drawing has one highlight, the hover glow. The review list points at
   an item with it: hovering a row lights the item's boxes and edges, going to an item (a
-  click on the row, j / k, or `item=C3` in a link) unfolds what it needs, centres on it and
-  flashes it; nothing stays lit. An item's links (diff, hunks, the references that
+  click on the row, j / k, or `item=C3` / `item=V2` in a link) unfolds what it needs, glides
+  to it, flashes it and keeps its card open; nothing stays lit. An item's links (diff, hunks, the references that
   changed) open in place under its row. A selection with its own colour and a details pane
   for any clicked box was tried first and dropped: two highlight concepts, and the item
   list already covers every change.
