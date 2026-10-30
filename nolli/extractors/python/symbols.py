@@ -27,6 +27,17 @@ from ...model import USE, Entity, Provenance, Relation
 from .. import Context
 
 FUNC_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
+DOC_MAX = 240  # characters of a docstring's summary kept
+
+
+def doc_summary(node) -> str | None:
+    """A module's or class's docstring, read from the syntax tree (nothing is imported or
+    run): its first paragraph on one line, cut at DOC_MAX characters."""
+    text = ast.get_docstring(node, clean=True)
+    if not text:
+        return None
+    para = " ".join(text.strip().split("\n\n", 1)[0].split())
+    return para if len(para) <= DOC_MAX else para[: DOC_MAX - 1].rsplit(" ", 1)[0] + "…"
 
 
 class Refs(ast.NodeVisitor):
@@ -73,6 +84,9 @@ def run(ctx: Context) -> None:
             tree = ast.parse(ctx.read(rel), filename=rel)
         except (SyntaxError, ValueError):
             continue
+        doc = doc_summary(tree)
+        if doc:
+            m.entities[fid].attrs["doc"] = doc
         pkg_parts = rel.split("/")[:-1]
         bindings: dict[str, tuple] = {}
         aliases: dict[str, tuple[str, str]] = {}
@@ -102,8 +116,10 @@ def run(ctx: Context) -> None:
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
                 sid = f"py:{rel}#{node.name}"
-                m.add_entity(Entity(sid, "class", node.name, {"path": rel, "line": node.lineno, "language": "python"},
-                                    Provenance("python-symbols", rel, node.lineno)))
+                attrs = {"path": rel, "line": node.lineno, "language": "python"}
+                if doc_summary(node):
+                    attrs["doc"] = doc_summary(node)
+                m.add_entity(Entity(sid, "class", node.name, attrs, Provenance("python-symbols", rel, node.lineno)))
                 m.contain(fid, sid, "python-symbols")
                 classes[node.name] = sid
             elif isinstance(node, FUNC_DEFS):

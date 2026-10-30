@@ -15,6 +15,14 @@ def noun(ctx: Ctx, x: str) -> str | None:
     return None
 
 
+def kind(ctx: Ctx, x: str) -> str | None:
+    return None
+
+
+def doc(ctx: Ctx, x: str) -> str | None:
+    return None
+
+
 def describe(ctx: Ctx, x: str) -> list | None:
     e = ctx.m.entities[x]
     lang = NAMES.get(e.attrs.get("language") or "")

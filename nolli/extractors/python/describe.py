@@ -1,5 +1,6 @@
 """How the hover text talks about Python: packages (folders with __init__.py), modules,
-classes. Used by nolli/info.py; returns None for anything that isn't Python's."""
+classes, and their docstrings. Used by nolli/info.py; every function returns None for
+anything that isn't Python's."""
 
 from __future__ import annotations
 
@@ -7,9 +8,11 @@ from ...prose import Ctx, count, say
 from ...rollup import is_init
 
 
-def is_package(ctx: Ctx, x: str) -> bool:
+def init_of(ctx: Ctx, x: str) -> str | None:
     m = ctx.m
-    return m.entities[x].kind == "directory" and any(is_init(m, c) for c in m.children(x))
+    if m.entities[x].kind != "directory":
+        return None
+    return next((c for c in m.children(x) if is_init(m, c)), None)
 
 
 def is_module(ctx: Ctx, x: str) -> bool:
@@ -18,10 +21,10 @@ def is_module(ctx: Ctx, x: str) -> bool:
 
 
 def noun(ctx: Ctx, x: str) -> str | None:
-    """What a box counts as when its container unfolds."""
+    """What a box counts as inside its folder."""
     e = ctx.m.entities[x]
-    if is_package(ctx, x):
-        return "package"
+    if init_of(ctx, x):
+        return "subpackage"
     if is_module(ctx, x):
         return "module" if e.attrs.get("role") in ("source", None) else "Python file"
     if e.kind == "class" and e.attrs.get("language") == "python":
@@ -29,10 +32,14 @@ def noun(ctx: Ctx, x: str) -> str | None:
     return None
 
 
+def kind(ctx: Ctx, x: str) -> str | None:
+    """What a folder is, for "<name> is <kind> with …"."""
+    return "a Python package" if init_of(ctx, x) else None
+
+
 def describe(ctx: Ctx, x: str) -> list | None:
+    """The first sentence for a module or class (folders: see kind)."""
     e = ctx.m.entities[x]
-    if is_package(ctx, x):
-        return [say("{} is a Python package", ctx.name(x))]
     if is_module(ctx, x):
         facts = [count(e.attrs["lines"], "line")] if e.attrs.get("lines") is not None else []
         classes = ctx.m.children(x)
@@ -46,4 +53,13 @@ def describe(ctx: Ctx, x: str) -> list | None:
         if where and e.attrs.get("line"):
             return [say("{} is a Python class in {}, line {}", ctx.name(x), where, e.attrs["line"])]
         return [say("{} is a Python class", ctx.name(x))]
+    return None
+
+
+def doc(ctx: Ctx, x: str) -> str | None:
+    """The docstring summary: a package's from its __init__.py."""
+    init = init_of(ctx, x)
+    e = ctx.m.entities[init or x]
+    if init or is_module(ctx, x) or (e.kind == "class" and e.attrs.get("language") == "python"):
+        return e.attrs.get("doc")
     return None

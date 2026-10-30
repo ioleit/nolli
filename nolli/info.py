@@ -1,8 +1,8 @@
 """What the viewer shows when the pointer rests on a box or an edge: plain sentences.
 
-A description is a list of lines; a line is a list of parts, plain strings and
-{"v": value} for the data in it ("api-mock references 1 name in lib/"). The viewer sets
-the values apart.
+A description is a list of lines; a line is a list of parts: plain strings, {"v": value}
+for the data in it ("api-mock references 1 name in lib/"), and {"doc": text} for what the
+code says about itself (a docstring). The viewer sets both apart.
 
 What a box *is* comes from its language's describe module next to its extractors
 (extractors/python/describe.py, …); this module adds what is the same for every
@@ -20,30 +20,38 @@ from .labels import is_body
 from .model import ALLOCATE, PROVIDE, USE
 from .prose import Ctx, count, listing, say
 
-GENERIC_NOUN = {"directory": "folder", "file": "file", "class": "class", "endpoint": "endpoint", "group": "group",
+GENERIC_NOUN = {"directory": "subfolder", "file": "file", "class": "class", "endpoint": "endpoint", "group": "group",
                 "env": "variable", "service": "service", "image": "image", "package": "package", "host": "host"}
 WHAT = {"endpoint": "an HTTP endpoint", "env": "an environment variable", "service": "a Compose service",
         "image": "a Docker image", "package": "an external package", "host": "a host"}
-NOUN_ORDER = ["package", "folder", "module", "class"]  # earlier in a list; the rest by count
+NOUN_ORDER = ["subpackage", "subfolder", "module", "class"]  # earlier in a list; the rest by count
 
 
 def noun(ctx: Ctx, x: str) -> str:
+    return first("noun", ctx, x) or GENERIC_NOUN.get(ctx.m.entities[x].kind, ctx.m.entities[x].kind)
+
+
+def first(fn: str, ctx: Ctx, x: str):
+    """The first language describer's answer to fn (noun, kind, describe, doc)."""
     for d in describers():
-        n = d.noun(ctx, x)
-        if n:
-            return n
-    return GENERIC_NOUN.get(ctx.m.entities[x].kind, ctx.m.entities[x].kind)
+        said = getattr(d, fn)(ctx, x)
+        if said:
+            return said
+    return None
 
 
-def what_unfolding_shows(ctx: Ctx, x: str) -> list | None:
-    kids = ctx.shown_children(x)
-    if not kids:
-        return None
+def folder(ctx: Ctx, x: str) -> list:
+    """"agents/ is a Python package with 6 subpackages and 3 modules": what it holds,
+    counted as unfolding draws it (hidden roles left out, __init__ classes in)."""
+    e = ctx.m.entities[x]
+    what = "the repository" if e.attrs.get("root") else first("kind", ctx, x) or "a folder"
     by: dict[str, int] = defaultdict(int)
-    for c in kids:
+    for c in ctx.shown_children(x):
         by[noun(ctx, c)] += 1
+    if not by:
+        return say("{} is " + what, ctx.name(x))
     order = sorted(by, key=lambda k: (NOUN_ORDER.index(k) if k in NOUN_ORDER else len(NOUN_ORDER), -by[k], k))
-    return listing("Unfolding shows {}", [count(by[k], k) for k in order], limit=6)
+    return say("{} is " + what + " with ", ctx.name(x)) + listing("{}", [count(by[k], k) for k in order], limit=6)
 
 
 def size(ctx: Ctx, x: str) -> list | None:
@@ -107,8 +115,7 @@ class Dependencies:
         ext = self.ext.get(x)
         if ext:
             names = sorted(ext, key=lambda k: (-ext[k], k))
-            out.append(say("Uses {} ({}): ", count(len(names), "external package"), count(sum(ext.values()), "import"))
-                       + listing("{}", names, "more"))
+            out.append(say("Uses {}: ", count(len(names), "external package")) + listing("{}", names, "more"))
         utils = sorted({g[5:] for g in (ctx.rolled.annotations.get(x) or {}) if g.startswith("util:")})
         if utils:
             out.append(listing("Uses the utilit" + ("y" if len(utils) == 1 else "ies") + " {}", [ctx.name(u) for u in utils]))
@@ -132,14 +139,12 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
         return [say("The code in {} outside any class", owner)]
     e = m.entities[x]
     lines: list[list] = []
-    for d in describers():
-        said = d.describe(ctx, x)
-        if said:
-            lines += said
-            break
+    said = None if e.kind == "directory" else first("describe", ctx, x)
+    if said:
+        lines += said
     else:
         if e.kind == "directory":
-            lines.append(say("{} is the repository", ctx.name(x)) if e.attrs.get("root") else say("{} is a folder", ctx.name(x)))
+            lines.append(folder(ctx, x))
         elif e.kind == "file":
             lines.append(say("{} is a file with {}", ctx.name(x), count(e.attrs["lines"], "line"))
                          if e.attrs.get("lines") is not None else say("{} is a file", ctx.name(x)))
@@ -147,10 +152,13 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
             lines.append(say("{} holds {}", ctx.name(x), count(len(m.children(x)), "entry", "entries")))
         else:
             lines.append(say("{} is " + WHAT.get(e.kind, "a " + e.kind), ctx.name(x)))
+    docstring = first("doc", ctx, x)
+    if docstring:
+        lines.append([{"doc": docstring}])
     if e.kind == "directory":
-        for extra in (what_unfolding_shows(ctx, x), size(ctx, x)):
-            if extra:
-                lines.append(extra)
+        total = size(ctx, x)
+        if total:
+            lines.append(total)
     lines += deps.lines(ctx, x)
     if used_by:
         lines.append(say("A utility, used by {}: their arrows into it are left out", count(used_by, "box", "boxes")))

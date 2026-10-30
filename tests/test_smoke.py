@@ -152,7 +152,7 @@ def test_hover_descriptions(repo: Path):
     for item in sc["nodes"] + sc["edges"]:
         assert item["info"], item.get("id") or item.get("key")
         for line in item["info"]:
-            assert all(isinstance(p, str) or set(p) == {"v"} for p in line)
+            assert all(isinstance(p, str) or set(p) in ({"v"}, {"doc"}) for p in line)
             assert not any(t in text(line) for t in ("fs:", "py:", "svc ", "img ")), text(line)
     # with the HTTP API group hidden, calls are derived through to the handler
     derived = scene(m, ViewState(budget=12, groups=[]))
@@ -205,7 +205,7 @@ def test_utilities_by_incoming_edges(repo: Path):
 
 
 def test_folder_text_matches_unfolding(repo: Path):
-    """'Unfolding shows …' counts exactly the boxes that unfolding then draws, and modules
+    """A folder's sentence counts exactly the boxes that unfolding then draws, and modules
     report their lines (from the Python front-end's describe module)."""
     import re
     from nolli.scene import ViewState, scene
@@ -214,7 +214,8 @@ def test_folder_text_matches_unfolding(repo: Path):
     text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
     before = scene(m, ViewState(expanded=["fs:."]))
     backend = next(n for n in before["nodes"] if n["id"] == "fs:backend")
-    said = next(text(l) for l in backend["info"] if text(l).startswith("Unfolding shows"))
+    said = text(backend["info"][0])
+    assert said.startswith("backend/ is a Python package with "), said
     promised = sum(int(n) for n in re.findall(r"(\d+) ", said))
     after = scene(m, ViewState(expanded=["fs:.", "fs:backend"]))
     drawn = [n for n in after["nodes"] if n["parent"] == "fs:backend" and n["kind"] != "anchor"]
@@ -222,3 +223,21 @@ def test_folder_text_matches_unfolding(repo: Path):
     store = next(n for n in after["nodes"] if n["id"] == "fs:backend/store.py")
     assert re.search(r"is a Python module with \d+ lines? and 1 class", text(store["info"][0])), store["info"]
     assert not any("pkgs" in (n.get("badge") or "") for n in after["nodes"])  # dependencies are in the text, not on the box
+
+
+def test_docstrings(tmp_path: Path):
+    """Module, class and package docstrings are read from the syntax tree, not imported,
+    and shown as their own line."""
+    from nolli.scene import ViewState, scene
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/__init__.py").write_text('"""Tools for frobbing.\n\nLong details nobody reads."""\n')
+    (tmp_path / "pkg/core.py").write_text('"""The core frobber."""\nimport sys\nsys.exit("must not run")\n\n'
+                                          'class Frob:\n    """Frobs one thing at a time."""\n')
+    m, _ = extract(tmp_path)
+    assert m.entities["fs:pkg/core.py"].attrs["doc"] == "The core frobber."
+    assert m.entities["py:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
+    sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
+    docs = {n["id"]: [p["doc"] for line in n["info"] for p in line if isinstance(p, dict) and "doc" in p] for n in sc["nodes"]}
+    assert docs["fs:pkg"] == ["Tools for frobbing."]  # first paragraph only
+    assert docs["py:pkg/core.py#Frob"] == ["Frobs one thing at a time."]

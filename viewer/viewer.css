@@ -111,6 +111,7 @@ svg.nolabels .edge text { display: none; }
   font-size: 12.5px; line-height: 1.5; }
 #tip p { margin: 0; }
 #tip p + p { margin-top: 3px; }
+#tip q.doc { font-style: italic; color: color-mix(in srgb, var(--ink) 80%, transparent); }
 #tip .v { font-weight: 600; background: color-mix(in srgb, var(--e-http) 14%, transparent); border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: 1px 0; }

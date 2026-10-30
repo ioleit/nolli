@@ -21,6 +21,7 @@ function render(info) {
     const p = document.createElement("p");
     for (const part of line) {
       if (typeof part === "string") { p.appendChild(document.createTextNode(part)); continue; }
+      if ("doc" in part) { const q = document.createElement("q"); q.className = "doc"; q.textContent = part.doc; p.appendChild(q); continue; }
       const v = document.createElement("span"); v.className = "v"; v.textContent = part.v; p.appendChild(v);
     }
     f.appendChild(p);
