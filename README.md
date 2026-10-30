@@ -38,7 +38,14 @@ cd <any git repository>
 nolli view                     # the current branch against the default branch
 nolli view <branch or commit>  # what it adds to the default branch; a commit already on it: its own change
 nolli view <base>..<head>      # exactly between two commits (<base>...<head>: from where they diverged)
+nolli view https://github.com/<owner>/<repo>/pull/<n>   # or '#<n>': a GitHub PR, fetched (nolli/github.py)
 ```
+
+To have your own coding agent review the change, install the skill
+(`nolli agent skill --install ~/.claude/skills`, or `.claude/skills` in a project) and ask
+it to "review <change> with nolli". It runs `nolli agent brief <change>` (the dataset, and
+where `review.md` and `verdicts.json` are), writes the verdicts, validates them with
+`nolli agent check <dataset>` and opens `nolli view <dataset>`. nolli itself calls no model.
 
 `view` works with plain git, on any host or none. It resolves the change, builds its
 dataset under `$NOLLI_DATA` (default `$XDG_DATA_HOME/nolli`, else `~/.local/share/nolli`;

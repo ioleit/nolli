@@ -52,8 +52,15 @@ For reference, the steps that the one command should replace:
   same as the hand-made `autoforge-pr213` dataset's; only the PR links were missing (no
   GitHub remote in that clone, no PR number).
 
-Next: the GitHub layer (`nolli view <PR url | #N>`: base, head, title, description and
-links from the PR), then the brief and verdict check for a review skill.
+- The GitHub layer: `nolli view <PR url | '#N'>` (base, head, title, description and links
+  from the PR; fork PRs too). Tested on autoforge #213 (same dataset as the hand-made one,
+  links included) and #340 (an open fork PR not in the clone).
+- The review step for the user's own agent: `nolli agent brief | check | skill`, and the
+  skill (`nolli/skill/SKILL.md`). Tested by a Claude Code subagent told only "Review PR
+  #340 with nolli" and where the skill is: brief, 6 verdicts, check passed first time,
+  viewer started. Its notes on unclear wording went into the skill; the ones about the
+  brief itself (whether changed group boxes need a verdict, how far outside the diff to
+  read, box or edge for a module-level concern) are open.
 
 ## What was missing (as of 2026-10-30, before the above)
 
