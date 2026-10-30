@@ -211,57 +211,6 @@ def edge_tip(e) -> str:
     return "\n".join(lines)
 
 
-def cycle_members(nodes: list[str], edges) -> set[str]:
-    """Nodes in a strongly connected component of size > 1 (use edges only)."""
-    adj: dict[str, list[str]] = {n: [] for n in nodes}
-    for e in edges:
-        if e.kind == USE and e.src in adj and e.dst in adj:
-            adj[e.src].append(e.dst)
-    index: dict[str, int] = {}
-    low: dict[str, int] = {}
-    stack: list[str] = []
-    on: set[str] = set()
-    out: set[str] = set()
-    counter = 0
-    for root in nodes:
-        if root in index:
-            continue
-        work = [(root, 0)]
-        while work:  # iterative Tarjan
-            v, i = work.pop()
-            if i == 0:
-                index[v] = low[v] = counter
-                counter += 1
-                stack.append(v)
-                on.add(v)
-            recurse = False
-            for j in range(i, len(adj[v])):
-                w = adj[v][j]
-                if w not in index:
-                    work.append((v, j + 1))
-                    work.append((w, 0))
-                    recurse = True
-                    break
-                if w in on:
-                    low[v] = min(low[v], index[w])
-            if recurse:
-                continue
-            if low[v] == index[v]:
-                comp = []
-                while True:
-                    w = stack.pop()
-                    on.discard(w)
-                    comp.append(w)
-                    if w == v:
-                        break
-                if len(comp) > 1:
-                    out.update(comp)
-            if work:
-                u = work[-1][0]
-                low[u] = min(low[u], low[v])
-    return out
-
-
 # ---------- the scene ----------
 
 def scene(m: Model, st: ViewState) -> dict:
@@ -286,7 +235,6 @@ def scene(m: Model, st: ViewState) -> dict:
             out_total[e.src] += e.count
     touched = {e.src for e in edges} | {e.dst for e in edges}
     drawn = sorted(v for v in visible if not (root_group(v) and v not in touched))
-    in_cycle = cycle_members([v for v in drawn if not is_body(v)], edges)
 
     services = [c for c in m.children("deploy") if m.entities[c].kind == "service"] if m.has("deploy") else []
     nodes: list[dict] = []
@@ -302,7 +250,7 @@ def scene(m: Model, st: ViewState) -> dict:
         return {
             "id": x, "kind": e.kind, "parent": parent, "container": container, "label": label_of(m, x, expanded),
             "icon": icon_of(m, x), "foldable": kids, "leaves": leaf_count(m, x) if kids and not container else None,
-            "badge": badge, "cycle": x in in_cycle, "utility": x in utilities,
+            "badge": badge, "utility": x in utilities,
             "chips": [{"id": s, "name": m.entities[s].name, "color": services.index(s) if s in services else -1}
                       for s in rolled.allocations.get(x, [])],
             "service_color": services.index(x) if x in services else None,
@@ -365,8 +313,6 @@ def scene(m: Model, st: ViewState) -> dict:
     if utilities:
         residue.append("utilities (badges): " + ", ".join(label_of(m, u, expanded) for u in sorted(utilities)))
     residue += [f"{v} {k} wiring edges not drawn (option)" for k, v in rolled.suppressed.items()]
-    if in_cycle:
-        residue.append(f"{len(in_cycle)} drawn nodes take part in cycles")
 
     groups = [{"id": r, "name": m.entities[r].name, "size": len(m.children(r)), "shown": r in shown_groups}
               for r in m.roots() if m.entities[r].kind == "group" and r != "unresolved" and m.children(r)]

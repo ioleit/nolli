@@ -75,7 +75,7 @@ function buildAnchor(n, p, live) {
  */
 function buildBox(n, p, onToggle) {
   const isC = n.container;
-  const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind, n.cycle ? "cycle" : ""].join(" "), transform: at(p) });
+  const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind].join(" "), transform: at(p) });
   if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
   const icon = n.icon;

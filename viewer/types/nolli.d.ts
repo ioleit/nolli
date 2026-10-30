@@ -15,7 +15,6 @@ export interface BoxNode {
   foldable: boolean;  // has children: clicking unfolds (or − folds)
   leaves: number | null;  // folded: how much is inside
   badge: string;
-  cycle: boolean;
   utility: boolean;
   chips: Chip[];
   service_color: number | null;

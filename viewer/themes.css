@@ -19,7 +19,7 @@
   --group-fill: #f5f5fe; --group-stroke: #818cf8;
   --icon: #e3e5f8; --icon-D: #c9cdf0; --icon-m: #dbe3ff; --icon-C: #fbe5bd;
   --anchor: #a5a8d6;
-  --cycle: #b91c1c; --hover: #e11d48;
+  --hover: #e11d48;
   --e-other: #9396c4; --e-import: #5d6199; --e-http: #4338ca; --e-env: #0f766e; --e-deploy: #7e22ce; --e-provide: #4f46e5; --e-dangling: #a5a8d6;
 }
 :root[data-theme=textbook] .node.container > rect { filter: drop-shadow(2px 2px 0 #312e8118); }
