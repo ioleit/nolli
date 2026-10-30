@@ -89,3 +89,23 @@ Nothing is a settled design.
   changed, so a review can still point at it. Classes record their end line for this.
 - Records sit in `attrs["diff"]` only on what changed; base and head commits and the
   GitHub remote are in `meta["diff"]`, enough to build links later.
+
+## Review mode (first version)
+
+- The change rolls up with the picture: a drawn edge knows its references before and
+  after and the facts that changed under it, also after bundling; a box knows the
+  changed lines, files and entities inside it. Status follows: added, removed, changed.
+- Review items are numbered per dataset in a fixed order (components, dependencies between
+  modules, edited files; source code before tests, docs, config, data), so a verdict can
+  name an item. A dependency item's status covers all references between the two modules,
+  not only the changed ones: a module that already used another and gains one more
+  reference is "changed", not "new".
+- Every edited file is an item, structural change or not, so a review can point at it.
+- Verdicts attach to the entities and facts of an item, so they stay on whatever box or
+  edge contains them, at any depth. Only question and problem are marked in the drawing.
+- Nolli prepares (`review.md`) and displays (verdicts) but calls no model.
+- Default view of a diff: unfold containers with changes first; unchanged boxes count half
+  against the budget because they are faded.
+- In review mode red means removed, so cycles get a dotted border instead of a red one.
+- Clicking a box selects it and unfolds it; alt-click only selects; a container is
+  selected by its header. Pretty arbitrary, chosen so the old click-to-unfold still works.
