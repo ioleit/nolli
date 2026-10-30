@@ -46,6 +46,12 @@
   <label class="opt" data-help="Animate unfolding and folding, keeping the clicked box in place."><input type="checkbox" id="animate"> Animate</label>
 
   <h2>Legend</h2>
+  <div class="legend review-only">
+    <div><span style="border-color:#2e9b4f;border-top-width:3px"></span>added</div>
+    <div><span style="border-color:#c94040;border-top-width:3px;border-top-style:dashed"></span>removed (edges: 🚫)</div>
+    <div><span style="border-color:var(--chg);border-top-width:3px"></span>changed: lines inside, or references (edges: ▲40% more, ▼25% fewer)</div>
+    <div style="color:var(--muted)">boxes: <span class="plus">+lines</span> <span class="minus">−lines</span> changed inside · markers: verdicts <b class="vtxt problem">!</b> problem <b class="vtxt question">?</b> question (fine ones only in the panel)<br>hover a change in the list to light it; click it (or j / k) to go there</div>
+  </div>
   <div class="legend">
     <div><span class="import"></span>import</div>
     <div><span class="http"></span>http: caller → handler</div>
@@ -73,6 +79,7 @@
   </div>
 </main>
 <div id="help"></div>
+<section id="review"></section>
 <script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>

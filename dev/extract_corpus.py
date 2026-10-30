@@ -1,14 +1,18 @@
-"""Extract every repository in dev/corpus.local.toml and report the timings.
+"""Extract every repository in dev/corpus.local.toml, build every diff listed there, and
+report the timings.
 
     python -I dev/extract_corpus.py [dev/corpus.local.toml]
 
 Datasets are written to <data_dir>/<name>-<short sha> (the sha of the repository's
 HEAD, or "wip" when it has uncommitted changes); older datasets of the same name are
-removed so the viewer shows one per repository.
+removed so the viewer shows one per repository. Diffs ([[diff]] entries: name, repo,
+base, head, and optionally pr and title) go to <data_dir>/<name>; a verdicts.json there
+is kept.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -44,7 +48,9 @@ def main() -> int:
         name = r["name"]
         out = data_dir / f"{name}-{sha_of(repo)}"
         for old in data_dir.glob(f"{name}-*"):
-            if old != out:
+            # only this repository's earlier extracts (<name>-<short sha>, -wip, -nogit); other
+            # datasets that merely share the prefix (a change named <name>-pr48) stay
+            if old != out and re.fullmatch(r"[0-9a-f]{7,12}|wip|nogit", old.name[len(name) + 1:]):
                 shutil.rmtree(old)
         t0 = time.time()
         res = subprocess.run([str(nolli), "extract", str(repo), "-o", str(out)], capture_output=True, text=True)
@@ -53,6 +59,21 @@ def main() -> int:
             print(f"FAILED {name} ({dt:.1f}s)\n{res.stderr[-800:]}")
             continue
         print(f"{name:20s} {dt:5.1f}s  -> {out.name}")
+    for d in cfg.get("diff", []):
+        repo = Path(d["repo"]).expanduser().resolve()
+        out = data_dir / d["name"]
+        cmd = [str(nolli), "diff", str(repo), d["base"], d["head"], "-o", str(out)]
+        if d.get("pr"):
+            cmd += ["--pr", str(d["pr"])]
+        if d.get("title"):
+            cmd += ["--title", d["title"]]
+        t0 = time.time()
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        dt = time.time() - t0
+        if res.returncode != 0:
+            print(f"FAILED diff {d['name']} ({dt:.1f}s)\n{res.stderr[-800:]}")
+            continue
+        print(f"{d['name']:20s} {dt:5.1f}s  -> {out.name} (diff)")
     print(f"total {time.time() - total0:.1f}s")
     return 0
 

@@ -149,6 +149,27 @@ def test_folding_drops_what_was_unfolded_inside(repo: Path):
     assert folded["state"]["expanded"] == ["fs:."]
 
 
+def test_hover_descriptions(repo: Path):
+    """Every drawn box and edge describes itself in plain sentences, with the data set apart."""
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
+    sc = scene(m, ViewState(budget=12))
+    for item in sc["nodes"] + sc["edges"]:
+        assert item["info"], item.get("id") or item.get("key")
+        for line in item["info"]:
+            assert all(isinstance(p, str) or set(p) in ({"v"}, {"doc"}) for p in line)
+            assert not any(t in text(line) for t in ("fs:", "py:", "svc ", "img ")), text(line)
+    # with the HTTP API group hidden, calls are derived through to the handler
+    derived = scene(m, ViewState(budget=12, groups=[]))
+    http = next(e for e in derived["edges"] if e["style"] == "http")
+    assert "to endpoints served by" in text(http["info"][0])
+    # a Python reference edge names what it uses ("api/ references Store in store")
+    imp = next(e for e in sc["edges"] if e["style"] == "import" and " references " in text(e["info"][0]))
+    assert {"v": "Store"} in imp["info"][0], imp["info"]
+
+
 def test_groups_are_a_filter(repo: Path):
     """A shown group is a box like any other (edges attach to it, it unfolds); a group the
     filter hides is not drawn, its edges are badges or derived through, and it can't be unfolded."""
@@ -188,3 +209,78 @@ def test_utilities_by_incoming_edges(repo: Path):
     assert any(k.startswith("util:") for k in rolled.annotations[src])
     _x, _h, _v, rolled, _u = compute(m, ViewState(utilities=0))
     assert utility_badges(m, rolled, min_in=1) == set()  # nothing has more than one
+
+
+def test_folder_text_matches_unfolding(repo: Path):
+    """A folder's sentence counts exactly the boxes that unfolding then draws, and modules
+    report their lines (from the Python front-end's describe module)."""
+    import re
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
+    before = scene(m, ViewState(expanded=["fs:."]))
+    backend = next(n for n in before["nodes"] if n["id"] == "fs:backend")
+    said = text(backend["info"][0])
+    assert said.startswith("backend/ is a Python package with "), said
+    promised = sum(int(n) for n in re.findall(r"(\d+) ", said))
+    after = scene(m, ViewState(expanded=["fs:.", "fs:backend"]))
+    drawn = [n for n in after["nodes"] if n["parent"] == "fs:backend" and n["kind"] != "anchor"]
+    assert promised == len(drawn), (said, [n["id"] for n in drawn])
+    store = next(n for n in after["nodes"] if n["id"] == "fs:backend/store.py")
+    assert re.search(r"is a Python module with \d+ lines? and 1 class", text(store["info"][0])), store["info"]
+    assert not any("pkgs" in (n.get("badge") or "") for n in after["nodes"])  # dependencies are in the text, not on the box
+
+
+def test_docstrings(tmp_path: Path):
+    """Module, class and package docstrings are read from the syntax tree, not imported,
+    and shown as their own line."""
+    from nolli.scene import ViewState, scene
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/__init__.py").write_text('"""Tools for frobbing.\n\nLong details nobody reads."""\n')
+    (tmp_path / "pkg/core.py").write_text('"""The core frobber."""\nimport sys\nsys.exit("must not run")\n\n'
+                                          'class Frob:\n    """Frobs one thing at a time."""\n')
+    m, _ = extract(tmp_path)
+    assert m.entities["fs:pkg/core.py"].attrs["doc"] == "The core frobber."
+    assert m.entities["py:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
+    sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
+    docs = {n["id"]: [p["doc"] for line in n["info"] for p in line if isinstance(p, dict) and "doc" in p] for n in sc["nodes"]}
+    assert docs["fs:pkg"] == ["Tools for frobbing."]  # first paragraph only
+    assert docs["py:pkg/core.py#Frob"] == ["Frobs one thing at a time."]
+
+
+def test_own_code_dot(tmp_path: Path):
+    """A module's own-code dot names its functions (most referenced first) and constants;
+    a package's names what its __init__.py defines and re-exports."""
+    from nolli.scene import ViewState, scene
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/__init__.py").write_text("from .core import Frob, frob\n\ndef setup():\n    return Frob()\n")
+    (tmp_path / "pkg/core.py").write_text("LIMIT = 3\n\ndef helper():\n    pass\n\ndef frob():\n    return Frob()\n\n"
+                                          "class Frob:\n    def go(self):\n        return frob()\n")
+    (tmp_path / "pkg/use.py").write_text("from .core import frob\nfrob(); frob()\n")
+    m, _ = extract(tmp_path)
+    core = m.entities["fs:pkg/core.py"].attrs
+    assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
+    assert m.entities["fs:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
+    sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
+    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
+    info = {n["id"]: [text(l) for l in n["info"]] for n in sc["nodes"]}
+    assert info["body:fs:pkg/core.py"][0] == "core defines frob and helper"  # frob is referenced, helper not
+    assert "the constant LIMIT" in info["body:fs:pkg/core.py"][1]
+    assert any("re-exports Frob and frob" in t for t in info.get("body:fs:pkg", [])) or "body:fs:pkg" not in info
+
+
+def test_directory_with_source_inside_stays_shown():
+    """A directory whose bytes are mostly config is still drawn when it holds source files."""
+    from nolli.model import Entity, Model, Provenance
+    from nolli.rollup import hidden_by_role
+
+    m = Model()
+    for eid, kind, role in [("fs:.", "directory", "mixed"), ("fs:evals", "directory", "config"), ("fs:evals/probe.py", "file", "source"),
+                            ("fs:evals/runs.json", "file", "config"), ("fs:docs", "directory", "docs"), ("fs:docs/a.md", "file", "docs")]:
+        m.add_entity(Entity(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "fs:." else {})}, Provenance("t")))
+    for parent, child in [("fs:.", "fs:evals"), ("fs:evals", "fs:evals/probe.py"), ("fs:evals", "fs:evals/runs.json"), ("fs:.", "fs:docs"), ("fs:docs", "fs:docs/a.md")]:
+        m.contain(parent, child, "t")
+    assert hidden_by_role(m) == {"fs:evals/runs.json", "fs:docs", "fs:docs/a.md"}

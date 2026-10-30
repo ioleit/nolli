@@ -35,13 +35,21 @@ export const isAnchor = n => n.kind === "anchor";
 /** @param {string} s @param {string} icon */
 const textW = (s, icon) => Math.max(56, s.length * 6.4 + 22 + (icon ? 16 : 0));
 
-/** The size a folded node needs for its label, badge and chips. @param {SceneNode} n */
+/** "+12 −3" for a box whose lines changed, "" otherwise. @param {import("../../types/nolli").BoxNode} n */
+export function statsText(n) {
+  const d = n.diff;
+  if (!d || (!d.added && !d.removed)) return "";
+  return `+${d.added} −${d.removed}`;
+}
+
+/** The size a folded node needs for its label, badge, chips and changed lines. @param {SceneNode} n */
 export function leafSize(n) {
   if (isAnchor(n)) return { w: 14, h: 14 };
   const sub = n.leaves ? "+" + n.leaves : "";
+  const stats = statsText(n);
   return {
-    w: Math.max(textW(n.label + sub, n.icon), (n.badge ? n.badge.length * 5.4 : 0) + n.chips.length * 11 + 20),
-    h: (n.badge || n.chips.length) ? 40 : 30,
+    w: Math.max(textW(n.label + sub, n.icon), (n.badge ? n.badge.length * 5.4 : 0) + stats.length * 6 + (stats ? 10 : 0) + n.chips.length * 11 + 20),
+    h: (n.badge || n.chips.length || stats) ? 40 : 30,
   };
 }
 
