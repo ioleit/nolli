@@ -6,7 +6,8 @@
 
 view shows a change of the git repository you are in, or of --repo: by default the
 current branch against the default branch; <change> can be a branch or commit (what it
-adds to the default branch), <base>..<head> or <base>...<head> (see nolli/change.py).
+adds to the default branch), <base>..<head> or <base>...<head> (see nolli/change.py), or
+a GitHub pull request: its URL, or '#<n>' on the repository's GitHub remote (nolli/github.py).
 It builds the change's dataset under --data (default: $NOLLI_DATA, else
 $XDG_DATA_HOME/nolli or ~/.local/share/nolli), reusing one built before, then serves the
 viewer on it and opens it in the browser.
@@ -94,7 +95,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 
 def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int | None = None, title: str | None = None,
-               description: str | None = None) -> tuple[Model, dict, dict]:
+               description: str | None = None, remote: str | None = None) -> tuple[Model, dict, dict]:
     """The dataset of a change: the merged model, changes.json, review.mmd and review.md."""
     from .changes import change_items
     from .diff import diff
@@ -103,6 +104,8 @@ def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int
     out.mkdir(parents=True, exist_ok=True)
     m, summary = diff(repo, base, head, extract)
     m.meta["nolli"] = version()
+    if remote:
+        m.meta["diff"]["remote"] = remote
     if pr:
         m.meta["diff"]["pr"] = pr
     if title:
@@ -153,16 +156,21 @@ def data_dir(arg: str | None) -> Path:
 
 
 def cmd_view(args: argparse.Namespace) -> int:
+    from . import github
     from .change import ChangeError, dataset_name, resolve, toplevel
 
+    host: dict = {}
     try:
         repo = toplevel(Path(args.repo).resolve())
-        ch = resolve(repo, args.change)
+        if github.is_pull_request(args.change):
+            ch, host = github.resolve(repo, args.change)
+        else:
+            ch = resolve(repo, args.change)
     except ChangeError as exc:
         print(f"nolli view: {exc}", file=sys.stderr)
         return 2
     data = data_dir(args.data)
-    name = dataset_name(repo, ch)
+    name = dataset_name(repo, ch, host.get("pr"))
     out = data / name
     what = f"{ch.base[:7]}..{ch.head[:7]}" if ch.is_diff else f"{ch.head[:7]} (the whole repository; no change to show)"
     print(f"{repo.name}: {what}  {ch.title}", file=sys.stderr)
@@ -170,7 +178,8 @@ def cmd_view(args: argparse.Namespace) -> int:
         print(f"building {out} …", file=sys.stderr)
         t0 = time.time()
         if ch.is_diff:
-            build_diff(repo, ch.base, ch.head, out, args.budget, title=ch.title, description=ch.description or None)
+            build_diff(repo, ch.base, ch.head, out, args.budget, title=ch.title, description=ch.description or None,
+                       pr=host.get("pr"), remote=host.get("remote"))
             (out / "pr.md").write_text(ch.description)
         else:
             build_commit(repo, ch.head, out, args.budget)
@@ -240,8 +249,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="nolli", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     vw = sub.add_parser("view", help="show a change of a git repository (or one commit as a whole) in the viewer")
-    vw.add_argument("change", nargs="?", help="a branch or commit, <base>..<head> or <base>...<head> "
-                    "(default: the current branch against the default branch)")
+    vw.add_argument("change", nargs="?", help="a branch or commit, <base>..<head> or <base>...<head>, or a GitHub PR's "
+                    "URL or '#<n>' (default: the current branch against the default branch)")
     vw.add_argument("--repo", default=".", help="the repository (default: the one you are in)")
     vw.add_argument("--data", help="where datasets are kept (default: $NOLLI_DATA, else $XDG_DATA_HOME/nolli or ~/.local/share/nolli)")
     vw.add_argument("--budget", type=int, default=34)

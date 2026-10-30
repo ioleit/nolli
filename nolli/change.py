@@ -144,6 +144,9 @@ def looks_like_sha(rev: str) -> bool:
     return 4 <= len(rev) <= 40 and all(c in "0123456789abcdef" for c in rev.lower())
 
 
-def dataset_name(repo: Path, ch: Change) -> str:
-    """``<repo>-<base7>-<head7>`` for a change, ``<repo>-<head7>`` for a commit."""
-    return f"{repo.name}-{ch.base[:7]}-{ch.head[:7]}" if ch.base else f"{repo.name}-{ch.head[:7]}"
+def dataset_name(repo: Path, ch: Change, pr: int | None = None) -> str:
+    """``<repo>-<base7>-<head7>`` for a change (``<repo>-pr<n>-<base7>-<head7>`` for a pull
+    request), ``<repo>-<head7>`` for a commit."""
+    if not ch.base:
+        return f"{repo.name}-{ch.head[:7]}"
+    return f"{repo.name}-{f'pr{pr}-' if pr else ''}{ch.base[:7]}-{ch.head[:7]}"
