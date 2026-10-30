@@ -11,3 +11,12 @@ path = "."
 [[repo]]
 name = "some-python-service"
 path = "~/src/some-python-service"
+
+# Pull requests (or any two commits) to review: nolli diff, written to <data_dir>/<name>.
+[[diff]]
+name = "some-python-service-pr12"
+repo = "~/src/some-python-service"
+base = "abc1234"          # the commit the PR started from
+head = "def5678"          # the PR's head (or its squashed merge commit)
+pr = 12                   # optional: links go to the PR's files view
+title = "Add a cache in front of the store"   # optional: shown in the viewer

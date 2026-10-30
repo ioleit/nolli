@@ -427,12 +427,32 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
                 node_items[r].add(it["id"])
                 break
     worst = lambda ids: max((verdicts[i]["verdict"] for i in ids if i in verdicts), key=VERDICT_RANK.get, default=None)  # noqa: E731
+
+    def review_lines(ids: list[str]) -> str:
+        out = []
+        if ids:
+            out.append("review items: " + ", ".join(ids[:12]) + (f" … {len(ids) - 12} more" if len(ids) > 12 else ""))
+        out += [f"{verdicts[i]['verdict']} {i}: {verdicts[i]['reason']}" for i in ids if i in verdicts][:6]
+        return ("\n" + "\n".join(out)) if out else ""
+
     for n in nodes:
         ids = sorted(node_items.get(n["id"], ()), key=lambda i: int(i[1:]))
         n["items"] = ids
         n["verdict"] = worst(ids)
+        d = n.get("diff")
+        if d:
+            parts = [f"{d['status']}"]
+            if d["added"] or d["removed"]:
+                parts.append(f"+{d['added']} −{d['removed']} lines" + (f" in {d['files']} files" if d["files"] > 1 else ""))
+            if d["new"] or d["gone"]:
+                parts.append(", ".join(x for x in (f"{d['new']} new" if d["new"] else "", f"{d['gone']} removed" if d["gone"] else "") if x))
+            n["tip"] = " · ".join(parts) + "\n" + n["tip"] + review_lines(ids)
+        elif ids:
+            n["tip"] += review_lines(ids)
     for e in edges:
         e["verdict"] = worst(e["items"])
+        if e["items"]:
+            e["tip"] += review_lines(e["items"])
 
 
 def state_from_query(q: dict[str, str]) -> ViewState:

@@ -32,7 +32,7 @@ def unfold_cost(m: Model, v: str, hidden: set[str], anchors: set[str] = frozense
 def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("fs:.",), hidden: set[str] | None = None) -> dict:
     """In a diff model the budget goes to the changes first (``review.change_scores``),
     then whatever is left to structure as usual."""
-    from .review import change_scores, is_diff
+    from .review import change_scores, diff_index, is_diff
 
     roles = tuple(hidden_roles) if hidden_roles is not None else hidden_by_role.__defaults__[0]
     if hidden is None:
@@ -40,17 +40,30 @@ def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("
     lca, _loose = reveal_scores(m, hidden)
     anchors = init_anchor_dirs(m, hidden)
     expanded: set[str] = {e for e in always_expand if m.has(e)}
-    phases = [change_scores(m, hidden), lca] if is_diff(m) else [lca]
+    diff = is_diff(m)
+    phases = [change_scores(m, hidden), lca] if diff else [lca]
+    # in a review, boxes where nothing changed are faded and cost half a box of attention
+    changed = diff_index(m) if diff else {}
+    weight = (lambda x: 1.0 if x in changed or x.startswith("body:") else 0.5) if diff else (lambda x: 1.0)  # noqa: E731
+
+    def cost_of_unfolding(v: str) -> float:
+        if not diff:
+            return unfold_cost(m, v, hidden, anchors)
+        after = visible_from_expanded(m, expanded | {v}, hidden)
+        return sum(weight(x) for x in after) - sum(weight(x) for x in visible)
+
     for scores in phases:
         while True:
             visible = visible_from_expanded(m, expanded, hidden)
-            room = budget - len(visible)
+            room = budget - sum(weight(x) for x in visible)
             best, best_key = None, (0.0, 0.0)
             for v in visible:
                 if v.startswith("body:") or m.entities[v].kind not in ("directory", "group", "file") or not m.children(v):
                     continue
-                score, delta = scores.get(v, 0), unfold_cost(m, v, hidden, anchors)
-                if score <= 0 or delta < 1 or delta > room:
+                if scores.get(v, 0) <= 0:
+                    continue
+                score, delta = scores.get(v, 0), cost_of_unfolding(v)
+                if score <= 0 or delta <= 0 or delta > room:
                     continue
                 key = (score / delta, score)
                 if key > best_key or (key == best_key and best is not None and v < best):

@@ -120,10 +120,10 @@ function buildBox(n, p, h) {
   /** @param {number} w */
   const badgeX = w => isC ? w - 28 : stats ? w - 6 : (w + n.chips.length * 11) / 2;
   if (fitted(p.w)) { badge = el("text", { class: "badge", x: badgeX(p.w), y: isC ? 18 : 33, "text-anchor": isC || stats ? "end" : "middle" }); badge.textContent = fitted(p.w); if (isC) badge.appendChild(el("title")).textContent = n.badge; grp.appendChild(badge); }
-  // the review's verdict on what this box contains, on its top-right corner
+  // the review's verdict on what this box contains, on its top-right corner; "fine" only in the panel
   /** @type {SVGElement | null} */
   let mark = null;
-  if (n.verdict) { mark = verdictMark(n.verdict, p.w - 1, 1); mark.appendChild(el("title")).textContent = `${n.verdict}: ${(n.items || []).join(", ")}`; }
+  if (n.verdict && n.verdict !== "fine") { mark = verdictMark(n.verdict, p.w - 1, 1); mark.appendChild(el("title")).textContent = `${n.verdict}: ${(n.items || []).join(", ")}`; }
   n.chips.forEach((c, i) => { const ch = el("circle", { cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), stroke: "Canvas", "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
   if (n.service_color !== null && n.service_color !== undefined) rect.setAttribute("stroke", color(n.service_color));
   // click: select (the review panel shows it) and unfold a folded box; alt-click only selects.
@@ -204,7 +204,7 @@ export function draw(g, scene, laid, handlers) {
     const label = e.diff ? (e.diff.status === "changed" ? `${e.diff.base}→${e.diff.head}` : e.diff.status === "added" ? `+${e.diff.head}` : `−${e.diff.base}`)
       : review ? "" : e.label;
     if (label && mid && (e.diff || (!e.weak && !e.local))) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = label; ge.appendChild(t); }
-    if (e.verdict && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); vm.appendChild(el("title")).textContent = `${e.verdict}: ${(e.items || []).join(", ")}`; ge.appendChild(vm); }
+    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); vm.appendChild(el("title")).textContent = `${e.verdict}: ${(e.items || []).join(", ")}`; ge.appendChild(vm); }
     ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.tip));
     ge.addEventListener("mouseleave", hideTip);
     if (h.select) { const sel = h.select; ge.addEventListener("click", ev => { if (wasDrag()) return; ev.stopPropagation(); sel("edge:" + e.key); }); }
