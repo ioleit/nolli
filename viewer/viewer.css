@@ -1,6 +1,7 @@
 /* nolli viewer */
 :root { color-scheme: light dark; --line: #8884; --ink: CanvasText; --muted: #888; }
 body { margin: 0; font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 290px 1fr; height: 100vh; }
+body.reviewing { grid-template-columns: 250px 1fr 400px; }
 aside { border-right: 1px solid var(--line); padding: 10px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
 aside h1 { font-size: 14px; margin: 0; }
 aside h2 { font-size: 11px; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
@@ -64,3 +65,77 @@ ul.plain li { padding: 1px 0; }
 button { font: inherit; padding: 2px 8px; }
 .chip { display: inline-flex; gap: 6px; align-items: center; border: 1px dashed #8886; border-radius: 4px; padding: 2px 6px; margin: 2px 2px 2px 0; font-size: 12px; }
 .chip button { padding: 0 6px; font-size: 11px; }
+
+/* ---------- review mode (diff datasets) ---------- */
+:root { --add: #2e9b4f; --rem: #c94040; --chg: #d08a1a; --sel: #2a7fd4; }
+.review-only { display: none; }
+body.reviewing .review-only { display: block; }
+#review { display: none; border-left: 1px solid var(--line); overflow: hidden; flex-direction: column; min-height: 0; }
+body.reviewing #review { display: flex; }
+.plus { color: var(--add); } .minus { color: var(--rem); }
+.rv-head { padding: 10px 12px 6px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.rv-title { font-weight: 600; font-size: 14px; }
+.rv-sub, .rv-verdicts { font-size: 12px; color: var(--muted); }
+.rv-sub a, .rv-verdicts a { color: var(--sel); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; width: max-content; margin: 2px 0; }
+.seg button { border: 0; background: transparent; padding: 3px 12px; cursor: pointer; }
+.seg button.on { background: var(--sel); color: white; }
+label.file { color: var(--sel); cursor: pointer; display: inline; }
+label.file input { display: none; }
+.rv-keys { font-size: 10.5px; color: var(--muted); padding: 4px 12px; border-bottom: 1px solid var(--line); }
+.rv-list { overflow: auto; flex: 1 1 50%; min-height: 80px; padding: 4px 0; }
+.rv-group { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px 12px 2px; }
+.rv-item { display: flex; gap: 6px; align-items: baseline; padding: 2px 12px; cursor: pointer; font-size: 12px; }
+.rv-item:hover { background: #8881; }
+.rv-item.sel { background: #2a7fd422; }
+.rv-item .id { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2.6em; }
+.rv-item .t { flex: 1; word-break: break-all; }
+.rv-item .role { font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; }
+.rv-empty { color: var(--muted); padding: 8px 12px; }
+.st { font-weight: 700; width: 1em; text-align: center; display: inline-block; }
+.st.added { color: var(--add); } .st.removed { color: var(--rem); } .st.changed { color: var(--chg); }
+.vd, .vtxt { font-weight: 700; display: inline-block; min-width: 1.2em; text-align: center; border-radius: 8px; color: white; font-size: 11px; }
+.vd.problem, .vtxt.problem { background: var(--rem); } .vd.question, .vtxt.question { background: var(--chg); } .vd.fine, .vtxt.fine { background: var(--add); }
+.rv-details { border-top: 1px solid var(--line); overflow: auto; flex: 1 1 50%; padding: 8px 12px; font-size: 12px; }
+.rv-details a { color: var(--sel); text-decoration: none; } .rv-details a:hover { text-decoration: underline; }
+.dt-title { font-weight: 600; margin-bottom: 4px; word-break: break-all; }
+.dt-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 8px 0 2px; }
+.dt-verdict { margin: 4px 0; padding: 4px 6px; border-radius: 4px; background: #8881; }
+.dt-hint, .muted { color: var(--muted); }
+ul.facts, ul.files { list-style: none; padding: 0; margin: 0; }
+ul.facts li, ul.files li { padding: 1px 0; word-break: break-all; }
+.hunks { padding-left: 1.8em; font-size: 11px; display: flex; flex-wrap: wrap; gap: 6px; }
+.git { font: 600 10px ui-monospace, monospace; border-radius: 3px; padding: 0 3px; color: white; background: #888; }
+.git.A { background: var(--add); } .git.D { background: var(--rem); } .git.M { background: var(--chg); } .git.R { background: #2a7fd4; }
+
+/* drawing: what changed */
+.node.d-added > rect { stroke: var(--add); stroke-width: 2; fill: #2e9b4f14; }
+.node.d-removed > rect { stroke: var(--rem); stroke-width: 2; stroke-dasharray: 5 3; fill: #c9404010; }
+.node.d-removed > text { text-decoration: line-through; fill: var(--rem); }
+.node.d-changed > rect { stroke: var(--chg); stroke-width: 2; }
+.node.container.d-changed > rect { stroke: var(--chg); stroke-width: 1.4; }
+.node .stats { font-size: 10px; font-variant-numeric: tabular-nums; }
+.node .stats .plus { fill: var(--add); } .node .stats .minus { fill: var(--rem); }
+.node rect.header { fill: transparent; stroke: none; cursor: pointer; }
+.edge.d-added path { stroke: var(--add); stroke-opacity: 1; stroke-width: 2px !important; }
+.edge.d-removed path { stroke: var(--rem); stroke-opacity: 1; stroke-dasharray: 6 4; stroke-width: 2px !important; }
+.edge.d-changed path { stroke: var(--chg); stroke-opacity: 1; stroke-width: 2px !important; }
+.edge.d-added text { fill: var(--add); font-weight: 600; } .edge.d-removed text { fill: var(--rem); font-weight: 600; } .edge.d-changed text { fill: var(--chg); font-weight: 600; }
+body.dim .node.d-same:not(.container) { opacity: .4; }
+body.dim .node.container.d-same > rect { stroke-opacity: .4; }
+body.dim .node.container.d-same > text { opacity: .55; }
+body.dim .edge.d-same { opacity: .18; }
+.verdict circle { stroke: Canvas; stroke-width: 1.5; }
+.verdict text { font: 700 10px system-ui, sans-serif; fill: white; pointer-events: none; }
+.verdict.problem circle { fill: var(--rem); } .verdict.question circle { fill: var(--chg); } .verdict.fine circle { fill: var(--add); }
+.edge path { cursor: pointer; }
+/* selection */
+.node.hl > rect { stroke: var(--sel) !important; stroke-width: 3 !important; }
+.edge.hl path { stroke: var(--sel) !important; stroke-opacity: 1 !important; stroke-width: 3px !important; }
+#root.selecting .edge.hl { opacity: 1 !important; }
+#root.selecting .node.hl { opacity: 1 !important; }
+/* in a review red means removed: a cycle is marked with a dotted dark border instead */
+body.reviewing .node.cycle > rect { stroke: var(--ink); stroke-dasharray: 1 2; stroke-width: 1.2; }
+body.reviewing .node.cycle.d-changed > rect { stroke: var(--chg); stroke-dasharray: 1 2; stroke-width: 2; }
+/* changed counts matter less than dependencies that appear or disappear */
+.edge.d-changed path { stroke-width: 1.4px !important; }

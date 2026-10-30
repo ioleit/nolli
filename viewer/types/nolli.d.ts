@@ -2,6 +2,71 @@
 
 export interface Chip { id: string; name: string; color: number }
 
+// ---------- review mode (diff datasets, nolli/review.py) ----------
+
+export type Status = "added" | "removed" | "changed";
+export type Verdict = "fine" | "question" | "problem";
+
+/** A box's change: its own status, and totals in its subtree. */
+export interface NodeDiff {
+  status: Status;
+  added: number; removed: number;  // changed lines
+  files: number;  // changed files
+  new: number; gone: number;  // entities added / removed
+  internal: number;  // changed facts between its own children
+  git?: string; old_path?: string; renamed_to?: string;
+}
+
+/** One stored fact that changed, with a link to where. */
+export interface FactChange {
+  fact: string; status: Status; kind: string; subkind: string; src: string; dst: string;
+  base: number; head: number; path: string | null; line: number | null; link: string | null;
+}
+
+export interface EdgeDiff { status: Status; base: number; head: number; facts: string[]; changes: FactChange[]; more: number }
+
+/** The diff summary of a scene: the two commits and the change as a whole. */
+export interface SceneDiff {
+  base: string; head: string; base_short: string; head_short: string; remote: string | null; pr: number | null;
+  title: string | null; files_changed: number; added: number; removed: number; link: string | null;
+  drawn: Partial<Record<Status, number>>; changed_entities: number;
+}
+
+/** A numbered review item (GET /api/changes). */
+export interface ReviewItem {
+  id: string;
+  category: "component" | "dependency" | "content";
+  status: Status;
+  title: string;
+  area: string;
+  role: string;
+  link: string | null;
+  entities: string[];
+  facts: string[];
+  reveal: string[];  // boxes to unfold so it can be seen
+  focus: string[];
+  classes?: (string | { name: string; added: number; removed: number })[];
+  lines?: number;
+  added?: number; removed?: number;
+  base?: number; head?: number; targets?: string[];
+  verdict: { verdict: Verdict; reason: string } | null;
+}
+
+/** GET /api/node: everything about one box in a diff dataset. */
+export interface Details {
+  id: string; kind: string; name: string; path: string | null; link: string | null;
+  diff: NodeDiff | null;
+  files: { id: string; path: string; git: string; old_path: string | null; added: number; removed: number; binary: boolean;
+           link: string | null; blob: string | null; hunks: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[];
+           more_hunks: number }[];
+  more_files: number;
+  classes: { id: string; name: string; path: string | null; added: number; removed: number; lines: (number | null)[]; link: string | null }[];
+  entities: { id: string; kind: string; name: string; status: Status; path: string | null; link: string | null }[];
+  more_entities: number;
+  dependencies: FactChange[];
+  more_dependencies: number;
+}
+
 /** A module's own code: a small dot inside the module. */
 export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; tip: string }
 
@@ -21,6 +86,9 @@ export interface BoxNode {
   service_color: number | null;
   internal: number | null;
   tip: string;
+  diff?: NodeDiff | null;  // review mode only
+  items?: string[];  // review items shown on this box
+  verdict?: Verdict | null;  // the worst verdict among them
 }
 
 export type SceneNode = AnchorNode | BoxNode;
@@ -42,6 +110,9 @@ export interface SceneEdge {
   dangling: boolean;
   heuristic: boolean;
   tip: string;
+  diff?: EdgeDiff | null;
+  items?: string[];
+  verdict?: Verdict | null;
 }
 
 export interface SceneState {
@@ -54,6 +125,7 @@ export interface SceneState {
   bundle: boolean;
   utilities: boolean;
   hide_internal: boolean;
+  side: "both" | "base" | "head";
 }
 
 export interface Scene {
@@ -65,6 +137,7 @@ export interface Scene {
   stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
   dataset: { name: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
   url?: string;  // added by the viewer: the request that produced it
+  diff?: SceneDiff;  // a diff dataset: the review mode
 }
 
 export interface Point { x: number; y: number }
