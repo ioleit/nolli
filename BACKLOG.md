@@ -12,8 +12,9 @@ solution; solutions are for whoever picks it up.
 - **Rendering, open-ended.** The ELK orthogonal edge routing reads like a circuit board
   once there are more than a few dozen edges; labels are tiny; layout direction, edge
   routing (splines, bundling along the containment tree), emphasis and reading order are
-  all unexplored beyond defaults. Every change redraws from scratch; scenes carry stable node and edge keys, so
-  the step between two can be animated (boxes grow out of the one unfolded).
+  all unexplored beyond defaults. Unfolding animates and keeps the clicked box in place, but the layout
+  is still computed from scratch, so other boxes can travel far and cross each other
+  mid-step (bench.html measures how much of the arrangement survives).
   The force layout (fCoSE) can leave sibling boxes overlapping (0–4 pairs on the
   corpus); it has no overlap-removal pass, and its edges are straight, not routed.
 - **Tests for the roll-up rules.** Only extraction is tested; none of the rules in

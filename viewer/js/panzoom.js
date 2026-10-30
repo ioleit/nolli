@@ -8,6 +8,11 @@ let zoom = { k: 1, x: 0, y: 0 };
 /** @type {{ x: number, y: number } | null} */
 let drag = null;
 
+/** The current view: scale k, then translate (x, y) in screen pixels. */
+export const getView = () => ({ ...zoom });
+/** @param {{ k: number, x: number, y: number }} v */
+export function setView(v) { zoom = { ...v }; apply(); }
+
 function apply() { root.setAttribute("transform", `translate(${zoom.x},${zoom.y}) scale(${zoom.k})`); }
 
 /** Fit a w × h drawing into the canvas, never magnifying beyond 1.5. @param {number} w @param {number} h */

@@ -3,7 +3,8 @@
 //
 //   state.js    view state, URL hash, scene query
 //   layout/     scene -> positions and edge routes, no DOM; one module per engine
-//   draw.js     scene + layout -> SVG
+//   draw.js     scene + layout -> SVG, with a handle per node to move and fade it
+//   transition.js, animate.js: the step between two pictures (plan, then play)
 //   raw.js      scene -> JSON pane
 //   sidebar.js, panzoom.js, tip.js, mermaid.js, dom.js
 //   stability.js, bench.js (bench.html): how well layouts keep the picture across a step
@@ -12,13 +13,15 @@
 import { byId, input, select } from "./dom.js";
 import { DEFAULTS, OPTIONS, query, readHash, state, writeHash } from "./state.js";
 import { ENGINES, layout } from "./layout/index.js";
-import { draw } from "./draw.js";
+import { draw, drawGhosts } from "./draw.js";
+import { plan } from "./transition.js";
+import { finish, play } from "./animate.js";
 import { hideRaw, onRawToggle, showRaw } from "./raw.js";
 import { sidebar, syncControls } from "./sidebar.js";
 import { fit } from "./panzoom.js";
 import { toggleMermaid } from "./mermaid.js";
 
-/** @typedef {import("../types/nolli").Scene} Scene */
+/** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
 
 // surface failures instead of a silently blank canvas
 /** @param {string} msg */
@@ -30,6 +33,11 @@ window.addEventListener("unhandledrejection", ev => showError(String(ev.reason &
 let scene = null;
 let seq = 0;
 let fitted = false;
+/** @type {{ scene: Scene, laid: Laid } | null} the picture on screen */
+let shown = null;
+/** @type {string | null} the box whose click led to the next picture */
+let clicked = null;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 async function refresh(keepZoom = false) {
   const my = ++seq, url = "/api/scene?" + query(), t0 = performance.now();
@@ -51,15 +59,25 @@ async function refresh(keepZoom = false) {
 function toggle(id) {
   const x = new Set(state.expanded);
   x.has(id) ? x.delete(id) : x.add(id);  // the server drops whatever was unfolded inside a folded box
-  state.expanded = [...x]; refresh(true);
+  state.expanded = [...x]; clicked = id; refresh(true);
 }
 
 async function render(keepZoom = false) {
   if (!scene) return;
   hideRaw();
-  const laid = await layout(scene, { engine: state.engine, direction: state.direction, seed: state.name || "" });
-  draw(byId("root"), scene, laid, toggle);
-  if (!keepZoom || !fitted) fit(laid.width, laid.height);
+  const sc = scene, prev = shown, from = clicked;
+  clicked = null;
+  const laid = await layout(sc, { engine: state.engine, direction: state.direction, seed: state.name || "", previous: prev?.laid, toggled: from || undefined });
+  if (sc !== scene) return;  // a newer scene arrived while this one was laid out
+  finish();
+  const root = byId("root");
+  const drawn = draw(root, sc, laid, toggle);
+  shown = { scene: sc, laid };
+  if (keepZoom && fitted && prev) {
+    // a step from the picture on screen: move from there, keeping the clicked box in place
+    const p = plan(prev.scene, prev.laid, sc, laid, from);
+    play(p, drawn, drawGhosts(root, prev.scene, prev.laid, p.leaving.keys(), drawn.firstEdge), state.animate && !reducedMotion.matches ? undefined : 0);
+  } else fit(laid.width, laid.height);
   fitted = true;
   const s = byId("status"); s.style.color = "";
   s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms.scene} ms, round trip ${scene.stats.ms.roundtrip} ms`;
@@ -73,11 +91,12 @@ byId("reset").addEventListener("click", () => { state.expanded = null; refresh()
 byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; refresh(); });
 for (const [id, k] of Object.entries(OPTIONS)) input(id).addEventListener("change", () => { state[k] = input(id).checked; refresh(true); });
 input("nolabels").addEventListener("change", () => { state.noLabels = input("nolabels").checked; byId("g").classList.toggle("nolabels", state.noLabels); writeHash(); });
+input("animate").addEventListener("change", () => { state.animate = input("animate").checked; writeHash(); });
 input("raw").addEventListener("change", () => { state.raw = input("raw").checked; writeHash(); if (state.raw) showRawPane(); else render(); });
 select("direction").addEventListener("change", () => { state.direction = select("direction").value === "RIGHT" ? "RIGHT" : "DOWN"; writeHash(); render(); });
 for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; select("engine").appendChild(o); }
 select("engine").addEventListener("change", () => { state.engine = select("engine").value; writeHash(); render(); });
-select("dataset").addEventListener("change", () => { Object.assign(state, DEFAULTS, { name: select("dataset").value }); refresh(); });
+select("dataset").addEventListener("change", () => { Object.assign(state, DEFAULTS, { name: select("dataset").value }); shown = null; refresh(); });
 byId("mmd").addEventListener("click", () => { if (state.name) toggleMermaid(state.name); });
 
 (async () => {
@@ -89,7 +108,7 @@ byId("mmd").addEventListener("click", () => { if (state.name) toggleMermaid(stat
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
   if (!name) { byId("status").textContent = "no datasets"; return; }
   sel.value = name;
-  Object.assign(state, h.st, { name, noLabels: h.noLabels, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", raw: h.raw });
+  Object.assign(state, h.st, { name, noLabels: h.noLabels, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, raw: h.raw });
   await refresh();
   if (h.mmd) byId("mmd").click();
 })();

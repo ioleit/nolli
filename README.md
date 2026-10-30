@@ -42,6 +42,8 @@ python -I viewer/serve.py --data <parent of out_dirs> --host 127.0.0.1 --port 87
 
 `/bench.html` on the same server measures how well layouts keep the reader's mental map over single unfold/fold steps (`viewer/js/stability.js`: kept left/right and above/below relations between boxes, kept nearest neighbours, movement left after the best shift and scale).
 
+Unfolding and folding animate (`viewer/js/transition.js` plans, `animate.js` plays): new boxes open out of the box they belong to, leaving ones shrink into it, the rest slide, and the view moves with the clicked box so it stays where it was on screen. "animate unfold and fold" in the options (or `an=0`) turns the motion off; the clicked box still stays in place.
+
 The viewer computes nothing itself: on every click it asks the server for the scene
 (`/api/scene?d=<dataset>&x=<unfolded ids>&…`, the same keys as its location hash) and
 lays it out with ELK. "raw JSON" in its options shows the response instead of a drawing.
