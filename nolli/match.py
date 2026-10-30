@@ -3,7 +3,7 @@
 - Python import modules -> files (exact) or external packages.
 - JS specifiers -> files (exact; relative paths, tsconfig ``paths`` aliases) or
   external packages. Node built-ins are dropped like the Python stdlib.
-- HTTP call patterns -> endpoints (heuristic, by path shape and method).
+- API calls -> endpoints (heuristic; per protocol, see ``extractors/api.py``).
 
 Placeholders that cannot be bound stay in the model as ``unresolved``
 entities so views can count them. Placeholders bound everywhere are removed.
@@ -17,7 +17,7 @@ import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from .extractors import Context
+from .extractors import Context, api
 from .model import CONTAIN, USE, Entity, Provenance, Relation
 
 NODE_BUILTINS = {
@@ -247,64 +247,6 @@ def resolve_js(ctx: Context) -> None:
     ctx.notes["js-resolution"] = dict(stats)
 
 
-# -- HTTP calls -> endpoints ------------------------------------------------------
-
-
-def path_matches(route: str, call: str) -> bool:
-    rs, cs = route.strip("/").split("/"), call.strip("/").split("/")
-    i = 0
-    for i, rseg in enumerate(rs):
-        if rseg.startswith("{") and rseg.endswith(":path}"):
-            return i < len(cs)
-        if i >= len(cs):
-            return False
-        cseg = cs[i]
-        if rseg.startswith("{") or cseg == "*":
-            continue
-        if rseg != cseg:
-            return False
-    return len(cs) == len(rs)
-
-
-def suffix_matches(route: str, call: str) -> bool:
-    rs, cs = route.strip("/").split("/"), call.strip("/").split("/")
-    if len(cs) > len(rs):
-        return False
-    return path_matches("/" + "/".join(rs[len(rs) - len(cs):]), call)
-
-
-def resolve_http(ctx: Context) -> None:
-    m = ctx.model
-    endpoints = [e for e in m.entities.values() if e.kind == "endpoint"]
-    stats = defaultdict(int)
-    new_relations: list[Relation] = []
-    for r in m.relations:
-        if not (r.kind == USE and r.dst.startswith("unresolved:http:")):
-            new_relations.append(r)
-            continue
-        ph = m.entities[r.dst]
-        method, pattern = ph.attrs["method"], ph.attrs["pattern"]
-        def method_ok(e) -> bool:
-            return method == "?" or e.attrs["method"] in ("ANY", method) or method in e.attrs["method"].split(",")
-
-        hits = [e for e in endpoints if method_ok(e) and path_matches(e.attrs["path"], pattern)]
-        how = "path"
-        if not hits and pattern.count("/") >= 2:
-            # unknown base prefix on the caller's side (``${API_BASE}`` we could not fold):
-            # accept routes whose path ends with the called pattern
-            hits = [e for e in endpoints if method_ok(e) and suffix_matches(e.attrs["path"], pattern)]
-            how = "suffix"
-        if hits:
-            stats["matched" if how == "path" else "matched-suffix"] += 1
-            for e in hits:
-                new_relations.append(Relation(USE, r.src, e.id, "http", 1, "heuristic", r.provenance, dict(r.attrs, pattern=pattern, match=how)))
-        else:
-            stats["unmatched"] += 1
-            new_relations.append(r)
-    m.relations = new_relations
-    ctx.notes["http-resolution"] = dict(stats)
-
-
 def exact_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
     for cand in module_candidates(mod, from_rel):
         if cand in modmap:
@@ -409,5 +351,5 @@ def run_all(ctx: Context) -> None:
     resolve_python(ctx)
     resolve_pyrefs(ctx)
     resolve_js(ctx)
-    resolve_http(ctx)
+    api.resolve(ctx)
     prune_unresolved(ctx)

@@ -26,7 +26,7 @@ Extracted today: Python (modules, imports, classes and their references, FastAPI
 routes, `os.environ` reads), TypeScript/JavaScript (modules, imports, `fetch`/axios/
 EventSource calls, `process.env`/`import.meta.env` reads), docker-compose services and
 Dockerfiles. Frontend calls are bound to backend routes by path shape, so a mixed repo
-shows the HTTP API as the seam between the two.
+shows the API as the seam between the two.
 
 ## Usage
 
@@ -58,7 +58,7 @@ Honest marks on how much thought each part has had. Treat everything as open.
 | `nolli/model.py` | small and unchanged through many iterations, but a convenience layer, not a settled schema; the entity/relation vocabulary follows UML 2 component and deployment diagrams because they were there, not because it was derived |
 | `nolli/extractors/fs.py` | file tree plus a role per file (source/test/config/docs/…); the role rules are guesses that fit a few repos |
 | `nolli/extractors/python/`, `typescript/`, `infra/` | first stab at a reasonable split: a language front-end (imports, symbols) next to the adapters that read that language's syntax for a framework; each adapter is a heuristic over one library's idioms |
-| `nolli/extractors/interfaces.py` | barely exists; where languages are supposed to meet (how an endpoint or env variable is named) |
+| `nolli/extractors/interfaces.py`, `api.py` | where languages are supposed to meet; `api.py` is the shared structure for APIs (adapters report operations and calls, one builder makes APIs → app → path steps → operations, matching per protocol), a one-evening prototype with one adapter (FastAPI) behind it; `interfaces.py` only has the env helper |
 | `nolli/match.py` | resolution of placeholders to files, classes and endpoints; grew by patching cases the test repos broke |
 | `nolli/rollup.py`, `nolli/rollup.md` | the roll-up from facts to a picture and the rules tuned on top of it; the central idea, but every rule is a judgement call from one afternoon — see `NOTES.md` |
 | `nolli/view.py` | one greedy heuristic for the default cut, with magic numbers |

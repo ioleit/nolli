@@ -25,8 +25,8 @@ ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "ass
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
 DEFAULT_UTILITY_IN = 6  # more incoming edges than this: a utility, drawn as badges
-DEFAULT_GROUPS = ("http",)  # root groups drawn as boxes; the others are badges on their users
-GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "http": "api"}
+DEFAULT_GROUPS = ("api",)  # root groups drawn as boxes; the others are badges on their users
+GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "api": "api"}
 MODULE_LANGS = ("python", "typescript", "javascript")
 
 

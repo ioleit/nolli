@@ -25,14 +25,15 @@ readable. Each was a judgement call on a few repositories (reasons in `NOTES.md`
   becomes **badges instead of edges**, as do *utilities*, boxes with more than N
   incoming edges in the picture (N = 6 by default, a viewer option): their incoming edges
   are not drawn; the utility says how many boxes use it ("used by 7"), and an unfolded box
-  lists the utilities its children use ("→ progress", bottom right). A folded box lists none. By default only HTTP API is shown;
+  lists the utilities its children use ("→ progress", bottom right). A folded box lists none. By default only APIs is shown;
 - **internal edges** (both ends inside the same unfolded box) are hairlines, or hidden
   with a count in the box header;
 - **weak edges** (a small share of their source's references) are faint and unlabeled;
 - **interfaces** (endpoints, env variables) are derived through when their group is not
   shown: a call and the route that serves it become one edge caller → handler; when the
-  group is shown, calls go into it (or the route group or endpoint, once unfolded), and
-  `provide` is drawn from it to the module that realises it (the fact keeps UML's
+  group is shown, calls go into it (or the API, path step or operation, once unfolded), and
+  `provide` is drawn from it to the module that realises it (siblings in one unfolded API
+  box realised by the same module are bundled into one edge from the box) (the fact keeps UML's
   direction, the picture reverses it);
 - **a module's own code** (functions, constants, statements outside any class) is a small
   anchor in the module's header, not a box; a Python package's `__init__` is the

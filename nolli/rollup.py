@@ -12,7 +12,7 @@ Two conventions keep the picture readable:
   ``files:<dir>`` inside it rather than one box per file (a directory's own
   files are its "body"; its subdirectories are its parts). Groups (externals,
   interfaces, deployment) unfold to individual children.
-- Groups (External packages, Environment, Deployment, HTTP API) are a filter:
+- Groups (External packages, Environment, Deployment, APIs) are a filter:
   a group the viewer shows is a box like any other, folded or unfolded; edges to
   a group it doesn't show are not drawn and become annotations on the other node
   ("uses 42 external packages"). Cross-cutting things are omnipresent; drawn,
@@ -361,8 +361,8 @@ def drawn_parent(m: Model, node: str, expanded: set[str]) -> str | None:
 
 def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int = 3) -> list["RolledEdge"]:
     """Fan-collapse: edges from one node to >= min_fan children of the same unfolded
-    container are drawn as one edge to the container; symmetrically for sources.
-    Edges inside a container are left alone."""
+    container are drawn as one edge to the container; symmetrically for sources (also for
+    provide edges, whose source is the interface). Edges inside a container are left alone."""
     def is_inside(node: str, container: str) -> bool:
         x: str | None = owner_of(node)
         while x is not None:
@@ -377,7 +377,10 @@ def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int
             end = e.dst if side == "dst" else e.src
             other = e.src if side == "dst" else e.dst
             c = drawn_parent(m, end, expanded)
-            if e.kind == PROVIDE or c is None or is_inside(other, c):  # which module realises which interface is the point; never bundled
+            # which module realises which interface is the point: a provide edge (drawn interface ->
+            # module) is never bundled at the module's end, but siblings in one unfolded API box
+            # realised by the same module are one edge from the box
+            if (e.kind == PROVIDE and side == "dst") or c is None or is_inside(other, c):
                 groups[("keep", id(e))].append(e)
             else:
                 groups[(side, other, c, e.kind, e.subkind)].append(e)
