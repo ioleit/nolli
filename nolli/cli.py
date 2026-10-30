@@ -1,7 +1,17 @@
 """nolli command line.
 
+    nolli view [<change>] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
+
+view shows a change of the git repository you are in, or of --repo: by default the
+current branch against the default branch; <change> can be a branch or commit (what it
+adds to the default branch), <base>..<head> or <base>...<head> (see nolli/change.py).
+It builds the change's dataset under --data (default: $NOLLI_DATA, else
+$XDG_DATA_HOME/nolli or ~/.local/share/nolli), reusing one built before, then serves the
+viewer on it and opens it in the browser.
+
+extract and diff write a dataset to a directory of your choice.
 
 Writes model.json (all facts), view.json (the default cut), scene.json (the
 scene of that cut, exactly what the viewer's /api/scene returns for it),
@@ -74,28 +84,131 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
-    from .diff import diff
-
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    m, summary = diff(Path(args.repo), args.base, args.head, extract)
-    if args.pr:
-        m.meta["diff"]["pr"] = args.pr
-    if args.title:
-        m.meta["diff"]["title"] = args.title
-    report = write_dataset(m, out, args.budget, {}, {"diff": summary})
-    from .changes import change_items
-    from .review import review_expanded, review_markdown
-
-    (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
-    st = ViewState(budget=args.budget, expanded=review_expanded(m))
-    expanded, _hidden, visible, rolled, _utilities = compute(m, st)
-    mmd = render(m, {"budget": args.budget, "expanded": sorted(expanded), "visible": sorted(visible)}, rolled)
-    (out / "review.mmd").write_text(mmd)
     desc = Path(args.description) if args.description else out / "pr.md"
-    (out / "review.md").write_text(review_markdown(m, mmd, desc.read_text() if desc.is_file() else None))
+    m, summary, report = build_diff(Path(args.repo), args.base, args.head, out, args.budget, pr=args.pr, title=args.title,
+                                    description=desc.read_text() if desc.is_file() else None)
     print(json.dumps({"diff": m.meta["diff"] | {"base": m.meta["diff"]["base_short"], "head": m.meta["diff"]["head_short"]},
                       "changes": summary, "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]}}, indent=1))
+    return 0
+
+
+def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int | None = None, title: str | None = None,
+               description: str | None = None) -> tuple[Model, dict, dict]:
+    """The dataset of a change: the merged model, changes.json, review.mmd and review.md."""
+    from .changes import change_items
+    from .diff import diff
+    from .review import review_expanded, review_markdown
+
+    out.mkdir(parents=True, exist_ok=True)
+    m, summary = diff(repo, base, head, extract)
+    m.meta["nolli"] = version()
+    if pr:
+        m.meta["diff"]["pr"] = pr
+    if title:
+        m.meta["diff"]["title"] = title
+    report = write_dataset(m, out, budget, {}, {"diff": summary})
+    (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
+    st = ViewState(budget=budget, expanded=review_expanded(m))
+    expanded, _hidden, visible, rolled, _utilities = compute(m, st)
+    mmd = render(m, {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible)}, rolled)
+    (out / "review.mmd").write_text(mmd)
+    (out / "review.md").write_text(review_markdown(m, mmd, description))
+    return m, summary, report
+
+
+def build_commit(repo: Path, sha: str, out: Path, budget: int) -> dict:
+    """The dataset of one commit as a whole, extracted from the commit (not the working tree)."""
+    import tempfile
+
+    from .diff import materialise
+
+    out.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
+        materialise(repo, sha, Path(tmp))
+        m, ctx = extract(Path(tmp))
+    if m.has("fs:."):  # the root is the temporary directory; name it after the repository
+        m.entities["fs:."].name = repo.name
+    m.meta.update({"repo": repo.name, "commit": sha[:7], "nolli": version()})
+    return write_dataset(m, out, budget, ctx.notes)
+
+
+def version() -> str:
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as pkg_version
+
+    try:
+        return pkg_version("nolli")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def data_dir(arg: str | None) -> Path:
+    """Where nolli view keeps datasets: --data, $NOLLI_DATA, $XDG_DATA_HOME/nolli or ~/.local/share/nolli."""
+    import os
+
+    if arg or os.environ.get("NOLLI_DATA"):
+        return Path(arg or os.environ["NOLLI_DATA"]).expanduser()
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share").expanduser() / "nolli"
+
+
+def cmd_view(args: argparse.Namespace) -> int:
+    from .change import ChangeError, dataset_name, resolve, toplevel
+
+    try:
+        repo = toplevel(Path(args.repo).resolve())
+        ch = resolve(repo, args.change)
+    except ChangeError as exc:
+        print(f"nolli view: {exc}", file=sys.stderr)
+        return 2
+    data = data_dir(args.data)
+    name = dataset_name(repo, ch)
+    out = data / name
+    what = f"{ch.base[:7]}..{ch.head[:7]}" if ch.is_diff else f"{ch.head[:7]} (the whole repository; no change to show)"
+    print(f"{repo.name}: {what}  {ch.title}", file=sys.stderr)
+    if args.rebuild or not fresh(out):
+        print(f"building {out} …", file=sys.stderr)
+        t0 = time.time()
+        if ch.is_diff:
+            build_diff(repo, ch.base, ch.head, out, args.budget, title=ch.title, description=ch.description or None)
+            (out / "pr.md").write_text(ch.description)
+        else:
+            build_commit(repo, ch.head, out, args.budget)
+        print(f"built in {time.time() - t0:.1f} s", file=sys.stderr)
+    if args.build_only:
+        print(out)
+        return 0
+    return serve(data, name, args.host, args.port, not args.no_open)
+
+
+def fresh(out: Path) -> bool:
+    """A dataset built before by this version of nolli."""
+    try:
+        return json.loads((out / "report.json").read_text())["meta"].get("nolli") == version()
+    except (OSError, ValueError, KeyError):
+        return False
+
+
+def serve(data: Path, name: str, host: str, port: int, open_browser: bool) -> int:
+    import webbrowser
+    from urllib.parse import quote
+
+    from .viewer.serve import make_server
+
+    try:
+        srv = make_server(data, host, port)
+    except OSError:  # the port is taken (another viewer, perhaps): any free one
+        srv = make_server(data, host, 0)
+    url = f"http://{host}:{srv.server_address[1]}/#d={quote(name)}"
+    print(f"viewer: {url}  (Ctrl-C to stop)", file=sys.stderr, flush=True)
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        srv.server_close()
     return 0
 
 
@@ -126,6 +239,18 @@ def write_dataset(m: Model, out: Path, budget: int, notes: dict, extra: dict | N
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="nolli", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    vw = sub.add_parser("view", help="show a change of a git repository (or one commit as a whole) in the viewer")
+    vw.add_argument("change", nargs="?", help="a branch or commit, <base>..<head> or <base>...<head> "
+                    "(default: the current branch against the default branch)")
+    vw.add_argument("--repo", default=".", help="the repository (default: the one you are in)")
+    vw.add_argument("--data", help="where datasets are kept (default: $NOLLI_DATA, else $XDG_DATA_HOME/nolli or ~/.local/share/nolli)")
+    vw.add_argument("--budget", type=int, default=34)
+    vw.add_argument("--rebuild", action="store_true", help="build the dataset again even if it exists")
+    vw.add_argument("--build-only", action="store_true", help="build the dataset, print its directory, don't serve")
+    vw.add_argument("--host", default="127.0.0.1")
+    vw.add_argument("--port", type=int, default=8720, help="default 8720; a free one if that is taken")
+    vw.add_argument("--no-open", action="store_true", help="don't open the browser")
+    vw.set_defaults(fn=cmd_view)
     ex = sub.add_parser("extract", help="extract the model of a repository")
     ex.add_argument("repo")
     ex.add_argument("-o", "--out", required=True)

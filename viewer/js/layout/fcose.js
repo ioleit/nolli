@@ -2,8 +2,8 @@
 // together and lays containers out among themselves. Cytoscape runs headless here, only
 // to compute positions; edges are straight lines from border to border.
 
-import cytoscape from "https://cdn.jsdelivr.net/npm/cytoscape@3.34.4/+esm";
-import fcose from "https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/+esm";
+import cytoscape from "../../vendor/cytoscape.mjs";
+import fcose from "../../vendor/fcose.mjs";
 import { CONTAINER_PAD, childrenOf, containerPad, isContainer, leafSize, straight } from "./index.js";
 
 /**

@@ -1,6 +1,7 @@
 """Serve the nolli viewer and one or more extracted datasets.
 
-    python -I serve.py --data ~/data/nolli [--host 127.0.0.1] [--port 8720]
+    nolli view …                                      (installed: builds a dataset, then serves)
+    python -I viewer/serve.py --data ~/data/nolli [--host 127.0.0.1] [--port 8720]   (a checkout)
 
 Static files come from this directory; ``/data/<name>/<file>`` serves the
 dataset directories under --data; ``/api/list`` lists them, newest first;
@@ -8,8 +9,9 @@ dataset directories under --data; ``/api/list`` lists them, newest first;
 the parameters are the viewer's location-hash keys); ``/api/node?d=<name>&id=<entity>``
 returns the details of one box in a diff dataset (``nolli/changes.py``), ``/api/changes?d=``
 its numbered changes, the review's verdicts and what to unfold to see all changes, and ``POST /api/verdicts?d=`` stores a
-review's verdicts.json next to the dataset. Needs only the standard library:
-the nolli package is imported from this checkout, not from an installed copy.
+review's verdicts.json next to the dataset. Needs only the standard library. Installed,
+this is ``nolli.viewer.serve``; run as a script from a checkout, it imports the nolli
+package of that checkout, not an installed copy.
 """
 
 from __future__ import annotations
@@ -25,7 +27,8 @@ from pathlib import Path
 from urllib.parse import parse_qsl, unquote
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))  # the nolli package of this checkout
+if not __package__:
+    sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
 from nolli.model import Model  # noqa: E402
 from nolli.changes import change_items, details  # noqa: E402
@@ -173,14 +176,19 @@ class Handler(SimpleHTTPRequestHandler):
         pass
 
 
+def make_server(data: Path, host: str = "127.0.0.1", port: int = 8720) -> ThreadingHTTPServer:
+    """A server for the viewer and the datasets under ``data``, not yet serving. Port 0 picks a free one."""
+    Handler.data_root = Path(data).expanduser().resolve()
+    return ThreadingHTTPServer((host, port), partial(Handler, directory=str(HERE)))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", default=str(HERE / "data"))
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8720)
     args = ap.parse_args()
-    Handler.data_root = Path(args.data).expanduser().resolve()
-    srv = ThreadingHTTPServer((args.host, args.port), partial(Handler, directory=str(HERE)))
+    srv = make_server(args.data, args.host, args.port)
     print(f"serving {HERE} + data {Handler.data_root} on http://{args.host}:{args.port}/", flush=True)
     srv.serve_forever()
 

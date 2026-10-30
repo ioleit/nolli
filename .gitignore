@@ -5,3 +5,4 @@ __pycache__/
 dev/corpus.local.toml
 viewer/data/
 node_modules/
+build/

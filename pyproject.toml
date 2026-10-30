@@ -16,8 +16,18 @@ nolli = "nolli.cli:main"
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-include = ["nolli*"]
+# The viewer lives in viewer/ (with its Node tooling for type checks and tests) and is
+# installed as nolli.viewer: serve.py, the page, its scripts and the vendored libraries.
+[tool.setuptools]
+# Every directory with an __init__.py, listed (tests/test_packaging.py checks it).
+packages = ["nolli", "nolli.extractors", "nolli.extractors.infra", "nolli.extractors.python",
+            "nolli.extractors.typescript", "nolli.viewer"]
+
+[tool.setuptools.package-dir]
+"nolli.viewer" = "viewer"
+
+[tool.setuptools.package-data]
+"nolli.viewer" = ["*.html", "*.css", "js/*.js", "js/layout/*.js", "vendor/*.js", "vendor/*.mjs", "vendor/LICENSES.txt"]
 
 [tool.ruff]
 line-length = 110
