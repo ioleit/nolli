@@ -1,0 +1,112 @@
+"""End-to-end smoke test on a synthetic mixed repository.
+
+Builds a tiny FastAPI backend, a React-ish frontend that calls it through a
+helper, a docker-compose file and a Dockerfile, then checks that the model
+binds the frontend call to the route, the directory to the image, the env read
+to the service, and that the default cut lifts a frontend -> backend edge.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from nolli.cli import extract
+from nolli.rollup import bundle, hidden_by_role, image_aliases, rollup
+from nolli.view import default_view
+
+FILES = {
+    "backend/__init__.py": "",
+    "backend/main.py": (
+        "import os\nfrom fastapi import FastAPI\nfrom .api import worlds\n"
+        "app = FastAPI()\napp.include_router(worlds.router, prefix='/api')\n"
+        "REDIS = os.environ['REDIS_URL']\n"
+    ),
+    "backend/api/__init__.py": "",
+    "backend/api/worlds.py": (
+        "from fastapi import APIRouter\nfrom ..store import Store\n"
+        "router = APIRouter(prefix='/worlds')\n"
+        "@router.get('/{world}/echoes')\ndef echoes(world: str): return Store().list(world)\n"
+        "@router.post('')\ndef create(): return {}\n"
+    ),
+    "backend/store.py": "class Store:\n    def list(self, w): return []\n",
+    "backend/tests/test_store.py": "from backend.store import Store\n",
+    "frontend/src/lib/api.ts": (
+        "const API_BASE = import.meta.env.VITE_API_BASE || '/api';\n"
+        "export async function fetchJson(path: string) { return (await fetch(`${API_BASE}${path}`)).json(); }\n"
+    ),
+    "frontend/src/App.tsx": (
+        "import { fetchJson } from './lib/api';\nimport React from 'react';\n"
+        "export function App() { return fetchJson(`/worlds/${w}/echoes`); }\n"
+    ),
+    "frontend/src/main.tsx": "import { App } from './App';\n",
+    "docker-compose.yml": (
+        "services:\n  api:\n    build: {context: ., dockerfile: backend/Dockerfile}\n"
+        "    environment:\n      REDIS_URL: redis://redis:6379\n    depends_on: [redis]\n"
+        "  redis:\n    image: redis:7\n"
+    ),
+    "backend/Dockerfile": "FROM python:3.12\nCOPY backend/ backend/\nCMD [\"uvicorn\", \"backend.main:app\"]\n",
+}
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    for rel, text in FILES.items():
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    return tmp_path
+
+
+def rel_set(m, kind, subkind=None):
+    return {(r.src, r.dst) for r in m.relations if r.kind == kind and (subkind is None or r.subkind == subkind)}
+
+
+def test_model_binds_the_seams(repo: Path):
+    m, ctx = extract(repo)
+    uses = rel_set(m, "use")
+    # imports resolve inside the repo, relative and absolute; Python references bind at
+    # symbol level (module-level code -> a module variable stays at file level)
+    assert ("fs:backend/main.py", "fs:backend/api/worlds.py") in uses
+    # the function ``echoes`` is the module's own body, so the reference comes from the module
+    assert ("fs:backend/api/worlds.py", "py:backend/store.py#Store") in rel_set(m, "use", "ref")
+    assert ("fs:backend/api/worlds.py", "fs:backend/store.py") not in uses, "import edge replaced by the reference"
+    assert m.entities["py:backend/store.py#Store"].kind == "class"
+    assert not m.has("py:backend/api/worlds.py#echoes"), "functions are not entities"
+    assert ("fs:frontend/src/App.tsx", "fs:frontend/src/lib/api.ts") in uses
+    # routes get the include prefix; the helper call is bound to the route
+    assert m.has("http:GET /api/worlds/{world}/echoes")
+    assert ("fs:frontend/src/App.tsx", "http:GET /api/worlds/{world}/echoes") in rel_set(m, "use", "http")
+    assert ("fs:backend/api/worlds.py", "http:GET /api/worlds/{world}/echoes") in rel_set(m, "provide")
+    # env read meets env set; compose and Dockerfile give allocation and runtime use
+    assert ("fs:backend/main.py", "env:REDIS_URL") in rel_set(m, "use", "env")
+    assert ("svc:api", "env:REDIS_URL") in rel_set(m, "provide", "env")
+    assert ("fs:backend", "img:backend/Dockerfile") in rel_set(m, "allocate", "copies")
+    assert ("img:backend/Dockerfile", "svc:api") in rel_set(m, "allocate", "runs_as")
+    assert ("svc:api", "svc:redis") in rel_set(m, "use", "depends_on")
+    assert ("svc:api", "svc:redis") in rel_set(m, "use", "url")
+    assert ("img:backend/Dockerfile", "fs:backend/main.py") in rel_set(m, "use", "entrypoint")
+    # externals, no stdlib, nothing unresolved
+    assert m.has("ext:py:fastapi") and m.has("ext:js:react") and not m.has("ext:py:os")
+    assert not [e for e in m.entities.values() if e.kind == "unresolved"]
+    # tests are role-tagged, not dropped
+    assert m.entities["fs:backend/tests/test_store.py"].attrs["role"] == "test"
+
+
+def test_default_cut_lifts_frontend_to_backend(repo: Path):
+    m, _ = extract(repo)
+    view = default_view(m, budget=12)
+    hidden = hidden_by_role(m) | set(image_aliases(m))
+    rolled = rollup(m, set(view["visible"]), hidden)
+    rolled.edges = bundle(m, rolled.edges, set(view["expanded"]))
+    http = [e for e in rolled.edges if e.subkind == "endpoint"]
+    assert http, "frontend -> backend edge derived through the endpoint"
+    assert all(e.src.startswith("fs:frontend") and e.dst.startswith("fs:backend") for e in http)
+    # the test directory is hidden, externals are a badge, not an edge
+    assert "fs:backend/tests" not in view["visible"]
+    assert not any(e.dst == "ext" or e.src == "ext" for e in rolled.edges)
+    assert any("ext" in a for a in rolled.annotations.values())

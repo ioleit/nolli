@@ -1,0 +1,23 @@
+[project]
+name = "nolli"
+version = "0.0.1"
+description = "Recover a repository's architecture (components, dependencies, deployment) deterministically and show it at an adjustable level of detail"
+requires-python = ">=3.11"
+dependencies = [
+    "tree-sitter>=0.23",
+    "tree-sitter-language-pack>=0.7",
+    "pyyaml>=6",
+]
+
+[project.scripts]
+nolli = "nolli.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["nolli*"]
+
+[tool.ruff]
+line-length = 110

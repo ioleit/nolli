@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nolli</title>
+<style>
+  :root { color-scheme: light dark; --line: #8884; --ink: CanvasText; --muted: #888; }
+  body { margin: 0; font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 290px 1fr; height: 100vh; }
+  aside { border-right: 1px solid var(--line); padding: 10px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  aside h1 { font-size: 14px; margin: 0; }
+  aside h2 { font-size: 11px; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  select, input[type=number] { font: inherit; }
+  label { display: block; margin: 1px 0; }
+  main { position: relative; overflow: hidden; }
+  svg#g { width: 100%; height: 100%; display: block; cursor: grab; }
+  svg#g:active { cursor: grabbing; }
+  .node rect { fill: Canvas; stroke: var(--ink); stroke-width: 1; rx: 4; }
+  .node.container > rect { fill: #80808012; stroke: #8887; }
+  .node.container.cycle > rect { stroke: #d9534f; }
+  .node.files > rect { fill: #80808018; stroke: #8886; stroke-dasharray: 2 2; }
+  .node.files text { fill: var(--muted); }
+  .node.package > rect { stroke-dasharray: 4 3; fill: #80808008; }
+  .node.service > rect, .node.image > rect, .node.host > rect { fill: #4a90e218; stroke: #4a90e2; }
+  .node.endpoint > rect, .node.env > rect { fill: #2a7fd410; stroke: #2a7fd4aa; }
+  .node.env > rect { fill: #3a9d5d10; stroke: #3a9d5daa; }
+  .node.cycle > rect { stroke: #d9534f; stroke-width: 1.6; }
+  .node.class > rect { fill: #c9a22714; stroke: #c9a227; }
+  .node.file > rect { stroke: #8888; }
+  .node .icon rect { fill: #8884; stroke: none; }
+  .node .icon text { font-size: 9px; font-weight: 700; fill: var(--ink); }
+  .node .icon.C rect { fill: #c9a22744; }
+  .node .icon.D rect { fill: #8886; }
+  .node .icon.m rect { fill: #4a90e233; }
+  .node circle.anchor { fill: #8886; stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .node text.fold { font-size: 14px; fill: var(--muted); pointer-events: none; }
+  .node.container:hover text.fold { fill: var(--ink); }
+  .node text { font-size: 12px; fill: var(--ink); pointer-events: none; }
+  .node text.badge { font-size: 9.5px; fill: var(--muted); }
+  .node { cursor: pointer; }
+  .edge path { fill: none; stroke: #8889; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+  .node rect { vector-effect: non-scaling-stroke; }
+  .edge.import path { stroke: #888b; }
+  .edge.http path { stroke: #2a7fd4; }
+  .edge.env path { stroke: #3a9d5d; }
+  .edge.deploy path { stroke: #8e5bd6; }
+  .edge.provide path { stroke: #2aa8a8; stroke-dasharray: 5 3; }
+  .edge.dangling path { stroke-dasharray: 3 3; }
+  .edge.heuristic path { stroke-opacity: .65; }
+  .edge.local path { stroke-opacity: .3; stroke-width: .7px !important; }
+  .edge.single path { stroke-opacity: .55; }
+  .edge.weak path { stroke-opacity: .22; stroke-width: .7px !important; }
+  .edge.local.single path, .edge.local.weak path { stroke-opacity: .2; }
+  svg.nolabels .edge text { display: none; }
+  .node.utility > rect { stroke-dasharray: 1 3; }
+  .edge text { font-size: 9.5px; fill: var(--muted); paint-order: stroke; stroke: Canvas; stroke-width: 3px; }
+  .edge:hover path { stroke: #d9534f; stroke-opacity: 1; }
+  #status { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
+  #tip { position: absolute; pointer-events: none; background: Canvas; border: 1px solid var(--line); padding: 6px 8px; font-size: 11px; max-width: 460px; display: none; white-space: pre-wrap; z-index: 2; }
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: 1px 0; }
+  .legend span { display: inline-block; width: 22px; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+  button { font: inherit; padding: 2px 8px; }
+  .chip { display: inline-flex; gap: 6px; align-items: center; border: 1px dashed #8886; border-radius: 4px; padding: 2px 6px; margin: 2px 2px 2px 0; font-size: 12px; }
+  .chip button { padding: 0 6px; font-size: 11px; }
+</style>
+</head>
+<body>
+<aside>
+  <h1>nolli</h1>
+  <select id="dataset" style="width:100%"></select>
+  <div id="meta" style="color:var(--muted);font-size:11px"></div>
+  <h2>Detail</h2>
+  <div style="display:flex;gap:6px;align-items:center">budget <input id="budget" type="number" min="4" max="300" value="28" style="width:60px"> <button id="reset">default cut</button> <button id="collapse">fold all</button></div>
+  <h2>Folded groups</h2>
+  <div id="groups"></div>
+  <h2>Show roles</h2>
+  <div id="roles"></div>
+  <h2>Options</h2>
+  <label><input type="checkbox" id="through" checked> derive through interfaces</label>
+  <label><input type="checkbox" id="dangling"> show unbound env reads</label>
+  <label><input type="checkbox" id="bundle" checked> bundle fan-out edges to the container</label>
+  <label><input type="checkbox" id="envedges"> show env wiring (reader → setter)</label>
+  <label><input type="checkbox" id="utilities" checked> utilities as badges (used by ≥ a third of the components)</label>
+  <label><input type="checkbox" id="hideinternal"> hide internal edges (count in header)</label>
+  <label><input type="checkbox" id="nolabels"> hide all edge labels</label>
+  <label>layout <select id="direction"><option value="DOWN">top → down</option><option value="RIGHT">left → right</option></select></label>
+  <h2>Legend</h2>
+  <div class="legend">
+    <div><span style="border-color:#888b"></span>import</div>
+    <div><span style="border-color:#2a7fd4"></span>http: caller → handler</div>
+    <div><span style="border-color:#3a9d5d"></span>env: reader → setter</div>
+    <div><span style="border-color:#8e5bd6"></span>deploy: depends_on, url, copies, entrypoint</div>
+    <div><span style="border-color:#2aa8a8;border-top-style:dashed"></span>interface → the module that realises it (hollow head)</div>
+    <div><span style="border-color:#8886;border-top-style:dashed"></span>unbound half of an interface</div>
+    <div style="margin-top:4px;color:var(--muted)">D directory · m module · C class · dot in a module header = the module's own code<br>width = log(count) · pale = heuristic match · red border = in a cycle<br>click a box: unfold all its children · click its − : fold · drag: pan · wheel: zoom</div>
+  </div>
+  <div style="display:none"><h2>Deployed in (chips)</h2><div id="services"></div></div>
+  <h2>Residue</h2>
+  <ul class="plain" id="residue"></ul>
+  <h2>Export</h2>
+  <button id="mmd">show Mermaid export</button>
+</aside>
+<main>
+  <svg id="g"><g id="root"></g></svg>
+  <div id="status"></div>
+  <div id="tip"></div>
+  <div id="mmdpane" style="display:none;position:absolute;inset:0;overflow:auto;background:Canvas;padding:8px"></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
+<script>
+const elk = new ELK();
+// surface failures instead of a silently blank canvas
+const showError = msg => { const s = document.getElementById("status"); s.textContent = "error: " + msg; s.style.color = "#d9534f"; };
+window.addEventListener("error", ev => showError(ev.message + (ev.lineno ? ` (line ${ev.lineno})` : "")));
+window.addEventListener("unhandledrejection", ev => showError(String(ev.reason && ev.reason.message || ev.reason)));
+const state = { model: null, idx: null, expanded: new Set(), roles: new Set(), through: true, danglingUse: false, envEdges: false, bundle: true, utilities: true, hideInternal: false, noLabels: false, direction: "DOWN", budget: 34, name: null };
+const ALL_ROLES = ["source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other"];
+const CONF = { exact: 0, heuristic: 1, statistical: 2 };
+const DERIVE = new Set(["endpoint", "env"]);
+const DANGLING_PROVIDE = new Set(["endpoint"]);
+const GROUP_SHORT = { ext: "pkgs", env: "env", deploy: "deploy", http: "api" };
+
+// ---------- model index ----------
+function index(model) {
+  const ent = new Map(model.entities.map(e => [e.id, e]));
+  const parent = new Map(), children = new Map();
+  for (const r of model.relations) if (r.kind === "contain") {
+    parent.set(r.dst, r.src);
+    if (!children.has(r.src)) children.set(r.src, []);
+    children.get(r.src).push(r.dst);
+  }
+  for (const v of children.values()) v.sort();
+  const roots = model.entities.filter(e => !parent.has(e.id)).map(e => e.id).sort();
+  const runs = new Map();
+  for (const r of model.relations) if (r.kind === "allocate" && r.subkind === "runs_as") runs.set(r.src, [...(runs.get(r.src) || []), r.dst]);
+  const alias = new Map([...runs].filter(([, v]) => v.length === 1).map(([k, v]) => [k, v[0]]));
+  return { ent, parent, children, roots, alias, rels: model.relations.filter(r => r.kind !== "contain") };
+}
+const kids = id => state.idx.children.get(id) || [];
+const ent = id => state.idx.ent.get(id);
+const isFiles = id => id.startsWith("body:");  // pseudo node: a module's own code
+const isFile = id => state.idx.ent.has(id) && ent(id).kind === "file";
+// a Python package's __init__.py is the package's body, not a module of its own
+const isInit = id => isFile(id) && ent(id).name === "__init__.py";
+function under(x, d) { let cur = x; while (cur) { if (cur === d) return true; cur = state.idx.parent.get(cur); } return false; }
+// an edge from a package body into its own package (re-export, submodule import): not a dependency
+const defaultInitEdge = r => isInit(r.src) && under(r.dst, state.idx.parent.get(r.src));
+// directories whose __init__ body keeps edges after those are dropped: they get an anchor when unfolded
+function initAnchorDirs(hidden) {
+  const out = new Set();
+  const drawnKinds = new Set(["directory", "file", "class", "service", "image"]);  // badge targets don't count
+  for (const r of state.idx.rels) { if (defaultInitEdge(r)) continue; for (const [end, other] of [[r.src, r.dst], [r.dst, r.src]]) if (isInit(end) && !hidden.has(end) && state.idx.ent.has(other) && drawnKinds.has(ent(other).kind)) out.add(state.idx.parent.get(end)); }
+  return out;
+}
+const ownerOf = id => isFiles(id) ? id.slice(id.indexOf(":") + 1) : id;
+
+function hiddenSet() {
+  const h = new Set();
+  for (const e of state.model.entities) if ((e.kind === "file" || e.kind === "directory") && !e.attrs.root && e.attrs.role && !state.roles.has(e.attrs.role)) h.add(e.id);
+  for (const img of state.idx.alias.keys()) h.add(img);
+  return h;
+}
+
+// mirrors rollup.chain_end: single-child directory chains are one node
+function chainEnd(n, hidden) {
+  while (ent(n).kind === "directory") { const ks = kids(n).filter(c => !hidden.has(c) && !isInit(c)); if (ks.length === 1 && ent(ks[0]).kind === "directory") n = ks[0]; else break; }
+  return n;
+}
+// mirrors rollup.display_path: path relative to the nearest unfolded ancestor
+function displayPath(id) {
+  const parts = [ent(id).name]; let p = state.idx.parent.get(id);
+  while (p && !state.expanded.has(p) && !ent(p).attrs.root) { parts.push(ent(p).name); p = state.idx.parent.get(p); }
+  return parts.reverse().join("/");
+}
+// mirrors rollup.visible_from_expanded: an unfolded container shows all its children
+function visibleSet(hidden) {
+  const vis = new Set(), anchors = initAnchorDirs(hidden);
+  const walk = n => {
+    const kind = ent(n).kind;
+    if (kind === "file" || (kind === "directory" && anchors.has(n))) vis.add("body:" + n);
+    for (let c of kids(n)) {
+      if (hidden.has(c)) continue;
+      if (kind === "directory" && isInit(c)) { for (const cc of kids(c)) if (!hidden.has(cc)) vis.add(cc); continue; }  // the package's own classes
+      if (kind === "directory" && ent(c).kind === "directory") c = chainEnd(c, hidden);
+      if (state.expanded.has(c) && kids(c).length) walk(c); else vis.add(c);
+    }
+  };
+  for (const r of state.idx.roots) { if (hidden.has(r)) continue; if (state.expanded.has(r) && kids(r).length) walk(r); else vis.add(r); }
+  return vis;
+}
+
+// mirrors rollup.rollup
+function rollup(visible, hidden) {
+  const cache = new Map();
+  const rep = x => {
+    if (cache.has(x)) return cache.get(x);
+    let cur = state.idx.alias.get(x) ?? x, res = null;
+    while (cur !== undefined && cur !== null) {
+      if (hidden.has(cur)) { res = null; break; }
+      if (visible.has(cur)) { res = cur; break; }
+      if (isFile(cur) && visible.has("body:" + cur)) { res = "body:" + cur; break; }
+      if (isInit(cur)) { const p = state.idx.parent.get(cur); if (p && visible.has("body:" + p)) { res = "body:" + p; break; } }
+      cur = state.idx.parent.get(cur);
+    }
+    cache.set(x, res); return res;
+  };
+  const edges = new Map(), internal = new Map(), unresolved = new Map();
+  let hiddenCount = 0;
+  const add = (kind, a, b, sub, count, conf, via) => {
+    if (kind === "provide") [a, b] = [b, a];  // drawn from the interface to what realises it: client → API → implementation
+    if (a === b || ownerOf(a) === ownerOf(b)) { const o = ownerOf(a); internal.set(o, (internal.get(o) || 0) + count); return; }
+    if (sub === "ref") sub = "import";  // references are the fine-grained form of imports
+    const key = `${kind}|${a}|${b}|${sub}`;
+    let e = edges.get(key);
+    if (!e) { e = { kind, src: a, dst: b, subkind: sub, count: 0, confidence: conf, via: new Set() }; edges.set(key, e); }
+    e.count += count; if (CONF[conf] > CONF[e.confidence]) e.confidence = conf; if (via) e.via.add(via);
+  };
+  const users = new Map(), providers = new Map();
+  const push = (map, k, r) => map.set(k, [...(map.get(k) || []), r]);
+  for (const r of state.idx.rels) {
+    if (defaultInitEdge(r)) continue;
+    const d = ent(r.dst);
+    if (d.kind === "unresolved") { if (rep(r.src)) { const k = d.attrs.language || d.id.split(":")[1]; unresolved.set(k, (unresolved.get(k) || 0) + r.count); } continue; }
+    if (r.subkind === "runs_as" && state.idx.alias.has(r.src)) continue;
+    if (state.through && DERIVE.has(d.kind) && !visible.has(r.dst)) {
+      const g = rep(r.dst);
+      if (!g || (ent(g).kind === "group" && !state.idx.parent.has(g))) { push(r.kind === "use" ? users : providers, r.dst, r); continue; }
+    }
+    const a = rep(r.src), b = rep(r.dst);
+    if (!a || !b) { hiddenCount += r.count; continue; }
+    add(r.kind, a, b, r.subkind, r.count, r.confidence);
+  }
+  for (const iface of new Set([...users.keys(), ...providers.keys()])) {
+    const us = users.get(iface) || [], ps = providers.get(iface) || [], sub = ent(iface).kind;
+    if (us.length && ps.length) {
+      for (const u of us) { const a = rep(u.src); if (!a) { hiddenCount += u.count; continue; }
+        for (const p of ps) { const b = rep(p.src); if (!b) continue; add("use", a, b, sub, u.count, (u.confidence === "heuristic" || p.confidence === "heuristic") ? "heuristic" : "exact", iface); } }
+    } else {
+      const g = rep(iface);
+      const keep = [...(state.danglingUse ? us : []), ...(DANGLING_PROVIDE.has(sub) ? ps : [])];
+      for (const r of keep) { const a = rep(r.src); if (!a || !g) { hiddenCount += r.count; continue; } add(r.kind, a, g, sub + "-dangling", r.count, r.confidence, iface); }
+    }
+  }
+  const annotations = new Map(), allocations = new Map(), suppressed = new Map(), kept = [];
+  const rootGroup = x => state.idx.ent.has(x) && ent(x).kind === "group" && !state.idx.parent.has(x);
+  for (const e of edges.values()) {
+    const sg = rootGroup(e.src), dg = rootGroup(e.dst);
+    if ((sg || dg) && !(sg && dg)) { const [node, group] = sg ? [e.dst, e.src] : [e.src, e.dst]; if (!annotations.has(node)) annotations.set(node, new Map()); const a = annotations.get(node); a.set(group, (a.get(group) || 0) + e.count); }
+    else if (e.kind === "allocate" && e.subkind === "copies" && state.idx.ent.has(e.dst) && ent(e.dst).kind === "service") allocations.set(e.src, [...(allocations.get(e.src) || []), e.dst].sort());
+    else if (e.subkind === "env" && !state.envEdges) suppressed.set("env", (suppressed.get("env") || 0) + e.count);
+    else kept.push(e);
+  }
+  const L = { edges: state.bundle ? bundle(kept) : kept, internal, annotations, allocations, suppressed, hiddenCount, unresolved, utilities: new Set() };
+  if (state.utilities) utilityBadges(L, visible);
+  return L;
+}
+// mirrors rollup.top_of / rollup.utility_badges: nodes used by at least half of the top-level
+// components become badges on their users ("→ observability/") instead of edge targets
+function topOf(node) { let cur = node; for (;;) { const p = drawnParent(cur); if (!p) return cur; cur = p; } }
+function utilityBadges(L, visible) {
+  const tops = new Set([...visible].filter(v => !v.startsWith("body:")).map(topOf));
+  const codeTops = [...tops].filter(t => !(state.idx.ent.has(t) && ent(t).kind === "group"));
+  const users = new Map();
+  for (const e of L.edges) { if (e.kind !== "use") continue; const ts = topOf(e.src), td = topOf(e.dst); if (ts !== td) { if (!users.has(e.dst)) users.set(e.dst, new Set()); users.get(e.dst).add(ts); } }
+  // a third of the code components (groups don't count), and at least 3
+  const threshold = Math.max(3, Math.ceil(codeTops.length / 3));
+  for (const [d, us] of users) if (us.size >= threshold) L.utilities.add(d);
+  if (!L.utilities.size) return;
+  L.edges = L.edges.filter(e => {
+    if (e.kind === "use" && L.utilities.has(e.dst) && topOf(e.src) !== topOf(e.dst)) { if (!L.annotations.has(e.src)) L.annotations.set(e.src, new Map()); const a = L.annotations.get(e.src); a.set("util:" + e.dst, (a.get("util:" + e.dst) || 0) + e.count); return false; }
+    return true;
+  });
+}
+const PALETTE = ["#4a90e2", "#e2874a", "#3a9d5d", "#b05cc9", "#d9534f", "#2aa8a8", "#c9a227", "#7a7a7a"];
+function serviceColor(svc) { const svcs = (state.idx.children.get("deploy") || []).filter(c => ent(c).kind === "service"); const i = svcs.indexOf(svc); return PALETTE[(i < 0 ? 7 : i) % PALETTE.length]; }
+
+// mirrors rollup.drawn_parent / rollup.bundle: fan-collapse edges to a container's boundary
+function drawnParent(node) {
+  if (isFiles(node)) return node.slice(6);
+  let p = state.idx.parent.get(node);
+  while (p) { if (state.expanded.has(p)) return ent(p).attrs.root ? null : p; p = state.idx.parent.get(p); }
+  return null;
+}
+function isInside(node, container) { let x = ownerOf(node); while (x) { if (x === container) return true; x = state.idx.parent.get(x); } return false; }
+function bundle(edges, minFan = 3) {
+  const pass = (edges, side) => {
+    const groups = new Map();
+    for (const e of edges) {
+      const end = side === "dst" ? e.dst : e.src, other = side === "dst" ? e.src : e.dst;
+      const c = drawnParent(end);
+      const key = (e.kind === "provide" || !c || isInside(other, c)) ? `keep|${edges.indexOf(e)}` : `${side}|${other}|${c}|${e.kind}|${e.subkind}`;  // which module realises which interface is never bundled
+      groups.set(key, [...(groups.get(key) || []), e]);
+    }
+    let out = []; const mergedEdges = [];
+    for (const [key, es] of groups) {
+      if (key.startsWith("keep|") || new Set(es.map(e => side === "dst" ? e.dst : e.src)).size < minFan) { out.push(...es); continue; }
+      const [, other, c, kind, sub] = key.split("|");
+      const merged = { kind, src: side === "dst" ? other : c, dst: side === "dst" ? c : other, subkind: sub, count: 0, confidence: "exact", via: new Set([`fan:${es.length}`]) };
+      for (const e of es) { merged.count += e.count; for (const v of e.via) merged.via.add(v); if (CONF[e.confidence] > CONF[merged.confidence]) merged.confidence = e.confidence; }
+      mergedEdges.push({ other, c, kind, sub, merged });
+    }
+    // a bundle at a container's boundary absorbs every edge from deeper inside that
+    // container to the same other end (no target reached from the boundary and a grandchild)
+    for (const { other, c, kind, sub, merged } of mergedEdges) {
+      out = out.filter(e => { const end = side === "dst" ? e.dst : e.src, o = side === "dst" ? e.src : e.dst; if (e.kind === kind && e.subkind === sub && o === other && end !== c && isInside(end, c)) { merged.count += e.count; for (const v of e.via) merged.via.add(v); return false; } return true; });
+    }
+    return [...out, ...mergedEdges.map(x => x.merged)];
+  };
+  return pass(pass(edges, "dst"), "src");
+}
+
+// mirrors view.default_view
+function unfoldCost(v, hidden, anchors) {
+  const ks = kids(v).filter(c => !hidden.has(c));
+  if (ent(v).kind === "file") return ks.length;  // a module adds its anchor as well
+  let n = 0; for (const c of ks) n += isInit(c) ? kids(c).filter(cc => !hidden.has(cc)).length : 1;  // __init__ is no node; its classes are
+  return n + (anchors && anchors.has(v) ? 1 : 0) - 1;
+}
+// mirrors rollup.reveal_scores: edges revealed by unfolding a container (LCA counts) or opening its files
+function revealScores(hidden) {
+  const lca = new Map(), loose = new Map(), cache = new Map();
+  const chain = x => {
+    if (cache.has(x)) return cache.get(x);
+    const out = [x]; let cur = x;
+    for (;;) { if (hidden.has(cur)) { cache.set(x, null); return null; } const p = state.idx.parent.get(cur); if (!p) break; out.push(p); cur = p; }
+    cache.set(x, out); return out;
+  };
+  for (const r of state.idx.rels) {
+    if (defaultInitEdge(r)) continue;
+    const s = state.idx.alias.get(r.src) ?? r.src, d = state.idx.alias.get(r.dst) ?? r.dst;
+    if (s === d || !state.idx.ent.has(s) || !state.idx.ent.has(d)) continue;
+    const cs = chain(s), cd = chain(d); if (!cs || !cd) continue;
+    const ds = new Set(cd); const common = cs.find(a => ds.has(a));
+    if (!common || common === s || common === d) continue;
+    lca.set(common, (lca.get(common) || 0) + r.count);
+    if (state.idx.parent.get(s) === common && state.idx.parent.get(d) === common && isFile(s) && isFile(d)) loose.set(common, (loose.get(common) || 0) + r.count);
+  }
+  return { lca, loose };
+}
+function defaultCut(budget) {
+  const hidden = hiddenSet(), anchors = initAnchorDirs(hidden);
+  const { lca } = revealScores(hidden);
+  state.expanded = new Set(["fs:."].filter(x => state.idx.ent.has(x)));
+  for (;;) {
+    const vis = visibleSet(hidden); const room = budget - vis.size;
+    let best = null, bestKey = [0, 0];
+    for (const v of vis) {
+      if (v.startsWith("body:") || !["directory", "group", "file"].includes(ent(v).kind) || !kids(v).length) continue;
+      const score = lca.get(v) || 0, delta = unfoldCost(v, hidden, anchors);
+      if (score <= 0 || delta < 1 || delta > room) continue;
+      const key = [score / delta, score];
+      if (key[0] > bestKey[0] || (key[0] === bestKey[0] && (key[1] > bestKey[1] || (key[1] === bestKey[1] && best && v < best)))) { best = v; bestKey = key; }
+    }
+    if (!best) break;
+    state.expanded.add(best);
+  }
+}
+
+// ---------- cycles among visible nodes (Tarjan, use edges only) ----------
+function cycles(nodes, edges) {
+  const adj = new Map(nodes.map(n => [n, []]));
+  for (const e of edges) if (e.kind === "use" && adj.has(e.src) && adj.has(e.dst)) adj.get(e.src).push(e.dst);
+  let idx = 0; const st = [], on = new Set(), ix = new Map(), low = new Map(), inCycle = new Set();
+  const strong = v => {
+    ix.set(v, idx); low.set(v, idx); idx++; st.push(v); on.add(v);
+    for (const w of adj.get(v)) { if (!ix.has(w)) { strong(w); low.set(v, Math.min(low.get(v), low.get(w))); } else if (on.has(w)) low.set(v, Math.min(low.get(v), ix.get(w))); }
+    if (low.get(v) === ix.get(v)) { const comp = []; let w; do { w = st.pop(); on.delete(w); comp.push(w); } while (w !== v); if (comp.length > 1) comp.forEach(x => inCycle.add(x)); }
+  };
+  for (const n of nodes) if (!ix.has(n)) strong(n);
+  return inCycle;
+}
+
+// ---------- labels ----------
+const MODULE_LANGS = new Set(["python", "typescript", "javascript"]);
+// icon letter per entity kind (drawn as a small badge before the name); "" = none
+function iconOf(id) {
+  if (isFiles(id)) return "";
+  const e = ent(id);
+  if (e.kind === "directory") return "D";
+  if (e.kind === "file" && MODULE_LANGS.has(e.attrs.language)) return "m";
+  if (e.kind === "class") return "C";
+  return "";
+}
+function label(id) {
+  if (id.startsWith("body:")) return "";  // the module's own code: an anchor in the module's header
+  const e = ent(id);
+  if (e.kind === "directory") return e.attrs.root ? e.name : displayPath(id);
+  if (e.kind === "file" && MODULE_LANGS.has(e.attrs.language)) return e.name.replace(/\.[^.]+$/, "");  // a source file is its module
+  if (e.kind === "class") return e.name;
+  if (e.kind === "service") return "svc " + e.name;
+  if (e.kind === "image") return "img " + e.name.replace(/\/Dockerfile$/, "");
+  return e.name;
+}
+function leafCount(id) {
+  // files below a directory; symbols below a file; leaves below a group
+  const e = ent(id); let n = 0; const st = [...kids(id)];
+  while (st.length) { const x = st.pop(); const k = ent(x).kind; if (e.kind === "directory") { if (k === "file") { if (!isInit(x)) n++; } else if (k === "directory") st.push(...kids(x)); } else if (!kids(x).length) n++; else st.push(...kids(x)); }
+  return n;
+}
+function badgeText(id, L) { const a = L.annotations.get(id); if (!a) return ""; return [...a].sort().map(([g, c]) => g.startsWith("util:") ? "→ " + label(g.slice(5)) : `${c} ${GROUP_SHORT[g] || g}`).join(" · "); }
+function isLocal(e) { const ps = drawnParent(e.src), pd = drawnParent(e.dst); return !!ps && ps === pd; }
+function edgeClass(e, outTotal) {
+  const s = e.subkind.replace("-dangling", ""); const cls = ["edge"];
+  if (isLocal(e)) cls.push("local");  // both ends inside the same container: package internals
+  if (e.count === 1) cls.push("single");
+  // weak: a small share of what its source depends on, and few references in absolute terms
+  if (outTotal && e.kind === "use" && e.count / outTotal < 0.05 && e.count < 3) cls.push("weak");
+  if (e.kind === "provide") cls.push("provide"); else if (s === "import") cls.push("import"); else if (s === "http" || s === "endpoint") cls.push("http"); else if (s === "env") cls.push("env"); else cls.push("deploy");
+  if (e.subkind.endsWith("-dangling")) cls.push("dangling");
+  if (e.confidence === "heuristic") cls.push("heuristic");
+  return cls.join(" ");
+}
+function edgeLabel(e) {
+  const s = e.subkind.replace("-dangling", ""); const parts = [];
+  if (e.count > 1) parts.push(String(e.count));
+  if (e.kind === "provide") parts.push("realised by"); else if (s !== "import") parts.push(s === "endpoint" ? "http" : s);
+  if (e.subkind.endsWith("-dangling")) parts.push("unbound");
+  return parts.join(" ");
+}
+
+// ---------- layout + render ----------
+let zoom = { k: 1, x: 0, y: 0 };
+let lastSize = null;
+async function render(keepZoom = false) {
+  const hidden = hiddenSet();
+  const visible = visibleSet(hidden);
+  const L = rollup(visible, hidden);
+  // internal edges: hairlines by default; hidden with a count in the container header on request
+  const internalCount = new Map();
+  for (const e of L.edges) if (isLocal(e)) { const c = drawnParent(e.src); internalCount.set(c, (internalCount.get(c) || 0) + e.count); }
+  if (state.hideInternal) L.edges = L.edges.filter(e => !isLocal(e));
+  const outTotal = new Map(); for (const e of L.edges) if (e.kind === "use") outTotal.set(e.src, (outTotal.get(e.src) || 0) + e.count);
+  const touched = new Set(L.edges.flatMap(e => [e.src, e.dst]));
+  const drawn = [...visible].filter(v => !(state.idx.ent.has(v) && ent(v).kind === "group" && !state.idx.parent.has(v) && !touched.has(v)));
+  const inCycle = cycles(drawn.filter(v => !isFiles(v)), L.edges);
+  L.largestCycle = inCycle.size;
+  const textW = (s, icon) => Math.max(56, s.length * 6.4 + 22 + (icon ? 16 : 0));
+
+  const build = n => {
+    const e = isFiles(n) ? null : ent(n);
+    const node = { id: n, layoutOptions: {} };
+    if (e && state.expanded.has(n) && kids(n).length) {
+      const ch = kids(n).filter(c => !hidden.has(c)).flatMap(c => (e.kind === "directory" && isInit(c)) ? kids(c) : [c])  // a package's __init__ classes are its children
+        .map(c => (e.kind === "directory" && ent(c).kind === "directory") ? chainEnd(c, hidden) : c)
+        .filter(c => visible.has(c) || (state.expanded.has(c) && kids(c).length)).map(build);
+      if (visible.has("body:" + n)) ch.unshift(build("body:" + n));
+      node.children = ch.filter(c => c);
+      node.layoutOptions["elk.padding"] = "[top=30,left=10,bottom=10,right=10]";
+      node.layoutOptions["elk.spacing.nodeNode"] = "16";
+      node.layoutOptions["elk.layered.spacing.nodeNodeBetweenLayers"] = "26";
+      if (!node.children.length) { delete node.children; node.width = textW(label(n), iconOf(n)); node.height = 30; }
+    } else {
+      if (!visible.has(n)) return null;
+      if (e && e.kind === "group" && !state.idx.parent.has(n) && !touched.has(n)) return null;
+      if (n.startsWith("body:")) { node.width = 14; node.height = 14; node.layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST"; return node; }
+      const badge = badgeText(n, L); const sub = e && kids(n).length ? "+" + leafCount(n) : ""; const chips = L.allocations.get(n) || [];
+      node.width = Math.max(textW(label(n) + sub, iconOf(n)), (badge ? badge.length * 5.4 : 0) + chips.length * 11 + 20); node.height = (badge || chips.length) ? 40 : 30;
+      if (L.utilities.has(n)) node.layoutOptions["elk.layered.layering.layerConstraint"] = "LAST";  // utilities sit at the bottom
+    }
+    return node;
+  };
+  const roots = state.idx.roots.filter(r => !hidden.has(r));
+  let top = roots.map(build).filter(c => c);
+  const fsRoot = top.find(c => c.id === "fs:.");
+  if (fsRoot && fsRoot.children) top = [...top.filter(c => c !== fsRoot), ...fsRoot.children];
+  const graph = {
+    id: "ROOT",
+    layoutOptions: {
+      "elk.algorithm": "layered", "elk.direction": state.direction, "elk.hierarchyHandling": "INCLUDE_CHILDREN",
+      "elk.spacing.nodeNode": "22", "elk.layered.spacing.nodeNodeBetweenLayers": "44", "elk.spacing.edgeNode": "12",
+      "elk.edgeRouting": "ORTHOGONAL", "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "8", "elk.layered.spacing.edgeNodeBetweenLayers": "14",
+      "elk.layered.thoroughness": "10", "elk.layered.cycleBreaking.strategy": "GREEDY",
+    },
+    children: top,
+    edges: L.edges.map((e, i) => ({ id: "e" + i, sources: [e.src], targets: [e.dst], _e: e })),
+  };
+  const laid = await elk.layout(graph);
+  const abs = new Map();
+  const place = (n, ox, oy) => { const x = ox + (n.x || 0), y = oy + (n.y || 0); abs.set(n.id, { x, y, w: n.width, h: n.height, n }); (n.children || []).forEach(c => place(c, x, y)); };
+  laid.children.forEach(c => place(c, 0, 0));
+
+  const g = document.getElementById("root"); g.innerHTML = "";
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (t, a = {}) => { const x = document.createElementNS(ns, t); for (const [k, v] of Object.entries(a)) x.setAttribute(k, v); return x; };
+  const defs = el("defs"); defs.innerHTML = `<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#999"/></marker><marker id="arr-hollow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="Canvas" stroke="#2aa8a8" stroke-width="1"/></marker>`; g.appendChild(defs);
+
+  const drawNode = n => {
+    const p = abs.get(n.id); const e = isFiles(n.id) ? null : ent(n.id);
+    const isC = !!n.children;
+    const cls = ["node", isC ? "container" : "folded", e ? e.kind : "files", inCycle.has(n.id) ? "cycle" : ""].join(" ");
+    const grp = el("g", { class: cls, transform: `translate(${p.x},${p.y})` });
+    if (n.id.startsWith("body:")) {
+      // the module's own code (functions, constants, wiring): a dot that edges attach to
+      grp.appendChild(el("circle", { cx: 7, cy: 7, r: 5, class: "anchor" }));
+      grp.addEventListener("mousemove", ev => tip(ev, nodeTip(n.id, L)));
+      grp.addEventListener("mouseleave", hideTip);
+      g.appendChild(grp); return;
+    }
+    grp.appendChild(el("rect", { width: p.w, height: p.h }));
+    const icon = iconOf(n.id);
+    const tx = isC ? (icon ? 24 : 8) : (icon ? 22 : p.w / 2);
+    if (icon) { const ig = el("g", { class: "icon " + icon, transform: `translate(${isC ? 7 : 6}, ${isC ? 7 : 9})` }); ig.appendChild(el("rect", { width: 12, height: 12, rx: 3 })); const it = el("text", { x: 6, y: 9.5, "text-anchor": "middle" }); it.textContent = icon; ig.appendChild(it); grp.appendChild(ig); }
+    const t = el("text", { x: tx, y: isC ? 18 : 19, "text-anchor": isC || icon ? "start" : "middle", "font-weight": isC ? "600" : "400" });
+    t.textContent = label(n.id); grp.appendChild(t);
+    // container header: title, then badges right-aligned (truncated to the room left), then the
+    // fold button; a container narrower than its title gets the button right after the title
+    const titleW = label(n.id).length * 7.2 + 8 + (iconOf(n.id) ? 16 : 0);
+    const narrow = isC && p.w < titleW + 40;
+    if (isC) {
+      // only the − folds a container; clicks elsewhere on it must not interfere with navigation
+      const f = el("text", { class: "fold", x: narrow ? titleW + 10 : p.w - 14, y: 18, "text-anchor": "middle" }); f.textContent = "−"; f.appendChild(el("title")).textContent = "fold";
+      f.addEventListener("click", ev => { ev.stopPropagation(); toggle(n.id, false); });
+      grp.appendChild(f);
+    }
+    if (L.utilities.has(n.id)) grp.classList.add("utility");
+    if (!isC && e && kids(n.id).length) { const b = el("text", { class: "badge", x: p.w - 5, y: 10, "text-anchor": "end" }); b.textContent = "+" + leafCount(n.id); grp.appendChild(b); }
+    const chips = L.allocations.get(n.id) || [];
+    let badge = [badgeText(n.id, L), isC && state.hideInternal && internalCount.get(n.id) ? `${internalCount.get(n.id)} internal` : ""].filter(Boolean).join(" · ");
+    if (isC && badge) { const room = Math.floor((p.w - 36 - titleW) / 5.4); badge = room < 6 ? "" : badge.length > room ? badge.slice(0, room - 1) + "…" : badge; }
+    if (badge) { const b = el("text", { class: "badge", x: isC ? p.w - 28 : (p.w + chips.length * 11) / 2, y: isC ? 18 : 33, "text-anchor": isC ? "end" : "middle" }); b.textContent = badge; if (isC) b.appendChild(el("title")).textContent = [badgeText(n.id, L), internalCount.get(n.id) ? `${internalCount.get(n.id)} internal edges` : ""].filter(Boolean).join(" · "); grp.appendChild(b); }
+    chips.forEach((svc, i) => { const c = el("circle", { cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: serviceColor(svc), stroke: "Canvas", "stroke-width": 1 }); c.appendChild(el("title")).textContent = "deployed in " + ent(svc).name; grp.appendChild(c); });
+    if (e && e.kind === "service") grp.querySelector("rect").setAttribute("stroke", serviceColor(n.id));
+    if (!isC) grp.addEventListener("click", ev => { ev.stopPropagation(); toggle(n.id, ev.shiftKey); });
+    grp.addEventListener("mousemove", ev => tip(ev, nodeTip(n.id, L)));
+    grp.addEventListener("mouseleave", hideTip);
+    g.appendChild(grp);
+    (n.children || []).forEach(drawNode);
+  };
+  laid.children.forEach(drawNode);
+
+  for (const e of laid.edges || []) {
+    const c = e.container && e.container !== "ROOT" ? abs.get(e.container) : null;
+    const ox = c ? c.x : 0, oy = c ? c.y : 0;
+    const ge = el("g", { class: edgeClass(e._e, outTotal.get(e._e.src)), "data-src": e._e.src, "data-dst": e._e.dst, "data-container": e.container || "ROOT" });
+    let mid = null;
+    for (const s of e.sections || []) {
+      const pts = [s.startPoint, ...(s.bendPoints || []), s.endPoint].map(p => ({ x: p.x + ox, y: p.y + oy }));
+      const d = "M" + pts.map(p => `${p.x},${p.y}`).join("L");
+      ge.appendChild(el("path", { d, "marker-end": e._e.kind === "provide" ? "url(#arr-hollow)" : "url(#arr)", "stroke-width": Math.min(2.6, 0.8 + 0.4 * Math.log2(e._e.count)) }));
+      ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
+      const a = pts[Math.floor((pts.length - 1) / 2)], b = pts[Math.ceil((pts.length - 1) / 2)]; mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    const lab = edgeLabel(e._e);
+    if (lab && mid && !ge.classList.contains("weak") && !ge.classList.contains("local")) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = lab; ge.appendChild(t); }
+    ge.addEventListener("mousemove", ev => tip(ev, edgeTip(e._e)));
+    ge.addEventListener("mouseleave", hideTip);
+    g.appendChild(ge);
+  }
+  if (!keepZoom || !lastSize) fit(laid.width, laid.height);
+  lastSize = { w: laid.width, h: laid.height };
+  document.getElementById("status").textContent = `${drawn.length} nodes · ${L.edges.length} edges · budget ${state.budget}`;
+  sidebar(L, hidden, visible);
+  writeHash();
+}
+
+function nodeTip(id, L) {
+  if (id.startsWith("body:")) { const o = ent(id.slice(5)); return o.kind === "directory" ? `the package's own code: ${o.attrs.path}/__init__.py\n(what it does beyond re-exporting its own modules)` : `the module's own code: ${o.attrs.path}\n(functions, constants and statements outside any class)`; }
+  const e = ent(id); const lines = [`${e.kind}  ${id}`];
+  if (e.kind === "file" && kids(id).length) lines.push(`${kids(id).length} classes (click to unfold)`);
+  if (e.attrs.line) lines.push("line " + e.attrs.line);
+  if (e.attrs.path) lines.push(e.attrs.path);
+  if (e.attrs.language) lines.push("language: " + e.attrs.language + (e.attrs.languages ? "  " + Object.entries(e.attrs.languages).map(([k, v]) => `${k} ${(v / 1000).toFixed(0)}k`).join(", ") : ""));
+  if (e.attrs.role) lines.push("role: " + e.attrs.role);
+  if (kids(id).length) lines.push(`${kids(id).length} children, ${leafCount(id)} leaves, ${L.internal.get(id) || 0} internal relations`);
+  const a = L.annotations.get(id); if (a) for (const [g, c] of a) lines.push(g.startsWith("util:") ? `${c} references to ${label(g.slice(5))} (utility, drawn as badge)` : `${c} relations with ${ent(g).name} (folded)`);
+  if (L.utilities.has(id)) lines.push("utility: used by at least half of the top-level components; incoming edges are badges on the users");
+  const al = L.allocations.get(id); if (al) lines.push("deployed in: " + al.map(s => ent(s).name).join(", "));
+  if (e.attrs.image) lines.push("image: " + e.attrs.image);
+  if (e.attrs.ports) lines.push("ports: " + e.attrs.ports.join(", "));
+  return lines.join("\n");
+}
+function edgeTip(e) {
+  const lines = [`${e.kind} ${e.subkind}  ×${e.count}  (${e.confidence})`, `${e.src} → ${e.dst}`];
+  if (e.via.size) lines.push("via: " + [...e.via].slice(0, 14).join("\n     ") + (e.via.size > 14 ? `\n     … ${e.via.size - 14} more` : ""));
+  return lines.join("\n");
+}
+function sidebar(L, hidden, visible) {
+  const ul = document.getElementById("residue"); ul.innerHTML = "";
+  const add = s => { const li = document.createElement("li"); li.textContent = s; ul.appendChild(li); };
+  add(`${hidden.size} entities hidden by role`);
+  add(`${L.hiddenCount} relations touch hidden entities`);
+  for (const [k, v] of L.unresolved) add(`${v} unresolved ${k} references`);
+  const dangling = L.edges.filter(e => e.subkind.endsWith("-dangling")); if (dangling.length) add(`${dangling.length} interface edges with one side only`);
+  if (L.utilities.size) add(`utilities (badges): ${[...L.utilities].map(label).join(", ")}`);
+  for (const [k, v] of L.suppressed) add(`${v} ${k} wiring edges not drawn (option)`);
+  if (L.largestCycle) add(`${L.largestCycle} drawn nodes take part in cycles`);
+  const sl = document.getElementById("services"); sl.innerHTML = "";
+  if (L.allocations.size) { const svcs = new Set([...L.allocations.values()].flat()); for (const s of [...svcs].sort()) { const d = document.createElement("div"); d.innerHTML = `<span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:${serviceColor(s)};margin-right:6px"></span>${ent(s).name}`; sl.appendChild(d); } sl.parentElement.style.display = ""; } else sl.parentElement.style.display = "none";
+  const gd = document.getElementById("groups"); gd.innerHTML = "";
+  for (const r of state.idx.roots) {
+    if (!state.idx.ent.has(r) || ent(r).kind !== "group" || r === "unresolved") continue;
+    const chip = document.createElement("span"); chip.className = "chip";
+    const open = state.expanded.has(r);
+    chip.appendChild(document.createTextNode(`${ent(r).name} (${kids(r).length})`));
+    const b = document.createElement("button"); b.textContent = open ? "fold" : "unfold"; b.addEventListener("click", () => toggle(r, false)); chip.appendChild(b);
+    gd.appendChild(chip);
+  }
+}
+
+// ---------- interaction ----------
+const svg = document.getElementById("g");
+function apply() { document.getElementById("root").setAttribute("transform", `translate(${zoom.x},${zoom.y}) scale(${zoom.k})`); }
+function fit(w, h) { const r = svg.getBoundingClientRect(); const k = Math.min((r.width - 24) / w, (r.height - 24) / h, 1.5); zoom = { k, x: (r.width - w * k) / 2, y: 12 }; apply(); }
+let drag = null;
+svg.addEventListener("mousedown", ev => { drag = { x: ev.clientX - zoom.x, y: ev.clientY - zoom.y }; });
+window.addEventListener("mouseup", () => drag = null);
+window.addEventListener("mousemove", ev => { if (drag) { zoom.x = ev.clientX - drag.x; zoom.y = ev.clientY - drag.y; apply(); } });
+svg.addEventListener("wheel", ev => { ev.preventDefault(); const f = ev.deltaY < 0 ? 1.1 : 1 / 1.1; const r = svg.getBoundingClientRect(); const mx = ev.clientX - r.left, my = ev.clientY - r.top; zoom.x = mx - (mx - zoom.x) * f; zoom.y = my - (my - zoom.y) * f; zoom.k *= f; apply(); }, { passive: false });
+const tipEl = document.getElementById("tip");
+function tip(ev, text) { tipEl.style.display = "block"; tipEl.textContent = text; const r = svg.getBoundingClientRect(); tipEl.style.left = Math.min(ev.clientX - r.left + 12, r.width - 470) + "px"; tipEl.style.top = (ev.clientY - r.top + 12) + "px"; }
+function hideTip() { tipEl.style.display = "none"; }
+function* descendants(id) { const st = [...kids(id)]; while (st.length) { const x = st.pop(); yield x; st.push(...kids(x)); } }
+function toggle(id, shift) {
+  if (isFiles(id) || !kids(id).length) return;
+  if (state.expanded.has(id)) { state.expanded.delete(id); for (const d of descendants(id)) state.expanded.delete(d); }
+  else state.expanded.add(id);
+  render(true);
+}
+
+function writeHash() {
+  const p = new URLSearchParams();
+  p.set("d", state.name); p.set("x", [...state.expanded].join(",")); p.set("r", [...state.roles].join(",")); p.set("b", state.budget); p.set("t", state.through ? 1 : 0); if (state.danglingUse) p.set("u", 1); if (state.envEdges) p.set("ev", 1); if (!state.bundle) p.set("nb", 1); if (!state.utilities) p.set("nu", 1); if (state.hideInternal) p.set("hi", 1); if (state.noLabels) p.set("nl", 1); if (state.direction !== "DOWN") p.set("dir", state.direction);
+  history.replaceState(null, "", "#" + p.toString());
+}
+function readHash() { const p = new URLSearchParams(location.hash.slice(1)); return Object.fromEntries(["d", "x", "f", "r", "b", "t", "u", "ev", "nb", "nu", "hi", "nl", "dir", "mmd"].map(k => [k, p.get(k)])); }
+
+async function loadDataset(name, h) {
+  state.name = name;
+  const [model, view] = await Promise.all([fetch(`/data/${name}/model.json`).then(r => r.json()), fetch(`/data/${name}/view.json`).then(r => r.json()).catch(() => null)]);
+  state.model = model; state.idx = index(model);
+  state.budget = h.b ? +h.b : (view ? view.budget : 34); document.getElementById("budget").value = state.budget;
+  state.through = h.t === null || h.t === undefined ? true : h.t === "1"; document.getElementById("through").checked = state.through;
+  state.danglingUse = h.u === "1"; document.getElementById("dangling").checked = state.danglingUse;
+  state.bundle = h.nb !== "1"; document.getElementById("bundle").checked = state.bundle;
+  state.envEdges = h.ev === "1"; document.getElementById("envedges").checked = state.envEdges;
+  state.utilities = h.nu !== "1"; document.getElementById("utilities").checked = state.utilities;
+  state.hideInternal = h.hi === "1"; document.getElementById("hideinternal").checked = state.hideInternal;
+  state.noLabels = h.nl === "1"; document.getElementById("nolabels").checked = state.noLabels; document.getElementById("g").classList.toggle("nolabels", state.noLabels);
+  state.direction = h.dir === "RIGHT" ? "RIGHT" : "DOWN"; document.getElementById("direction").value = state.direction;
+  const hiddenRoles = new Set(view ? view.hidden_roles : ["test", "docs", "config", "data", "asset", "other"]);
+  state.roles = h.r !== null && h.r !== undefined ? new Set(h.r.split(",").filter(Boolean)) : new Set(ALL_ROLES.filter(r => !hiddenRoles.has(r)));
+  renderRoles();
+  if (h.x) state.expanded = new Set(h.x.split(",").filter(Boolean)); else if (view) state.expanded = new Set(view.expanded); else defaultCut(state.budget);
+  const m = model.meta || {};
+  document.getElementById("meta").textContent = `${(m.repo || "").split("/").pop()} @ ${m.commit || "?"} · ${m.files || "?"} files · ${model.entities.length} entities · ${model.relations.length} relations`;
+  await render();
+}
+function renderRoles() {
+  const d = document.getElementById("roles"); d.innerHTML = "";
+  for (const r of ALL_ROLES) { const l = document.createElement("label"); const c = document.createElement("input"); c.type = "checkbox"; c.checked = state.roles.has(r); c.addEventListener("change", () => { c.checked ? state.roles.add(r) : state.roles.delete(r); render(); }); l.appendChild(c); l.appendChild(document.createTextNode(" " + r)); d.appendChild(l); }
+}
+document.getElementById("budget").addEventListener("change", ev => { state.budget = +ev.target.value; defaultCut(state.budget); render(); });
+document.getElementById("reset").addEventListener("click", () => { defaultCut(state.budget); render(); });
+document.getElementById("collapse").addEventListener("click", () => { state.expanded = new Set(["fs:."]); render(); });
+document.getElementById("through").addEventListener("change", ev => { state.through = ev.target.checked; render(true); });
+document.getElementById("dangling").addEventListener("change", ev => { state.danglingUse = ev.target.checked; render(true); });
+document.getElementById("bundle").addEventListener("change", ev => { state.bundle = ev.target.checked; render(true); });
+document.getElementById("envedges").addEventListener("change", ev => { state.envEdges = ev.target.checked; render(true); });
+document.getElementById("utilities").addEventListener("change", ev => { state.utilities = ev.target.checked; render(true); });
+document.getElementById("hideinternal").addEventListener("change", ev => { state.hideInternal = ev.target.checked; render(true); });
+document.getElementById("nolabels").addEventListener("change", ev => { state.noLabels = ev.target.checked; document.getElementById("g").classList.toggle("nolabels", state.noLabels); writeHash(); });
+document.getElementById("mmd").addEventListener("click", async () => {
+  const pane = document.getElementById("mmdpane");
+  if (pane.style.display === "block") { pane.style.display = "none"; return; }
+  pane.style.display = "block"; pane.innerHTML = "rendering…";
+  const src = await (await fetch(`/data/${state.name}/default.mmd`)).text();
+  try { const mermaid = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; mermaid.initialize({ startOnLoad: false, securityLevel: "loose", maxTextSize: 200000 }); const { svg } = await mermaid.render("mmd" + Date.now(), src); pane.innerHTML = `<div style="position:sticky;top:0;background:Canvas;padding:4px;color:var(--muted)">default.mmd (static export of the default cut) · click to close</div>` + svg; }
+  catch (e) { pane.innerHTML = `<pre style="color:#c33">${String(e)}</pre><pre>${src.replace(/</g, "&lt;")}</pre>`; }
+});
+document.getElementById("mmdpane").addEventListener("click", ev => { if (ev.target.closest("div[style*=sticky]")) ev.currentTarget.style.display = "none"; });
+document.getElementById("direction").addEventListener("change", ev => { state.direction = ev.target.value; render(); });
+document.getElementById("dataset").addEventListener("change", ev => loadDataset(ev.target.value, {}));
+
+(async () => {
+  const sets = await (await fetch("/api/list")).json();
+  const sel = document.getElementById("dataset");
+  for (const s of sets) { const o = document.createElement("option"); o.value = s.name; o.textContent = s.name; sel.appendChild(o); }
+  const h = readHash();
+  const name = h.d && sets.some(s => s.name === h.d) ? h.d : (sets[0] && sets[0].name);
+  if (!name) { document.getElementById("status").textContent = "no datasets"; return; }
+  sel.value = name;
+  await loadDataset(name, h);
+  if (h.mmd === "1") document.getElementById("mmd").click();
+})();
+</script>
+</body>
+</html>
