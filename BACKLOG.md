@@ -15,6 +15,10 @@ solution; solutions are for whoever picks it up.
   all unexplored beyond defaults. Unfolding animates and keeps the clicked box in place, but the layout
   is still computed from scratch, so other boxes can travel far and cross each other
   mid-step (bench.html measures how much of the arrangement survives).
+  "Layered, each box separately" keeps more (order 0.91 vs 0.81 over the corpus), but
+  its edges between nesting levels are straight lines that cut through boxes; they need
+  a router that avoids boxes. bench.html averages steps equally, so a step that keeps
+  only 2 boxes (1 pair) can score 0 or 1 and swing the worst-step column.
   The force layout (fCoSE) can leave sibling boxes overlapping (0–4 pairs on the
   corpus); it has no overlap-removal pass, and its edges are straight, not routed.
 - **Tests for the roll-up rules.** Only extraction is tested; none of the rules in

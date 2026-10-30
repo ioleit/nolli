@@ -4,7 +4,7 @@
 
 import cytoscape from "https://cdn.jsdelivr.net/npm/cytoscape@3.34.4/+esm";
 import fcose from "https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/+esm";
-import { CONTAINER_PAD, childrenOf, isContainer, leafSize } from "./index.js";
+import { CONTAINER_PAD, childrenOf, isContainer, leafSize, straight } from "./index.js";
 
 /**
  * @typedef {import("../../types/nolli").Scene} Scene
@@ -34,16 +34,6 @@ export const OPTIONS = {
   nestingFactor: 0.1, gravity: 0.25, gravityCompound: 1.0, gravityRangeCompound: 1.5, numIter: 2500,
   tilingPaddingVertical: 12, tilingPaddingHorizontal: 12,
 };
-
-/** Where the segment from a box's centre towards (tx, ty) leaves the box. @param {Box} b @param {number} tx @param {number} ty @returns {Point} */
-function exitPoint(b, tx, ty) {
-  const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = tx - cx, dy = ty - cy;
-  if (!dx && !dy) return { x: cx, y: cy };
-  const s = Math.min(dx ? (b.w / 2) / Math.abs(dx) : Infinity, dy ? (b.h / 2) / Math.abs(dy) : Infinity);
-  return { x: cx + dx * s, y: cy + dy * s };
-}
-/** @param {Box} b @param {number} x @param {number} y */
-const inside = (b, x, y) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h;
 
 /** @param {Scene} scene @param {LayoutOptions} opts @returns {Promise<Laid>} */
 export async function layout(scene, { seed = "" } = {}) {
@@ -93,12 +83,7 @@ export async function layout(scene, { seed = "" } = {}) {
   const width = Math.max(...all.map(b => b.x + b.w)) + MARGIN, height = Math.max(...all.map(b => b.y + b.h)) + MARGIN;
 
   const edges = scene.edges.map(e => {
-    const a = /** @type {Box} */ (nodes.get(e.src)), b = /** @type {Box} */ (nodes.get(e.dst));
-    const ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
-    // an edge into the container it sits in ends on that container's header
-    const start = inside(a, bc.x, bc.y) ? { x: bc.x, y: a.y } : exitPoint(a, bc.x, bc.y);
-    const end = inside(b, ac.x, ac.y) ? { x: ac.x, y: b.y } : exitPoint(b, ac.x, ac.y);
-    return { edge: e, sections: [[start, end]] };
+    return { edge: e, sections: [straight(/** @type {Box} */ (nodes.get(e.src)), /** @type {Box} */ (nodes.get(e.dst)))] };
   });
   cy.destroy();
   return { width, height, nodes, edges };

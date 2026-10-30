@@ -14,6 +14,10 @@
 /** @type {Record<string, { label: string, load: () => Promise<Engine> }>} */
 export const ENGINES = {
   elk: { label: "layered (ELK)", load: () => import("./elk.js") },
+  elksep: { label: "layered, each box separately (ELK)", load: async () => {
+    const elk = await import("./elk.js");
+    return { layout: (scene, opts) => elk.layout(scene, { ...opts, hierarchy: "SEPARATE_CHILDREN" }) };
+  } },
   fcose: { label: "force (fCoSE)", load: () => import("./fcose.js") },
 };
 
@@ -46,6 +50,28 @@ export const isContainer = n => !isAnchor(n) && n.container;
 
 // room around a container's children: the header with title, badges and − sits on top
 export const CONTAINER_PAD = { top: 30, left: 10, bottom: 10, right: 10 };
+
+/** Where the segment from a box's centre towards (tx, ty) leaves the box. @param {import("../../types/nolli").Box} b @param {number} tx @param {number} ty @returns {import("../../types/nolli").Point} */
+function exitPoint(b, tx, ty) {
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = tx - cx, dy = ty - cy;
+  if (!dx && !dy) return { x: cx, y: cy };
+  const s = Math.min(dx ? (b.w / 2) / Math.abs(dx) : Infinity, dy ? (b.h / 2) / Math.abs(dy) : Infinity);
+  return { x: cx + dx * s, y: cy + dy * s };
+}
+/** @param {import("../../types/nolli").Box} b @param {number} x @param {number} y */
+const inside = (b, x, y) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h;
+
+/**
+ * A straight edge from border to border, along the line between the boxes' centres; an
+ * edge into the container it sits in ends on that container's header.
+ * @param {import("../../types/nolli").Box} a @param {import("../../types/nolli").Box} b
+ */
+export function straight(a, b) {
+  const ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  const start = inside(a, bc.x, bc.y) ? { x: bc.x, y: a.y } : exitPoint(a, bc.x, bc.y);
+  const end = inside(b, ac.x, ac.y) ? { x: ac.x, y: b.y } : exitPoint(b, ac.x, ac.y);
+  return [start, end];
+}
 
 /** Drawn children per container id ("ROOT" for the top level), in scene order. @param {Scene} scene */
 export function childrenOf(scene) {
