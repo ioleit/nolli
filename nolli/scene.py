@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, field
 
 from .model import USE, Model
 from .rollup import (
-    HIDDEN_ROLES_DEFAULT, hidden_by_role, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
+    HIDDEN_ROLES_DEFAULT, fact_key, hidden_by_role, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
     representative, rollup, utility_badges, visible_from_expanded,
 )
 from .changes import Links, change_items, diff_index, fact_change, is_diff, node_diff
@@ -144,7 +144,7 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
     expanded, hidden, visible, rolled, utilities = compute(m, st)
     diff = is_diff(m)
     links = Links(m) if diff else None
-    by_fact = {f"{r.kind}|{r.src}|{r.dst}|{r.subkind}": r for r in m.relations if r.attrs.get("diff")} if diff else {}
+    by_fact = {fact_key(r): r for r in m.relations if r.attrs.get("diff")} if diff else {}
     shown_groups = set(st.groups)
     # a root group is drawn when the filter shows it and it has something to unfold; a group
     # the filter hides is drawn only if an edge still ends on it (both ends in groups)

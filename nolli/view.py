@@ -31,7 +31,7 @@ def unfold_cost(m: Model, v: str, hidden: set[str], anchors: set[str] = frozense
 
 
 def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("fs:.",), hidden: set[str] | None = None) -> dict:
-    """In a diff model the budget goes to the changes first (``review.change_scores``),
+    """In a diff model the budget goes to the changes first (``changes.change_scores``),
     then whatever is left to structure as usual."""
 
     roles = tuple(hidden_roles) if hidden_roles is not None else hidden_by_role.__defaults__[0]
