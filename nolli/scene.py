@@ -17,9 +17,9 @@ from dataclasses import asdict, dataclass, field
 from .model import USE, Model
 from .rollup import (
     HIDDEN_ROLES_DEFAULT, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
-    rollup, utility_badges, visible_from_expanded,
+    representative, rollup, utility_badges, visible_from_expanded,
 )
-from .review import Links, diff_index, fact_change, is_diff, node_diff
+from .review import VERDICT_RANK, Links, change_items, diff_index, fact_change, is_diff, node_diff
 from .view import default_view
 
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
@@ -271,7 +271,9 @@ def cycle_members(nodes: list[str], edges) -> set[str]:
 
 # ---------- the scene ----------
 
-def scene(m: Model, st: ViewState) -> dict:
+def scene(m: Model, st: ViewState, verdicts: dict[str, dict] | None = None) -> dict:
+    """``verdicts``: a review's verdicts by item id (review.read_verdicts), shown on the boxes
+    and edges that contain each item."""
     expanded, hidden, visible, rolled, utilities = compute(m, st)
     diff = is_diff(m)
     links = Links(m) if diff else None
@@ -368,6 +370,9 @@ def scene(m: Model, st: ViewState) -> dict:
                       "more": max(0, len(e.changed) - 40)} if diff and e.status else None),
         })
 
+    if diff:
+        attach_items(m, nodes, edge_out, visible, hidden, verdicts or {})
+
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
     residue += [f"{v} unresolved {k} references" for k, v in sorted(rolled.unresolved.items())]
     dangling = sum(1 for e in edges if e.subkind.endswith("-dangling"))
@@ -394,6 +399,40 @@ def scene(m: Model, st: ViewState) -> dict:
         out["diff"] = {**{k: meta.get(k) for k in ("base", "head", "base_short", "head_short", "remote", "pr", "files_changed", "added", "removed", "title")},
                        "link": links.change(), "drawn": dict(statuses), "changed_entities": len(idx)}
     return out
+
+
+def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[str], hidden: set[str],
+                 verdicts: dict[str, dict]) -> None:
+    """Which review items each drawn box and edge shows, and the worst verdict among them.
+    An item about facts lands on the edges carrying those facts; an item about entities (or
+    facts that fell inside one box) on the box that stands for them."""
+    rep = representative(m, visible, hidden, image_aliases(m))
+    drawn = {n["id"] for n in nodes}
+    by_fact: dict[str, list[str]] = defaultdict(list)
+    for it in change_items(m):
+        for f in it["facts"]:
+            by_fact[f].append(it["id"])
+    node_items: dict[str, set[str]] = defaultdict(set)
+    placed: set[str] = set()
+    for e in edges:
+        ids = sorted({i for f in (e["diff"] or {}).get("facts", []) for i in by_fact.get(f, [])}, key=lambda i: int(i[1:]))
+        e["items"] = ids
+        placed.update(ids)
+    for it in change_items(m):
+        if it["id"] in placed and it["category"] == "dependency":
+            continue
+        for x in it["focus"]:
+            r = rep(x)
+            if r is not None and r in drawn:
+                node_items[r].add(it["id"])
+                break
+    worst = lambda ids: max((verdicts[i]["verdict"] for i in ids if i in verdicts), key=VERDICT_RANK.get, default=None)  # noqa: E731
+    for n in nodes:
+        ids = sorted(node_items.get(n["id"], ()), key=lambda i: int(i[1:]))
+        n["items"] = ids
+        n["verdict"] = worst(ids)
+    for e in edges:
+        e["verdict"] = worst(e["items"])
 
 
 def state_from_query(q: dict[str, str]) -> ViewState:

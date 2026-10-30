@@ -125,3 +125,29 @@ def test_scene_review(repo):
     assert store["hunks"] and store["hunks"][0]["link"].startswith(store["link"] + "R")
     assert any(c["name"] == "Store" for c in d["classes"])
     assert any(e["id"] == "py:app/store.py#Index" and e["status"] == "added" for e in d["entities"])
+
+
+def test_items_verdicts_and_export(repo):
+    import json
+
+    from nolli.review import change_items, read_verdicts, review_markdown
+    from nolli.scene import ViewState, scene
+
+    path, base, head = repo
+    m, _ = diff(path, base, head, extract)
+    assert m.entities["fs:."].name == path.name
+    items = change_items(m)
+    by_title = {it["title"]: it for it in items}
+    assert [it["id"] for it in items] == [f"C{i}" for i in range(1, len(items) + 1)]
+    assert "new class app/store.py#Index" in by_title
+    dep = by_title["app/api.py → app/store.py: dependency changed"]
+    assert any(f.endswith("py:app/store.py#Index|ref") for f in dep["facts"]) and dep["reveal"] == ["fs:.", "fs:app"]
+    assert any(it["category"] == "content" and it["title"].startswith("edited app/store.py") for it in items)
+    v = read_verdicts(json.dumps([{"id": dep["id"], "verdict": "problem", "reason": "x"}]))
+    sc = scene(m, ViewState(expanded=["fs:.", "fs:app"]), v)
+    marked = [e for e in sc["edges"] if dep["id"] in e["items"]]
+    assert marked and marked[0]["verdict"] == "problem"
+    with pytest.raises(ValueError):
+        read_verdicts('[{"id": "C1", "verdict": "maybe"}]')
+    md = review_markdown(m, "flowchart TD\n")
+    assert dep["id"] in md and "verdicts.json" in md

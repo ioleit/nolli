@@ -208,3 +208,230 @@ def details(m: Model, x: str) -> dict:
             "classes": classes[:MAX_ITEMS], "entities": entities[:MAX_ITEMS], "more_entities": max(0, len(entities) - MAX_ITEMS),
             "dependencies": deps[:MAX_ITEMS], "more_dependencies": max(0, len(deps) - MAX_ITEMS),
             "link": links.diff(e.attrs["path"]) if e.kind == "file" and e.attrs.get("path") else None}
+
+
+# ---------- review items: the numbered list a reviewer (person or agent) goes through ----------
+
+def module_of(m: Model, x: str) -> str:
+    """The module (file) a fact end belongs to; anything outside files stays itself."""
+    cur: str | None = x
+    while cur is not None:
+        if m.has(cur) and m.entities[cur].kind == "file":
+            return cur
+        cur = m.parent(cur)
+    return x
+
+
+def area_of(m: Model, x: str) -> str:
+    """The top-level box an entity sits in: a top-level directory, or a group."""
+    cur, last = x, x
+    while cur is not None:
+        p = m.parent(cur)
+        if p is None or (m.entities[p].attrs.get("root")):
+            return cur if p is not None else last
+        last, cur = cur, p
+    return last
+
+
+def short(m: Model, x: str) -> str:
+    """A readable name: the path for files and directories, path#Name for classes."""
+    if not m.has(x):
+        return x
+    e = m.entities[x]
+    if e.kind in ("file", "directory"):
+        return e.attrs.get("path") or e.name
+    if e.kind == "class":
+        return f"{e.attrs.get('path')}#{e.name}"
+    return e.name
+
+
+def role_of(m: Model, x: str) -> str:
+    """The role of the file or directory an entity belongs to (source, test, docs, …);
+    entities outside the file tree (services, endpoints, packages) count as source."""
+    cur: str | None = x
+    while cur is not None:
+        e = m.entities.get(cur)
+        if e is not None and e.kind in ("file", "directory") and e.attrs.get("role"):
+            return "source" if e.attrs["role"] == "mixed" else e.attrs["role"]
+        cur = m.parent(cur)
+    return "source"
+
+
+def ancestors_to_unfold(m: Model, x: str) -> list[str]:
+    """The boxes to unfold so that x itself is drawn."""
+    out, cur = [], m.parent(x)
+    while cur is not None:
+        out.append(cur)
+        cur = m.parent(cur)
+    return out[::-1]
+
+
+def change_items(m: Model) -> list[dict]:
+    """The changes as a numbered list, in a stable order: components added or removed
+    (a new module once, with its classes, not once per class), then dependencies between
+    modules, then edited files. Each item names the entities and facts it is about, so a
+    verdict on it can be shown on whatever box or edge contains them."""
+    cached = m.__dict__.get("_change_items")
+    if cached is not None:
+        return cached
+    links = Links(m)
+    comps, deps, content = [], [], []
+    # components: added / removed entities whose parent did not change the same way
+    for e in sorted(m.entities.values(), key=lambda e: e.id):
+        d = e.attrs.get("diff") or {}
+        st = d.get("status")
+        if st not in ("added", "removed") or e.kind in ("group", "unresolved"):
+            continue
+        p = m.parent(e.id)
+        if p is not None and (m.entities[p].attrs.get("diff") or {}).get("status") == st:
+            continue  # covered by its parent's item
+        inner = [c for c in m.descendants(e.id) if (m.entities[c].attrs.get("diff") or {}).get("status") == st]
+        classes = [m.entities[c].name for c in inner if m.entities[c].kind == "class"]
+        if e.kind == "class":
+            classes = []
+        lines = d.get("added", 0) if st == "added" else d.get("removed", 0)
+        if e.kind == "directory":
+            lines = sum((m.entities[c].attrs.get("diff") or {}).get("added" if st == "added" else "removed", 0) for c in inner if m.entities[c].kind == "file")
+        what = {"file": "module", "directory": "package", "class": "class", "package": "external package"}.get(e.kind, e.kind)
+        title = f"{'new' if st == 'added' else 'removed'} {what} {short(m, e.id)}"
+        if d.get("old_path") or d.get("renamed_to"):
+            title += f" (renamed {'from ' + d['old_path'] if d.get('old_path') else 'to ' + d['renamed_to']})"
+        path = e.attrs.get("path")
+        comps.append({"category": "component", "status": st, "title": title, "area": area_of(m, e.id), "role": role_of(m, e.id),
+                      "classes": classes, "lines": lines, "entities": [e.id] + inner, "facts": [],
+                      "reveal": ancestors_to_unfold(m, e.id), "focus": [e.id],
+                      "link": (links.diff(path) if e.kind == "file" else links.blob(path, "base" if st == "removed" else "head",
+                                                                                  e.attrs.get("line"), e.attrs.get("end_line")))
+                      if path else None})
+    # dependencies: changed facts grouped by the modules at their ends
+    groups: dict[tuple, list] = defaultdict(list)
+    totals: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])  # all references between the two modules, before and after
+    for r in m.relations:
+        if r.kind == CONTAIN:
+            continue
+        a, b = module_of(m, r.src), module_of(m, r.dst)
+        if r.kind == "provide":
+            a, b = b, a  # drawn interface -> implementation
+        if a == b:
+            continue  # inside one module: shows as its content
+        sub = "import" if r.subkind in ("ref", "import") else r.subkind
+        d = r.attrs.get("diff")
+        t = totals[(a, b, r.kind, sub)]
+        t[0] += d.get("base", 0) if d else r.count
+        t[1] += d.get("head", 0) if d else r.count
+        if d:
+            groups[(a, b, r.kind, sub)].append(r)
+    for (a, b, kind, sub), rs in sorted(groups.items()):
+        base, head = totals[(a, b, kind, sub)]
+        st = "added" if base == 0 else "removed" if head == 0 else "changed"
+        word = {"added": "new dependency", "removed": "dependency removed", "changed": "dependency changed"}[st]
+        if kind == "provide":
+            word = {"added": "now realised by", "removed": "no longer realised by", "changed": "realisation changed"}[st]
+        targets = sorted({f"{'+' if r.attrs['diff']['status'] == 'added' else '−' if r.attrs['diff']['status'] == 'removed' else '~'}"
+                          f"{short(m, r.dst if kind != 'provide' else r.src)}" for r in rs})
+        first = fact_change(m, rs[0], links)
+        deps.append({"category": "dependency", "status": st, "title": f"{short(m, a)} → {short(m, b)}: {word}",
+                     "area": area_of(m, a), "role": role_of(m, a) if role_of(m, a) != "source" else role_of(m, b),
+                     "kind": kind, "subkind": sub, "base": base, "head": head,
+                     "targets": targets[:12], "entities": [a, b], "facts": [fact_key(r) for r in rs],
+                     "reveal": sorted(set(ancestors_to_unfold(m, a)) | set(ancestors_to_unfold(m, b))), "focus": [a, b],
+                     "link": first["link"]})
+    # content: every edited file that is neither added nor removed
+    for e in sorted(m.entities.values(), key=lambda e: e.id):
+        d = e.attrs.get("diff") or {}
+        if e.kind != "file" or "git" not in d or d.get("status") in ("added", "removed"):
+            continue
+        cls = [{"name": m.entities[c].name, "added": m.entities[c].attrs["diff"].get("added", 0),
+                "removed": m.entities[c].attrs["diff"].get("removed", 0)}
+               for c in m.children(e.id) if (m.entities[c].attrs.get("diff") or {}).get("status") == "same"
+               and (m.entities[c].attrs["diff"].get("added") or m.entities[c].attrs["diff"].get("removed"))]
+        path = e.attrs.get("path")
+        content.append({"category": "content", "status": "changed", "title": f"edited {path} (+{d.get('added', 0)} −{d.get('removed', 0)})",
+                        "area": area_of(m, e.id), "role": role_of(m, e.id), "added": d.get("added", 0), "removed": d.get("removed", 0),
+                        "classes": cls, "entities": [e.id], "facts": [],
+                        "reveal": ancestors_to_unfold(m, e.id), "focus": [e.id], "link": links.diff(path) if path else None})
+    # source changes first in every category, then tests, docs, config, data; numbered in that order
+    items = []
+    for source in (True, False):
+        for group in (comps, deps, content):
+            part = [it for it in group if (it["role"] == "source") == source]
+            part.sort(key=lambda it: (it["role"], it["area"], it["title"]))
+            items.extend(part)
+    for i, it in enumerate(items, 1):
+        it["id"] = f"C{i}"
+    m.__dict__["_change_items"] = items
+    return items
+
+
+VERDICTS = ("fine", "question", "problem")
+VERDICT_RANK = {v: i for i, v in enumerate(VERDICTS)}
+
+
+def read_verdicts(text: str) -> dict[str, dict]:
+    """verdicts.json: a list (or {"verdicts": [...]}) of {id, verdict, reason}; verdict one of
+    fine / question / problem. Returns them by item id; raises ValueError on a bad file."""
+    import json
+
+    data = json.loads(text)
+    if isinstance(data, dict):
+        data = data.get("verdicts", [])
+    if not isinstance(data, list):
+        raise ValueError("expected a list of {id, verdict, reason}")
+    out = {}
+    for v in data:
+        if not isinstance(v, dict) or not isinstance(v.get("id"), str) or v.get("verdict") not in VERDICTS:
+            raise ValueError(f"bad verdict {v!r}: needs id and verdict in {VERDICTS}")
+        out[v["id"]] = {"verdict": v["verdict"], "reason": str(v.get("reason", ""))}
+    return out
+
+
+def review_markdown(m: Model, mermaid: str) -> str:
+    """What a review agent gets: the change, the picture with ids, the numbered changes, and
+    how to answer. Verdicts come back as JSON and are shown in the viewer."""
+    d = m.meta["diff"]
+    links = Links(m)
+    items = change_items(m)
+    head = f"# Architecture review: {d.get('title') or 'change'}\n\n"
+    head += (f"{d['base_short']} → {d['head_short']}" + (f", PR #{d['pr']}" if d.get("pr") else "")
+             + f": {d['files_changed']} files, +{d['added']} −{d['removed']} lines"
+             + (f"\n{links.change()}" if links.change() else "") + "\n")
+    howto = """
+## What to do
+
+Judge each change below for its effect on the architecture: does the new or removed
+dependency, component or edit fit how the code is organised, or does it cross a boundary,
+add coupling, duplicate something, or leave something behind? Content-only edits matter
+when they change what a module is responsible for.
+
+Answer with JSON only, one entry per change you have an opinion on, and save it as
+`verdicts.json` next to this file:
+
+```json
+[{"id": "C3", "verdict": "problem", "reason": "one or two sentences"}]
+```
+
+`verdict` is one of `fine`, `question`, `problem`. Use the ids exactly as listed.
+"""
+    picture = ("\n## The picture\n\nThe repository rolled up around the change. Classes on boxes and edges: "
+               "`added`, `removed`, `changed`; box ids are entity ids with punctuation replaced.\n\n```mermaid\n" + mermaid + "```\n")
+    lines = ["\n## The changes\n"]
+    titles = {"component": "Components added or removed", "dependency": "Dependencies between modules", "content": "Edited files"}
+    last = None
+    for it in items:
+        section = (it["category"], it["role"] == "source")
+        if section != last:
+            if it["role"] != "source" and (last is None or last[1]):
+                lines.append("\n## Tests, docs, config and data\n\nThe same kinds of change outside source code; lower priority.\n")
+            lines.append(f"\n### {titles[it['category']]}\n")
+            last = section
+        extra = []
+        if it.get("classes"):
+            extra.append("classes: " + ", ".join(c if isinstance(c, str) else f"{c['name']} (+{c['added']} −{c['removed']})" for c in it["classes"]))
+        if it["category"] == "dependency":
+            extra.append(f"{it['base']} → {it['head']} references" + (f"; changed: {', '.join(it['targets'])}" if it.get("targets") else ""))
+        if it["category"] == "component" and it.get("lines"):
+            extra.append(f"{it['lines']} lines")
+        link = f" — {it['link']}" if it.get("link") else ""
+        role = f" [{it['role']}]" if it["role"] != "source" else ""
+        lines.append(f"- **{it['id']}**{role} {it['title']}{link}" + ("".join(f"\n  {x}" for x in extra)))
+    return head + howto + picture + "\n".join(lines) + "\n"

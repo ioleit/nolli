@@ -211,6 +211,9 @@ def diff(repo: Path, base_rev: str, head_rev: str, extract) -> tuple[Model, dict
             d.mkdir()
             materialise(repo, sha, d)
             sides[name], _ctx = extract(d)
+    for side in sides.values():  # the root is the temporary directory; name it after the repository
+        if side.has("fs:."):
+            side.entities["fs:."].name = repo.name
     changes = file_changes(repo, base, head)
     m = merge(sides["base"], sides["head"], changes)
     by_status: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))

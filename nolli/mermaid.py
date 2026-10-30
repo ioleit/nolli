@@ -60,18 +60,25 @@ def label(m: Model, eid: str, ann: dict[str, int] | None, expanded: set[str] = f
 
 
 def render(m: Model, view: dict, rolled: RolledUp) -> str:
+    from .review import is_diff, node_diff
+
+    diff = is_diff(m)
+    status_of = lambda n: ((node_diff(m, n, rolled.internal_changes.get(n)) or {}).get("status") if diff else None)  # noqa: E731
     expanded = set(view["expanded"])
     show_files = dict(view.get("show_files") or {})
     visible = set(rolled.visible)
     hidden = hidden_by_role(m, view.get("hidden_roles") or HIDDEN_ROLES_DEFAULT) | set(image_aliases(m))
     touched = {e.src for e in rolled.edges} | {e.dst for e in rolled.edges}
     out = ["flowchart TD"]
+    classed: list[tuple[str, str]] = []  # subgraphs take classes through `class`, not `:::`
 
     def emit(n: str, indent: int) -> None:
         pad = "  " * indent
         e = m.entities[n]
         if n in expanded and m.children(n):
             out.append(f'{pad}subgraph {nid(n)}_g ["{label(m, n, None, expanded)}"]')
+            if status_of(n):
+                classed.append((f"{nid(n)}_g", status_of(n)))
             if f"body:{n}" in visible:
                 out.append(f'{pad}  {nid("body:" + n)}(("{label(m, "body:" + n, rolled.annotations.get("body:" + n))}"))')
             for c in m.children(n):
@@ -89,7 +96,8 @@ def render(m: Model, view: dict, rolled: RolledUp) -> str:
             if e.kind == "group" and m.parent(n) is None and n not in touched:
                 return  # folded root groups appear as annotations on the nodes that use them
             cls = ":::ext" if e.kind == "package" else ":::deploy" if e.kind in ("service", "image", "host") else ":::group" if e.kind == "group" else ":::symbol" if e.kind in ("class", "function") else ""
-            out.append(f'{pad}{nid(n)}["{label(m, n, rolled.annotations.get(n), expanded, rolled.allocations.get(n))}"]{cls}')
+            st = status_of(n)
+            out.append(f'{pad}{nid(n)}["{label(m, n, rolled.annotations.get(n), expanded, rolled.allocations.get(n))}"]{":::" + st if st else cls}')
 
     for r in m.roots():
         emit(r, 1)
@@ -98,13 +106,25 @@ def render(m: Model, view: dict, rolled: RolledUp) -> str:
     out.append("  classDef files fill:#f4f4f4,stroke:#bbb,color:#666")
     out.append("  classDef group stroke-dasharray:2 3")
     out.append("  classDef symbol fill:#fff8e6,stroke:#c9a227")
+    if diff:
+        out.append("  classDef added fill:#e6f6ea,stroke:#2e9b4f,stroke-width:2px")
+        out.append("  classDef removed fill:#fdecec,stroke:#c94040,stroke-width:2px,stroke-dasharray:5 3,color:#a33")
+        out.append("  classDef changed stroke:#d08a1a,stroke-width:2px")
+        for g, st in classed:
+            out.append(f"  class {g} {st}")
     def ref(n: str) -> str:
         return nid(n) + "_g" if n in expanded and m.children(n) else nid(n)
 
-    for e in rolled.edges:
+    styles: list[str] = []
+    for i, e in enumerate(rolled.edges):
         arrow = "-.->" if e.kind == "provide" else ARROW.get(e.subkind.replace("-dangling", ""), "-->")
         lab = []
-        if e.count > 1:
+        st = e.status if diff else None
+        if st:
+            lab.append(f"{st} {e.base}→{e.head}")
+            styles.append(f"  linkStyle {i} stroke:{ {'added': '#2e9b4f', 'removed': '#c94040', 'changed': '#d08a1a'}[st] },stroke-width:2px"
+                          + (",stroke-dasharray:5 3" if st == "removed" else ""))
+        elif e.count > 1:
             lab.append(str(e.count))
         if e.kind == "provide":
             lab.append("realised by")
@@ -112,4 +132,4 @@ def render(m: Model, view: dict, rolled: RolledUp) -> str:
             lab.append("http" if e.subkind == "endpoint" else e.subkind)
         text = f"|{' '.join(lab)}|" if lab else ""
         out.append(f"  {ref(e.src)} {arrow}{text} {ref(e.dst)}")
-    return "\n".join(out) + "\n"
+    return "\n".join(out + styles) + "\n"

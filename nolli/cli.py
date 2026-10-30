@@ -6,7 +6,9 @@
 Writes model.json (all facts), view.json (the default cut), scene.json (the
 scene of that cut, exactly what the viewer's /api/scene returns for it),
 default.mmd (Mermaid of that cut) and report.json (counts, unresolved
-references, extractor notes).
+references, extractor notes). diff also writes changes.json (the numbered
+review items) and review.md (what a review agent gets; its answer goes into
+verdicts.json next to it, which the viewer shows).
 """
 
 from __future__ import annotations
@@ -80,6 +82,10 @@ def cmd_diff(args: argparse.Namespace) -> int:
     if args.title:
         m.meta["diff"]["title"] = args.title
     report = write_dataset(m, out, args.budget, {}, {"diff": summary})
+    from .review import change_items, review_markdown
+
+    (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
+    (out / "review.md").write_text(review_markdown(m, (out / "default.mmd").read_text()))
     print(json.dumps({"diff": m.meta["diff"] | {"base": m.meta["diff"]["base_short"], "head": m.meta["diff"]["head_short"]},
                       "changes": summary, "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]}}, indent=1))
     return 0

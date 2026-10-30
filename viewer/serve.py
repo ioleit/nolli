@@ -6,7 +6,9 @@ Static files come from this directory; ``/data/<name>/<file>`` serves the
 dataset directories under --data; ``/api/list`` lists them, newest first;
 ``/api/scene?d=<name>&...`` returns the scene for a view state (``nolli/scene.py``;
 the parameters are the viewer's location-hash keys); ``/api/node?d=<name>&id=<entity>``
-returns the details of one box in a diff dataset (``nolli/review.py``). Needs only the standard library:
+returns the details of one box in a diff dataset (``nolli/review.py``), ``/api/changes?d=``
+its numbered review items with any verdicts, and ``POST /api/verdicts?d=`` stores a
+review's verdicts.json next to the dataset. Needs only the standard library:
 the nolli package is imported from this checkout, not from an installed copy.
 """
 
@@ -26,7 +28,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # the nolli package of this checkout
 
 from nolli.model import Model  # noqa: E402
-from nolli.review import details  # noqa: E402
+from nolli.review import change_items, details, read_verdicts  # noqa: E402
 from nolli.scene import scene, state_from_query  # noqa: E402
 
 _models: dict[str, tuple[float, Model]] = {}
@@ -45,6 +47,17 @@ def load_model(path: Path) -> Model:
     with _models_lock:
         _models[str(path)] = (mtime, m)
     return m
+
+
+def load_verdicts(ds: Path) -> dict[str, dict]:
+    """verdicts.json in a dataset directory, if there is a valid one."""
+    f = ds / "verdicts.json"
+    if not f.is_file():
+        return {}
+    try:
+        return read_verdicts(f.read_text())
+    except (ValueError, OSError):
+        return {}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -83,7 +96,7 @@ class Handler(SimpleHTTPRequestHandler):
                 t0 = time.perf_counter()
                 m = load_model(ds / "model.json")
                 t1 = time.perf_counter()
-                out = scene(m, state_from_query(q))
+                out = scene(m, state_from_query(q), load_verdicts(ds))
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
@@ -92,6 +105,17 @@ class Handler(SimpleHTTPRequestHandler):
                               "entities": len(m.entities), "relations": len(m.relations)}
             out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
             self.send_json(out)
+            return
+        if path == "/api/changes":
+            q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+            ds = self.data_root / q.get("d", "")
+            if not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
+                self.send_json({"error": f"no dataset {q.get('d')!r}"}, 404)
+                return
+            m = load_model(ds / "model.json")
+            v = load_verdicts(ds)
+            self.send_json({"items": [it | {"verdict": v.get(it["id"])} for it in change_items(m)] if m.meta.get("diff") else [],
+                            "has_verdicts": bool(v)})
             return
         if path == "/api/node":
             q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
@@ -121,6 +145,23 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
             return
         super().do_GET()
+
+    def do_POST(self) -> None:  # noqa: N802
+        """POST /api/verdicts?d=<name>: store a review's verdicts.json in the dataset (validated)."""
+        path = unquote(self.path.split("?")[0])
+        q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+        ds = self.data_root / q.get("d", "")
+        if path != "/api/verdicts" or not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
+            self.send_json({"error": "POST /api/verdicts?d=<dataset> only"}, 404)
+            return
+        body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
+        try:
+            v = read_verdicts(body)
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, 400)
+            return
+        (ds / "verdicts.json").write_text(json.dumps([{"id": k, **x} for k, x in v.items()], indent=1))
+        self.send_json({"saved": len(v)})
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
