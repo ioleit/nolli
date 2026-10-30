@@ -130,7 +130,7 @@ def test_scene_review(repo):
 def test_items_verdicts_and_export(repo):
     import json
 
-    from nolli.review import change_items, read_verdicts, review_expanded, review_markdown
+    from nolli.review import change_items, read_verdicts, resolve_verdicts, review_expanded, review_markdown
     from nolli.scene import ViewState, scene
 
     path, base, head = repo
@@ -149,8 +149,10 @@ def test_items_verdicts_and_export(repo):
         {"target": "n_fs_app_api_py --> n_fs_app_store_py", "verdict": "problem", "reason": "x"},
         {"target": "n_py_app_store_py_Index", "verdict": "question", "reason": "y"},
         {"target": "n_fs_nowhere_py", "verdict": "fine", "reason": "z"},
+        {"target": "n_fs_app_g --> n_fs_app_store_py", "verdict": "fine", "reason": "an unfolded box is a subgraph"},
     ]))
-    assert [x["id"] for x in v] == ["V1", "V2", "V3"]
+    assert [x["id"] for x in v] == ["V1", "V2", "V3", "V4"]
+    assert resolve_verdicts(m, v)[3]["ends"] == ["fs:app", "fs:app/store.py"]
     sc = scene(m, ViewState(expanded=["fs:.", "fs:app"]), v)
     marked = [e for e in sc["edges"] if "V1" in e["verdicts"]]
     assert len(marked) == 1 and marked[0]["verdict"] == "problem" and (marked[0]["src"], marked[0]["dst"]) == ("fs:app/api.py", "fs:app/store.py")
@@ -160,7 +162,7 @@ def test_items_verdicts_and_export(repo):
     assert not any("V3" in x.get("verdicts", []) for x in sc["nodes"] + sc["edges"])  # an unknown target is not drawn
     sc = scene(m, ViewState(expanded=["fs:."]), v)  # app folded: the edge falls inside it, so does the verdict
     app = next(n for n in sc["nodes"] if n["id"] == "fs:app")
-    assert set(app["verdicts"]) == {"V1", "V2"} and app["verdict"] == "problem"
+    assert set(app["verdicts"]) == {"V1", "V2", "V4"} and app["verdict"] == "problem"
     with pytest.raises(ValueError):
         read_verdicts('[{"target": "n_fs_app_api_py", "verdict": "maybe"}]')
     with pytest.raises(ValueError):

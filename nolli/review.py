@@ -396,13 +396,13 @@ def read_verdicts(text: str) -> list[dict]:
 
 
 def diagram_ids(m: Model) -> dict[str, str]:
-    """The review diagram's node ids back to what they stand for: entities, and a module's
-    own code (body:<file>) or a directory's."""
+    """The review diagram's node ids back to what they stand for: entities (an unfolded one is a
+    subgraph, ``<id>_g``), and a module's own code (body:<file>) or a directory's."""
     from .mermaid import nid
 
     out = {}
     for x, e in m.entities.items():
-        out[nid(x)] = x
+        out[nid(x)] = out[nid(x) + "_g"] = x
         if e.kind in ("file", "directory"):
             out[nid(f"body:{x}")] = f"body:{x}"
     return out
