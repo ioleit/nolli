@@ -37,7 +37,25 @@ For reference, the steps that the one command should replace:
 - The viewer (`viewer/serve.py --data ~/data/nolli`) started from a checkout of this
   repository, then opened at `#d=nolli-pr7`.
 
-## What is missing for that (as of 2026-10-30)
+## Done so far (2026-10-30, branch `dx-view`)
+
+- `nolli view [<change>]` on any git repository, plain git only: the current branch, a
+  branch or commit, `A..B` or `A...B` (`nolli/change.py`). It builds the dataset into a
+  default data directory (reused per change and nolli version), serves the viewer and
+  opens the browser. Title and description come from the commits.
+- The viewer is in the package (`nolli.viewer`) and offline (`viewer/vendor/`).
+- Tested on 2026-10-30 as a user would before PyPI: `pip install git+file://…@dx-view`
+  into a fresh venv outside the checkout, then `nolli view` in a fresh clone of autoforge
+  on the branch of its PR #213 (origin's default branch set back to the PR's base), and on
+  its merge commit; headless Chromium with every non-local request blocked: no blocked or
+  failed requests, no console errors, ELK, fCoSE and Mermaid all drew. The model was the
+  same as the hand-made `autoforge-pr213` dataset's; only the PR links were missing (no
+  GitHub remote in that clone, no PR number).
+
+Next: the GitHub layer (`nolli view <PR url | #N>`: base, head, title, description and
+links from the PR), then the brief and verdict check for a review skill.
+
+## What was missing (as of 2026-10-30, before the above)
 
 Checked against the code on that date; to be re-checked by whoever picks this up.
 

@@ -30,11 +30,32 @@ shows the HTTP API as the seam between the two.
 
 ## Usage
 
+Not on PyPI yet; install from the repository (or `pip install -e .` in a checkout):
+
 ```
-python -m venv .venv && .venv/bin/pip install -e .
-.venv/bin/nolli extract <repo> -o <out_dir>
-.venv/bin/nolli diff <repo> <base> <head> -o <out_dir>   # two commits, merged, changes recorded
-python -I viewer/serve.py --data <parent of out_dirs> --host 127.0.0.1 --port 8720
+pipx install git+https://github.com/ioleit/nolli        # or: pip install git+https://…
+cd <any git repository>
+nolli view                     # the current branch against the default branch
+nolli view <branch or commit>  # what it adds to the default branch; a commit already on it: its own change
+nolli view <base>..<head>      # exactly between two commits (<base>...<head>: from where they diverged)
+```
+
+`view` works with plain git, on any host or none. It resolves the change, builds its
+dataset under `$NOLLI_DATA` (default `$XDG_DATA_HOME/nolli`, else `~/.local/share/nolli`;
+`--data` for another), serves the viewer on it and opens it in the browser. A dataset is
+built once per change and nolli version (`--rebuild` to force); `--build-only` builds it
+and prints its directory. The title and description come from the commits: one commit's
+subject and body, or the branch name and the list of commit subjects. Only commits
+count; uncommitted changes are not shown. With nothing to compare (on the default
+branch, nothing new) it shows the whole repository at HEAD. The viewer needs no
+internet: its libraries are in `viewer/vendor/`.
+
+The lower-level commands write a dataset where you say:
+
+```
+nolli extract <repo> -o <out_dir>
+nolli diff <repo> <base> <head> -o <out_dir>   # two commits, merged, changes recorded
+python -I viewer/serve.py --data <parent of out_dirs> --host 127.0.0.1 --port 8720   # from a checkout
 ```
 
 ## Reviewing a change
@@ -95,7 +116,9 @@ Honest marks on how much thought each part has had. Treat everything as open.
 | `nolli/mermaid.py` | static export of the default cut so a README or PR can show it |
 | `viewer/` | temporary throwaway visualization: `index.html` (markup), `viewer.css` (every colour a variable) and `themes.css` (themes that override them, chosen under Layout), and ES modules in `js/` loaded without a build step (`layout/` scene → positions and edge routes, no DOM, one module per engine: ELK.js layered (one layout over all levels, or each box separately), or Cytoscape.js fCoSE force-directed, chosen in the sidebar; `draw.js` → SVG; `main.js` wiring; state, sidebar, JSON and Mermaid views, pan/zoom); orthogonal edges that look like a circuit board; redraws from scratch on every change; for a diff dataset a review column (`js/review.js`): the change, a before / changes / after switch, the verdicts with their reasons, the numbered changes with their links into the PR, verdict markers; hovering a row lights it in the drawing, going to it (click, j / k) glides there, flashes it and keeps its card open |
 | `viewer/package.json`, `tsconfig.json`, `types/`, `test/` | Node is only for development: `npm install`, then `npm run check` (TypeScript checks the JavaScript through its JSDoc types, strict) and `npm test` (unit tests of the pure modules). The browser loads the `.js` files as they are |
-| `viewer/serve.py` | tiny server for local use: static files, datasets, and `/api/scene` (standard library only; imports `nolli` from the checkout it sits in) |
+| `viewer/vendor/` | ELK.js, Cytoscape.js with fCoSE, and Mermaid, copied from npm by `npm run vendor` (`vendor.mjs`; versions in `package.json`, licences in `LICENSES.txt`) and committed, so the viewer works offline and from an installed package |
+| `viewer/serve.py` | tiny server for local use: static files, datasets, and `/api/scene` (standard library only). Installed as `nolli.viewer` with the page and its scripts (`pyproject.toml` maps `viewer/` there); `nolli view` starts it. Run as a script from a checkout, it imports that checkout's `nolli` |
+| `nolli/change.py` | what `nolli view` shows for what was typed: plain git revisions and ranges, the default branch, title and description from the commits |
 | `tests/test_smoke.py` | one synthetic mixed repo pinning the seams that broke once; nothing tests the roll-up rules |
 | `dev/` | local workflow: extract a set of repositories you keep outside this repo (`corpus.example.toml`) |
 
