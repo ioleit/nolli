@@ -2,6 +2,12 @@
 
 export interface Chip { id: string; name: string; color: number }
 
+/** Prose with data in it: plain strings, { v } for a value to set apart, { doc } for what the code says about itself (a docstring). */
+export type Parts = (string | { v: string } | { doc: string } | { verdict: Verdict })[];
+
+/** What hovering over a box or an edge shows (nolli/info.py): sentences, one per line. */
+export type Info = Parts[];
+
 // ---------- review mode (diff datasets, nolli/review.py) ----------
 
 export type Status = "added" | "removed" | "changed";
@@ -70,7 +76,7 @@ export interface Details {
 }
 
 /** A module's own code: a small dot inside the module. */
-export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; tip: string }
+export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; info: Info }
 
 export interface BoxNode {
   id: string;
@@ -88,7 +94,7 @@ export interface BoxNode {
   internal: number | null;
   uses: string[];  // unfolded boxes: utilities their children use, one line each at the bottom right
   utilities_used: string[];  // ids of the utilities whose edges from this box became badges
-  tip: string;
+  info: Info;
   diff?: NodeDiff | null;  // review mode only
   items?: string[];  // review items shown on this box
   verdict?: Verdict | null;  // the worst verdict among them
@@ -112,7 +118,7 @@ export interface SceneEdge {
   weak: boolean;
   dangling: boolean;
   heuristic: boolean;
-  tip: string;
+  info: Info;
   diff?: EdgeDiff | null;
   items?: string[];
   verdict?: Verdict | null;

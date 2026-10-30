@@ -439,3 +439,74 @@ Answer with JSON only, one entry per change you have an opinion on, and save it 
         role = f" [{it['role']}]" if it["role"] != "source" else ""
         lines.append(f"- **{it['id']}**{role} {it['title']}{link}" + ("".join(f"\n  {x}" for x in extra)))
     return head + howto + picture + "\n".join(lines) + "\n"
+
+
+# ---------- what a box's or edge's hover card says about the change ----------
+
+def _ids(ids: list[str]) -> list:
+    from .prose import listing
+
+    return listing("Review items {}", ids, "more", limit=8)
+
+
+def _verdict_lines(ids: list[str], verdicts: dict[str, dict]) -> list[list]:
+    """One line per verdict on these items, worst first: [!] problem on C1: reason."""
+    out = []
+    for i in sorted((i for i in ids if i in verdicts), key=lambda i: (-VERDICT_RANK[verdicts[i]["verdict"]], int(i[1:])))[:6]:
+        v = verdicts[i]
+        out.append([{"verdict": v["verdict"]}, " ", {"v": i}, ": ", v["reason"]])
+    return out
+
+
+def node_review_info(nd: dict | None, ids: list[str], verdicts: dict[str, dict]) -> list[list]:
+    """Sentences on top of a box's hover card in a review: what happened to it, its items and
+    their verdicts."""
+    from .prose import count, say
+
+    lines: list[list] = []
+    if nd:
+        lines_changed = nd["added"] or nd["removed"]
+        where = f" in {count(nd['files'], 'file')}" if nd["files"] > 1 else ""
+        if nd["status"] == "added":
+            lines.append(say("New in this change" + (", {} lines" if lines_changed else ""), *([f"+{nd['added']}"] if lines_changed else [])))
+        elif nd["status"] == "removed":
+            lines.append(say("Removed in this change" + (", {} lines" if lines_changed else ""), *([f"−{nd['removed']}"] if lines_changed else [])))
+        elif lines_changed:
+            lines.append(say("Changed: {} {} lines" + where, f"+{nd['added']}", f"−{nd['removed']}"))
+        elif not (nd.get("new") or nd.get("gone")) and nd.get("internal"):
+            lines.append(say("Changed: {} between what it holds", count(nd["internal"], "dependency", "dependencies")))
+        if (nd.get("new") or nd.get("gone")) and nd["status"] == "changed":
+            bits = ([count(nd["new"], "new part")] if nd.get("new") else []) + ([count(nd["gone"], "removed part")] if nd.get("gone") else [])
+            lines.append(say("Inside: " + " and ".join("{}" for _ in bits), *bits))
+        if nd.get("old_path"):
+            lines.append(say("Renamed from {}", nd["old_path"]))
+        if nd.get("renamed_to"):
+            lines.append(say("Renamed to {}", nd["renamed_to"]))
+    if ids:
+        lines.append(_ids(ids))
+    return lines + _verdict_lines(ids, verdicts)
+
+
+def edge_review_info(m: Model, ed: dict | None, ids: list[str], verdicts: dict[str, dict]) -> list[list]:
+    """Sentences on top of an edge's hover card in a review: how its references changed, and
+    which names came or went."""
+    from .prose import count, listing, say
+
+    lines: list[list] = []
+    if ed:
+        if ed["status"] == "added":
+            lines.append(say("New in this change: {}", count(ed["head"], "reference")))
+        elif ed["status"] == "removed":
+            lines.append(say("Removed in this change: {} gone", count(ed["base"], "reference")))
+        else:
+            lines.append(say("Changed: {} → {} references", ed["base"], ed["head"]))
+        name = lambda x: m.entities[x].name if m.has(x) else x  # noqa: E731
+        came = sorted({name(c["dst"]) for c in ed.get("changes", []) if c["status"] == "added"})
+        went = sorted({name(c["dst"]) for c in ed.get("changes", []) if c["status"] == "removed"})
+        if came:
+            lines.append(listing("Now uses {}", came, "more", limit=4))
+        if went:
+            lines.append(listing("No longer uses {}", went, "more", limit=4))
+    if ids:
+        lines.append(_ids(ids))
+    return lines + _verdict_lines(ids, verdicts)

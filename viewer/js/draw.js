@@ -1,7 +1,7 @@
 // Drawing: scene + layout -> SVG. Rebuilds everything inside the root group, and hands
 // back a handle per drawn node so an animation can move it (update) and fade it.
 
-import { showTip, hideTip } from "./tip.js";
+import { showTip, hideTip, pinTip } from "./tip.js";
 import { USES_LINE, isAnchor, statsText } from "./layout/index.js";
 import { wasDrag } from "./panzoom.js";
 
@@ -65,17 +65,28 @@ function edgeClass(e, review) {
     e.diff ? "d-" + e.diff.status : review && "d-same", e.verdict && "v-" + e.verdict].filter(Boolean).join(" ");
 }
 
+/**
+ * A verdict mark opens the hover card of what it sits on: hovering shows it, clicking keeps it
+ * (until Esc, a click on the canvas, a pan, or another card).
+ * @param {SVGElement} mark @param {import("../types/nolli").Info} info @param {Element} target what the card goes beside
+ */
+function cardOnMark(mark, info, target) {
+  mark.addEventListener("mouseenter", ev => showTip(/** @type {MouseEvent} */ (ev), info, target));
+  mark.addEventListener("mouseleave", () => hideTip());
+  mark.addEventListener("mousedown", ev => ev.stopPropagation());  // don't start a pan
+  mark.addEventListener("click", ev => { ev.stopPropagation(); pinTip(info, target); });
+}
+
 /** Opacity as the SVG attribute (null removes it). @param {SVGElement[]} els @returns {(o: number | null) => void} */
 const fader = els => o => { for (const x of els) if (o === null) x.removeAttribute("opacity"); else x.setAttribute("opacity", String(o)); };
 
 /**
  * A module's own code: a dot that edges attach to.
- * @param {import("../types/nolli").AnchorNode} n @param {Box} p @param {boolean} live with tooltip
+ * @param {import("../types/nolli").AnchorNode} n @param {Box} p
  * @returns {Built}
  */
-function buildAnchor(n, p, live) {
+function buildAnchor(n, p) {
   const grp = el("g", { class: "node folded files ", transform: at(p), "data-id": n.id });
-  if (live) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
   grp.appendChild(el("circle", { cx: 7, cy: 7, r: 5, class: "anchor" }));
   return { els: [grp], update: b => grp.setAttribute("transform", at(b)) };
 }
@@ -92,7 +103,6 @@ function buildBox(n, p, h) {
   const isC = n.container;
   const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind,
     n.diff ? "d-" + n.diff.status : h && h.review ? "d-same" : "", n.verdict ? "v-" + n.verdict : ""].join(" "), transform: at(p), "data-id": n.id });
-  if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
   const icon = n.icon;
   const centred = !isC && !icon;
@@ -143,7 +153,7 @@ function buildBox(n, p, h) {
   // the review's verdict on what this box contains, on its top-right corner; "fine" only in the panel
   /** @type {SVGElement | null} */
   let mark = null;
-  if (n.verdict && n.verdict !== "fine") { mark = verdictMark(n.verdict, p.w - 1, 1); mark.appendChild(el("title")).textContent = `${n.verdict}: ${(n.items || []).join(", ")}`; }
+  if (n.verdict && n.verdict !== "fine") { mark = verdictMark(n.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n.info, grp); }
   n.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
   // an unfolded box lists the utilities its children use, one per line, bottom right
   /** @type {SVGElement[]} */
@@ -171,7 +181,7 @@ function buildBox(n, p, h) {
 }
 
 /** @param {SceneNode} n @param {Box} p @param {Handlers | null} h */
-const build = (n, p, h) => isAnchor(n) ? buildAnchor(n, p, !!h) : buildBox(n, p, h);
+const build = (n, p, h) => isAnchor(n) ? buildAnchor(n, p) : buildBox(n, p, h);
 
 /**
  * @param {Element} g the root group
@@ -186,6 +196,7 @@ export function draw(g, scene, laid, handlers, sameWidth = false) {
   const h = typeof handlers === "function" ? { toggle: handlers } : handlers;
   const review = !!h.review;
   g.innerHTML = "";
+  hideTip(true);  // a card kept open belongs to the old drawing
   /** @type {SVGElement[]} */
   const foldLayer = [];
   /** @type {Map<string, Handle>} */
@@ -231,10 +242,10 @@ export function draw(g, scene, laid, handlers, sameWidth = false) {
     const label = e.diff ? (e.diff.status === "changed" ? `${e.diff.base}→${e.diff.head}` : e.diff.status === "added" ? `+${e.diff.head}` : `−${e.diff.base}`)
       : review ? "" : e.label;
     if (label && mid && (e.diff || (!e.weak && !e.local))) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = label; ge.appendChild(t); }
-    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); vm.appendChild(el("title")).textContent = `${e.verdict}: ${(e.items || []).join(", ")}`; ge.appendChild(vm); }
-    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.tip));
+    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); cardOnMark(vm, e.info, vm); ge.appendChild(vm); }
+    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.info));
     ge.addEventListener("mouseenter", () => raise(ge));
-    ge.addEventListener("mouseleave", hideTip);
+    ge.addEventListener("mouseleave", () => hideTip());
     g.appendChild(ge); edges.push(ge);
     for (const id of [e.src, e.dst]) { const l = edgesAt.get(id); if (l) l.push(ge); else edgesAt.set(id, [ge]); }
   }
@@ -275,14 +286,16 @@ function lightOnHover(scene, boxEl, edgesAt, raise) {
   for (const n of scene.nodes) {
     const box = boxEl.get(n.id);
     if (!box || ("container" in n && n.container)) continue;
-    box.addEventListener("mouseenter", () => {
+    // the hover text appears with the highlight: for leaves only, on the same event
+    box.addEventListener("mouseenter", ev => {
+      showTip(/** @type {MouseEvent} */ (ev), n.info, box);
       unlight();
       lit.add(box);
       for (const u of n.utilities_used || []) { const b = boxEl.get(u); if (b) lit.add(b); }
       for (const ge of edgesAt.get(n.id) || []) { lit.add(ge); raise(ge); }
       for (const x of lit) x.classList.add("lit");
     });
-    box.addEventListener("mouseleave", unlight);
+    box.addEventListener("mouseleave", () => { unlight(); hideTip(); });
   }
 }
 

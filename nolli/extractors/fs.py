@@ -56,6 +56,22 @@ CONFIG_FILES = {"Dockerfile", "Procfile", "Makefile", ".gitignore", ".gitattribu
 CONFIG_CODE = re.compile(r"(^|\.)(config|conf|rc)\.[cm]?[jt]sx?$|^\.(eslintrc|prettierrc|babelrc)|^(vite|vitest|jest|tailwind|postcss|eslint|babel|webpack|rollup|playwright|next|nuxt|svelte|astro)\.config\.")
 
 
+MAX_COUNTED = 4 << 20  # don't read files over 4 MiB just to count their lines
+
+
+def count_lines(path, size: int) -> int | None:
+    """Lines in a text file (a last line without a newline counts); None if unreadable."""
+    if size > MAX_COUNTED:
+        return None
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if b"\0" in data[:4096]:
+        return None  # binary
+    return data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
+
+
 def classify(rel: str) -> tuple[str | None, str]:
     p = PurePosixPath(rel)
     parts = set(p.parts[:-1])
@@ -105,6 +121,9 @@ def run(ctx: Context) -> None:
         attrs = {"path": rel, "role": role, "size": size}
         if lang:
             attrs["language"] = lang
+            lines = count_lines(ctx.repo / f, size)
+            if lines is not None:
+                attrs["lines"] = lines
         e = m.add_entity(Entity(ctx.fs_id(rel), "file", f.name, attrs, Provenance("fs", rel)))
         m.contain(parent_id, e.id, "fs")
 

@@ -48,9 +48,9 @@ def main() -> int:
         name = r["name"]
         out = data_dir / f"{name}-{sha_of(repo)}"
         for old in data_dir.glob(f"{name}-*"):
-            # only this repository's own datasets (<name>-<short sha>, -wip, -nogit): a bare
-            # "-*" also matched diff datasets such as <name>-pr48 and deleted them
-            if old != out and re.fullmatch(re.escape(name) + r"-([0-9a-f]{7,40}|wip|nogit)", old.name):
+            # only this repository's earlier extracts (<name>-<short sha>, -wip, -nogit); other
+            # datasets that merely share the prefix (a change named <name>-pr48) stay
+            if old != out and re.fullmatch(r"[0-9a-f]{7,12}|wip|nogit", old.name[len(name) + 1:]):
                 shutil.rmtree(old)
         t0 = time.time()
         res = subprocess.run([str(nolli), "extract", str(repo), "-o", str(out)], capture_output=True, text=True)

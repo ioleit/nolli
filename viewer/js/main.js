@@ -15,8 +15,9 @@ import { byId, input, select } from "./dom.js";
 import { ALL_ROLES, DEFAULTS, OPTIONS, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { ENGINES, layout } from "./layout/index.js";
 import { draw, drawGhosts, light } from "./draw.js";
+import { pinTip } from "./tip.js";
 import { plan } from "./transition.js";
-import { finish, play } from "./animate.js";
+import { DURATION, finish, play } from "./animate.js";
 import { hideRaw, onRawToggle, showRaw } from "./raw.js";
 import { sidebar, syncControls } from "./sidebar.js";
 import { fit, focusOn } from "./panzoom.js";
@@ -108,8 +109,9 @@ function jump(id) {
   writeHash();
 }
 
-/** After a jump: centre on the item's boxes and edges and flash them. */
-function pointAtItem() {
+/** After a jump: centre on the item's boxes and edges, flash them, and open the card beside
+ * them. @param {boolean} [moving] the drawing is still moving into place: open the card after */
+function pointAtItem(moving = false) {
   if (!focusNext || !scene || !shown || !state.item) { focusNext = false; return; }
   focusNext = false;
   const { ids, keys } = targets(state.item);
@@ -118,6 +120,34 @@ function pointAtItem() {
   focusOn([...ids, ...ends].map(x => laid.nodes.get(x)).filter(/** @returns {b is import("../types/nolli").Box} */ b => !!b));
   light(byId("root"), ids, keys, true);
   scrollToCurrent();
+  if (pinTimer) clearTimeout(pinTimer);
+  const id = state.item;
+  pinTimer = setTimeout(() => { pinTimer = null; pinItem(id); }, moving ? DURATION + 40 : 0);
+}
+
+/** @type {ReturnType<typeof setTimeout> | null} */
+let pinTimer = null;
+
+/**
+ * Keep open the card of what shows an item (its edge for a dependency, else its box), led
+ * by the item itself: its verdict, id, title and the reviewer's reason.
+ * @param {string} id
+ */
+function pinItem(id) {
+  const it = itemById(id);
+  if (!scene || !it || state.item !== id) return;
+  const { ids, keys } = targets(id);
+  const root = byId("root");
+  const edge = scene.edges.find(e => e.key === keys[0]), node = scene.nodes.find(n => n.id === ids[0]);
+  const useEdge = edge && (it.category === "dependency" || !node);
+  const target = useEdge ? root.querySelector(`.edge[data-key="${CSS.escape(edge.key)}"]`) : node && root.querySelector(`.node[data-id="${CSS.escape(node.id)}"]`);
+  const info = useEdge ? edge.info : node?.info;
+  if (!target || !info) return;
+  /** @type {import("../types/nolli").Parts} */
+  const lead = [...(it.verdict ? [{ verdict: it.verdict.verdict }, " "] : []), { v: it.id }, " ", it.title];
+  /** the box's own line for this item's verdict, already said in the lead @param {import("../types/nolli").Parts} line */
+  const same = line => line.some(x => typeof x === "object" && "verdict" in x) && line.some(x => typeof x === "object" && "v" in x && x.v === id);
+  pinTip([lead, ...(it.verdict ? [[it.verdict.reason]] : []), ...info.filter(l => !same(l))], target);
 }
 
 /** @param {number} step +1 next, -1 previous */
@@ -167,7 +197,7 @@ async function render(keepZoom = false) {
     play(p, drawn, drawGhosts(root, prev.scene, prev.laid, p.leaving.keys(), drawn.firstEdge), state.animate && !reducedMotion.matches ? undefined : 0);
   } else fit(laid.width, laid.height);
   fitted = true;
-  pointAtItem();
+  pointAtItem(keepZoom && !!prev && state.animate && !reducedMotion.matches);
   const s = byId("status"); s.style.color = "";
   s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms.scene} ms, round trip ${scene.stats.ms.roundtrip} ms`;
 }

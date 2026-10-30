@@ -49,6 +49,7 @@ class RolledEdge:
     count: int = 0
     confidence: str = "exact"
     via: set[str] = field(default_factory=set)
+    names: dict[str, int] = field(default_factory=dict)  # referenced names (Python refs) -> references
     # in a diff model (nolli/diff.py): references before and after, and the changed facts
     # underneath (fact key -> added / removed / changed); in a plain model base == head == count
     base: int = 0
@@ -66,19 +67,22 @@ class RolledEdge:
             return "changed"
         return None
 
+    def to_dict(self) -> dict:
+        return {"kind": self.kind, "src": self.src, "dst": self.dst, "subkind": self.subkind, "count": self.count,
+                "confidence": self.confidence, "via": sorted(self.via), "names": dict(self.names),
+                "base": self.base, "head": self.head, "changed": dict(sorted(self.changed.items()))}
+
     def absorb(self, other: "RolledEdge") -> None:
+        """Count, interfaces, names, confidence and changes of an edge folded into this one."""
         self.count += other.count
+        self.via |= other.via
+        for k, v in other.names.items():
+            self.names[k] = self.names.get(k, 0) + v
         self.base += other.base
         self.head += other.head
-        self.via |= other.via
         self.changed.update(other.changed)
         if CONF_RANK[other.confidence] > CONF_RANK[self.confidence]:
             self.confidence = other.confidence
-
-    def to_dict(self) -> dict:
-        return {"kind": self.kind, "src": self.src, "dst": self.dst, "subkind": self.subkind, "count": self.count,
-                "confidence": self.confidence, "via": sorted(self.via), "base": self.base, "head": self.head,
-                "changed": dict(sorted(self.changed.items()))}
 
 
 @dataclass
@@ -462,7 +466,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
 
     internal_changes: dict[str, dict[str, str]] = defaultdict(dict)
 
-    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, via: str | None = None,
+    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, via: str | None = None, name: str | None = None,
             base: int | None = None, head: int | None = None, changed: dict[str, str] | None = None) -> None:
         if kind == PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
@@ -477,8 +481,8 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
         e = edges.get(key)
         if e is None:
             e = edges[key] = RolledEdge(kind, a, b, sub, 0, conf)
-        e.absorb(RolledEdge(kind, a, b, sub, count, conf, {via} if via else set(),
-                            count if base is None else base, count if head is None else head, changed or {}))
+        e.absorb(RolledEdge(kind, a, b, sub, count, conf, via={via} if via else set(), names={name: count} if name else {},
+                            base=count if base is None else base, head=count if head is None else head, changed=changed or {}))
 
     def sides(r) -> tuple[int, int, str | None]:
         """(references before, after, change status) of a fact; status None when unchanged."""
@@ -518,7 +522,8 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
             hidden_count += r.count
             continue
         rb, rh, st = sides(r)
-        add(r.kind, a, b, r.subkind, drawn_count(rb, rh), r.confidence, None, rb, rh, {fact_key(r): st} if st else None)
+        add(r.kind, a, b, r.subkind, drawn_count(rb, rh), r.confidence, None, r.attrs.get("name"), rb, rh,
+            {fact_key(r): st} if st else None)
 
     for iface in set(users) | set(providers):
         us, ps = users.get(iface, []), providers.get(iface, [])
@@ -539,7 +544,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
                     db, dh = (ub if pb else 0), (uh if ph else 0)
                     ch = {k: v for k, v in ((fact_key(u), ust), (fact_key(p), pst)) if v}
                     add(USE, a, b, sub, drawn_count(db, dh), "heuristic" if "heuristic" in (u.confidence, p.confidence) else "exact",
-                        iface, db, dh, ch)
+                        iface, base=db, head=dh, changed=ch)
         else:
             g = rep(iface)
             keep = (us if sub in dangling_use_kinds else []) + (ps if sub in dangling_provide_kinds else [])
@@ -549,7 +554,8 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
                     hidden_count += r.count
                     continue
                 rb, rh, st = sides(r)
-                add(r.kind, a, g, sub + "-dangling", drawn_count(rb, rh), r.confidence, iface, rb, rh, {fact_key(r): st} if st else None)
+                add(r.kind, a, g, sub + "-dangling", drawn_count(rb, rh), r.confidence, iface, base=rb, head=rh,
+                    changed={fact_key(r): st} if st else None)
 
     # Edges touching a filtered-out group become annotations on the other end; a code node copied
     # into a drawn service gets a chip instead of an edge; env wiring (reader -> setter) says
