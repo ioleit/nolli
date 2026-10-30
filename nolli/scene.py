@@ -133,12 +133,13 @@ def leaf_count(m: Model, x: str) -> int:
     return n
 
 
-def badge_text(m: Model, x: str, rolled: RolledUp, expanded: set[str]) -> str:
-    ann = rolled.annotations.get(x)
-    if not ann:
-        return ""
-    return " · ".join("→ " + label_of(m, g[5:], expanded) if g.startswith("util:") else f"{c} {GROUP_SHORT.get(g, g)}"
-                      for g, c in sorted(ann.items()))
+def badge_text(m: Model, x: str, rolled: RolledUp, used_by: int = 0) -> str:
+    """Counts of edges to filtered-out groups ("19 pkgs"), and for a utility how many boxes
+    use it. Which utilities a box uses is not here: that is the container's ``uses`` list."""
+    ann = rolled.annotations.get(x) or {}
+    parts = [f"used by {used_by}"] if used_by else []
+    parts += [f"{c} {GROUP_SHORT.get(g, g)}" for g, c in sorted(ann.items()) if not g.startswith("util:")]
+    return " · ".join(parts)
 
 
 def edge_label(e) -> str:
@@ -237,6 +238,11 @@ def scene(m: Model, st: ViewState) -> dict:
     touched = {e.src for e in edges} | {e.dst for e in edges}
     drawn = sorted(v for v in visible if not (root_group(v) and v not in touched))
 
+    used_by: dict[str, int] = defaultdict(int)  # utility -> boxes whose edges into it became badges
+    for ann in rolled.annotations.values():
+        for g in ann:
+            if g.startswith("util:"):
+                used_by[g[5:]] += 1
     services = [c for c in m.children("deploy") if m.entities[c].kind == "service"] if m.has("deploy") else []
     nodes: list[dict] = []
 
@@ -244,7 +250,7 @@ def scene(m: Model, st: ViewState) -> dict:
         if is_body(x):
             return {"id": x, "kind": "anchor", "parent": parent, "tip": node_tip(m, x, rolled, utilities)}
         e = m.entities[x]
-        badge = badge_text(m, x, rolled, expanded)
+        badge = badge_text(m, x, rolled, used_by.get(x, 0))
         if container and st.hide_internal and internal_drawn.get(x):
             badge = " · ".join(filter(None, [badge, f"{internal_drawn[x]} internal"]))
         kids = bool(m.children(x))
@@ -256,6 +262,7 @@ def scene(m: Model, st: ViewState) -> dict:
                       for s in rolled.allocations.get(x, [])],
             "service_color": services.index(x) if x in services else None,
             "internal": internal_drawn.get(x, 0) if container else None,
+            "uses": [],  # unfolded boxes: the utilities their children use (filled in below)
             "tip": node_tip(m, x, rolled, utilities),
         }
 
@@ -294,6 +301,22 @@ def scene(m: Model, st: ViewState) -> dict:
     for r in m.roots():
         if r not in hidden:
             build(r, None)
+
+    # the utilities a box's children use are listed in that box once it is unfolded (one
+    # line each, bottom right); a folded box lists none, and nothing is summed upwards
+    by_id = {n["id"]: n for n in nodes}
+    uses: dict[str, set[str]] = defaultdict(set)
+    for src, ann in rolled.annotations.items():
+        rec = by_id.get(src)
+        if rec is None:
+            continue
+        holder = src if rec.get("container") else rec["parent"]
+        for g in ann:
+            if g.startswith("util:") and holder is not None:
+                uses[holder].add(g[5:])
+    for rec in nodes:
+        if rec.get("container"):
+            rec["uses"] = sorted((label_of(m, u, expanded) for u in uses.get(rec["id"], ())), key=str.lower)
 
     edge_out = []
     for e in edges:

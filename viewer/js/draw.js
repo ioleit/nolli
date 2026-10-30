@@ -2,7 +2,7 @@
 // back a handle per drawn node so an animation can move it (update) and fade it.
 
 import { showTip, hideTip } from "./tip.js";
-import { isAnchor } from "./layout/index.js";
+import { USES_LINE, isAnchor } from "./layout/index.js";
 
 /**
  * @typedef {import("../types/nolli").Scene} Scene
@@ -115,6 +115,12 @@ function buildBox(n, p, onToggle) {
   const badgeX = w => isC ? w - 28 : (w + n.chips.length * 11) / 2;
   if (fitted(p.w)) { badge = el("text", { class: "badge", x: badgeX(p.w), y: isC ? 18 : 33, "text-anchor": isC ? "end" : "middle" }); badge.textContent = fitted(p.w); if (isC) badge.appendChild(el("title")).textContent = n.badge; grp.appendChild(badge); }
   n.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
+  // an unfolded box lists the utilities its children use, one per line, bottom right
+  /** @type {SVGElement[]} */
+  const uses = isC ? (n.uses || []).map(u => { const x = el("text", { class: "badge uses", "text-anchor": "end" }); x.textContent = "→ " + u; grp.appendChild(x); return x; }) : [];
+  /** @param {Box} b */
+  const placeUses = b => uses.forEach((x, i) => { x.setAttribute("x", String(b.w - 8)); x.setAttribute("y", String(b.h - 8 - (uses.length - 1 - i) * USES_LINE)); });
+  placeUses(p);
   if (n.service_color !== null && n.service_color !== undefined) rect.setAttribute("stroke", color(n.service_color));
   if (onToggle && !isC && n.foldable) grp.addEventListener("click", ev => { ev.stopPropagation(); onToggle(n.id); });
 
@@ -122,6 +128,7 @@ function buildBox(n, p, onToggle) {
   const update = b => {
     grp.setAttribute("transform", at(b));
     rect.setAttribute("width", String(b.w)); rect.setAttribute("height", String(b.h));
+    placeUses(b);
     if (centred) t.setAttribute("x", String(b.w / 2));
     if (top && foldRect && foldText) { const fx = foldX(b.w); top.setAttribute("transform", at(b)); foldRect.setAttribute("x", String(fx - 9)); foldText.setAttribute("x", String(fx)); }
     if (leaves) leaves.setAttribute("x", String(b.w - 5));

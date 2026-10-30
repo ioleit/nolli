@@ -19,6 +19,7 @@ export interface BoxNode {
   chips: Chip[];
   service_color: number | null;
   internal: number | null;
+  uses: string[];  // unfolded boxes: utilities their children use, one line each at the bottom right
   tip: string;
 }
 
