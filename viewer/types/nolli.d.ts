@@ -3,7 +3,7 @@
 export interface Chip { id: string; name: string; color: number }
 
 /** A module's own code: a small dot inside the module. */
-export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; tip: string }
+export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; tip: string }
 
 export interface BoxNode {
   id: string;
@@ -15,11 +15,12 @@ export interface BoxNode {
   foldable: boolean;  // has children: clicking unfolds (or − folds)
   leaves: number | null;  // folded: how much is inside
   badge: string;
-  cycle: boolean;
   utility: boolean;
   chips: Chip[];
   service_color: number | null;
   internal: number | null;
+  uses: string[];  // unfolded boxes: utilities their children use, one line each at the bottom right
+  utilities_used: string[];  // ids of the utilities whose edges from this box became badges
   tip: string;
 }
 
@@ -47,12 +48,13 @@ export interface SceneEdge {
 export interface SceneState {
   expanded: string[];
   roles: string[];
+  groups: string[];  // root groups drawn as boxes; the others are badges
   budget: number;
   through: boolean;
   dangling_use: boolean;
   env_edges: boolean;
   bundle: boolean;
-  utilities: boolean;
+  utilities: number;  // more incoming edges than this: a utility; 0: off
   hide_internal: boolean;
 }
 
@@ -60,7 +62,7 @@ export interface Scene {
   state: SceneState;
   nodes: SceneNode[];  // drawing order: a container before what it contains
   edges: SceneEdge[];
-  groups: { id: string; name: string; size: number; open: boolean }[];
+  groups: { id: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
   residue: string[];
   stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
   dataset: { name: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
