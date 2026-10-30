@@ -102,7 +102,8 @@ def run(ctx: Context) -> None:
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
                 sid = f"py:{rel}#{node.name}"
-                m.add_entity(Entity(sid, "class", node.name, {"path": rel, "line": node.lineno, "language": "python"},
+                m.add_entity(Entity(sid, "class", node.name,
+                                    {"path": rel, "line": node.lineno, "end_line": node.end_lineno, "language": "python"},
                                     Provenance("python-symbols", rel, node.lineno)))
                 m.contain(fid, sid, "python-symbols")
                 classes[node.name] = sid

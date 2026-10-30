@@ -73,3 +73,19 @@ Nothing is a settled design.
   no drawn parent there. Edges into it were never bundled or marked internal and it
   could become a nameless "utility". The Python rules were right; default pictures
   with such anchors change accordingly.
+
+## Diff (first version)
+
+- Compare the facts, not the pictures: both commits are extracted and merged into one
+  model, and the picture is rolled up from that. A change inside a folded box is then
+  still visible at any depth. Comparing two rendered scenes would lose it.
+- Each side comes from `git archive`, so the repository is never checked out or modified.
+- Identity across commits is the path-based id. A rename or move is therefore one entity
+  removed and one added; the file records link the two (`old_path`, `renamed_to`), but
+  nothing merges them yet.
+- Two layers of change: structural (entities and relations present on one side only,
+  or with a different reference count) and content (changed lines per file and per
+  class, from `git diff -M -U0`). Content is recorded even when nothing structural
+  changed, so a review can still point at it. Classes record their end line for this.
+- Records sit in `attrs["diff"]` only on what changed; base and head commits and the
+  GitHub remote are in `meta["diff"]`, enough to build links later.

@@ -33,6 +33,7 @@ shows the HTTP API as the seam between the two.
 ```
 python -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/nolli extract <repo> -o <out_dir>
+.venv/bin/nolli diff <repo> <base> <head> -o <out_dir>   # two commits, merged, changes recorded
 python -I viewer/serve.py --data <parent of out_dirs> --host 127.0.0.1 --port 8720
 ```
 
@@ -60,6 +61,7 @@ Honest marks on how much thought each part has had. Treat everything as open.
 | `nolli/extractors/interfaces.py` | barely exists; where languages are supposed to meet (how an endpoint or env variable is named) |
 | `nolli/match.py` | resolution of placeholders to files, classes and endpoints; grew by patching cases the test repos broke |
 | `nolli/rollup.py`, `nolli/rollup.md` | the roll-up from facts to a picture and the rules tuned on top of it; the central idea, but every rule is a judgement call from one afternoon — see `NOTES.md` |
+| `nolli/diff.py` | first version: two commits merged into one model whose entities and relations carry added/removed/changed, plus per-file and per-class changed lines (hunks, line numbers) for links and summaries; the record shapes are guesses at what the viewer and a review agent will need, nothing reads them yet |
 | `nolli/view.py` | one greedy heuristic for the default cut, with magic numbers |
 | `nolli/scene.py` | a view state in, everything the viewer draws out (nodes with their drawn parent, edges, labels, badges, emphasis, tooltips); ids are stable across states so two scenes can be diffed |
 | `nolli/mermaid.py` | static export of the default cut so a README or PR can show it |
