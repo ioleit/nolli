@@ -39,4 +39,5 @@ export function syncControls() {
   input("raw").checked = state.raw;
   select("direction").value = state.direction;
   select("engine").value = state.engine;
+  select("router").value = state.router;
 }

@@ -42,6 +42,8 @@ python -I viewer/serve.py --data <parent of out_dirs> --host 127.0.0.1 --port 87
 
 `/bench.html` on the same server measures how well layouts keep the reader's mental map over single unfold/fold steps (`viewer/js/stability.js`: kept left/right and above/below relations between boxes, kept nearest neighbours, movement left after the best shift and scale).
 
+"edges: routed around boxes" (`rt=avoid`) reroutes the edges of any layout with libavoid (`viewer/js/route/avoid.js`; libavoid-js is LGPL-2.1-or-later and is loaded unmodified from a CDN, never copied into this repository): level by level, each container being its own routing problem with its direct children as obstacles, edges crossing container borders through ports on the side facing their other end.
+
 Unfolding and folding animate (`viewer/js/transition.js` plans, `animate.js` plays): new boxes open out of the box they belong to, leaving ones shrink into it, the rest slide, and the view moves with the clicked box so it stays where it was on screen. "animate unfold and fold" in the options (or `an=0`) turns the motion off; the clicked box still stays in place.
 
 The viewer computes nothing itself: on every click it asks the server for the scene

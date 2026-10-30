@@ -18,3 +18,7 @@ declare module "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs
   };
   export default mermaid;
 }
+
+declare module "https://cdn.jsdelivr.net/npm/libavoid-js@0.5.0-beta.5/dist/index.js" {
+  export const AvoidLib: { load(wasmUrl?: string): Promise<void>; getInstance(): any };
+}
