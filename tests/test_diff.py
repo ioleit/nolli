@@ -130,7 +130,7 @@ def test_scene_review(repo):
 def test_items_verdicts_and_export(repo):
     import json
 
-    from nolli.review import change_items, read_verdicts, review_markdown
+    from nolli.review import change_items, read_verdicts, review_expanded, review_markdown
     from nolli.scene import ViewState, scene
 
     path, base, head = repo
@@ -143,11 +143,27 @@ def test_items_verdicts_and_export(repo):
     dep = by_title["app/api.py → app/store.py: dependency changed"]
     assert any(f.endswith("py:app/store.py#Index|ref") for f in dep["facts"]) and dep["reveal"] == ["fs:.", "fs:app"]
     assert any(it["category"] == "content" and it["title"].startswith("edited app/store.py") for it in items)
-    v = read_verdicts(json.dumps([{"id": dep["id"], "verdict": "problem", "reason": "x"}]))
+    assert "fs:app" in review_expanded(m)
+    # verdicts name the diagram's nodes and edges; each lands on what stands for it in the view
+    v = read_verdicts(json.dumps([
+        {"target": "n_fs_app_api_py --> n_fs_app_store_py", "verdict": "problem", "reason": "x"},
+        {"target": "n_py_app_store_py_Index", "verdict": "question", "reason": "y"},
+        {"target": "n_fs_nowhere_py", "verdict": "fine", "reason": "z"},
+    ]))
+    assert [x["id"] for x in v] == ["V1", "V2", "V3"]
     sc = scene(m, ViewState(expanded=["fs:.", "fs:app"]), v)
-    marked = [e for e in sc["edges"] if dep["id"] in e["items"]]
-    assert marked and marked[0]["verdict"] == "problem"
+    marked = [e for e in sc["edges"] if "V1" in e["verdicts"]]
+    assert len(marked) == 1 and marked[0]["verdict"] == "problem" and (marked[0]["src"], marked[0]["dst"]) == ("fs:app/api.py", "fs:app/store.py")
+    store = next(n for n in sc["nodes"] if n["id"] == "fs:app/store.py")  # Index is inside the folded store module
+    assert store["verdicts"] == ["V2"] and store["verdict"] == "question"
+    assert any(p == {"verdict": "question"} for line in store["info"] for p in line)
+    assert not any("V3" in x.get("verdicts", []) for x in sc["nodes"] + sc["edges"])  # an unknown target is not drawn
+    sc = scene(m, ViewState(expanded=["fs:."]), v)  # app folded: the edge falls inside it, so does the verdict
+    app = next(n for n in sc["nodes"] if n["id"] == "fs:app")
+    assert set(app["verdicts"]) == {"V1", "V2"} and app["verdict"] == "problem"
     with pytest.raises(ValueError):
-        read_verdicts('[{"id": "C1", "verdict": "maybe"}]')
-    md = review_markdown(m, "flowchart TD\n")
-    assert dep["id"] in md and "verdicts.json" in md
+        read_verdicts('[{"target": "n_fs_app_api_py", "verdict": "maybe"}]')
+    with pytest.raises(ValueError):
+        read_verdicts('[{"id": "C1", "verdict": "fine"}]')
+    md = review_markdown(m, "flowchart TD\n", "Why: speed.")
+    assert "verdicts.json" in md and "source --> target" in md and "Why: speed." in md

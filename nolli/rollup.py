@@ -114,8 +114,19 @@ def image_aliases(m: Model) -> dict[str, str]:
 
 
 def hidden_by_role(m: Model, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
+    """Files whose role is hidden, and directories whose role is hidden unless a file with a
+    shown role is somewhere inside: a directory's role is by bytes, so ``evals/`` full of
+    result files is "config" while its Python modules are source, and those must stay."""
     rs = set(roles)
-    return {e.id for e in m.entities.values() if e.kind in ("file", "directory") and e.attrs.get("role") in rs and not e.attrs.get("root")}
+    keep: set[str] = set()
+    for e in m.entities.values():
+        if e.kind == "file" and e.attrs.get("role") not in rs:
+            p = m.parent(e.id)
+            while p is not None and p not in keep:
+                keep.add(p)
+                p = m.parent(p)
+    return {e.id for e in m.entities.values() if e.kind in ("file", "directory") and e.attrs.get("role") in rs
+            and not e.attrs.get("root") and e.id not in keep}
 
 
 def chain_end(m: Model, n: str, hidden: set[str]) -> str:

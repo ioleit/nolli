@@ -57,7 +57,18 @@ export interface ReviewItem {
   base?: number; head?: number; targets?: string[];
   changes?: FactChange[]; more?: number;  // dependency: the references that changed, with links
   hunks?: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[]; more_hunks?: number;  // edited file
-  verdict: { verdict: Verdict; reason: string } | null;
+}
+
+/** A review agent's verdict on a node or edge of the review diagram (review.mmd), resolved. */
+export interface ReviewVerdict {
+  id: string;  // V1, V2, … in file order
+  target: string;  // as written: a diagram node id, or "n_a --> n_b"
+  verdict: Verdict;
+  reason: string;
+  ends: string[];  // what it is about: one entity (a box) or two (an edge); empty if the diagram has no such target
+  edge: boolean;
+  reveal: string[];  // boxes to unfold so it can be seen
+  label: string;  // how to name it: "path" or "a → b"
 }
 
 /** GET /api/node: everything about one box in a diff dataset. */
@@ -97,7 +108,8 @@ export interface BoxNode {
   info: Info;
   diff?: NodeDiff | null;  // review mode only
   items?: string[];  // review items shown on this box
-  verdict?: Verdict | null;  // the worst verdict among them
+  verdicts?: string[];  // the review's verdicts on it (V ids)
+  verdict?: Verdict | null;  // the worst of them
 }
 
 export type SceneNode = AnchorNode | BoxNode;
@@ -121,6 +133,7 @@ export interface SceneEdge {
   info: Info;
   diff?: EdgeDiff | null;
   items?: string[];
+  verdicts?: string[];
   verdict?: Verdict | null;
 }
 

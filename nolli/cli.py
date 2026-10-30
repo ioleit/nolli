@@ -1,14 +1,16 @@
 """nolli command line.
 
     nolli extract <repo> -o <out_dir> [--budget N]
-    nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T]
+    nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
 
 Writes model.json (all facts), view.json (the default cut), scene.json (the
 scene of that cut, exactly what the viewer's /api/scene returns for it),
 default.mmd (Mermaid of that cut) and report.json (counts, unresolved
 references, extractor notes). diff also writes changes.json (the numbered
-review items) and review.md (what a review agent gets; its answer goes into
-verdicts.json next to it, which the viewer shows).
+changes), review.mmd (Mermaid with every change in source code unfolded) and
+review.md (what a review agent gets: that diagram, how to answer, and the PR's
+description from --description, or pr.md in the output directory); its answer
+goes into verdicts.json next to it, which the viewer shows.
 """
 
 from __future__ import annotations
@@ -82,10 +84,15 @@ def cmd_diff(args: argparse.Namespace) -> int:
     if args.title:
         m.meta["diff"]["title"] = args.title
     report = write_dataset(m, out, args.budget, {}, {"diff": summary})
-    from .review import change_items, review_markdown
+    from .review import change_items, review_expanded, review_markdown
 
     (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
-    (out / "review.md").write_text(review_markdown(m, (out / "default.mmd").read_text()))
+    st = ViewState(budget=args.budget, expanded=review_expanded(m))
+    expanded, _hidden, visible, rolled, _utilities = compute(m, st)
+    mmd = render(m, {"budget": args.budget, "expanded": sorted(expanded), "visible": sorted(visible)}, rolled)
+    (out / "review.mmd").write_text(mmd)
+    desc = Path(args.description) if args.description else out / "pr.md"
+    (out / "review.md").write_text(review_markdown(m, mmd, desc.read_text() if desc.is_file() else None))
     print(json.dumps({"diff": m.meta["diff"] | {"base": m.meta["diff"]["base_short"], "head": m.meta["diff"]["head_short"]},
                       "changes": summary, "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]}}, indent=1))
     return 0
@@ -131,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     df.add_argument("--budget", type=int, default=34)
     df.add_argument("--pr", type=int, help="pull request number on the GitHub remote, for links to its files view")
     df.add_argument("--title", help="what the change is called, shown in the viewer's header")
+    df.add_argument("--description", help="a file with the PR's description, for review.md (default: pr.md in the output directory)")
     df.set_defaults(fn=cmd_diff)
     args = ap.parse_args(argv)
     return args.fn(args)

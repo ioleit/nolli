@@ -8,6 +8,7 @@ guess at what a reviewer needs, to be revised once it has been used on real PRs.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import defaultdict
 
 from .model import CONTAIN, Model
@@ -371,30 +372,81 @@ VERDICTS = ("fine", "question", "problem")
 VERDICT_RANK = {v: i for i, v in enumerate(VERDICTS)}
 
 
-def read_verdicts(text: str) -> dict[str, dict]:
-    """verdicts.json: a list (or {"verdicts": [...]}) of {id, verdict, reason}; verdict one of
-    fine / question / problem. Returns them by item id; raises ValueError on a bad file."""
+TARGET = re.compile(r"^\s*(n_\w+)\s*(?:-+>|-\.->|==>)?\s*(n_\w+)?\s*$")
+
+
+def read_verdicts(text: str) -> list[dict]:
+    """verdicts.json: a list (or {"verdicts": [...]}) of {target, verdict, reason}. target is a
+    node id of the review diagram (review.mmd), or an edge written ``source --> target`` with
+    two node ids; verdict one of fine / question / problem. Numbered V1, V2, … in file order;
+    raises ValueError on a bad file."""
     import json
 
     data = json.loads(text)
     if isinstance(data, dict):
         data = data.get("verdicts", [])
     if not isinstance(data, list):
-        raise ValueError("expected a list of {id, verdict, reason}")
-    out = {}
-    for v in data:
-        if not isinstance(v, dict) or not isinstance(v.get("id"), str) or v.get("verdict") not in VERDICTS:
-            raise ValueError(f"bad verdict {v!r}: needs id and verdict in {VERDICTS}")
-        out[v["id"]] = {"verdict": v["verdict"], "reason": str(v.get("reason", ""))}
+        raise ValueError("expected a list of {target, verdict, reason}")
+    out = []
+    for i, v in enumerate(data, 1):
+        if not isinstance(v, dict) or not isinstance(v.get("target"), str) or not TARGET.match(v["target"]) or v.get("verdict") not in VERDICTS:
+            raise ValueError(f"bad verdict {v!r}: needs a target (a diagram node id, or 'n_a --> n_b') and a verdict in {VERDICTS}")
+        out.append({"id": f"V{i}", "target": v["target"].strip(), "verdict": v["verdict"], "reason": str(v.get("reason", ""))})
     return out
 
 
-def review_markdown(m: Model, mermaid: str) -> str:
-    """What a review agent gets: the change, the picture with ids, the numbered changes, and
-    how to answer. Verdicts come back as JSON and are shown in the viewer."""
+def diagram_ids(m: Model) -> dict[str, str]:
+    """The review diagram's node ids back to what they stand for: entities, and a module's
+    own code (body:<file>) or a directory's."""
+    from .mermaid import nid
+
+    out = {}
+    for x, e in m.entities.items():
+        out[nid(x)] = x
+        if e.kind in ("file", "directory"):
+            out[nid(f"body:{x}")] = f"body:{x}"
+    return out
+
+
+def resolve_verdicts(m: Model, verdicts: list[dict]) -> list[dict]:
+    """Each verdict with what it is about: ``ends`` (one entity for a box, source and target for
+    an edge), ``reveal`` (what to unfold to see them) and ``label`` (how the diagram names it).
+    A target the diagram never had keeps ``ends`` empty."""
+    from .labels import is_body
+
+    ids = diagram_ids(m)
+    out = []
+    for v in verdicts:
+        g = TARGET.match(v["target"])
+        ends = [ids[t] for t in g.groups() if t] if g and all(t in ids for t in g.groups() if t) else []
+        plain = lambda x: x[5:] if is_body(x) else x  # noqa: E731
+        name = lambda x: short(m, plain(x)) + (" (own code)" if is_body(x) else "")  # noqa: E731
+        reveal: list[str] = []
+        for x in ends:
+            for a in ancestors_to_unfold(m, plain(x)) + ([plain(x)] if is_body(x) else []):
+                if a not in reveal:
+                    reveal.append(a)
+        out.append(v | {"ends": ends, "edge": len(ends) == 2, "reveal": reveal,
+                        "label": " → ".join(name(x) for x in ends) if ends else v["target"]})
+    return out
+
+
+def review_expanded(m: Model) -> list[str]:
+    """The boxes to unfold so that every change in source code is drawn: what going to each
+    of them unfolds, together. The review diagram and the viewer's "all changes" use it."""
+    out = {"fs:."}
+    for it in change_items(m):
+        if it["role"] == "source":
+            out.update(it["reveal"])
+    return sorted(out)
+
+
+def review_markdown(m: Model, mermaid: str, description: str | None = None) -> str:
+    """What a review agent gets: the change's title, the diagram of everything that changed
+    (the reviewer looks at the same picture), how to answer, and the PR's description.
+    Verdicts come back as JSON on the diagram's nodes and edges and are shown in the viewer."""
     d = m.meta["diff"]
     links = Links(m)
-    items = change_items(m)
     head = f"# Architecture review: {d.get('title') or 'change'}\n\n"
     head += (f"{d['base_short']} → {d['head_short']}" + (f", PR #{d['pr']}" if d.get("pr") else "")
              + f": {d['files_changed']} files, +{d['added']} −{d['removed']} lines"
@@ -402,65 +454,63 @@ def review_markdown(m: Model, mermaid: str) -> str:
     howto = """
 ## What to do
 
-Judge each change below for its effect on the architecture: does the new or removed
-dependency, component or edit fit how the code is organised, or does it cross a boundary,
-add coupling, duplicate something, or leave something behind? Content-only edits matter
-when they change what a module is responsible for.
+The diagram below is the change: the repository with every area that changed in source code
+unfolded, everything else folded. Boxes and edges carry the classes `added`, `removed` or
+`changed`; an edge's label says how its number of references changed (`added 0→3`). A
+reviewer looks at this same picture in a viewer, and your verdicts are shown on it: each
+one as a mark on one box or edge. Clicking the mark shows your reason on its own, not next
+to your other verdicts and not next to the code. The reviewer has seen the diagram and the
+title of the change, nothing else.
 
-Answer with JSON only, one entry per change you have an opinion on, and save it as
-`verdicts.json` next to this file:
+Review the way they do:
+
+1. **The diagram first, with only the title.** For each added, removed or changed box and
+   edge: how expected is it, given what the change is for? Does it make a structure of the
+   graph better or worse: create or break a cycle, depend upwards across layers (a
+   lower-level module on a higher-level one), add a hub or a fan-out, cross between areas
+   that were separate, leave something orphaned or duplicated?
+2. **Then the reasons, where they help.** Read the description below and, if needed, the
+   code, to find out why a box or edge was added or removed.
+
+Look at every change, and give a verdict on each one you have something to say about:
+
+- `problem`: it makes the structure worse, and the reason you found does not justify it;
+- `question`: it is surprising or makes the structure worse, and you found no convincing
+  reason; something to ask the author;
+- `fine`: it looks surprising or worse in the diagram, but the reason you found justifies it.
+
+A change that is expected and leaves the structure as it was needs no verdict: leave it out.
+
+Each reason is about the box or edge it is on, at most three short sentences, in this order:
+how expected the change is, given the title; what it does to the structure of the graph,
+in terms of the diagram's boxes; and only if it adds something, the actual reason, phrased
+so that it needs no knowledge of the code. Name boxes as the diagram labels them, never by
+their node ids. A concern about a different box or edge goes on that one.
+
+Answer with JSON only, saved as `verdicts.json` next to this file. `target` is a node id
+from the diagram (`n_fs_src_app_py`), or an edge as `source --> target` with the two node
+ids of an edge drawn in the diagram:
 
 ```json
-[{"id": "C3", "verdict": "problem", "reason": "one or two sentences"}]
+[{"target": "n_fs_src_app_py --> n_fs_src_db_py", "verdict": "question", "reason": "…"}]
 ```
-
-`verdict` is one of `fine`, `question`, `problem`. Use the ids exactly as listed.
 """
-    picture = ("\n## The picture\n\nThe repository rolled up around the change. Classes on boxes and edges: "
-               "`added`, `removed`, `changed`; box ids are entity ids with punctuation replaced.\n\n```mermaid\n" + mermaid + "```\n")
-    lines = ["\n## The changes\n"]
-    titles = {"component": "Components added or removed", "dependency": "Dependencies between modules", "content": "Edited files"}
-    last = None
-    for it in items:
-        section = (it["category"], it["role"] == "source")
-        if section != last:
-            if it["role"] != "source" and (last is None or last[1]):
-                lines.append("\n## Tests, docs, config and data\n\nThe same kinds of change outside source code; lower priority.\n")
-            lines.append(f"\n### {titles[it['category']]}\n")
-            last = section
-        extra = []
-        if it.get("classes"):
-            extra.append("classes: " + ", ".join(c if isinstance(c, str) else f"{c['name']} (+{c['added']} −{c['removed']})" for c in it["classes"]))
-        if it["category"] == "dependency":
-            extra.append(f"{it['base']} → {it['head']} references" + (f"; changed: {', '.join(it['targets'])}" if it.get("targets") else ""))
-        if it["category"] == "component" and it.get("lines"):
-            extra.append(f"{it['lines']} lines")
-        link = f" — {it['link']}" if it.get("link") else ""
-        role = f" [{it['role']}]" if it["role"] != "source" else ""
-        lines.append(f"- **{it['id']}**{role} {it['title']}{link}" + ("".join(f"\n  {x}" for x in extra)))
-    return head + howto + picture + "\n".join(lines) + "\n"
+    picture = "\n## The diagram\n\n```mermaid\n" + mermaid + "```\n"
+    if description:  # its headings go two levels down, under this one
+        description = re.sub(r"^(#{1,4}) ", r"##\1 ", description.strip(), flags=re.M)
+    desc = f"\n## The description\n\nRead this after the diagram (step 2).\n\n{description}\n" if description else ""
+    return head + howto + picture + desc
 
 
 # ---------- what a box's or edge's hover card says about the change ----------
 
-def _ids(ids: list[str]) -> list:
-    from .prose import listing
-
-    return listing("Review items {}", ids, "more", limit=8)
-
-
-def _verdict_lines(ids: list[str], verdicts: dict[str, dict]) -> list[list]:
-    """One line per verdict on these items, worst first: [!] problem on C1: reason."""
-    out = []
-    for i in sorted((i for i in ids if i in verdicts), key=lambda i: (-VERDICT_RANK[verdicts[i]["verdict"]], int(i[1:])))[:6]:
-        v = verdicts[i]
-        out.append([{"verdict": v["verdict"]}, " ", {"v": i}, ": ", v["reason"]])
-    return out
+def _verdict_lines(verdicts: list[dict]) -> list[list]:
+    """One line per verdict, worst first: [!] reason."""
+    return [[{"verdict": v["verdict"]}, " ", v["reason"]] for v in sorted(verdicts, key=lambda v: -VERDICT_RANK[v["verdict"]])]
 
 
-def node_review_info(nd: dict | None, ids: list[str], verdicts: dict[str, dict]) -> list[list]:
-    """Sentences on top of a box's hover card in a review: what happened to it, its items and
-    their verdicts."""
+def node_review_info(nd: dict | None, verdicts: list[dict]) -> list[list]:
+    """Sentences on a box's hover card in a review: what happened to it, and the verdicts on it."""
     from .prose import count, say
 
     lines: list[list] = []
@@ -482,12 +532,10 @@ def node_review_info(nd: dict | None, ids: list[str], verdicts: dict[str, dict])
             lines.append(say("Renamed from {}", nd["old_path"]))
         if nd.get("renamed_to"):
             lines.append(say("Renamed to {}", nd["renamed_to"]))
-    if ids:
-        lines.append(_ids(ids))
-    return lines + _verdict_lines(ids, verdicts)
+    return lines + _verdict_lines(verdicts)
 
 
-def edge_review_info(m: Model, ed: dict | None, ids: list[str], verdicts: dict[str, dict]) -> list[list]:
+def edge_review_info(m: Model, ed: dict | None, verdicts: list[dict]) -> list[list]:
     """Sentences on top of an edge's hover card in a review: how its references changed, and
     which names came or went."""
     from .prose import count, listing, say
@@ -507,6 +555,4 @@ def edge_review_info(m: Model, ed: dict | None, ids: list[str], verdicts: dict[s
             lines.append(listing("Now uses {}", came, "more", limit=4))
         if went:
             lines.append(listing("No longer uses {}", went, "more", limit=4))
-    if ids:
-        lines.append(_ids(ids))
-    return lines + _verdict_lines(ids, verdicts)
+    return lines + _verdict_lines(verdicts)

@@ -1,8 +1,9 @@
 // The review panel, for diff datasets (nolli diff): the change as a whole, a before /
-// changes / after switch, and the numbered review items. A row expands in place to show
-// the item's links into the PR. Hovering a row lights the item in the drawing; clicking a
-// row (or j / k) jumps to it: unfold what it needs, centre on it, flash it. Verdicts from a
-// review agent (verdicts.json, or loaded here) show on the rows and in the drawing.
+// changes / after switch, the review agent's verdicts (verdicts.json, or loaded here), and
+// the numbered changes. A verdict is on a node or edge of the review diagram; its row shows
+// the reason. A change's row expands in place to show its links into the PR. Hovering a row
+// lights what it is about in the drawing; clicking it (or j / k) goes there: unfold what it
+// needs, centre on it, flash it and open its card.
 
 import { byId } from "./dom.js";
 import { state } from "./state.js";
@@ -11,8 +12,10 @@ import { state } from "./state.js";
  * @typedef {import("../types/nolli").Scene} Scene
  * @typedef {import("../types/nolli").ReviewItem} ReviewItem
  * @typedef {import("../types/nolli").FactChange} FactChange
+ * @typedef {import("../types/nolli").ReviewVerdict} ReviewVerdict
  * @typedef {{ jump: (id: string) => void, hover: (id: string | null) => void, side: (s: "both" | "base" | "head") => void,
- *             dim: (on: boolean) => void, reload: () => void, roles: (all: boolean) => void }} ReviewHandlers
+ *             dim: (on: boolean) => void, reload: () => void, roles: (all: boolean) => void,
+ *             unfold: (ids: string[]) => void }} ReviewHandlers
  */
 
 const panel = byId("review");
@@ -26,21 +29,33 @@ const TITLES = { component: "Components added or removed", dependency: "Dependen
 
 /** @type {ReviewItem[]} */
 let items = [];
+/** @type {ReviewVerdict[]} worst first */
+let verdicts = [];
+/** @type {string[]} the boxes to unfold to see every change in source code (the review diagram) */
+let allChanges = [];
 let allRoles = false;
 /** @type {ReviewHandlers | null} */
 let handlers = null;
 /** @type {Set<string>} rows shown expanded */
 const open = new Set();
 
-/** Items shown in the list: source changes, or everything. */
-export function visibleItems() { return items.filter(it => allRoles || it.role === "source"); }
-/** @param {string} id */
-export const itemById = id => items.find(it => it.id === id) || null;
+/** @type {Record<import("../types/nolli").Verdict, number>} */
+const RANK = { problem: 2, question: 1, fine: 0 };
 
-/** Fetch the dataset's items (with verdicts); empty for a plain dataset. @param {string} name */
+/** The changes listed: source, or everything. */
+const shownItems = () => items.filter(it => allRoles || it.role === "source");
+/** What j / k step through: the verdicts on something in the diagram, then the changes listed. */
+export function visibleItems() { return [...verdicts.filter(v => v.ends.length), ...shownItems()]; }
+/** A change or a verdict. @param {string} id @returns {ReviewItem | ReviewVerdict | null} */
+export const itemById = id => items.find(it => it.id === id) || verdicts.find(v => v.id === id) || null;
+
+/** Fetch the dataset's changes and verdicts; empty for a plain dataset. @param {string} name */
 export async function loadItems(name) {
   const res = await fetch("/api/changes?d=" + encodeURIComponent(name));
-  items = res.ok ? (await res.json()).items : [];
+  const body = res.ok ? await res.json() : { items: [], verdicts: [], all_changes: [] };
+  items = body.items;
+  verdicts = [.../** @type {ReviewVerdict[]} */ (body.verdicts)].sort((a, b) => RANK[b.verdict] - RANK[a.verdict] || +a.id.slice(1) - +b.id.slice(1));
+  allChanges = body.all_changes;
   open.clear();
   return items;
 }
@@ -71,7 +86,6 @@ function factList(cs, more) {
 /** An item's details, shown under its row. @param {ReviewItem} it */
 function details(it) {
   let html = "";
-  if (it.verdict) html += `<div class="dt-verdict">${verdictSpan(it.verdict)} <b>${esc(it.verdict.verdict)}</b>: ${esc(it.verdict.reason)}</div>`;
   if (it.category === "dependency") html += factList(it.changes || [], it.more || 0);
   if (it.classes?.length) html += `<div class="dt-sub">classes</div><ul class="facts">${it.classes.map(c => typeof c === "string" ? `<li>${esc(c)}</li>`
     : `<li>${esc(c.name)} <span class="plus">+${c.added}</span> <span class="minus">−${c.removed}</span></li>`).join("")}</ul>`;
@@ -86,9 +100,9 @@ export function renderPanel(scene, h) {
   const d = scene.diff;
   if (!d) { showPanel(false); return; }
   showPanel(true);
-  const shown = visibleItems();
+  const shown = shownItems();
   const counts = { problem: 0, question: 0, fine: 0 };
-  for (const it of items) if (it.verdict) counts[it.verdict.verdict]++;
+  for (const v of verdicts) counts[v.verdict]++;
   const hiddenN = items.length - shown.length;
   const sideBtn = (/** @type {"base" | "both" | "head"} */ s, /** @type {string} */ label, /** @type {string} */ key) =>
     `<button data-side="${s}" class="${state.side === s ? "on" : ""}" title="key ${key}">${label}</button>`;
@@ -97,19 +111,25 @@ export function renderPanel(scene, h) {
     <div class="rv-sub">${link(d.link, d.pr ? `PR #${d.pr}` : "compare")} · ${esc(d.base_short)} → ${esc(d.head_short)}
       · ${d.files_changed} files <span class="plus">+${d.added}</span> <span class="minus">−${d.removed}</span></div>
     <div class="seg">${sideBtn("base", "before", "1")}${sideBtn("both", "changes", "2")}${sideBtn("head", "after", "3")}</div>
+    <div class="rv-row-btns"><button id="rv-all-changes" title="unfold every area that changed in source code: the diagram the review agent saw">unfold all changes</button></div>
     <label><input type="checkbox" id="rv-dim" ${state.dim ? "checked" : ""}> fade what did not change</label>
     <label><input type="checkbox" id="rv-all" ${allRoles ? "checked" : ""}> include tests, docs, config, data${hiddenN && !allRoles ? ` (${hiddenN} more)` : ""}</label>
     <div class="rv-verdicts">${counts.problem + counts.question + counts.fine
       ? `verdicts: <span class="vd problem">!</span> ${counts.problem} <span class="vd question">?</span> ${counts.question} <span class="vd fine">✓</span> ${counts.fine}`
       : "no verdicts yet"} · <a href="/data/${esc(state.name)}/review.md" target="_blank">review.md</a>
       · <label class="file">load verdicts…<input type="file" id="rv-file" accept=".json,application/json"></label></div>
-  </div><div class="rv-keys">hover a change to light it · click or j / k to go to it · ▸ details · 1 2 3 before / changes / after · f fit</div><div class="rv-list">`;
+  </div><div class="rv-keys">hover a row to light it · click or j / k to go to it · ▸ details · 1 2 3 before / changes / after · f fit</div><div class="rv-list">`;
+  if (verdicts.length) html += `<div class="rv-group">Review</div>`;
+  for (const v of verdicts) {
+    const cur = state.item === v.id ? " current" : "", off = v.ends.length ? "" : " off";
+    html += `<div class="rv-row rv-verdict${cur}${off}" data-item="${esc(v.id)}"><div class="rv-item">${verdictSpan(v)}<span class="t"><b>${esc(v.label)}</b>${v.ends.length ? "" : ` <span class="muted">(not in the diagram)</span>`}<br>${esc(v.reason)}</span></div></div>`;
+  }
   let last = "";
   for (const it of shown) {
     if (it.category !== last) { html += `<div class="rv-group">${TITLES[it.category]}</div>`; last = it.category; }
     const cur = state.item === it.id ? " current" : "", isOpen = open.has(it.id);
     const role = it.role !== "source" ? `<span class="role">${esc(it.role)}</span>` : "";
-    html += `<div class="rv-row${cur}" data-item="${esc(it.id)}"><div class="rv-item"><button class="tw" data-open="${esc(it.id)}" title="details">${isOpen ? "▾" : "▸"}</button><span class="id">${esc(it.id)}</span>${statusSpan(it.status)}<span class="t">${esc(shortTitle(it))}</span>${role}${verdictSpan(it.verdict)}</div>${isOpen ? details(it) : ""}</div>`;
+    html += `<div class="rv-row${cur}" data-item="${esc(it.id)}"><div class="rv-item"><button class="tw" data-open="${esc(it.id)}" title="details">${isOpen ? "▾" : "▸"}</button><span class="id">${esc(it.id)}</span>${statusSpan(it.status)}<span class="t">${esc(shortTitle(it))}</span>${role}</div>${isOpen ? details(it) : ""}</div>`;
   }
   if (!shown.length) html += `<div class="rv-empty">no changes${hiddenN ? " in source code; tick the box above for the rest" : ""}</div>`;
   html += `</div>`;
@@ -122,11 +142,12 @@ export function renderPanel(scene, h) {
     const id = /** @type {string} */ (/** @type {HTMLElement} */ (r).dataset.item);
     r.querySelector(".rv-item")?.addEventListener("click", ev => {
       if (/** @type {Element} */ (ev.target).closest("[data-open]")) { open.has(id) ? open.delete(id) : open.add(id); renderPanel(scene, h); return; }
-      h.jump(id);
+      if (!r.classList.contains("off")) h.jump(id);
     });
     r.addEventListener("mouseenter", () => h.hover(id));
     r.addEventListener("mouseleave", () => h.hover(null));
   });
+  byId("rv-all-changes").addEventListener("click", () => h.unfold(allChanges));
   /** @type {HTMLInputElement} */ (byId("rv-dim")).addEventListener("change", ev => h.dim(/** @type {HTMLInputElement} */ (ev.target).checked));
   /** @type {HTMLInputElement} */ (byId("rv-all")).addEventListener("change", ev => { allRoles = /** @type {HTMLInputElement} */ (ev.target).checked; h.roles(allRoles); });
   /** @type {HTMLInputElement} */ (byId("rv-file")).addEventListener("change", ev => uploadVerdicts(/** @type {HTMLInputElement} */ (ev.target)));

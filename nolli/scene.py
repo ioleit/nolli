@@ -16,10 +16,12 @@ from dataclasses import asdict, dataclass, field
 
 from .model import USE, Model
 from .rollup import (
-    HIDDEN_ROLES_DEFAULT, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
+    HIDDEN_ROLES_DEFAULT, hidden_by_role, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
     representative, rollup, utility_badges, visible_from_expanded,
 )
-from .review import VERDICT_RANK, Links, change_items, diff_index, edge_review_info, fact_change, is_diff, node_diff, node_review_info
+from .review import (
+    VERDICT_RANK, Links, change_items, diff_index, edge_review_info, fact_change, is_diff, node_diff, node_review_info, resolve_verdicts,
+)
 from .view import default_view
 from .labels import MODULE_LANGS, is_body, label_of, leaf_count
 from .info import Dependencies, edge_info, node_info
@@ -52,8 +54,7 @@ def hidden_for(m: Model, roles, side: str = "both") -> set[str]:
     """Files and directories whose role is not shown, plus images drawn as their service; in a
     diff model drawn for one side, what does not exist on that side."""
     shown = set(roles)
-    out = {e.id for e in m.entities.values()
-           if e.kind in ("file", "directory") and not e.attrs.get("root") and e.attrs.get("role") and e.attrs["role"] not in shown}
+    out = hidden_by_role(m, {e.attrs["role"] for e in m.entities.values() if e.attrs.get("role")} - shown)
     if side in ("base", "head"):
         gone = "added" if side == "base" else "removed"
         out |= {e.id for e in m.entities.values() if (e.attrs.get("diff") or {}).get("status") == gone}
@@ -138,9 +139,9 @@ def edge_style(e) -> str:
 
 # ---------- the scene ----------
 
-def scene(m: Model, st: ViewState, verdicts: dict[str, dict] | None = None) -> dict:
-    """``verdicts``: a review's verdicts by item id (review.read_verdicts), shown on the boxes
-    and edges that contain each item."""
+def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
+    """``verdicts``: a review's verdicts (review.read_verdicts), shown on the drawn box or
+    edge that stands for each one's target."""
     expanded, hidden, visible, rolled, utilities = compute(m, st)
     diff = is_diff(m)
     links = Links(m) if diff else None
@@ -257,7 +258,7 @@ def scene(m: Model, st: ViewState, verdicts: dict[str, dict] | None = None) -> d
         })
 
     if diff:
-        attach_items(m, nodes, edge_out, visible, hidden, verdicts or {})
+        attach_items(m, nodes, edge_out, visible, hidden, resolve_verdicts(m, verdicts or []))
 
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
     residue += [f"{v} unresolved {k} references" for k, v in sorted(rolled.unresolved.items())]
@@ -286,8 +287,9 @@ def scene(m: Model, st: ViewState, verdicts: dict[str, dict] | None = None) -> d
 
 
 def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[str], hidden: set[str],
-                 verdicts: dict[str, dict]) -> None:
-    """Which review items each drawn box and edge shows, and the worst verdict among them.
+                 verdicts: list[dict]) -> None:
+    """Which review items each drawn box and edge shows, and which verdicts (resolved, see
+    review.resolve_verdicts) are on it, with the worst of them.
     An item about facts lands on the edges carrying those facts; an item about entities (or
     facts that fell inside one box) on the box that stands for them."""
     rep = representative(m, visible, hidden, image_aliases(m))
@@ -310,18 +312,41 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
             if r is not None and r in drawn:
                 node_items[r].add(it["id"])
                 break
-    worst = lambda ids: max((verdicts[i]["verdict"] for i in ids if i in verdicts), key=VERDICT_RANK.get, default=None)  # noqa: E731
+    # verdicts: on the drawn box that stands for their target, or the drawn edge between the
+    # boxes that stand for its two ends (an edge that fell inside one box lands on that box)
+    def drawn_box(x: str) -> str | None:
+        r = x if x in drawn else rep(x[5:] if is_body(x) else x)
+        return r if r in drawn else None
 
+    edge_at: dict[tuple[str, str], dict] = {}
+    for e in edges:
+        edge_at.setdefault((e["src"], e["dst"]), e)
+    on_node: dict[str, list[dict]] = defaultdict(list)
+    on_edge: dict[str, list[dict]] = defaultdict(list)
+    for v in verdicts:
+        ends = [drawn_box(x) for x in v["ends"]]
+        if not ends or None in ends:
+            continue
+        if len(ends) == 2 and ends[0] != ends[1]:
+            e = edge_at.get((ends[0], ends[1])) or edge_at.get((ends[1], ends[0]))
+            if e is not None:
+                on_edge[e["key"]].append(v)
+                continue
+        on_node[ends[0]].append(v)
+    worst = lambda vs: max((v["verdict"] for v in vs), key=VERDICT_RANK.get, default=None)  # noqa: E731
     for n in nodes:
-        ids = sorted(node_items.get(n["id"], ()), key=lambda i: int(i[1:]))
-        n["items"] = ids
-        n["verdict"] = worst(ids)
-        top = node_review_info(n.get("diff"), ids, verdicts)
+        n["items"] = sorted(node_items.get(n["id"], ()), key=lambda i: int(i[1:]))
+        vs = on_node.get(n["id"], [])
+        n["verdicts"] = [v["id"] for v in vs]
+        n["verdict"] = worst(vs)
+        top = node_review_info(n.get("diff"), vs)
         if top:  # after the line that says what the box is
             n["info"] = n["info"][:1] + top + n["info"][1:]
     for e in edges:
-        e["verdict"] = worst(e["items"])
-        top = edge_review_info(m, e.get("diff"), e["items"], verdicts)
+        vs = on_edge.get(e["key"], [])
+        e["verdicts"] = [v["id"] for v in vs]
+        e["verdict"] = worst(vs)
+        top = edge_review_info(m, e.get("diff"), vs)
         if top:
             e["info"] = e["info"][:1] + top + e["info"][1:]
 

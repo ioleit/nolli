@@ -196,3 +196,9 @@ body.dim .edge.d-same { opacity: .18; }
 @keyframes nolli-flash { 0%, 100% { filter: none; } 50% { filter: drop-shadow(0 0 3px var(--glow-color)) drop-shadow(0 0 9px var(--glow-color)); } }
 .edge.lit.flash, .node.lit.flash > rect, .node.lit.flash > circle.anchor { animation: nolli-flash .6s ease-in-out 4; }
 .verdict { cursor: pointer; }
+/* the review's verdicts: one row each, the reason in full */
+.rv-verdict > .rv-item { padding: 5px 12px 5px 10px; border-bottom: 1px solid var(--line); }
+.rv-verdict .t { word-break: normal; overflow-wrap: anywhere; line-height: 1.35; }
+.rv-verdict .t b { font-weight: 600; }
+.rv-row.off > .rv-item { cursor: default; opacity: .6; }
+.rv-row-btns button { font: inherit; font-size: 12px; padding: 2px 8px; cursor: pointer; }

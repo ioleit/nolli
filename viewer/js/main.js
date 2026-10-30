@@ -87,12 +87,15 @@ const reviewHandlers = {
   dim: on => { state.dim = on; document.body.classList.toggle("dim", on); writeHash(); },
   reload: () => { itemsFor = null; refresh(true); },
   roles: all => { state.roles = all ? [...ALL_ROLES] : null; refresh(true); },
+  unfold: ids => { state.expanded = [...new Set([...(state.expanded || []), ...ids])]; refresh(true); },
 };
 
-/** The drawn boxes and edges that show an item (scene.nodes[].items, scene.edges[].items). @param {string} id */
+/** The drawn boxes and edges that show a change or carry a verdict (scene.nodes[].items / .verdicts,
+ * the same on edges). @param {string} id */
 function targets(id) {
   if (!scene) return { ids: [], keys: [] };
-  return { ids: scene.nodes.filter(n => "items" in n && n.items?.includes(id)).map(n => n.id), keys: scene.edges.filter(e => e.items?.includes(id)).map(e => e.key) };
+  const on = (/** @type {{ items?: string[], verdicts?: string[] }} */ x) => (id.startsWith("V") ? x.verdicts : x.items)?.includes(id);
+  return { ids: scene.nodes.filter(n => "items" in n && on(n)).map(n => n.id), keys: scene.edges.filter(on).map(e => e.key) };
 }
 
 /** Go to an item: unfold what it needs, then (once drawn) centre on it and flash it. @param {string} id */
@@ -129,8 +132,9 @@ function pointAtItem(moving = false) {
 let pinTimer = null;
 
 /**
- * Keep open the card of what shows an item (its edge for a dependency, else its box), led
- * by the item itself: its verdict, id, title and the reviewer's reason.
+ * Keep open the card of what shows a change or carries a verdict (an edge for a dependency
+ * or a verdict on an edge, else a box). A verdict's card leads with it; a change's with its
+ * title.
  * @param {string} id
  */
 function pinItem(id) {
@@ -139,15 +143,15 @@ function pinItem(id) {
   const { ids, keys } = targets(id);
   const root = byId("root");
   const edge = scene.edges.find(e => e.key === keys[0]), node = scene.nodes.find(n => n.id === ids[0]);
-  const useEdge = edge && (it.category === "dependency" || !node);
-  const target = useEdge ? root.querySelector(`.edge[data-key="${CSS.escape(edge.key)}"]`) : node && root.querySelector(`.node[data-id="${CSS.escape(node.id)}"]`);
-  const info = useEdge ? edge.info : node?.info;
+  const useEdge = edge && ("edge" in it ? it.edge : it.category === "dependency") || !node;
+  const target = useEdge ? edge && root.querySelector(`.edge[data-key="${CSS.escape(edge.key)}"]`) : root.querySelector(`.node[data-id="${CSS.escape(node.id)}"]`);
+  const info = useEdge ? edge?.info : node?.info;
   if (!target || !info) return;
-  /** @type {import("../types/nolli").Parts} */
-  const lead = [...(it.verdict ? [{ verdict: it.verdict.verdict }, " "] : []), { v: it.id }, " ", it.title];
-  /** the box's own line for this item's verdict, already said in the lead @param {import("../types/nolli").Parts} line */
-  const same = line => line.some(x => typeof x === "object" && "verdict" in x) && line.some(x => typeof x === "object" && "v" in x && x.v === id);
-  pinTip([lead, ...(it.verdict ? [[it.verdict.reason]] : []), ...info.filter(l => !same(l))], target);
+  if ("verdict" in it) {
+    // the card already has this verdict's line; move it to the top
+    const mine = (/** @type {import("../types/nolli").Parts} */ l) => l.some(x => typeof x === "object" && "verdict" in x) && l.includes(it.reason);
+    pinTip([[{ verdict: it.verdict }, " ", it.reason], ...info.filter(l => !mine(l))], target);
+  } else pinTip([[{ v: it.title }], ...info], target);
 }
 
 /** @param {number} step +1 next, -1 previous */

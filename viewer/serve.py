@@ -7,7 +7,7 @@ dataset directories under --data; ``/api/list`` lists them, newest first;
 ``/api/scene?d=<name>&...`` returns the scene for a view state (``nolli/scene.py``;
 the parameters are the viewer's location-hash keys); ``/api/node?d=<name>&id=<entity>``
 returns the details of one box in a diff dataset (``nolli/review.py``), ``/api/changes?d=``
-its numbered review items with any verdicts, and ``POST /api/verdicts?d=`` stores a
+its numbered changes, the review's verdicts and what to unfold to see all changes, and ``POST /api/verdicts?d=`` stores a
 review's verdicts.json next to the dataset. Needs only the standard library:
 the nolli package is imported from this checkout, not from an installed copy.
 """
@@ -28,7 +28,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # the nolli package of this checkout
 
 from nolli.model import Model  # noqa: E402
-from nolli.review import change_items, details, read_verdicts  # noqa: E402
+from nolli.review import change_items, details, read_verdicts, resolve_verdicts, review_expanded  # noqa: E402
 from nolli.scene import scene, state_from_query  # noqa: E402
 
 _models: dict[str, tuple[float, Model]] = {}
@@ -49,15 +49,15 @@ def load_model(path: Path) -> Model:
     return m
 
 
-def load_verdicts(ds: Path) -> dict[str, dict]:
+def load_verdicts(ds: Path) -> list[dict]:
     """verdicts.json in a dataset directory, if there is a valid one."""
     f = ds / "verdicts.json"
     if not f.is_file():
-        return {}
+        return []
     try:
         return read_verdicts(f.read_text())
     except (ValueError, OSError):
-        return {}
+        return []
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -113,9 +113,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"error": f"no dataset {q.get('d')!r}"}, 404)
                 return
             m = load_model(ds / "model.json")
-            v = load_verdicts(ds)
-            self.send_json({"items": [it | {"verdict": v.get(it["id"])} for it in change_items(m)] if m.meta.get("diff") else [],
-                            "has_verdicts": bool(v)})
+            diff = bool(m.meta.get("diff"))
+            self.send_json({"items": change_items(m) if diff else [],
+                            "verdicts": resolve_verdicts(m, load_verdicts(ds)) if diff else [],
+                            "all_changes": review_expanded(m) if diff else []})
             return
         if path == "/api/node":
             q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
@@ -160,7 +161,7 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError as exc:
             self.send_json({"error": str(exc)}, 400)
             return
-        (ds / "verdicts.json").write_text(json.dumps([{"id": k, **x} for k, x in v.items()], indent=1))
+        (ds / "verdicts.json").write_text(json.dumps([{k: x[k] for k in ("target", "verdict", "reason")} for x in v], indent=1))
         self.send_json({"saved": len(v)})
 
     def end_headers(self) -> None:
