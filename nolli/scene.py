@@ -339,16 +339,12 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
         vs = on_node.get(n["id"], [])
         n["verdicts"] = [v["id"] for v in vs]
         n["verdict"] = worst(vs)
-        top = node_review_info(n.get("diff"), vs)
-        if top:  # after the line that says what the box is
-            n["info"] = n["info"][:1] + top + n["info"][1:]
+        n["review"] = node_review_info(n.get("diff"), vs)  # the card's second column
     for e in edges:
         vs = on_edge.get(e["key"], [])
         e["verdicts"] = [v["id"] for v in vs]
         e["verdict"] = worst(vs)
-        top = edge_review_info(m, e.get("diff"), vs)
-        if top:
-            e["info"] = e["info"][:1] + top + e["info"][1:]
+        e["review"] = edge_review_info(m, e.get("diff"), vs)
 
 
 def state_from_query(q: dict[str, str]) -> ViewState:

@@ -158,7 +158,8 @@ def test_items_verdicts_and_export(repo):
     assert len(marked) == 1 and marked[0]["verdict"] == "problem" and (marked[0]["src"], marked[0]["dst"]) == ("fs:app/api.py", "fs:app/store.py")
     store = next(n for n in sc["nodes"] if n["id"] == "fs:app/store.py")  # Index is inside the folded store module
     assert store["verdicts"] == ["V2"] and store["verdict"] == "question"
-    assert any(p == {"verdict": "question"} for line in store["info"] for p in line)
+    assert any(p == {"verdict": "question"} for line in store["review"] for p in line)
+    assert not any(p == {"verdict": "question"} for line in store["info"] for p in line)
     assert not any("V3" in x.get("verdicts", []) for x in sc["nodes"] + sc["edges"])  # an unknown target is not drawn
     sc = scene(m, ViewState(expanded=["fs:."]), v)  # app folded: the edge falls inside it, so does the verdict
     app = next(n for n in sc["nodes"] if n["id"] == "fs:app")

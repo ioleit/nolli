@@ -496,6 +496,10 @@ diagram's boxes; and only if it adds something, the actual reason, phrased so th
 no knowledge of the code. Name boxes as the diagram labels them, never by their node ids. A
 concern about a different box or edge goes on that one.
 
+Write every name in backticks, as Markdown code: boxes (`events/service`), modules,
+classes, functions and other symbols (`PuppetGateway`, `character_conv_id`). The viewer
+sets them apart from the prose, the way it shows names everywhere else.
+
 Answer with JSON only, saved as `verdicts.json` next to this file. `target` is a node id
 from the diagram (`n_fs_src_app_py`), or an edge as `source --> target` with the two node
 ids of an edge drawn in the diagram:
@@ -513,9 +517,14 @@ ids of an edge drawn in the diagram:
 
 # ---------- what a box's or edge's hover card says about the change ----------
 
+def marked(text: str) -> list:
+    """Text with `code` spans (Markdown backticks) as parts: the spans become values."""
+    return [{"v": t} if i % 2 else t for i, t in enumerate(text.split("`")) if t]
+
+
 def _verdict_lines(verdicts: list[dict]) -> list[list]:
     """One line per verdict, worst first: [!] reason."""
-    return [[{"verdict": v["verdict"]}, " ", v["reason"]] for v in sorted(verdicts, key=lambda v: -VERDICT_RANK[v["verdict"]])]
+    return [[{"verdict": v["verdict"]}, " ", *marked(v["reason"])] for v in sorted(verdicts, key=lambda v: -VERDICT_RANK[v["verdict"]])]
 
 
 def node_review_info(nd: dict | None, verdicts: list[dict]) -> list[list]:

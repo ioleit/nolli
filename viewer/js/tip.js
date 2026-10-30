@@ -13,15 +13,28 @@
 import { byId } from "./dom.js";
 import { wasDrag } from "./panzoom.js";
 
-/** @typedef {import("../types/nolli").Info} Info */
+/**
+ * @typedef {import("../types/nolli").Info} Info
+ * @typedef {{ info: Info, review?: Info }} Card what a card says: about the box or edge, and in a review, about the change (its own column)
+ */
 
 const tipEl = byId("tip");
 const svg = byId("g");
 const GAP = 12;  // between the text and what it describes
 const VERDICT_GLYPH = { fine: "✓", question: "?", problem: "!" };
 
+/** @param {Card} card */
+function render(card) {
+  if (!card.review?.length) return paragraphs(card.info);
+  const cols = document.createElement("div"); cols.className = "cols";
+  const main = document.createElement("div"); main.className = "main"; main.appendChild(paragraphs(card.info));
+  const rev = document.createElement("div"); rev.className = "rev"; rev.appendChild(paragraphs(card.review));
+  cols.append(main, rev);
+  return cols;
+}
+
 /** @param {Info} info */
-function render(info) {
+function paragraphs(info) {
   const f = document.createDocumentFragment();
   for (const line of info) {
     const p = document.createElement("p");
@@ -101,15 +114,16 @@ function place(around, w, h, bounds, o) {
   return best || { x: around.right + GAP, y: around.top, w, h };
 }
 
-/** @type {Info | null} the text on show, so moving within one box does not move it */
+/** @type {Card | null} the card on show, so moving within one box does not move it */
 let shown = null;
 let pinned = false;
 
 /** @typedef {{ left: number, top: number, right: number, bottom: number }} Around */
 
-/** Show info beside `around` (page coordinates). @param {Info} info @param {Around} around @param {Element | null} self */
-function put(info, around, self) {
-  tipEl.replaceChildren(render(info)); shown = info;
+/** Show a card beside `around` (page coordinates). @param {Card} card @param {Around} around @param {Element | null} self */
+function put(card, around, self) {
+  tipEl.replaceChildren(render(card)); shown = card;
+  tipEl.classList.toggle("two", !!card.review?.length);
   tipEl.style.display = "block";
   const canvas = svg.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
   const t = place(around, w, h, canvas, obstacles(self));
@@ -129,21 +143,21 @@ function aroundOf(x) {
 
 /**
  * @param {MouseEvent} ev
- * @param {Info} info
+ * @param {Card} card a scene node or edge, or a card made for the occasion
  * @param {Element | null} [box] the hovered box: the text goes beside it; without, beside the pointer
  */
-export function showTip(ev, info, box = null) {
-  if (info === shown) return;
+export function showTip(ev, card, box = null) {
+  if (card === shown) return;
   pinned = false;
-  put(info, box ? aroundOf(box) : { left: ev.clientX - 6, right: ev.clientX + 6, top: ev.clientY - 6, bottom: ev.clientY + 6 }, box);
+  put(card, box ? aroundOf(box) : { left: ev.clientX - 6, right: ev.clientX + 6, top: ev.clientY - 6, bottom: ev.clientY + 6 }, box);
 }
 
 /**
  * Show a card beside a drawn box or edge and keep it there when the pointer leaves.
- * @param {Info} info @param {Element} target
+ * @param {Card} card @param {Element} target
  */
-export function pinTip(info, target) {
-  put(info, aroundOf(target), target);
+export function pinTip(card, target) {
+  put(card, aroundOf(target), target);
   pinned = true;
 }
 

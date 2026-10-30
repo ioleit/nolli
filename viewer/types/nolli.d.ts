@@ -87,7 +87,10 @@ export interface Details {
 }
 
 /** A module's own code: a small dot inside the module. */
-export interface AnchorNode { id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; info: Info }
+export interface AnchorNode {
+  id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; info: Info;
+  items?: string[]; verdicts?: string[]; verdict?: Verdict | null; review?: Info;  // review mode only, as on a box
+}
 
 export interface BoxNode {
   id: string;
@@ -109,6 +112,7 @@ export interface BoxNode {
   diff?: NodeDiff | null;  // review mode only
   items?: string[];  // review items shown on this box
   verdicts?: string[];  // the review's verdicts on it (V ids)
+  review?: Info;  // the card's second column: what the change did to it, and the verdicts on it
   verdict?: Verdict | null;  // the worst of them
 }
 
@@ -134,6 +138,7 @@ export interface SceneEdge {
   diff?: EdgeDiff | null;
   items?: string[];
   verdicts?: string[];
+  review?: Info;
   verdict?: Verdict | null;
 }
 

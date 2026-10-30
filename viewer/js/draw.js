@@ -68,13 +68,13 @@ function edgeClass(e, review) {
 /**
  * A verdict mark opens the hover card of what it sits on: hovering shows it, clicking keeps it
  * (until Esc, a click on the canvas, a pan, or another card).
- * @param {SVGElement} mark @param {import("../types/nolli").Info} info @param {Element} target what the card goes beside
+ * @param {SVGElement} mark @param {import("./tip.js").Card} card @param {Element} target what the card goes beside
  */
-function cardOnMark(mark, info, target) {
-  mark.addEventListener("mouseenter", ev => showTip(/** @type {MouseEvent} */ (ev), info, target));
+function cardOnMark(mark, card, target) {
+  mark.addEventListener("mouseenter", ev => showTip(/** @type {MouseEvent} */ (ev), card, target));
   mark.addEventListener("mouseleave", () => hideTip());
   mark.addEventListener("mousedown", ev => ev.stopPropagation());  // don't start a pan
-  mark.addEventListener("click", ev => { ev.stopPropagation(); pinTip(info, target); });
+  mark.addEventListener("click", ev => { ev.stopPropagation(); pinTip(card, target); });
 }
 
 /** Opacity as the SVG attribute (null removes it). @param {SVGElement[]} els @returns {(o: number | null) => void} */
@@ -153,7 +153,7 @@ function buildBox(n, p, h) {
   // the review's verdict on what this box contains, on its top-right corner; "fine" only in the panel
   /** @type {SVGElement | null} */
   let mark = null;
-  if (n.verdict && n.verdict !== "fine") { mark = verdictMark(n.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n.info, grp); }
+  if (n.verdict && n.verdict !== "fine") { mark = verdictMark(n.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
   n.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
   // an unfolded box lists the utilities its children use, one per line, bottom right
   /** @type {SVGElement[]} */
@@ -242,8 +242,8 @@ export function draw(g, scene, laid, handlers, sameWidth = false) {
     const label = e.diff ? (e.diff.status === "changed" ? `${e.diff.base}→${e.diff.head}` : e.diff.status === "added" ? `+${e.diff.head}` : `−${e.diff.base}`)
       : review ? "" : e.label;
     if (label && mid && (e.diff || (!e.weak && !e.local))) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = label; ge.appendChild(t); }
-    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); cardOnMark(vm, e.info, vm); ge.appendChild(vm); }
-    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.info));
+    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); cardOnMark(vm, e, vm); ge.appendChild(vm); }
+    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e));
     ge.addEventListener("mouseenter", () => raise(ge));
     ge.addEventListener("mouseleave", () => hideTip());
     g.appendChild(ge); edges.push(ge);
@@ -288,7 +288,7 @@ function lightOnHover(scene, boxEl, edgesAt, raise) {
     if (!box || ("container" in n && n.container)) continue;
     // the hover text appears with the highlight: for leaves only, on the same event
     box.addEventListener("mouseenter", ev => {
-      showTip(/** @type {MouseEvent} */ (ev), n.info, box);
+      showTip(/** @type {MouseEvent} */ (ev), n, box);
       unlight();
       lit.add(box);
       for (const u of n.utilities_used || []) { const b = boxEl.get(u); if (b) lit.add(b); }

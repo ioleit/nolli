@@ -113,7 +113,12 @@ svg.nolabels .edge text { display: none; }
 #tip p { margin: 0; }
 #tip p + p { margin-top: 3px; }
 #tip q.doc { font-style: italic; color: color-mix(in srgb, var(--ink) 80%, transparent); }
-#tip .v { font-weight: 600; background: color-mix(in srgb, var(--e-http) 14%, transparent); border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
+/* in a review, a second column behind a line: what the change did, and the verdicts */
+#tip.two { max-width: 720px; }
+#tip .cols { display: flex; align-items: stretch; gap: 12px; }
+#tip .cols > div { flex: 1 1 0; min-width: 150px; max-width: 340px; }
+#tip .rev { border-left: 1px solid var(--line); padding-left: 12px; }
+#tip .v, .rv-verdict .v { font-weight: 600; background: color-mix(in srgb, var(--e-http) 14%, transparent); border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: 1px 0; }
 .legend span { display: inline-block; width: 22px; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
