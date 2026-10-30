@@ -17,7 +17,9 @@ What the user named, as `nolli view` takes it:
 - nothing: the current branch against the default branch;
 - a branch or commit: what it adds to the default branch;
 - `<base>..<head>`, or `<base>...<head>` (from where they diverged);
-- a GitHub pull request: its URL, or `'#123'` (quoted: `#` starts a shell comment).
+- a GitHub pull request: its URL, or `'#123'` (quoted: `#` starts a shell comment). nolli
+  asks GitHub for the PR's base and head and fetches them, so the change is the one GitHub's
+  "Files changed" tab shows, whatever the local branches are.
 
 ## 2. The brief
 
@@ -27,7 +29,8 @@ nolli agent brief <change>
 
 Run it in the repository (or add `--repo <path>`). If `nolli` is not found, tell the user
 it needs installing (`pipx install nolli`, or from its repository) and stop. It builds the
-change's dataset (a few seconds; reused if it exists) and prints JSON:
+change's dataset (a few seconds; reused if it exists) and prints JSON on stdout (what it
+resolved and its progress go to stderr):
 
 - `brief`: `review.md`, your instructions, the diagram and the change's description;
 - `verdicts`: where your answer goes (`verdicts.json`); `has_verdicts`: one exists already;
@@ -53,7 +56,7 @@ Write your verdicts to the `verdicts` path: a JSON list of
 nolli agent check <dataset>
 ```
 
-It prints one line per problem (a node id not in the diagram, an edge the diagram does not
+Use the `check` command the brief printed. It prints one line per problem (a node id not in the diagram, an edge the diagram does not
 draw or draws the other way round, a missing reason, …) and exits 1. Fix each in
 `verdicts.json` and check again until it prints `"ok": true`.
 
@@ -65,9 +68,11 @@ Start the viewer in the background; it serves until stopped:
 nolli view <dataset> --no-open
 ```
 
-It prints `viewer: http://127.0.0.1:<port>/#d=<name>`. Give the user that URL (or drop
-`--no-open` to open their browser, when you run on their machine). The viewer opens folded
-on the worst verdict, with your reasons on the boxes and edges.
+It prints `viewer: http://127.0.0.1:<port>/#d=<name>` (to stderr; redirect it to a file to
+read it). Give the user that URL, and say how to stop the viewer (stop that process). On
+the user's own machine you can drop `--no-open` to open their browser; if they look from
+another machine, `--host <an address of this one they can reach>` (and `--port`). The
+viewer opens folded on the worst verdict, with your reasons on the boxes and edges.
 
 Then tell the user, briefly: how many verdicts of each kind, and each `problem` and
 `question` in one line, by the name the diagram gives the box or edge.
