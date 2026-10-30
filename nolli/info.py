@@ -84,8 +84,7 @@ def node_kind(m: Model, x: str) -> str:
             "service": "Compose service", "image": "Docker image", "host": "Host"}.get(e.kind, e.kind.capitalize())
 
 
-def node_info(m: Model, x: str, rolled: RolledUp, expanded: set[str], utilities: set[str], cycle: bool,
-              container: bool) -> dict:
+def node_info(m: Model, x: str, rolled: RolledUp, expanded: set[str], utilities: set[str], container: bool) -> dict:
     if is_body(x):
         o = m.entities[x[5:]]
         package = o.kind == "directory"
@@ -139,10 +138,8 @@ def node_info(m: Model, x: str, rolled: RolledUp, expanded: set[str], utilities:
     if e.attrs.get("ports"):
         fact("Ports", ", ".join(map(str, e.attrs["ports"])))
     hints = []
-    if cycle:
-        hints.append(["Part of a dependency cycle (red border)"])
     if x in utilities:
-        hints.append(["Used by many parts: arrows into it are shown as badges on its users"])
+        hints.append(["A utility: so many arrows point at it that they are left out; the boxes using it list it instead"])
     if container:
         hints.append(["Click − to fold"])
     elif kids:

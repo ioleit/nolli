@@ -1,72 +1,118 @@
 /* nolli viewer */
-:root { color-scheme: light dark; --line: #8884; --ink: CanvasText; --muted: #888; }
-body { margin: 0; font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 290px 1fr; height: 100vh; }
+/* Themes: every colour (and the box shadow and diagram font) is a variable. The default
+   follows the system's light or dark mode; another theme overrides the variables under
+   :root[data-theme=<name>] (themes.css), set by the Theme control. */
+:root {
+  color-scheme: light dark;
+  --bg: Canvas; --ink: CanvasText; --muted: #888; --line: #8884; --hover-bg: #8881;
+  --font-diagram: system-ui, sans-serif;
+  --box-fill: Canvas; --box-stroke: CanvasText; --box-shadow: none; --box-radius: 4px;
+  --container-fill: #80808012; --container-stroke: #8887;
+  --files-fill: #80808018; --files-stroke: #8886;
+  --package-fill: #80808008; --file-stroke: #8888;
+  --deploy-fill: #4a90e218; --deploy-stroke: #4a90e2;
+  --iface-fill: #2a7fd410; --iface-stroke: #2a7fd4aa;
+  --env-fill: #3a9d5d10; --env-stroke: #3a9d5daa;
+  --class-fill: #c9a22714; --class-stroke: #c9a227;
+  --group-fill: #2a7fd408; --group-stroke: #2a7fd4aa;
+  --icon: #8884; --icon-D: #8886; --icon-m: #4a90e233; --icon-C: #c9a22744;
+  --anchor: #8886;
+  --glow-color: #ff5a1f;  /* highlight: a hovered edge or box, its edges and the utilities it uses */
+  --e-other: #8889; --e-import: #888b; --e-http: #2a7fd4; --e-env: #3a9d5d; --e-deploy: #8e5bd6; --e-provide: #2aa8a8; --e-dangling: #8886;
+}
+body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 290px 1fr; height: 100vh; }
 aside { border-right: 1px solid var(--line); padding: 10px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
 aside h1 { font-size: 14px; margin: 0; }
 aside h2 { font-size: 11px; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 select, input[type=number] { font: inherit; }
 label { display: block; margin: 1px 0; }
-main { position: relative; overflow: hidden; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+label.row select { margin-left: auto; }
+.muted { color: var(--muted); }
+[data-help] { cursor: help; }
+label.opt input, details summary, button[data-help] { cursor: pointer; }
+label.opt:hover, details summary:hover { background: var(--hover-bg); }
+details summary { list-style-position: inside; padding: 1px 0; }
+details > div { padding-left: 14px; }
+#groups label .muted { font-size: 11px; }
+#help { position: fixed; z-index: 10; display: none; max-width: 300px; background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+  box-shadow: 0 2px 8px #0003; padding: 6px 8px; font-size: 12px; line-height: 1.4; pointer-events: none; }
+main { display: grid; grid-template-rows: auto 1fr; overflow: hidden; min-width: 0; }
+#views { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); }
+#views button { border: 1px solid transparent; border-bottom: none; background: none; padding: 4px 14px; border-radius: 4px 4px 0 0; color: var(--muted); margin-bottom: -1px; }
+#views button:hover { color: var(--ink); }
+#views button[aria-selected=true] { border-color: var(--line); background: var(--bg); color: var(--ink); font-weight: 600; }
+#stage { position: relative; overflow: hidden; }
 svg#g { width: 100%; height: 100%; display: block; cursor: grab; }
 svg#g:active { cursor: grabbing; }
-.node rect { fill: Canvas; stroke: var(--ink); stroke-width: 1; rx: 4; }
-.node.container > rect { fill: #80808012; stroke: #8887; }
-.node.container.cycle > rect { stroke: #d9534f; }
-.node.files > rect { fill: #80808018; stroke: #8886; stroke-dasharray: 2 2; }
+.node > rect { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1; rx: var(--box-radius); filter: var(--box-shadow); }
+.node.container > rect { fill: var(--container-fill); stroke: var(--container-stroke); }
+.node.files > rect { fill: var(--files-fill); stroke: var(--files-stroke); stroke-dasharray: 2 2; }
 .node.files text { fill: var(--muted); }
-.node.package > rect { stroke-dasharray: 4 3; fill: #80808008; }
-.node.service > rect, .node.image > rect, .node.host > rect { fill: #4a90e218; stroke: #4a90e2; }
-.node.endpoint > rect, .node.env > rect { fill: #2a7fd410; stroke: #2a7fd4aa; }
-.node.env > rect { fill: #3a9d5d10; stroke: #3a9d5daa; }
-.node.cycle > rect { stroke: #d9534f; stroke-width: 1.6; }
-.node.class > rect { fill: #c9a22714; stroke: #c9a227; }
-.node.file > rect { stroke: #8888; }
-.node .icon rect { fill: #8884; stroke: none; }
+.node.package > rect { stroke-dasharray: 4 3; fill: var(--package-fill); }
+.node.service > rect, .node.image > rect, .node.host > rect { fill: var(--deploy-fill); stroke: var(--deploy-stroke); }
+.node.endpoint > rect { fill: var(--iface-fill); stroke: var(--iface-stroke); }
+.node.env > rect { fill: var(--env-fill); stroke: var(--env-stroke); }
+.node.class > rect { fill: var(--class-fill); stroke: var(--class-stroke); }
+.node.file > rect { stroke: var(--file-stroke); }
+.node.group > rect { fill: var(--group-fill); stroke: var(--group-stroke); stroke-dasharray: 6 3; }
+.node.utility > rect { stroke-dasharray: 1 3; }
+.node .icon rect { fill: var(--icon); stroke: none; rx: 3px; }
 .node .icon text { font-size: 9px; font-weight: 700; fill: var(--ink); }
-.node .icon.C rect { fill: #c9a22744; }
-.node .icon.D rect { fill: #8886; }
-.node .icon.m rect { fill: #4a90e233; }
-.node circle.anchor { fill: #8886; stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.node .icon.C rect { fill: var(--icon-C); }
+.node .icon.D rect { fill: var(--icon-D); }
+.node .icon.m rect { fill: var(--icon-m); }
+.node circle.chip { stroke: var(--bg); }
+.node circle.anchor { fill: var(--anchor); stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .node g.fold { cursor: pointer; pointer-events: all; }
 .node g.fold rect { fill: transparent; stroke: none; }
-.node g.fold:hover rect { fill: #8883; }
+.node g.fold:hover rect { fill: var(--hover-bg); }
 .node g.fold text { font-size: 14px; fill: var(--muted); }
 .node g.fold:hover text { fill: var(--ink); }
-.node text { font-size: 12px; fill: var(--ink); pointer-events: none; }
+.node text { font-size: 12px; font-family: var(--font-diagram); fill: var(--ink); pointer-events: none; }
 .node text.badge { font-size: 9.5px; fill: var(--muted); }
 .node { cursor: pointer; }
-.edge path { fill: none; stroke: #8889; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.edge { color: var(--e-other); --eo: 1; }
+.edge path { fill: none; stroke: currentColor; stroke-opacity: var(--eo); stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .node rect { vector-effect: non-scaling-stroke; }
-.edge.import path { stroke: #888b; }
-.edge.http path { stroke: #2a7fd4; }
-.edge.env path { stroke: #3a9d5d; }
-.edge.deploy path { stroke: #8e5bd6; }
-.edge.provide path { stroke: #2aa8a8; stroke-dasharray: 5 3; }
+/* the arrowhead is part of the edge: same colour, same opacity, same hover */
+.edge polygon.head { fill: currentColor; fill-opacity: var(--eo); stroke: none; }
+.edge.provide polygon.head { fill: var(--bg); fill-opacity: 1; stroke: currentColor; stroke-opacity: var(--eo); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.edge.import { color: var(--e-import); }
+.edge.http { color: var(--e-http); }
+.edge.env { color: var(--e-env); }
+.edge.deploy { color: var(--e-deploy); }
+.edge.provide { color: var(--e-provide); }
+.edge.provide path { stroke-dasharray: 5 3; }
 .edge.dangling path { stroke-dasharray: 3 3; }
-.edge.heuristic path { stroke-opacity: .65; }
-.edge.local path { stroke-opacity: .3; stroke-width: .7px !important; }
-.edge.single path { stroke-opacity: .55; }
-.edge.weak path { stroke-opacity: .22; stroke-width: .7px !important; }
-.edge.local.single path, .edge.local.weak path { stroke-opacity: .2; }
+.edge.heuristic { --eo: .65; }
+.edge.local { --eo: .3; }
+.edge.single { --eo: .55; }
+.edge.weak { --eo: .22; }
+.edge.local.single, .edge.local.weak { --eo: .2; }
+.edge.local path, .edge.weak path { stroke-width: .7px !important; }
 svg.nolabels .edge text { display: none; }
-.node.utility > rect { stroke-dasharray: 1 3; }
-.edge text { font-size: 9.5px; fill: var(--muted); paint-order: stroke; stroke: Canvas; stroke-width: 3px; }
-.edge:hover path { stroke: #d9534f; stroke-opacity: 1; }
+.edge text { font-size: 9.5px; font-family: var(--font-diagram); fill: var(--muted); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
+/* glow: a hovered edge; a hovered leaf box (or own-code dot), its edges and the utilities it uses (.lit, draw.js) */
+.edge:hover, .edge.lit { --eo: 1 !important; filter: drop-shadow(0 0 1.5px var(--glow-color)) drop-shadow(0 0 4px var(--glow-color)); }  /* beats the faint local/single/weak levels */
+.node.lit > rect, .node.lit > circle.anchor { filter: drop-shadow(0 0 2px var(--glow-color)) drop-shadow(0 0 6px var(--glow-color)); }
 #status { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
-#rawpane { position: absolute; inset: 0; overflow: auto; background: Canvas; padding: 8px 12px; display: none; font: 11.5px/1.45 ui-monospace, monospace; }
+#mmdpane { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 8px; display: none; }
+#mmdpane .req { color: var(--muted); margin-bottom: 6px; }
+#rawpane { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 8px 12px; display: none; font: 11.5px/1.45 ui-monospace, monospace; }
 #rawpane pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
 #rawpane .req { font: 12px system-ui, sans-serif; color: var(--muted); margin-bottom: 6px; word-break: break-all; }
-#rawpane .unfold { color: #2a7fd4; cursor: pointer; text-decoration: underline dotted; }
+#rawpane .unfold { color: var(--e-http); cursor: pointer; text-decoration: underline dotted; }
 /* hover card (js/tip.js) */
 #tip { position: absolute; pointer-events: none; display: none; z-index: 2; box-sizing: border-box; max-width: 380px; min-width: 200px;
-  background: Canvas; color: CanvasText; border: 1px solid #8885; border-radius: 6px; padding: 8px 10px 9px;
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px 9px;
   box-shadow: 0 4px 16px #0002, 0 1px 3px #0001; font-size: 12px; line-height: 1.4; }
 #tip .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 #tip .kind { font-size: 10px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
 #tip .title { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
 #tip .path { margin-top: 1px; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); overflow-wrap: anywhere; }
 #tip .summary { margin-top: 6px; }
-#tip .v { font-weight: 600; background: #4a90e21f; border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
+#tip .v { font-weight: 600; background: color-mix(in srgb, var(--e-http) 14%, transparent); border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
 #tip .facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 7px 0 0; }
 #tip .facts dt { color: var(--muted); }
 #tip .facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -75,10 +121,13 @@ svg.nolabels .edge text { display: none; }
 #tip .list ul { margin: 2px 0 0; padding: 0; list-style: none; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 #tip .list li.more { font-family: inherit; color: var(--muted); }
 #tip .hint { margin-top: 6px; font-size: 11px; color: var(--muted); }
-#tip .hint .v { background: none; padding: 0; color: CanvasText; font-weight: 500; }
+#tip .hint .v { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: 1px 0; }
 .legend span { display: inline-block; width: 22px; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+.legend .import { border-color: var(--e-import); } .legend .http { border-color: var(--e-http); } .legend .env { border-color: var(--e-env); }
+.legend .deploy { border-color: var(--e-deploy); } .legend .provide { border-color: var(--e-provide); border-top-style: dashed; }
+.legend .dangling { border-color: var(--e-dangling); border-top-style: dashed; }
 button { font: inherit; padding: 2px 8px; }
-.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px dashed #8886; border-radius: 4px; padding: 2px 6px; margin: 2px 2px 2px 0; font-size: 12px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px dashed var(--files-stroke); border-radius: 4px; padding: 2px 6px; margin: 2px 2px 2px 0; font-size: 12px; }
 .chip button { padding: 0 6px; font-size: 11px; }

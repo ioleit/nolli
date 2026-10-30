@@ -11,7 +11,7 @@
 //                      becomes an invisible stand-in between the two siblings that contain
 //                      its ends, laid out but not drawn
 
-import { CONTAINER_PAD, childrenOf, isAnchor, isContainer, leafSize, straight } from "./index.js";
+import { CONTAINER_PAD, childrenOf, containerPad, isAnchor, isContainer, leafSize, straight } from "./index.js";
 
 /**
  * @typedef {import("../../types/nolli").Scene} Scene
@@ -57,7 +57,8 @@ export function elkGraph(scene, direction, hierarchy = "INCLUDE_CHILDREN") {
       if (separate) Object.assign(opts, graphOptions(direction, hierarchy));
       containers.set(n.id, node);
       node.children = (kidsOf.get(n.id) || []).map(build);
-      opts["elk.padding"] = `[top=${P.top},left=${P.left},bottom=${P.bottom},right=${P.right}]`;
+      const pad = containerPad(n);
+      opts["elk.padding"] = `[top=${pad.top},left=${pad.left},bottom=${pad.bottom},right=${pad.right}]`;
       opts["elk.spacing.nodeNode"] = "16";
       opts["elk.layered.spacing.nodeNodeBetweenLayers"] = "26";
       return node;

@@ -4,7 +4,7 @@
 
 import cytoscape from "https://cdn.jsdelivr.net/npm/cytoscape@3.34.4/+esm";
 import fcose from "https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/+esm";
-import { CONTAINER_PAD, childrenOf, isContainer, leafSize, straight } from "./index.js";
+import { CONTAINER_PAD, childrenOf, containerPad, isContainer, leafSize, straight } from "./index.js";
 
 /**
  * @typedef {import("../../types/nolli").Scene} Scene
@@ -39,6 +39,7 @@ export const OPTIONS = {
 export async function layout(scene, { seed = "" } = {}) {
   const sizes = new Map(scene.nodes.filter(n => !isContainer(n)).map(n => [n.id, leafSize(n)]));
   const size = (/** @type {string} */ id) => sizes.get(id) || { w: 20, h: 20 };
+  const byId = new Map(scene.nodes.map(n => [n.id, n]));
   const cy = cytoscape({
     headless: true, styleEnabled: true,
     elements: [
@@ -48,7 +49,7 @@ export async function layout(scene, { seed = "" } = {}) {
     style: [
       { selector: "node", style: { width: (/** @type {cytoscape.NodeSingular} */ n) => size(n.id()).w, height: (/** @type {cytoscape.NodeSingular} */ n) => size(n.id()).h, shape: "rectangle" } },
       // uniform padding as large as the header, so our own (header-on-top) box fits inside
-      { selector: ":parent", style: { padding: `${P.top}px` } },
+      { selector: ":parent", style: { padding: (/** @type {cytoscape.NodeSingular} */ n) => `${Math.max(P.top, byId.get(n.id()) ? containerPad(/** @type {SceneNode} */ (byId.get(n.id()))).bottom : 0)}px` } },
     ],
   });
   const random = Math.random;
@@ -68,7 +69,8 @@ export async function layout(scene, { seed = "" } = {}) {
       const cs = (kids.get(n.id) || []).map(box);
       const x0 = Math.min(...cs.map(c => c.x)), y0 = Math.min(...cs.map(c => c.y));
       const x1 = Math.max(...cs.map(c => c.x + c.w)), y1 = Math.max(...cs.map(c => c.y + c.h));
-      b = { x: x0 - P.left, y: y0 - P.top, w: x1 - x0 + P.left + P.right, h: y1 - y0 + P.top + P.bottom };
+      const pad = containerPad(n);
+      b = { x: x0 - pad.left, y: y0 - pad.top, w: x1 - x0 + pad.left + pad.right, h: y1 - y0 + pad.top + pad.bottom };
     } else {
       const p = cy.getElementById(n.id).position(), s = size(n.id);
       b = { x: p.x - s.w / 2, y: p.y - s.h / 2, w: s.w, h: s.h };
