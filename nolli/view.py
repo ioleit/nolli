@@ -29,27 +29,34 @@ def unfold_cost(m: Model, v: str, hidden: set[str], anchors: set[str] = frozense
     return n + (1 if v in anchors else 0) - 1
 
 
-def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("fs:.",)) -> dict:
+def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("fs:.",), hidden: set[str] | None = None) -> dict:
+    """In a diff model the budget goes to the changes first (``review.change_scores``),
+    then whatever is left to structure as usual."""
+    from .review import change_scores, is_diff
+
     roles = tuple(hidden_roles) if hidden_roles is not None else hidden_by_role.__defaults__[0]
-    hidden = hidden_by_role(m, roles) | set(image_aliases(m))
+    if hidden is None:
+        hidden = hidden_by_role(m, roles) | set(image_aliases(m))
     lca, _loose = reveal_scores(m, hidden)
     anchors = init_anchor_dirs(m, hidden)
     expanded: set[str] = {e for e in always_expand if m.has(e)}
-    while True:
-        visible = visible_from_expanded(m, expanded, hidden)
-        room = budget - len(visible)
-        best, best_key = None, (0.0, 0)
-        for v in visible:
-            if v.startswith("body:") or m.entities[v].kind not in ("directory", "group", "file") or not m.children(v):
-                continue
-            score, delta = lca.get(v, 0), unfold_cost(m, v, hidden, anchors)
-            if score <= 0 or delta < 1 or delta > room:
-                continue
-            key = (score / delta, score)
-            if key > best_key or (key == best_key and best is not None and v < best):
-                best, best_key = v, key
-        if best is None:
-            break
-        expanded.add(best)
+    phases = [change_scores(m, hidden), lca] if is_diff(m) else [lca]
+    for scores in phases:
+        while True:
+            visible = visible_from_expanded(m, expanded, hidden)
+            room = budget - len(visible)
+            best, best_key = None, (0.0, 0.0)
+            for v in visible:
+                if v.startswith("body:") or m.entities[v].kind not in ("directory", "group", "file") or not m.children(v):
+                    continue
+                score, delta = scores.get(v, 0), unfold_cost(m, v, hidden, anchors)
+                if score <= 0 or delta < 1 or delta > room:
+                    continue
+                key = (score / delta, score)
+                if key > best_key or (key == best_key and best is not None and v < best):
+                    best, best_key = v, key
+            if best is None:
+                break
+            expanded.add(best)
     visible = visible_from_expanded(m, expanded, hidden)
     return {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible), "hidden_roles": list(roles)}

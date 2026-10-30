@@ -5,7 +5,8 @@
 Static files come from this directory; ``/data/<name>/<file>`` serves the
 dataset directories under --data; ``/api/list`` lists them, newest first;
 ``/api/scene?d=<name>&...`` returns the scene for a view state (``nolli/scene.py``;
-the parameters are the viewer's location-hash keys). Needs only the standard library:
+the parameters are the viewer's location-hash keys); ``/api/node?d=<name>&id=<entity>``
+returns the details of one box in a diff dataset (``nolli/review.py``). Needs only the standard library:
 the nolli package is imported from this checkout, not from an installed copy.
 """
 
@@ -25,6 +26,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # the nolli package of this checkout
 
 from nolli.model import Model  # noqa: E402
+from nolli.review import details  # noqa: E402
 from nolli.scene import scene, state_from_query  # noqa: E402
 
 _models: dict[str, tuple[float, Model]] = {}
@@ -90,6 +92,19 @@ class Handler(SimpleHTTPRequestHandler):
                               "entities": len(m.entities), "relations": len(m.relations)}
             out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
             self.send_json(out)
+            return
+        if path == "/api/node":
+            q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+            ds = self.data_root / q.get("d", "")
+            if not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
+                self.send_json({"error": f"no dataset {q.get('d')!r}"}, 404)
+                return
+            m = load_model(ds / "model.json")
+            x = q.get("id", "")
+            if not m.has(x[5:] if x.startswith("body:") else x):
+                self.send_json({"error": f"no entity {x!r}"}, 404)
+                return
+            self.send_json(details(m, x))
             return
         if path.startswith("/data/"):
             rel = path[len("/data/"):]

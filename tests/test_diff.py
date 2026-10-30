@@ -92,3 +92,36 @@ def test_repository_untouched(repo):
     before = git(path, "status", "--porcelain"), git(path, "worktree", "list")
     diff(path, base, head, extract)
     assert (git(path, "status", "--porcelain"), git(path, "worktree", "list")) == before
+
+
+def test_scene_review(repo):
+    from nolli.review import Links, details
+    from nolli.scene import ViewState, scene
+
+    path, base, head = repo
+    git(path, "remote", "add", "origin", "git@github.com:acme/demo.git")
+    m, _ = diff(path, base, head, extract)
+    m.meta["diff"]["pr"] = 7
+    sc = scene(m, ViewState(expanded=["fs:.", "fs:app", "fs:app/store.py"]))
+    nodes = {n["id"]: n for n in sc["nodes"]}
+    assert nodes["py:app/store.py#Index"]["diff"]["status"] == "added"
+    assert nodes["py:app/store.py#Store"]["diff"] == nodes["py:app/store.py#Store"]["diff"] | {"status": "changed", "added": 1, "removed": 1}
+    assert nodes["fs:app/old.py"]["diff"]["status"] == "removed"
+    assert nodes["py:app/store.py#Cache"]["diff"] is None
+    edges = {(e["src"], e["dst"]): e for e in sc["edges"]}
+    new = edges[("fs:app/api.py", "py:app/store.py#Index")]["diff"]
+    assert new["status"] == "added" and new["base"] == 0 and new["head"] >= 1 and new["changes"][0]["status"] == "added"
+    assert sc["diff"]["link"] == "https://github.com/acme/demo/pull/7"
+    # one commit at a time: what is missing on that side is not drawn
+    ids = lambda st: {n["id"] for n in scene(m, ViewState(expanded=["fs:.", "fs:app", "fs:app/store.py"], side=st))["nodes"]}
+    assert "py:app/store.py#Index" not in ids("base") and "fs:app/old.py" in ids("base")
+    assert "py:app/store.py#Index" in ids("head") and "fs:app/old.py" not in ids("head")
+    # the default view unfolds towards the change
+    assert "fs:app" in scene(m, ViewState())["state"]["expanded"]
+    # details: files with hunks and links into the PR's files view
+    d = details(m, "fs:app")
+    store = next(f for f in d["files"] if f["path"] == "app/store.py")
+    assert store["link"] == f"https://github.com/acme/demo/pull/7/files#{Links.anchor('app/store.py')}"
+    assert store["hunks"] and store["hunks"][0]["link"].startswith(store["link"] + "R")
+    assert any(c["name"] == "Store" for c in d["classes"])
+    assert any(e["id"] == "py:app/store.py#Index" and e["status"] == "added" for e in d["entities"])

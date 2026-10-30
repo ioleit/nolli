@@ -19,6 +19,7 @@ from .rollup import (
     HIDDEN_ROLES_DEFAULT, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
     rollup, utility_badges, visible_from_expanded,
 )
+from .review import Links, diff_index, fact_change, is_diff, node_diff
 from .view import default_view
 
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
@@ -40,30 +41,35 @@ class ViewState:
     bundle: bool = True  # fan-out edges to a container's boundary
     utilities: bool = True  # widely used nodes as badges on their users
     hide_internal: bool = False  # drop edges inside a container, count them in its header
+    side: str = "both"  # diff models: "base" or "head" draws one commit, "both" the merged picture
 
 
-def hidden_for(m: Model, roles) -> set[str]:
-    """Files and directories whose role is not shown, plus images drawn as their service."""
+def hidden_for(m: Model, roles, side: str = "both") -> set[str]:
+    """Files and directories whose role is not shown, plus images drawn as their service; in a
+    diff model drawn for one side, what does not exist on that side."""
     shown = set(roles)
     out = {e.id for e in m.entities.values()
            if e.kind in ("file", "directory") and not e.attrs.get("root") and e.attrs.get("role") and e.attrs["role"] not in shown}
+    if side in ("base", "head"):
+        gone = "added" if side == "base" else "removed"
+        out |= {e.id for e in m.entities.values() if (e.attrs.get("diff") or {}).get("status") == gone}
     return out | set(image_aliases(m))
 
 
 def compute(m: Model, st: ViewState) -> tuple[set[str], set[str], set[str], RolledUp, set[str]]:
     """(expanded, hidden, visible, rolled, utilities) for a state; expanded is normalised to
     the containers actually reached, so folding a box also folds everything inside it."""
-    hidden = hidden_for(m, st.roles)
+    hidden = hidden_for(m, st.roles, st.side)
     if st.expanded is None:
         hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
-        expanded = set(default_view(m, budget=st.budget, hidden_roles=hidden_roles)["expanded"])
+        expanded = set(default_view(m, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
     else:
         expanded = {x for x in st.expanded if m.has(x)}
     walked: set[str] = set()
     visible = visible_from_expanded(m, expanded, hidden, walked=walked)
     expanded = walked
     rolled = rollup(m, visible, hidden, through_interfaces=st.through,
-                    dangling_use_kinds=("endpoint", "env") if st.dangling_use else (), env_edges=st.env_edges)
+                    dangling_use_kinds=("endpoint", "env") if st.dangling_use else (), env_edges=st.env_edges, side=st.side)
     if st.bundle:
         rolled.edges = bundle(m, rolled.edges, expanded)
     utilities = utility_badges(m, rolled, expanded) if st.utilities else set()
@@ -127,7 +133,15 @@ def badge_text(m: Model, x: str, rolled: RolledUp, expanded: set[str]) -> str:
     ann = rolled.annotations.get(x)
     if not ann:
         return ""
-    return " · ".join("→ " + label_of(m, g[5:], expanded) if g.startswith("util:") else f"{c} {GROUP_SHORT.get(g, g)}"
+    ch = rolled.annotation_changes.get(x, {})
+
+    def delta(g: str) -> str:
+        c = ch.get(g)
+        if not c:
+            return ""
+        a, r = sum(1 for v in c.values() if v == "added"), sum(1 for v in c.values() if v == "removed")
+        return " (" + " ".join(t for t in (f"+{a}" if a else "", f"−{r}" if r else "", "~" if not a and not r else "") if t) + ")"
+    return " · ".join("→ " + label_of(m, g[5:], expanded) if g.startswith("util:") else f"{c} {GROUP_SHORT.get(g, g)}{delta(g)}"
                       for g, c in sorted(ann.items()))
 
 
@@ -196,6 +210,8 @@ def node_tip(m: Model, x: str, rolled: RolledUp, utilities: set[str]) -> str:
 
 def edge_tip(e) -> str:
     lines = [f"{e.kind} {e.subkind}  ×{e.count}  ({e.confidence})", f"{e.src} → {e.dst}"]
+    if e.status:
+        lines.insert(1, f"{e.status}: {e.base} → {e.head} references, {len(e.changed)} changed underneath")
     via = sorted(e.via)
     if via:
         lines.append("via: " + "\n     ".join(via[:14]) + (f"\n     … {len(via) - 14} more" if len(via) > 14 else ""))
@@ -257,6 +273,9 @@ def cycle_members(nodes: list[str], edges) -> set[str]:
 
 def scene(m: Model, st: ViewState) -> dict:
     expanded, hidden, visible, rolled, utilities = compute(m, st)
+    diff = is_diff(m)
+    links = Links(m) if diff else None
+    by_fact = {f"{r.kind}|{r.src}|{r.dst}|{r.subkind}": r for r in m.relations if r.attrs.get("diff")} if diff else {}
     root_group = lambda x: m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None  # noqa: E731
 
     def local(e) -> bool:
@@ -296,6 +315,7 @@ def scene(m: Model, st: ViewState) -> dict:
             "service_color": services.index(x) if x in services else None,
             "internal": internal_drawn.get(x, 0) if container else None,
             "tip": node_tip(m, x, rolled, utilities),
+            "diff": node_diff(m, x, rolled.internal_changes.get(x)) if diff else None,
         }
 
     def build(x: str, parent: str | None) -> bool:
@@ -343,6 +363,9 @@ def scene(m: Model, st: ViewState) -> dict:
             "local": local(e), "single": e.count == 1,
             "weak": bool(ot) and e.kind == USE and e.count / ot < 0.05 and e.count < 3,
             "dangling": e.subkind.endswith("-dangling"), "heuristic": e.confidence == "heuristic", "tip": edge_tip(e),
+            "diff": ({"status": e.status, "base": e.base, "head": e.head, "facts": sorted(e.changed),
+                      "changes": [fact_change(m, by_fact[f], links) for f in sorted(e.changed)[:40] if f in by_fact],
+                      "more": max(0, len(e.changed) - 40)} if diff and e.status else None),
         })
 
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
@@ -359,8 +382,18 @@ def scene(m: Model, st: ViewState) -> dict:
     groups = [{"id": r, "name": m.entities[r].name, "size": len(m.children(r)), "open": r in expanded}
               for r in m.roots() if m.entities[r].kind == "group" and r != "unresolved"]
     state = asdict(st) | {"expanded": sorted(expanded)}
-    return {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "residue": residue,
-            "stats": {"nodes": len(drawn), "edges": len(edge_out)}}
+    out = {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "residue": residue,
+           "stats": {"nodes": len(drawn), "edges": len(edge_out)}}
+    if diff:
+        meta = m.meta["diff"]
+        statuses = defaultdict(int)
+        for e in edge_out:
+            if e["diff"]:
+                statuses[e["diff"]["status"]] += 1
+        idx = diff_index(m)
+        out["diff"] = {**{k: meta.get(k) for k in ("base", "head", "base_short", "head_short", "remote", "pr", "files_changed", "added", "removed", "title")},
+                       "link": links.change(), "drawn": dict(statuses), "changed_entities": len(idx)}
+    return out
 
 
 def state_from_query(q: dict[str, str]) -> ViewState:
@@ -378,4 +411,6 @@ def state_from_query(q: dict[str, str]) -> ViewState:
     st.bundle = q.get("nb") != "1"
     st.utilities = q.get("nu") != "1"
     st.hide_internal = q.get("hi") == "1"
+    if q.get("s") in ("base", "head"):
+        st.side = q["s"]
     return st

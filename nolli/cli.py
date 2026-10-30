@@ -1,7 +1,7 @@
 """nolli command line.
 
     nolli extract <repo> -o <out_dir> [--budget N]
-    nolli diff <repo> <base> <head> -o <out_dir> [--budget N]
+    nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T]
 
 Writes model.json (all facts), view.json (the default cut), scene.json (the
 scene of that cut, exactly what the viewer's /api/scene returns for it),
@@ -75,6 +75,10 @@ def cmd_diff(args: argparse.Namespace) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     m, summary = diff(Path(args.repo), args.base, args.head, extract)
+    if args.pr:
+        m.meta["diff"]["pr"] = args.pr
+    if args.title:
+        m.meta["diff"]["title"] = args.title
     report = write_dataset(m, out, args.budget, {}, {"diff": summary})
     print(json.dumps({"diff": m.meta["diff"] | {"base": m.meta["diff"]["base_short"], "head": m.meta["diff"]["head_short"]},
                       "changes": summary, "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]}}, indent=1))
@@ -119,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     df.add_argument("head", help="head commit (any git revision)")
     df.add_argument("-o", "--out", required=True)
     df.add_argument("--budget", type=int, default=34)
+    df.add_argument("--pr", type=int, help="pull request number on the GitHub remote, for links to its files view")
+    df.add_argument("--title", help="what the change is called, shown in the viewer's header")
     df.set_defaults(fn=cmd_diff)
     args = ap.parse_args(argv)
     return args.fn(args)
