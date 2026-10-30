@@ -182,6 +182,11 @@ export function draw(g, scene, laid, onToggle, sameWidth = false) {
     }
     if (e.label && mid && !e.weak && !e.local) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = e.label; ge.appendChild(t); }
     ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.tip));
+    // the hovered edge goes on top of the other edges (still below the fold buttons), so its glow isn't covered
+    ge.addEventListener("mouseenter", () => {
+      const after = foldLayer[0] && foldLayer[0].parentNode === g ? foldLayer[0] : null;
+      if (ge.nextSibling !== after) g.insertBefore(ge, after);
+    });
     ge.addEventListener("mouseleave", hideTip);
     g.appendChild(ge); edges.push(ge);
   }
