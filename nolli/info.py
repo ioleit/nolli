@@ -191,6 +191,15 @@ def edge_info(ctx: Ctx, e) -> list:
     if dangling:
         return [say("{} reads {} that nothing here sets", src, count(e.count, "variable"))] if sub == "env" \
             else [say("{} uses {} that nothing here provides", src, count(e.count, "interface"))]
+    names = getattr(e, "names", None) or {}
+    if sub == "import":
+        if not names:  # import statements whose names were not recorded (TypeScript, unresolved Python)
+            return [say("{} imports {}", src, dst)]
+        if set(names) == {ctx.m.entities[e.dst].name} if ctx.m.has(e.dst) else False:
+            return [say("{} uses {}", src, dst)]  # the target is the one name used
+        # the names themselves, most used first: "api/ references Store and list_items in lib/"
+        top = sorted(names, key=lambda k: (-names[k], k))
+        return [say("{} references ", src) + listing("{}", top, "more", limit=3) + say(" in {}", dst)]
     if sub in COUNTED:
         template, noun_ = COUNTED[sub]
         return [say(template, src, count(e.count, noun_), dst)]

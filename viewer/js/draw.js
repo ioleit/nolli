@@ -56,12 +56,11 @@ const fader = els => o => { for (const x of els) if (o === null) x.removeAttribu
 
 /**
  * A module's own code: a dot that edges attach to.
- * @param {import("../types/nolli").AnchorNode} n @param {Box} p @param {boolean} live with tooltip
+ * @param {import("../types/nolli").AnchorNode} n @param {Box} p
  * @returns {Built}
  */
-function buildAnchor(n, p, live) {
+function buildAnchor(n, p) {
   const grp = el("g", { class: "node folded files ", transform: at(p) });
-  if (live) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.info, grp)); grp.addEventListener("mouseleave", hideTip); }
   grp.appendChild(el("circle", { cx: 7, cy: 7, r: 5, class: "anchor" }));
   return { els: [grp], update: b => grp.setAttribute("transform", at(b)) };
 }
@@ -76,7 +75,6 @@ function buildAnchor(n, p, live) {
 function buildBox(n, p, onToggle) {
   const isC = n.container;
   const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind].join(" "), transform: at(p) });
-  if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.info, grp)); grp.addEventListener("mouseleave", hideTip); }
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
   const icon = n.icon;
   const centred = !isC && !icon;
@@ -138,7 +136,7 @@ function buildBox(n, p, onToggle) {
 }
 
 /** @param {SceneNode} n @param {Box} p @param {((id: string) => void) | null} onToggle */
-const build = (n, p, onToggle) => isAnchor(n) ? buildAnchor(n, p, !!onToggle) : buildBox(n, p, onToggle);
+const build = (n, p, onToggle) => isAnchor(n) ? buildAnchor(n, p) : buildBox(n, p, onToggle);
 
 /**
  * @param {Element} g the root group
@@ -214,14 +212,16 @@ function lightOnHover(scene, boxEl, edgesAt, raise) {
   for (const n of scene.nodes) {
     const box = boxEl.get(n.id);
     if (!box || ("container" in n && n.container)) continue;
-    box.addEventListener("mouseenter", () => {
+    // the hover text appears with the highlight: for leaves only, on the same event
+    box.addEventListener("mouseenter", ev => {
+      showTip(/** @type {MouseEvent} */ (ev), n.info, box);
       unlight();
       lit.add(box);
       for (const u of n.utilities_used || []) { const b = boxEl.get(u); if (b) lit.add(b); }
       for (const ge of edgesAt.get(n.id) || []) { lit.add(ge); raise(ge); }
       for (const x of lit) x.classList.add("lit");
     });
-    box.addEventListener("mouseleave", unlight);
+    box.addEventListener("mouseleave", () => { unlight(); hideTip(); });
   }
 }
 

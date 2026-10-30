@@ -368,7 +368,7 @@ def resolve_pyrefs(ctx: Context) -> None:
             stats["self"] += r.count
         else:
             stats["symbol" if dst in symbols else "file"] += r.count
-            new_relations.append(Relation(USE, r.src, dst, "ref", r.count, "exact", r.provenance))
+            new_relations.append(Relation(USE, r.src, dst, "ref", r.count, "exact", r.provenance, dict(r.attrs)))
     m.relations = new_relations
 
     def file_of(eid: str) -> str | None:

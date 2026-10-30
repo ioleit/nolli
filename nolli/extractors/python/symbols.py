@@ -7,7 +7,7 @@ are the module's own body, so their references are attributed to the module
 itself. A module without classes therefore has nothing to unfold. This is
 deliberate: the picture is about architecture, not call graphs.
 
-References are ``use`` relations with subkind ``ref``: from the class whose
+References are ``use`` relations with subkind ``ref`` (attrs ``name``: the name used): from the class whose
 body mentions a name (methods count for their class) or from the module, to
 the class the name is bound to, or to the module that defines it when the
 name is a function, a variable or a submodule. Names bound by imports are
@@ -123,9 +123,9 @@ def run(ctx: Context) -> None:
                 m.contain(fid, sid, "python-symbols")
                 classes[node.name] = sid
             elif isinstance(node, FUNC_DEFS):
-                bindings[node.name] = ("local", fid)  # a module's functions are the module's own body
+                bindings[node.name] = ("local", fid, node.name)  # a module's functions are the module's own body
         for name, sid in classes.items():
-            bindings[name] = ("local", sid)
+            bindings[name] = ("local", sid, name)
         for node in tree.body:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
@@ -138,11 +138,13 @@ def run(ctx: Context) -> None:
                 pending[(src, b)] += n
     ctx.notes["py-aliases"] = aliases_by_file
     for (src, b), n in pending.items():
+        name = {"local": lambda: b[2], "from": lambda: b[2], "module": lambda: b[1], "chain": lambda: b[1].rsplit(".", 1)[-1]}[b[0]]()
         if b[0] == "local":
-            m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", src.split("#")[0][3:] if src.startswith("py:") else src[3:])))
+            m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", src.split("#")[0][3:] if src.startswith("py:") else src[3:]),
+                                    {"name": name}))
             continue
         key = f"{b[1]}:{b[2]}" if b[0] == "from" else f"{b[1]}:"
         uid = f"unresolved:pyref:{key}"
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", key, {"language": "python", "ref": True}, Provenance("python-symbols")))
-        m.add_relation(Relation(USE, src, uid, "ref", n, "exact", Provenance("python-symbols")))
+        m.add_relation(Relation(USE, src, uid, "ref", n, "exact", Provenance("python-symbols"), {"name": name}))

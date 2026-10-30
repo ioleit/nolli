@@ -158,9 +158,9 @@ def test_hover_descriptions(repo: Path):
     derived = scene(m, ViewState(budget=12, groups=[]))
     http = next(e for e in derived["edges"] if e["style"] == "http")
     assert "to endpoints served by" in text(http["info"][0])
-    imp = next(e for e in sc["edges"] if e["style"] == "import")
-    line = imp["info"][0]
-    assert " references " in text(line) and any(isinstance(p, dict) and p["v"].split()[0].isdigit() for p in line)
+    # a Python reference edge names what it uses ("api/ references Store in store")
+    imp = next(e for e in sc["edges"] if e["style"] == "import" and " references " in text(e["info"][0]))
+    assert {"v": "Store"} in imp["info"][0], imp["info"]
 
 
 def test_groups_are_a_filter(repo: Path):
