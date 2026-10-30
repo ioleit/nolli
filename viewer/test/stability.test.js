@@ -52,3 +52,21 @@ test("a container and what it contains are not compared", () => {
   const after = laid({ box: [0, 0, 100, 100], in: [80, 80], out: [200, 0] });  // "in" moves inside its box
   assert.equal(compare(before, after, nested, nested).order, 1);
 });
+
+import { stacked } from "../js/stability.js";
+
+/** @param {[number, number][][]} routes @returns {Laid} */
+const routed = routes => ({ width: 0, height: 0, nodes: new Map(), edges: routes.map((pts, i) => ({ edge: /** @type {any} */ ({ key: String(i) }), sections: [pts.map(([x, y]) => ({ x, y }))] })) });
+
+test("edges apart are not stacked", () => {
+  assert.equal(stacked(routed([[[0, 0], [100, 0]], [[0, 20], [100, 20]]])), 0);
+});
+
+test("two edges sharing half their length: half of all length is stacked", () => {
+  // both 100 long; they share x 50..100 on the same line: 50 of each = 100 of 200
+  assert.equal(stacked(routed([[[0, 0], [100, 0]], [[50, 1], [150, 1]]])), 0.5);
+});
+
+test("an edge crossing another is not stacked", () => {
+  assert.equal(stacked(routed([[[0, 50], [100, 50]], [[50, 0], [50, 100]]])), 0);
+});

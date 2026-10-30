@@ -71,3 +71,32 @@ export function compare(before, after, sceneBefore, sceneAfter) {
 
   return { n, order: total ? kept / total : 1, knn: knn / n, residual: Math.sqrt(sq / n) / diag };
 }
+
+/**
+ * Edges drawn on top of each other: of all edge length, the share that lies on a segment
+ * of a different edge (horizontal or vertical segments within 1.5 px of each other). Each
+ * stretch counts once, however many edges share it, so the result is between 0 and 1.
+ * @param {Laid} laid
+ */
+export function stacked(laid) {
+  /** @type {{ e: number, k: "h" | "v", at: number, lo: number, hi: number }[]} */
+  const segs = [];
+  let total = 0;
+  laid.edges.forEach(({ sections }, e) => {
+    for (const pts of sections) for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      total += Math.hypot(b.x - a.x, b.y - a.y);
+      if (Math.abs(a.y - b.y) < 0.5) segs.push({ e, k: "h", at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) });
+      else if (Math.abs(a.x - b.x) < 0.5) segs.push({ e, k: "v", at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) });
+    }
+  });
+  let shared = 0;
+  for (const s of segs) {
+    // the parts of s covered by another edge's segment, merged so overlaps count once
+    const cover = segs.filter(t => t.e !== s.e && t.k === s.k && Math.abs(t.at - s.at) <= 1.5)
+      .map(t => [Math.max(s.lo, t.lo), Math.min(s.hi, t.hi)]).filter(([lo, hi]) => hi > lo).sort((p, q) => p[0] - q[0]);
+    let end = -Infinity;
+    for (const [lo, hi] of cover) { if (hi <= end) continue; shared += hi - Math.max(lo, end); end = hi; }
+  }
+  return total ? shared / total : 0;
+}
