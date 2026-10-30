@@ -339,7 +339,7 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
         vs = on_node.get(n["id"], [])
         n["verdicts"] = [v["id"] for v in vs]
         n["verdict"] = worst(vs)
-        n["review"] = node_review_info(n.get("diff"), vs)  # the card's second column
+        n["review"] = node_review_info(n.get("diff"), vs)  # the card's second part, under a line
     for e in edges:
         vs = on_edge.get(e["key"], [])
         e["verdicts"] = [v["id"] for v in vs]

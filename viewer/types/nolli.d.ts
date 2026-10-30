@@ -112,7 +112,7 @@ export interface BoxNode {
   diff?: NodeDiff | null;  // review mode only
   items?: string[];  // review items shown on this box
   verdicts?: string[];  // the review's verdicts on it (V ids)
-  review?: Info;  // the card's second column: what the change did to it, and the verdicts on it
+  review?: Info;  // the card's second part, under a line: what the change did to it, and the verdicts on it
   verdict?: Verdict | null;  // the worst of them
 }
 

@@ -15,7 +15,7 @@ import { byId, input, select } from "./dom.js";
 import { ALL_ROLES, DEFAULTS, OPTIONS, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { ENGINES, layout } from "./layout/index.js";
 import { draw, drawGhosts, light } from "./draw.js";
-import { pinTip } from "./tip.js";
+import { hideTip, pinTip } from "./tip.js";
 import { plan } from "./transition.js";
 import { DURATION, finish, play } from "./animate.js";
 import { hideRaw, onRawToggle, showRaw } from "./raw.js";
@@ -112,20 +112,30 @@ function jump(id) {
   writeHash();
 }
 
-/** After a jump: centre on the item's boxes and edges, flash them, and open the card beside
- * them. @param {boolean} [moving] the drawing is still moving into place: open the card after */
+const GLIDE = 520;  // ms, the move to an item after a jump
+
+/** After a jump, one step after the other: let the redraw finish moving boxes (if it does),
+ * glide to the item's boxes and edges while they flash, then open the card beside them.
+ * @param {boolean} [moving] the drawing is still moving into place */
 function pointAtItem(moving = false) {
   if (!focusNext || !scene || !shown || !state.item) { focusNext = false; return; }
   focusNext = false;
-  const { ids, keys } = targets(state.item);
-  const laid = shown.laid;
-  const ends = scene.edges.filter(e => keys.includes(e.key)).flatMap(e => [e.src, e.dst]);
-  focusOn([...ids, ...ends].map(x => laid.nodes.get(x)).filter(/** @returns {b is import("../types/nolli").Box} */ b => !!b));
-  light(byId("root"), ids, keys, true);
-  scrollToCurrent();
   if (pinTimer) clearTimeout(pinTimer);
   const id = state.item;
-  pinTimer = setTimeout(() => { pinTimer = null; pinItem(id); }, moving ? DURATION + 40 : 0);
+  scrollToCurrent();
+  hideTip(true);  // a card kept open for the last item would hang in the air while the view moves
+  const go = () => {
+    pinTimer = null;
+    if (!scene || !shown || state.item !== id) return;
+    const { ids, keys } = targets(id);
+    const laid = shown.laid;
+    const ends = scene.edges.filter(e => keys.includes(e.key)).flatMap(e => [e.src, e.dst]);
+    const smooth = state.animate && !reducedMotion.matches;
+    const ms = focusOn([...ids, ...ends].map(x => laid.nodes.get(x)).filter(/** @returns {b is import("../types/nolli").Box} */ b => !!b), smooth ? GLIDE : 0);
+    light(byId("root"), ids, keys, true);
+    pinTimer = setTimeout(() => { pinTimer = null; pinItem(id); }, ms + 30);
+  };
+  if (moving) pinTimer = setTimeout(go, DURATION + 30); else go();
 }
 
 /** @type {ReturnType<typeof setTimeout> | null} */

@@ -242,8 +242,8 @@ export function draw(g, scene, laid, handlers, sameWidth = false) {
     const label = e.diff ? (e.diff.status === "changed" ? `${e.diff.base}→${e.diff.head}` : e.diff.status === "added" ? `+${e.diff.head}` : `−${e.diff.base}`)
       : review ? "" : e.label;
     if (label && mid && (e.diff || (!e.weak && !e.local))) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = label; ge.appendChild(t); }
-    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); cardOnMark(vm, e, vm); ge.appendChild(vm); }
-    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e));
+    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
+    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e, null, ge));
     ge.addEventListener("mouseenter", () => raise(ge));
     ge.addEventListener("mouseleave", () => hideTip());
     g.appendChild(ge); edges.push(ge);
