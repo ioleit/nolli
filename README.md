@@ -40,6 +40,8 @@ python -I viewer/serve.py --data <parent of out_dirs> --host 127.0.0.1 --port 87
 (what the viewer draws for that cut), `default.mmd` (Mermaid of it) and `report.json`
 (counts, residue, extractor notes). The viewer lists every out_dir under `--data`.
 
+`/bench.html` on the same server measures how well layouts keep the reader's mental map over single unfold/fold steps (`viewer/js/stability.js`: kept left/right and above/below relations between boxes, kept nearest neighbours, movement left after the best shift and scale).
+
 The viewer computes nothing itself: on every click it asks the server for the scene
 (`/api/scene?d=<dataset>&x=<unfolded ids>&…`, the same keys as its location hash) and
 lays it out with ELK. "raw JSON" in its options shows the response instead of a drawing.
