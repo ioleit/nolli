@@ -2,7 +2,7 @@
 // back a handle per drawn node so an animation can move it (update) and fade it.
 
 import { showTip, hideTip } from "./tip.js";
-import { isAnchor } from "./layout/index.js";
+import { USES_LINE, isAnchor } from "./layout/index.js";
 
 /**
  * @typedef {import("../types/nolli").Scene} Scene
@@ -22,7 +22,27 @@ const color = i => PALETTE[(i < 0 ? 7 : i) % PALETTE.length];
 const ns = "http://www.w3.org/2000/svg";
 /** @param {string} t @param {Record<string, string | number>} [a] @returns {SVGElement} */
 const el = (t, a = {}) => { const x = /** @type {SVGElement} */ (document.createElementNS(ns, t)); for (const [k, v] of Object.entries(a)) x.setAttribute(k, String(v)); return x; };
-const MARKERS = `<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#999"/></marker><marker id="arr-hollow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="Canvas" stroke="#2aa8a8" stroke-width="1"/></marker>`;
+// Arrowheads: one size for every edge (in drawing units, so they zoom with the boxes),
+// drawn as part of the edge so they share its colour, opacity and hover (viewer.css); the
+// line stops at the head's base so a thick line can't show through the point.
+const HEAD = 9, HALF = 3.6;  // length, half width
+
+/** The head at the end of a route, as polygon points. @param {{ x: number, y: number }[]} pts */
+function head(pts) {
+  const n = pts.length, a = pts[n - 2], b = pts[n - 1], len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len, l = Math.min(HEAD, len * 0.9);
+  const bx = b.x - ux * l, by = b.y - uy * l;
+  return `${b.x},${b.y} ${bx - uy * HALF},${by + ux * HALF} ${bx + uy * HALF},${by - ux * HALF}`;
+}
+
+/** The route with its last segment shortened by the head's length. @param {{ x: number, y: number }[]} pts */
+function shortened(pts) {
+  const n = pts.length; if (n < 2) return pts;
+  const a = pts[n - 2], b = pts[n - 1], len = Math.hypot(b.x - a.x, b.y - a.y);
+  const cut = Math.min(HEAD, len * 0.9);
+  if (!len) return pts;
+  return [...pts.slice(0, -1), { x: b.x - (b.x - a.x) / len * cut, y: b.y - (b.y - a.y) / len * cut }];
+}
 /** @param {Box} b */
 const at = b => `translate(${b.x},${b.y})`;
 
@@ -55,7 +75,7 @@ function buildAnchor(n, p, live) {
  */
 function buildBox(n, p, onToggle) {
   const isC = n.container;
-  const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind, n.cycle ? "cycle" : ""].join(" "), transform: at(p) });
+  const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind].join(" "), transform: at(p) });
   if (onToggle) { grp.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), n.tip)); grp.addEventListener("mouseleave", hideTip); }
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
   const icon = n.icon;
@@ -94,7 +114,13 @@ function buildBox(n, p, onToggle) {
   /** @param {number} w */
   const badgeX = w => isC ? w - 28 : (w + n.chips.length * 11) / 2;
   if (fitted(p.w)) { badge = el("text", { class: "badge", x: badgeX(p.w), y: isC ? 18 : 33, "text-anchor": isC ? "end" : "middle" }); badge.textContent = fitted(p.w); if (isC) badge.appendChild(el("title")).textContent = n.badge; grp.appendChild(badge); }
-  n.chips.forEach((c, i) => { const ch = el("circle", { cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), stroke: "Canvas", "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
+  n.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
+  // an unfolded box lists the utilities its children use, one per line, bottom right
+  /** @type {SVGElement[]} */
+  const uses = isC ? (n.uses || []).map(u => { const x = el("text", { class: "badge uses", "text-anchor": "end" }); x.textContent = "→ " + u; grp.appendChild(x); return x; }) : [];
+  /** @param {Box} b */
+  const placeUses = b => uses.forEach((x, i) => { x.setAttribute("x", String(b.w - 8)); x.setAttribute("y", String(b.h - 8 - (uses.length - 1 - i) * USES_LINE)); });
+  placeUses(p);
   if (n.service_color !== null && n.service_color !== undefined) rect.setAttribute("stroke", color(n.service_color));
   if (onToggle && !isC && n.foldable) grp.addEventListener("click", ev => { ev.stopPropagation(); onToggle(n.id); });
 
@@ -102,6 +128,7 @@ function buildBox(n, p, onToggle) {
   const update = b => {
     grp.setAttribute("transform", at(b));
     rect.setAttribute("width", String(b.w)); rect.setAttribute("height", String(b.h));
+    placeUses(b);
     if (centred) t.setAttribute("x", String(b.w / 2));
     if (top && foldRect && foldText) { const fx = foldX(b.w); top.setAttribute("transform", at(b)); foldRect.setAttribute("x", String(fx - 9)); foldText.setAttribute("x", String(fx)); }
     if (leaves) leaves.setAttribute("x", String(b.w - 5));
@@ -118,15 +145,17 @@ const build = (n, p, onToggle) => isAnchor(n) ? buildAnchor(n, p, !!onToggle) : 
  * @param {Scene} scene
  * @param {Laid} laid
  * @param {(id: string) => void} onToggle unfold or fold a node
+ * @param {boolean} [sameWidth] every edge one width instead of growing with its count
  * @returns {Drawn}
  */
-export function draw(g, scene, laid, onToggle) {
+export function draw(g, scene, laid, onToggle, sameWidth = false) {
   g.innerHTML = "";
-  const defs = el("defs"); defs.innerHTML = MARKERS; g.appendChild(defs);
   /** @type {SVGElement[]} */
   const foldLayer = [];
   /** @type {Map<string, Handle>} */
   const nodes = new Map();
+  /** @type {Map<string, Element>} */
+  const boxEl = new Map();
 
   // scene nodes come in drawing order: a container before what it contains
   for (const n of scene.nodes) {
@@ -136,28 +165,70 @@ export function draw(g, scene, laid, onToggle) {
     g.appendChild(els[0]);
     if (els[1]) foldLayer.push(els[1]);
     nodes.set(n.id, { update, opacity: fader(els) });
+    boxEl.set(n.id, els[0]);
   }
 
   /** @type {SVGElement[]} */
   const edges = [];
+  /** @type {Map<string, SVGElement[]>} the edges at each node */
+  const edgesAt = new Map();
+  // a glowing edge goes on top of the other edges (still below the fold buttons), so its glow isn't covered
+  /** @param {Element} ge */
+  const raise = ge => {
+    const after = foldLayer[0] && foldLayer[0].parentNode === g ? foldLayer[0] : null;
+    if (ge.nextSibling !== after) g.insertBefore(ge, after);
+  };
   for (const { edge: e, sections } of laid.edges) {
     const ge = el("g", { class: edgeClass(e), "data-key": e.key });
     /** @type {{ x: number, y: number } | null} */
     let mid = null;
     for (const pts of sections) {
       const d = "M" + pts.map(p => `${p.x},${p.y}`).join("L");
-      ge.appendChild(el("path", { d, "marker-end": e.kind === "provide" ? "url(#arr-hollow)" : "url(#arr)", "stroke-width": Math.min(2.6, 0.8 + 0.4 * Math.log2(e.count)) }));
+      const line = "M" + shortened(pts).map(p => `${p.x},${p.y}`).join("L");
+      const width = sameWidth ? 1.2 : Math.min(2.6, 0.8 + 0.4 * Math.log2(e.count));
+      ge.appendChild(el("path", { d: line, "stroke-width": width }));
+      if (pts.length > 1) ge.appendChild(el("polygon", { class: "head", points: head(pts) }));
       ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
       const a = pts[Math.floor((pts.length - 1) / 2)], b = pts[Math.ceil((pts.length - 1) / 2)]; mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
     if (e.label && mid && !e.weak && !e.local) { const t = el("text", { x: mid.x + 3, y: mid.y - 3 }); t.textContent = e.label; ge.appendChild(t); }
     ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e.tip));
+    ge.addEventListener("mouseenter", () => raise(ge));
     ge.addEventListener("mouseleave", hideTip);
     g.appendChild(ge); edges.push(ge);
+    for (const id of [e.src, e.dst]) { const l = edgesAt.get(id); if (l) l.push(ge); else edgesAt.set(id, [ge]); }
   }
   foldLayer.forEach(f => g.appendChild(f));
+  lightOnHover(scene, boxEl, edgesAt, raise);
   return { nodes, edges, firstEdge: edges[0] || foldLayer[0] || null };
 }
+
+/**
+ * Hovering a leaf (a folded box, or a module's own-code dot) lights it up (.lit, viewer.css),
+ * with its incoming and outgoing edges and the utilities it uses. Unfolded boxes don't light.
+ * @param {Scene} scene @param {Map<string, Element>} boxEl @param {Map<string, SVGElement[]>} edgesAt
+ * @param {(ge: Element) => void} raise
+ */
+function lightOnHover(scene, boxEl, edgesAt, raise) {
+  unlight();  // a redraw starts dark
+  for (const n of scene.nodes) {
+    const box = boxEl.get(n.id);
+    if (!box || ("container" in n && n.container)) continue;
+    box.addEventListener("mouseenter", () => {
+      unlight();
+      lit.add(box);
+      for (const u of n.utilities_used || []) { const b = boxEl.get(u); if (b) lit.add(b); }
+      for (const ge of edgesAt.get(n.id) || []) { lit.add(ge); raise(ge); }
+      for (const x of lit) x.classList.add("lit");
+    });
+    box.addEventListener("mouseleave", unlight);
+  }
+}
+
+/** What is lit now: one set for the whole page, so a missed mouseleave can't leave anything lit. @type {Set<Element>} */
+const lit = new Set();
+function unlight() { for (const x of lit) x.classList.remove("lit"); lit.clear(); }
+document.getElementById("g")?.addEventListener("mouseleave", unlight);
 
 /**
  * Non-interactive copies of nodes that are about to leave the picture, drawn below the

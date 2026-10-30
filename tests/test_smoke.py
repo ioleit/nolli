@@ -140,3 +140,44 @@ def test_folding_drops_what_was_unfolded_inside(repo: Path):
     assert "fs:backend/store.py" in scene(m, inner)["state"]["expanded"]
     folded = scene(m, ViewState(expanded=["fs:.", "fs:backend/store.py"]))
     assert folded["state"]["expanded"] == ["fs:."]
+
+
+def test_groups_are_a_filter(repo: Path):
+    """A shown group is a box like any other (edges attach to it, it unfolds); a group the
+    filter hides is not drawn, its edges are badges or derived through, and it can't be unfolded."""
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    shown = scene(m, ViewState(budget=12, groups=["http"]))
+    http = next(n for n in shown["nodes"] if n["id"] == "http")
+    assert http["foldable"] and not http["container"]
+    assert any("http" in (e["src"], e["dst"]) for e in shown["edges"])
+    assert {g["id"]: g["shown"] for g in shown["groups"]}["http"] is True
+
+    opened = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["http"], groups=["http"]))
+    assert any(n["parent"] == "http" for n in opened["nodes"])
+
+    hidden = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["http"], groups=[]))
+    assert "http" not in hidden["state"]["expanded"]
+    assert all(n["id"] != "http" and n["parent"] != "http" for n in hidden["nodes"])
+    assert any(e["style"] == "http" and "http" not in (e["src"], e["dst"]) for e in hidden["edges"])  # caller -> handler
+
+
+def test_utilities_by_incoming_edges(repo: Path):
+    """A box with more than N incoming dependency edges is a utility: its incoming edges
+    become badges on their sources. Boxes in groups never are."""
+    from nolli.model import USE
+    from nolli.rollup import utility_badges
+    from nolli.scene import ViewState, compute
+
+    m, _ = extract(repo)
+    _x, _h, _v, rolled, _u = compute(m, ViewState(utilities=0))
+    before = list(rolled.edges)
+    utilities = utility_badges(m, rolled, min_in=0)  # every used box outside a group
+    targets = {e.dst for e in before if e.kind == USE}
+    assert utilities == {t for t in targets if t != "http"}
+    assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
+    src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
+    assert any(k.startswith("util:") for k in rolled.annotations[src])
+    _x, _h, _v, rolled, _u = compute(m, ViewState(utilities=0))
+    assert utility_badges(m, rolled, min_in=1) == set()  # nothing has more than one
