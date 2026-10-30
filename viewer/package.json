@@ -1,0 +1,16 @@
+{
+  "name": "nolli-viewer",
+  "private": true,
+  "description": "The nolli viewer: plain ES modules loaded by the browser as they are; Node is only for type checking and tests",
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p .",
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "cytoscape": "3.34.4",
+    "elkjs": "0.9.3",
+    "typescript": "7.0.2"
+  }
+}
