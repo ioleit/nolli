@@ -3,7 +3,6 @@
 //
 //   state.js    view state, URL hash, scene query
 //   layout/     scene -> positions and edge routes, no DOM; one module per engine
-//   route/      edges routed around the boxes of any layout (libavoid), no DOM
 //   draw.js     scene + layout -> SVG, with a handle per node to move and fade it
 //   transition.js, animate.js: the step between two pictures (plan, then play)
 //   raw.js      scene -> JSON pane
@@ -14,7 +13,6 @@
 import { byId, input, select } from "./dom.js";
 import { DEFAULTS, OPTIONS, query, readHash, state, writeHash } from "./state.js";
 import { ENGINES, layout } from "./layout/index.js";
-import { route } from "./route/avoid.js";
 import { draw, drawGhosts } from "./draw.js";
 import { plan } from "./transition.js";
 import { finish, play } from "./animate.js";
@@ -69,8 +67,7 @@ async function render(keepZoom = false) {
   hideRaw();
   const sc = scene, prev = shown, from = clicked;
   clicked = null;
-  let laid = await layout(sc, { engine: state.engine, direction: state.direction, seed: state.name || "", previous: prev?.laid, toggled: from || undefined });
-  if (state.router === "avoid") laid = await route(sc, laid);
+  const laid = await layout(sc, { engine: state.engine, direction: state.direction, seed: state.name || "", previous: prev?.laid, toggled: from || undefined });
   if (sc !== scene) return;  // a newer scene arrived while this one was laid out
   finish();
   const root = byId("root");
@@ -99,7 +96,6 @@ input("raw").addEventListener("change", () => { state.raw = input("raw").checked
 select("direction").addEventListener("change", () => { state.direction = select("direction").value === "RIGHT" ? "RIGHT" : "DOWN"; writeHash(); render(); });
 for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; select("engine").appendChild(o); }
 select("engine").addEventListener("change", () => { state.engine = select("engine").value; writeHash(); render(); });
-select("router").addEventListener("change", () => { state.router = select("router").value === "avoid" ? "avoid" : "engine"; writeHash(); render(true); });
 select("dataset").addEventListener("change", () => { Object.assign(state, DEFAULTS, { name: select("dataset").value }); shown = null; refresh(); });
 byId("mmd").addEventListener("click", () => { if (state.name) toggleMermaid(state.name); });
 
@@ -112,7 +108,7 @@ byId("mmd").addEventListener("click", () => { if (state.name) toggleMermaid(stat
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
   if (!name) { byId("status").textContent = "no datasets"; return; }
   sel.value = name;
-  Object.assign(state, h.st, { name, noLabels: h.noLabels, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", router: h.router, animate: h.animate, raw: h.raw });
+  Object.assign(state, h.st, { name, noLabels: h.noLabels, direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, raw: h.raw });
   await refresh();
   if (h.mmd) byId("mmd").click();
 })();
