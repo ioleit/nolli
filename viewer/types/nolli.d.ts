@@ -11,7 +11,7 @@ export type Info = Parts[];
 // ---------- review mode (diff datasets, nolli/review.py) ----------
 
 export type Status = "added" | "removed" | "changed";
-export type Verdict = "fine" | "question" | "problem";
+export type Verdict = "blunder" | "problem" | "question" | "fine" | "good" | "brilliant";
 
 /** A box's change: its own status, and totals in its subtree. */
 export interface NodeDiff {

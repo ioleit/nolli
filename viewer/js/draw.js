@@ -4,6 +4,7 @@
 import { showTip, hideTip, pinTip } from "./tip.js";
 import { USES_LINE, isAnchor, statsText } from "./layout.js";
 import { wasDrag } from "./panzoom.js";
+import { glyph } from "./verdicts.js";
 
 /**
  * @typedef {import("../types/nolli").Scene} Scene
@@ -19,13 +20,12 @@ import { wasDrag } from "./panzoom.js";
  *   review: a diff scene, where what did not change is drawn as such
  */
 
-const VERDICT_GLYPH = { fine: "✓", question: "?", problem: "!" };
 
 /** A verdict marker: a small disc with a glyph, centred at (x, y). @param {string} verdict @param {number} x @param {number} y */
 function verdictMark(verdict, x, y) {
   const g = el("g", { class: "verdict " + verdict, transform: `translate(${x},${y})` });
   g.appendChild(el("circle", { r: 7 }));
-  const t = el("text", { y: 3.5, "text-anchor": "middle" }); t.textContent = VERDICT_GLYPH[/** @type {"fine" | "question" | "problem"} */ (verdict)] || "•"; g.appendChild(t);
+  const t = el("text", { y: 3.5, "text-anchor": "middle" }); t.textContent = glyph(verdict); if (t.textContent.length > 1) g.classList.add("two"); g.appendChild(t);
   return g;
 }
 
