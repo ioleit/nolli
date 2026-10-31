@@ -47,6 +47,8 @@ Then tell your agent to "review PR #48 with nolli". It gives you a link to the v
 with its verdicts on the structure (fine, question, problem, with reasons) on the boxes
 and edges they are about.
 
+![A pull request in Nolli's viewer: changed boxes and edges in orange, a removed dependency dashed red, verdict markers from a review agent](https://raw.githubusercontent.com/ioleit/nolli/main/docs/review.png)
+
 ## What it reads
 
 | Framework | Status | Note |

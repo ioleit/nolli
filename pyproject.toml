@@ -1,6 +1,6 @@
 [project]
 name = "nolli-review"
-version = "0.1.0"
+version = "0.1.1"
 description = "Draws a pull request as a change to a repository's architecture, for you and your review agent"
 readme = "README.md"
 license = "Apache-2.0"
@@ -18,6 +18,10 @@ dependencies = [
     "tree-sitter-language-pack>=0.7",
     "pyyaml>=6",
 ]
+
+[project.urls]
+Source = "https://github.com/ioleit/nolli"
+Issues = "https://github.com/ioleit/nolli/issues"
 
 [project.scripts]
 nolli = "nolli.cli:main"
