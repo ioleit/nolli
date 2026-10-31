@@ -2,7 +2,7 @@
 # unit tests, and the browser tests of the review view. The browser tests compare screenshots
 # exactly, and they were made on Debian 13 with its Chromium and DejaVu fonts (viewer/README.md),
 # so they run in that system here too.
-name: ci
+name: tests
 
 on:
   pull_request:
@@ -11,6 +11,7 @@ on:
 
 jobs:
   python:
+    name: python unit tests (${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -24,6 +25,7 @@ jobs:
       - run: pytest -q
 
   viewer:
+    name: viewer type check and unit tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -38,6 +40,7 @@ jobs:
       - run: npm test
 
   browser:
+    name: playwright golden screenshot comparison
     runs-on: ubuntu-latest
     container: debian:13
     steps:
