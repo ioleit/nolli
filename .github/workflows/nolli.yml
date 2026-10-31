@@ -64,6 +64,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           b="$RUNNER_TEMP/brief.json"
+          repo=$(jq -r .repository "$b")  # the brief's commands read git with -C <repo>
           prompt="Review this change's architecture with nolli; its dataset is built.
           Read $(jq -r .brief "$b") and do what it says.
           Read code only as the change has it: \`$(jq -r .inspect "$b")\` for the diff, and
@@ -73,7 +74,8 @@ jobs:
           Then run \`$(jq -r .check "$b")\`; it prints one line per problem. Fix each in the verdicts
           file and run it again until it prints \"ok\": true."
           npx -y @anthropic-ai/claude-code@2.1.316 -p "$prompt" --model "$MODEL" \
-            --allowedTools Read Grep Glob Write Edit "Bash(git diff:*)" "Bash(git show:*)" "Bash(git log:*)" "Bash(nolli agent check:*)"
+            --allowedTools Read Grep Glob Write Edit "Bash(git diff:*)" "Bash(git show:*)" "Bash(git log:*)" \
+              "Bash(git -C $repo diff:*)" "Bash(git -C $repo show:*)" "Bash(git -C $repo log:*)" "Bash(nolli agent check:*)"
           nolli agent check "$DATASET"
 
       - name: store the result
