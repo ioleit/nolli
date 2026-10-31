@@ -12,7 +12,7 @@
 
 import { byId } from "./dom.js";
 import { wasDrag } from "./panzoom.js";
-import { glyph } from "./verdicts.js";
+import { markHTML } from "./verdicts.js";
 
 /**
  * @typedef {import("../types/nolli").Info} Info
@@ -40,7 +40,7 @@ function paragraphs(info) {
     const p = document.createElement("p");
     for (const part of line) {
       if (typeof part === "string") { p.appendChild(document.createTextNode(part)); continue; }
-      if ("verdict" in part) { const b = document.createElement("span"); b.className = "vd " + part.verdict; b.textContent = glyph(part.verdict); p.appendChild(b); continue; }
+      if ("verdict" in part) { const b = document.createElement("span"); b.className = "vd " + part.verdict; b.innerHTML = markHTML(part.verdict); p.appendChild(b); continue; }
       if ("doc" in part) { const q = document.createElement("q"); q.className = "doc"; q.textContent = part.doc; p.appendChild(q); continue; }
       const v = document.createElement("span"); v.className = "v"; v.textContent = part.v; p.appendChild(v);
     }

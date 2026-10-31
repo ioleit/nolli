@@ -7,7 +7,7 @@
 
 import { byId } from "./dom.js";
 import { state } from "./state.js";
-import { ORDER, RANK, glyph } from "./verdicts.js";
+import { ORDER, RANK, markHTML } from "./verdicts.js";
 
 /**
  * @typedef {import("../types/nolli").Scene} Scene
@@ -68,7 +68,7 @@ const codeSpans = text => esc(text).replace(/`([^`]+)`/g, '<span class="v">$1</s
 /** @param {string} st */
 const statusSpan = st => `<span class="st ${esc(st)}">${GLYPH[/** @type {"added" | "removed" | "changed"} */ (st)] || "•"}</span>`;
 /** @param {{ verdict: string, reason: string } | null | undefined} v */
-const verdictSpan = v => v ? `<span class="vd ${esc(v.verdict)}" title="${esc(v.verdict + ": " + v.reason)}">${glyph(v.verdict)}</span>` : "";
+const verdictSpan = v => v ? `<span class="vd ${esc(v.verdict)}" title="${esc(v.verdict + ": " + v.reason)}">${markHTML(v.verdict)}</span>` : "";
 
 /** The title without the parts the group heading already says. @param {ReviewItem} it */
 function shortTitle(it) {
@@ -118,14 +118,14 @@ export function renderPanel(scene, h) {
     <label><input type="checkbox" id="rv-dim" ${state.dim ? "checked" : ""}> fade what did not change</label>
     <label><input type="checkbox" id="rv-all" ${allRoles ? "checked" : ""}> include tests, docs, config, data${hiddenN && !allRoles ? ` (${hiddenN} more)` : ""}</label>
     <div class="rv-verdicts">${verdicts.length
-      ? "verdicts: " + ORDER.filter(v => counts[v]).map(v => `<span class="vd ${v}" title="${v}">${glyph(v)}</span> ${counts[v]}`).join(" ")
+      ? "verdicts: " + ORDER.filter(v => counts[v]).map(v => `<span class="vd ${v}" title="${v}">${markHTML(v)}</span> ${counts[v]}`).join(" ")
       : "no verdicts yet"} · <a href="/data/${esc(state.name)}/review.md" target="_blank">review.md</a>
       · <label class="file">load verdicts…<input type="file" id="rv-file" accept=".json,application/json"></label></div>
   </div><div class="rv-keys">hover a row to light it · click or j / k to go to it · ▸ details · 1 2 3 before / changes / after · f fit</div><div class="rv-list">`;
   if (verdicts.length) html += `<div class="rv-group">Review</div>`;
   for (const v of verdicts) {
     const cur = state.item === v.id ? " current" : "", off = v.ends.length ? "" : " off";
-    html += `<div class="rv-row rv-verdict${cur}${off}" data-item="${esc(v.id)}"><div class="rv-item">${verdictSpan(v)}<span class="t"><b>${esc(v.label)}</b>${v.ends.length ? "" : ` <span class="muted">(not in the diagram)</span>`}<br>${codeSpans(v.reason)}</span></div></div>`;
+    html += `<div class="rv-row rv-verdict v-${esc(v.verdict)}${cur}${off}" data-item="${esc(v.id)}"><div class="rv-item">${verdictSpan(v)}<span class="t"><b>${esc(v.label)}</b>${v.ends.length ? "" : ` <span class="muted">(not in the diagram)</span>`}<br>${codeSpans(v.reason)}</span></div></div>`;
   }
   let last = "";
   for (const it of shown) {

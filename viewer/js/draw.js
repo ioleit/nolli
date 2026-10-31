@@ -4,7 +4,7 @@
 import { showTip, hideTip, pinTip } from "./tip.js";
 import { ICON_GAP, ICON_H, USES_LINE, iconW, iconsW, isAnchor, statsText } from "./layout.js";
 import { wasDrag } from "./panzoom.js";
-import { glyph } from "./verdicts.js";
+import { ICON, glyph } from "./verdicts.js";
 
 /**
  * @typedef {import("../types/nolli").Scene} Scene
@@ -25,6 +25,8 @@ import { glyph } from "./verdicts.js";
 function verdictMark(verdict, x, y) {
   const g = el("g", { class: "verdict " + verdict, transform: `translate(${x},${y})` });
   g.appendChild(el("circle", { r: 7 }));
+  const icon = ICON[/** @type {import("../types/nolli").Verdict} */ (verdict)];
+  if (icon) { g.appendChild(el("path", { d: icon, transform: "translate(-5,-4.8) scale(0.6)" })); return g; }
   const t = el("text", { y: 3.5, "text-anchor": "middle" }); t.textContent = glyph(verdict); if (t.textContent.length > 1) g.classList.add("two"); g.appendChild(t);
   return g;
 }

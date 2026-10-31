@@ -59,15 +59,18 @@ test("every verdict but fine is marked in the diagram, with its chess annotation
   await expect(boxMark(page, "fs:ledger/storage/cache.py").locator("text")).toHaveText("?!");
   await expect(boxMark(page, "fs:ledger/services/legacy_export.py").locator("text")).toHaveText("!!");
   // the good one is on views/alerts, inside web/src/, which is folded at first and shows it
-  await expect(boxMark(page, "fs:web/src").locator("text")).toHaveText("!");
+  await expect(boxMark(page, "fs:web/src").locator("path")).toHaveCount(1);  // a thumbs up, not a glyph
   await expect(page.locator("#root g.verdict.fine")).toHaveCount(0);
   // the glyph stays white on a changed or added edge, whose labels take the change's colour
-  for (const t of await marks.locator("text").all()) await expect(t).toHaveCSS("fill", "rgb(255, 255, 255)");
+  for (const t of await marks.locator("text, path").all()) await expect(t).toHaveCSS("fill", "rgb(255, 255, 255)");
 
   const rows = page.locator("#review .rv-verdict");
   // most attention first: doubts, then praise, then fine; in file order within a kind
   await expect(rows.locator(".vd")).toHaveClass(["blunder", "problem", "question", "question", "question", "brilliant", "good", "fine"].map(v => "vd " + v));
-  await expect(page.locator("#review .rv-verdicts")).toContainText("?? 1 ? 1 ?! 3 !! 1 ! 1 ✓ 1");
+  await expect(page.locator("#review .rv-verdicts")).toContainText("?? 1 ? 1 ?! 3 !! 1 1 ✓ 1");  // good's mark is an icon
+  await expect(page.locator("#review .rv-verdicts .vd.good svg")).toHaveCount(1);
+  // fine is greyed out in the list
+  await expect(rows.filter({ has: page.locator(".vd.fine") }).locator(".rv-item")).toHaveCSS("opacity", "0.5");
 });
 
 test("a review opens on its worst verdict, a blunder, with the card that explains it", async ({ page }) => {
@@ -113,7 +116,7 @@ test("hovering a good on a box shows its reason", async ({ page }) => {
   await open(page);
   const id = "fs:web/src/views/alerts.ts";
   await hoverMark(page, "Follows the pattern", boxMark(page, id));
-  await expect(boxMark(page, id).locator("text")).toHaveText("!");
+  await expect(boxMark(page, id).locator("path")).toHaveCount(1);
   await expect(page).toHaveScreenshot("good-on-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
 });
 

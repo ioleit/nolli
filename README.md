@@ -45,8 +45,8 @@ nolli agent skill --install ~/.claude/skills
 
 Then tell your agent to "review PR #48 with nolli". It gives you a link to the viewer,
 with its verdicts on the structure on the boxes and edges they are about, in chess
-notation with a reason each: ?? blunder, ? problem, ?! question, ! good, !! brilliant,
-or just fine.
+notation with a reason each: ?? blunder, ? problem, ?! question, 👍 good, !! brilliant,
+or ✓ fine.
 
 ![A pull request in Nolli's viewer: added edges in green, a removed module dashed red, verdict marks from a review agent in chess notation, and the card of the worst one, a new import cycle](https://raw.githubusercontent.com/ioleit/nolli/main/viewer/e2e/__screenshots__/review.spec.js/blunder-on-edge.png)
 
