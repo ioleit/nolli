@@ -33,7 +33,7 @@ from collections import Counter
 
 from ...model import USE, Entity, Provenance, Relation
 from .. import Context, language_named
-from .imports import string_value
+from .imports import read
 
 EXTRACTOR = "typescript-symbols"
 DECLS = {"class_declaration": "class", "abstract_class_declaration": "class", "class": "class",
@@ -95,85 +95,6 @@ def doc_text(comment) -> str | None:
     if not text:
         return None
     return text if len(text) <= DOC_MAX else text[: DOC_MAX - 1].rsplit(" ", 1)[0] + "…"
-
-
-def is_type_import(stmt) -> bool:
-    return any(c.type == "type" for c in stmt.children)
-
-
-def imports_of(stmt, bindings: dict[str, tuple]) -> None:
-    """Names an ``import`` statement binds: ("module", spec, type_only) for a namespace,
-    ("from", spec, name, type_only) for a named or default import."""
-    spec = string_value(stmt.child_by_field_name("source"))
-    if not spec:
-        return
-    type_only = is_type_import(stmt)
-    clause = next((c for c in stmt.named_children if c.type == "import_clause"), None)
-    if clause is None:
-        return
-    for c in clause.named_children:
-        if c.type == "identifier":
-            bindings[c.text.decode()] = ("from", spec, "default", type_only, c.text.decode())
-        elif c.type == "namespace_import":
-            ident = next((i for i in c.named_children if i.type == "identifier"), None)
-            if ident is not None:
-                bindings[ident.text.decode()] = ("module", spec, type_only)
-        elif c.type == "named_imports":
-            for s in c.named_children:
-                if s.type != "import_specifier":
-                    continue
-                name, alias = s.child_by_field_name("name"), s.child_by_field_name("alias")
-                if name is None:
-                    continue
-                bindings[(alias or name).text.decode()] = ("from", spec, name.text.decode().strip("'\""), type_only or is_type_import(s))
-
-
-def requires_of(d, bindings: dict[str, tuple]) -> None:
-    """CommonJS: ``const x = require('spec')`` binds a namespace, ``const {a, b: c} =
-    require('spec')`` binds names."""
-    for v in d.named_children:
-        if v.type != "variable_declarator":
-            continue
-        value, target = v.child_by_field_name("value"), v.child_by_field_name("name")
-        if value is None or target is None or value.type != "call_expression":
-            continue
-        fn, args = value.child_by_field_name("function"), value.child_by_field_name("arguments")
-        if fn is None or fn.text != b"require" or args is None or not args.named_children:
-            continue
-        spec = string_value(args.named_children[0])
-        if not spec:
-            continue
-        if target.type == "identifier":
-            bindings[target.text.decode()] = ("module", spec, False)
-        elif target.type == "object_pattern":
-            for p in target.named_children:
-                if p.type == "shorthand_property_identifier_pattern":
-                    bindings[p.text.decode()] = ("from", spec, p.text.decode(), False)
-                elif p.type == "pair_pattern":
-                    k, val = p.child_by_field_name("key"), p.child_by_field_name("value")
-                    if k is not None and val is not None and val.type == "identifier":
-                        bindings[val.text.decode()] = ("from", spec, k.text.decode(), False)
-
-
-def exports_of(stmt) -> list[tuple[str, str, str]]:
-    """Re-exports of an ``export ... from`` statement as (exported name, spec, name
-    there): ``*`` for ``export * from``, the namespace's name for ``export * as ns``."""
-    spec = string_value(stmt.child_by_field_name("source"))
-    if not spec:
-        return []
-    out = []
-    for c in stmt.named_children:
-        if c.type == "export_clause":
-            for s in c.named_children:
-                if s.type == "export_specifier":
-                    name, alias = s.child_by_field_name("name"), s.child_by_field_name("alias")
-                    if name is not None:
-                        out.append(((alias or name).text.decode(), spec, name.text.decode()))
-        elif c.type == "namespace_export":
-            ident = next((i for i in c.named_children if i.type == "identifier"), None)
-            if ident is not None:
-                out.append((ident.text.decode(), spec, ""))
-    return out or [("*", spec, "*")]
 
 
 def local_exports(stmt) -> list[tuple[str, str]]:
@@ -284,20 +205,25 @@ def run(ctx: Context) -> None:
         reexports: list[tuple[str, str, str]] = []
         local: list[tuple[str, str]] = []
         symbol_lines = 0
+        for imp in read(tree):
+            if imp.exports:
+                reexports += [(exported, imp.spec, there) for exported, there in imp.exports]
+            if not imp.top:
+                continue
+            for local_name, there, type_only in imp.names:
+                bindings[local_name] = ("module", imp.spec, type_only) if there == "*" else \
+                    ("from", imp.spec, there, type_only, local_name)
         for stmt in root.named_children:
             if stmt.type == "import_statement":
-                imports_of(stmt, bindings)
                 continue
             d = declaration(stmt)
             if d.type in ("lexical_declaration", "variable_declaration"):
-                requires_of(d, bindings)
                 for v in d.named_children:  # ``const f = () => ...`` is a function of the module
                     value = v.child_by_field_name("value") if v.type == "variable_declarator" else None
                     if value is not None and value.type in FUNCTION_VALUES and v.child_by_field_name("name").type == "identifier":
                         bindings[v.child_by_field_name("name").text.decode()] = ("local", fid, v.child_by_field_name("name").text.decode())
             if stmt.type == "export_statement":
                 if stmt.child_by_field_name("source") is not None:
-                    reexports += exports_of(stmt)
                     continue
                 local += local_exports(stmt)
             kind = DECLS.get(d.type)

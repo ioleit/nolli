@@ -147,6 +147,21 @@ def test_declaration_files_are_named_as_modules():
     assert module_stem("vite-env.d.ts") == "vite-env" and module_stem("api.ts") == "api" and module_stem("a.b.js") == "a.b"
 
 
+def test_imports_of_a_file_that_does_not_parse_whole():
+    """A syntax the grammar cannot read (Vitest's ``importOriginal<typeof import(...)>()``)
+    makes the root an ERROR node; the imports above and below it still bind their names
+    for the whole module."""
+    from nolli.extractors.typescript.imports import parse, read
+    src = (b"import { a } from './a'\n"
+           b"vi.mock('./b', async (importOriginal) => {\n"
+           b"    const actual = await importOriginal<typeof import('./b')>()\n"
+           b"    return { ...actual }\n})\n"
+           b"import { c } from './c'\n")
+    tree = parse("t.ts", src)
+    assert tree.root_node.has_error
+    assert {(i.spec, i.top) for i in read(tree) if i.names} == {("./a", True), ("./c", True)}
+
+
 def test_index_is_the_folders_own_code(model):
     m, _ = model
     assert is_init(m, "fs:app/src/model/index.ts")
