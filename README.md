@@ -5,12 +5,13 @@ modules and classes it touches, the dependencies between them that it adds, remo
 changes, and how much each one changed.
 
 > [!NOTE]
-> [Giambattista **Nolli**](https://en.wikipedia.org/wiki/Giambattista_Nolli), commissioned
-> by Pope Benedict XIV, surveyed Rome from 1736 and published his ichnographic plan of the
-> city in 1748, by far the most accurate map of Rome up to then. It draws buildings as
-> solid blocks but leaves enclosed public spaces open, the interiors of churches and
-> courtyards among them: the plan shows what is inside where it matters for moving through
-> the city.
+> [Giambattista **Nolli**](https://en.wikipedia.org/wiki/Giambattista_Nolli) spent twelve
+> years on a single map. Commissioned by Pope Benedict XIV, he began surveying Rome in
+> 1736, street by street and building by building, and only in 1748 did he publish his
+> ichnographic plan of the city: by far the most accurate map of Rome anyone had made.
+> Its buildings are solid blocks, but the city's enclosed public spaces are left open,
+> the interiors of churches and courtyards among them. The plan shows what lies inside
+> exactly where it matters for moving through the city.
 
 ## How to use
 
