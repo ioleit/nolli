@@ -27,6 +27,17 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 syste
 body.reviewing { grid-template-columns: 250px 1fr 400px; }
 aside { border-right: 1px solid var(--line); padding: 10px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
 aside h1 { font-size: 14px; margin: 0; }
+#navbody { display: flex; flex-direction: column; gap: 8px; }
+.navhead { display: flex; align-items: center; justify-content: space-between; }
+.navtoggle { border: 1px solid transparent; background: none; color: var(--muted); padding: 0 6px; font-size: 15px; line-height: 1.3; border-radius: 4px; cursor: pointer; }
+.navtoggle:hover { color: var(--ink); background: var(--hover-bg); border-color: var(--line); }
+/* folded (js/nav.js): a strip with the button, the name standing on its side */
+body.navclosed { grid-template-columns: 28px 1fr; }
+body.navclosed.reviewing { grid-template-columns: 28px 1fr 400px; }
+body.navclosed aside { padding: 6px 0; overflow: hidden; }
+body.navclosed #navbody { display: none; }
+body.navclosed .navhead { flex-direction: column-reverse; gap: 8px; }
+body.navclosed aside h1 { writing-mode: vertical-rl; color: var(--muted); font-size: 13px; }
 aside h2 { font-size: 11px; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 select, input[type=number] { font: inherit; }
 label { display: block; margin: 1px 0; }
@@ -165,7 +176,13 @@ body.reviewing #review { display: flex; }
 .seg button.on { background: var(--ink); color: var(--bg); }
 label.file { color: var(--e-http); cursor: pointer; display: inline; }
 label.file input { display: none; }
-.rv-keys { font-size: 10.5px; color: var(--muted); padding: 4px 12px; border-bottom: 1px solid var(--line); }
+/* docked under the list: the view buttons in one row, the keys under them */
+.rv-bar { border-top: 1px solid var(--line); padding: 6px 12px 5px; display: flex; flex-direction: column; gap: 4px; }
+.rv-bar-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.rv-bar .seg { margin: 0; }
+.rv-bar .seg button { padding: 2px 9px; font-size: 12px; }
+.rv-bar button#rv-all-changes { font-size: 12px; padding: 2px 8px; cursor: pointer; }
+.rv-keys { font-size: 10.5px; color: var(--muted); }
 .rv-list { overflow: auto; flex: 1 1 auto; min-height: 80px; padding: 4px 0; }
 .rv-group { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px 12px 2px; }
 .rv-item { display: flex; gap: 6px; align-items: baseline; padding: 2px 12px 2px 4px; cursor: pointer; font-size: 12px; }

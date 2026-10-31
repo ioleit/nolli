@@ -12,7 +12,7 @@
 // Types: types/nolli.d.ts, checked with `npm run check`.
 
 import { byId, input, select } from "./dom.js";
-import { ALL_ROLES, DEFAULTS, VIEWS, query, readHash, state, writeHash } from "./state.js";
+import { DEFAULTS, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { layout } from "./layout.js";
 import { draw, drawGhosts, light } from "./draw.js";
 import { hideTip, pinTip } from "./tip.js";
@@ -23,8 +23,9 @@ import { sidebar, syncControls } from "./sidebar.js";
 import { fit, focusOn } from "./panzoom.js";
 import { hideMermaid, showMermaid } from "./mermaid.js";
 import "./help.js";
+import "./nav.js";
 import { applyTheme, chooseTheme, initialTheme, themeOptions } from "./theme.js";
-import { itemById, loadItems, renderPanel, scrollToCurrent, showPanel, visibleItems } from "./review.js";
+import { changedAreas, itemById, loadItems, renderPanel, scrollToCurrent, showPanel, visibleItems } from "./review.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
 
@@ -87,6 +88,7 @@ async function refresh(keepZoom = false) {
     if (itemsFor !== state.name) { await loadItems(state.name || ""); itemsFor = state.name; }
     renderPanel(sc, reviewHandlers);
   } else showPanel(false);
+  byId("unfold").hidden = !sc.diff;
   document.body.classList.toggle("dim", !!sc.diff && state.dim);
   try {
     await show(keepZoom && !focusNext);
@@ -125,8 +127,6 @@ const reviewHandlers = {
   side: s => { state.side = s; refresh(true); },
   dim: on => { state.dim = on; document.body.classList.toggle("dim", on); writeHash(); },
   reload: () => { itemsFor = null; refresh(true); },
-  roles: all => { state.roles = all ? [...ALL_ROLES] : null; refresh(true); },
-  unfold: ids => { state.expanded = [...new Set([...(state.expanded || []), ...ids])]; refresh(true); },
 };
 
 /** The drawn boxes and edges that show a change or carry a verdict (scene.nodes[].items / .verdicts,
@@ -269,6 +269,7 @@ input("utilities").addEventListener("change", () => { state.utilities = Math.max
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; state.expanded = null; refresh(); });
 byId("reset").addEventListener("click", () => { state.expanded = null; refresh(); });
 byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; refresh(); });
+byId("unfold").addEventListener("click", () => { state.expanded = [...new Set([...(state.expanded || []), ...changedAreas()])]; refresh(true); });
 select("theme").addEventListener("change", () => { state.theme = select("theme").value; chooseTheme(state.theme); writeHash(); });
 themeOptions();
 select("dataset").addEventListener("change", async () => {
