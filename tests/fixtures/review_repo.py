@@ -4,8 +4,8 @@
 a TypeScript web client that calls it, and a compose file. The branch ``cache-and-alerts``
 puts a cache in front of the invoice store, adds overdue alerts (which reach into the
 database directly), moves the web client to a new summary endpoint and deletes a legacy
-export module. ``verdicts.json`` judges that change the way a review agent would: one
-problem, a few questions, some fine.
+export module. ``verdicts.json`` judges its structure the way a review agent would:
+one problem, three questions, three fine.
 
     python tests/fixtures/review_repo.py <out_dir>
 
@@ -118,26 +118,32 @@ and there is an overdue-alerts endpoint with a small page. The CSV export was un
 is gone.
 """
 
-# What a review agent might say about it. Targets are ids in review.mmd.
+# What a review agent might say about it, in the form the brief asks for (nolli/review.py):
+# a headline, how expected the change is given the title, what it does to the structure.
+# Targets are ids in review.mmd.
 VERDICTS = [
     {"target": "n_fs_ledger_services_alerts_py --> n_fs_ledger_storage_db_py", "verdict": "problem",
-     "reason": "Bypasses the stores: alerts queries the invoices table itself, so the invoice schema now "
-               "lives in two places and the cache never sees these reads."},
+     "reason": "Skips the store layer: `services/alerts` reads `storage/db` directly, while `billing` reaches "
+               "it only through `invoices` and `customers`. The title asks for alerts, not for a second way "
+               "into `db`, which now has callers in two layers."},
     {"target": "n_fs_ledger_storage_cache_py", "verdict": "question",
-     "reason": "Never invalidated: `CachedInvoices` keeps every customer's open invoices forever, so a paid "
-               "invoice stays in the balance until the process restarts. Is that intended?"},
+     "reason": "A layer inside storage/: the cache is what the title promises, but `cache` sits beside the "
+               "store it wraps and depends on `invoices`, so `storage/` now has a level of its own. "
+               "Should it live between `services/` and `storage/` instead?"},
     {"target": "n_fs_ledger_services_billing_py --> n_fs_ledger_storage_g", "verdict": "question",
-     "reason": "Billing now depends on the cache class rather than the store it wraps; an interface both "
-               "satisfy would keep billing testable without the cache."},
+     "reason": "Tied to the wrapper: expected that `billing` reads through the cache, but it now imports "
+               "`cache` by name, so the service depends on two levels of `storage/` at once."},
     {"target": "n_fs_web_src_client_ts ==> n_http_GET__alerts_overdue", "verdict": "question",
-     "reason": "Unpaged: the client loads every overdue invoice in one response; fine today, but nothing "
-               "bounds it as the ledger grows."},
+     "reason": "Client becomes a hub: expected from the title, but `client` now serves both "
+               "`/customers` and `/alerts`, and every view goes through it. Split it per area as more arrive?"},
     {"target": "n_fs_ledger_services_legacy_export_py", "verdict": "fine",
-     "reason": "Good riddance: the CSV export had no caller in the web client, and its endpoint goes with it."},
+     "reason": "Orphan removed: not in the title, but `legacy_export` and its endpoint had no caller in "
+               "`web/src/`; its edge from `services/` into `storage/` goes with it."},
     {"target": "n_fs_web_src_views_alerts_ts", "verdict": "fine",
-     "reason": "A small page on the new endpoint, through the client like the others."},
-    {"target": "n_fs_ledger_storage_customers_py", "verdict": "fine",
-     "reason": "Unchanged, now also read by `Billing.summary`."},
+     "reason": "As intended: the new `views/alerts` reaches the backend through `client`, like `views/account`."},
+    {"target": "n_fs_ledger_api_routes_py", "verdict": "fine",
+     "reason": "As intended: `api/routes` wires in `alerts` and the cache and drops the export; it stays "
+               "the one box that assembles services and stores."},
 ]
 
 
