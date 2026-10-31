@@ -54,9 +54,11 @@ def key_of(meta: dict) -> str:
     return f"{m.group(1)}/{m.group(2)}#{d['pr']}@{d['head'][:7]}"
 
 
-def comment(ds: Path) -> str:
+def comment(ds: Path, skipped: str | None = None) -> str:
     """The PR comment for a run's dataset: how many architectural changes, the review's
-    noteworthy verdicts (worst first, each with its reason) and how to open the result."""
+    noteworthy verdicts (worst first, each with its reason) and how to open the result.
+    ``skipped`` says why no review agent ran: "no-key" (the repository has no API key for
+    one) or "fork" (a PR from a fork, which gets no secrets)."""
     from .review import check_verdicts, resolve_verdicts
 
     m = Model.load(ds / "model.json")
@@ -66,8 +68,15 @@ def comment(ds: Path) -> str:
     verdicts, errors = check_verdicts(m, (ds / "review.mmd").read_text(), vf.read_text()) if vf.is_file() else (None, [])
     lines = [MARKER]
     head = f"**Nolli** found {n} architectural change{'' if n == 1 else 's'}."
-    if verdicts is None or errors:
-        why = "no review agent ran, or it wrote no verdicts" if verdicts is None else "the review agent's verdicts failed nolli's check"
+    if skipped == "no-key":
+        repo = key.split("#")[0]
+        lines += [head, "", f"Run `gh secret set ANTHROPIC_API_KEY --repo {repo}` for an automatic architecture review."]
+        verdicts, noteworthy = None, []
+    elif skipped == "fork":
+        lines.append(f"{head} No review: pull requests from forks get no API key for it.")
+        verdicts, noteworthy = None, []
+    elif verdicts is None or errors:
+        why = "the review agent wrote no verdicts" if verdicts is None else "the review agent's verdicts failed nolli's check"
         lines.append(f"{head} No review: {why}.")
         verdicts, noteworthy = None, []
     else:

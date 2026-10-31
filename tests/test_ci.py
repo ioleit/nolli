@@ -60,9 +60,18 @@ def test_without_review(dataset, capsys):
     assert re.fullmatch(r"me/shop#7@[0-9a-f]{7}", key)
     text = comment(dataset, capsys)
     assert text.startswith("<!-- nolli -->\n**Nolli** found ")
-    assert "No review: no review agent ran" in text
+    assert "No review: the review agent wrote no verdicts." in text
     assert f"nolli view {key}\n" in text
     assert read_result(text)["verdicts"] == [] and read_result(text)["key"] == key
+
+
+def test_skipped(dataset, capsys):
+    assert main(["ci", "comment", str(dataset), "--skipped", "no-key"]) == 0
+    text = capsys.readouterr().out
+    assert "\n\nRun `gh secret set ANTHROPIC_API_KEY --repo me/shop` for an automatic architecture review.\n" in text
+    assert "nolli view me/shop#7@" in text and "No review" not in text
+    assert main(["ci", "comment", str(dataset), "--skipped", "fork"]) == 0
+    assert "No review: pull requests from forks get no API key for it." in capsys.readouterr().out
 
 
 def test_with_review(dataset, capsys):

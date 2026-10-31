@@ -4,8 +4,8 @@
 # (nolli view <owner>/<repo>#<n>@<head>, nolli/ci.py). Only the PR's latest result is kept,
 # none once it closes. Never blocks: the comment is for information.
 #
-# The review needs the repository secret ANTHROPIC_API_KEY; without it (and in pull requests
-# from forks, which get no secrets) the comment counts the changes but has no verdicts.
+# The review needs the repository secret ANTHROPIC_API_KEY; without it the comment counts the
+# changes and says how to add the key. Pull requests from forks get no secrets, so no review.
 # This repository installs nolli from the PR's own checkout; another project would pin a release.
 name: nolli
 
@@ -37,6 +37,7 @@ jobs:
       HEAD: ${{ github.event.pull_request.head.sha }}
       MODEL: claude-opus-5-5
       HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,7 +88,9 @@ jobs:
 
       - name: comment
         run: |
-          nolli ci comment "$DATASET" > "$RUNNER_TEMP/comment.md"
+          skipped=()
+          if [ "$FORK" = true ]; then skipped=(--skipped fork); elif [ "$HAS_KEY" != true ]; then skipped=(--skipped no-key); fi
+          nolli ci comment "$DATASET" "${skipped[@]}" > "$RUNNER_TEMP/comment.md"
           id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
             --jq '.[] | select(.body | startswith("<!-- nolli -->")) | .id' | head -n1)
           if [ -n "$id" ]; then

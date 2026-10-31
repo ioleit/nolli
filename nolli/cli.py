@@ -2,7 +2,7 @@
 
     nolli view [<change> | <dataset dir>] [--whole] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli agent brief [<change>] | agent check <dataset> | agent skill [--install DIR]
-    nolli ci comment <dataset>
+    nolli ci comment <dataset> [--skipped no-key|fork]
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
 
@@ -301,7 +301,7 @@ def cmd_ci_comment(args: argparse.Namespace) -> int:
     from .ci import comment
 
     try:
-        print(comment(Path(args.dataset)), end="")
+        print(comment(Path(args.dataset), args.skipped), end="")
     except (OSError, ValueError) as exc:
         print(f"nolli ci comment: {exc}", file=sys.stderr)
         return 2
@@ -422,6 +422,8 @@ def main(argv: list[str] | None = None) -> int:
     cisub = ci.add_subparsers(dest="ci_cmd", required=True)
     cc = cisub.add_parser("comment", help="print the PR comment for a run's dataset (Markdown)")
     cc.add_argument("dataset", help="the dataset directory")
+    cc.add_argument("--skipped", choices=("no-key", "fork"), help="why no review agent ran: the repository has no API key "
+                    "for one, or the PR comes from a fork (which gets no secrets)")
     cc.set_defaults(fn=cmd_ci_comment)
     ex = sub.add_parser("extract", help="extract the model of a repository")
     ex.add_argument("repo")
