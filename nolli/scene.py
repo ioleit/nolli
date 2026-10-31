@@ -283,6 +283,20 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
     edge_at: dict[tuple[str, str], dict] = {}
     for e in edges:
         edge_at.setdefault((e["src"], e["dst"]), e)
+
+    def chain(x: str) -> list[str]:
+        out, p = [x], m.parent(x)
+        while p is not None:
+            out.append(p)
+            p = m.parent(p)
+        return out
+
+    def edge_between(a: str, b: str) -> dict | None:
+        """The drawn edge between a and b, else the closest one between boxes containing them:
+        a fan of edges into one unfolded box is drawn as one edge to the box (rollup.bundle)."""
+        found = [(i + j, e) for i, x in enumerate(chain(a)) for j, y in enumerate(chain(b))
+                 for e in (edge_at.get((x, y)) or edge_at.get((y, x)),) if e is not None]
+        return min(found, key=lambda f: f[0])[1] if found else None
     on_node: dict[str, list[dict]] = defaultdict(list)
     on_edge: dict[str, list[dict]] = defaultdict(list)
     for v in verdicts:
@@ -290,7 +304,7 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
         if not ends or None in ends:
             continue
         if len(ends) == 2 and ends[0] != ends[1]:
-            e = edge_at.get((ends[0], ends[1])) or edge_at.get((ends[1], ends[0]))
+            e = edge_between(ends[0], ends[1])
             if e is not None:
                 on_edge[e["key"]].append(v)
                 continue
