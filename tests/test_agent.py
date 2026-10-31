@@ -52,7 +52,8 @@ def test_check(change, capsys):
             {"target": f"{edge[1]} --> {edge[2]}", "verdict": "question", "reason": "why?"}]
     Path(change["verdicts"]).write_text(json.dumps(good))
     assert main(["agent", "check", change["dataset"]]) == 0
-    assert json.loads(capsys.readouterr().out) == {"ok": True, "verdicts": 2, "problem": 0, "question": 1, "fine": 1, "errors": 0}
+    assert json.loads(capsys.readouterr().out) == {"ok": True, "verdicts": 2, "blunder": 0, "problem": 0, "question": 1,
+                                                    "brilliant": 0, "good": 0, "fine": 1, "errors": 0}
     bad = [{"target": f"{edge[2]} --> {edge[1]}", "verdict": "fine", "reason": "x"},
            {"target": "n_fs_shop_nope_py", "verdict": "bad", "reason": ""}]
     Path(change["verdicts"]).write_text(json.dumps(bad))

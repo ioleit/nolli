@@ -3,9 +3,11 @@
 "ledger" is a small invoicing app: a FastAPI backend in Python (routes, services, storage),
 a TypeScript web client that calls it, and a compose file. The branch ``cache-and-alerts``
 puts a cache in front of the invoice store, adds overdue alerts (which reach into the
-database directly), moves the web client to a new summary endpoint and deletes a legacy
-export module. ``verdicts.json`` judges its structure the way a review agent would:
-one problem, three questions, three fine.
+database directly, and which the database calls back after every write), moves the web
+client to a new summary endpoint and deletes a legacy export module. ``verdicts.json``
+judges its structure the way a review agent would, with every kind of verdict: a blunder,
+a problem, three questions, a brilliant, a good and a fine. (The brief does not offer the
+blunder and the praise yet; they are here for the viewer.)
 
     python tests/fixtures/review_repo.py <out_dir>
 
@@ -73,6 +75,10 @@ BASE = {
 }
 
 HEAD = {
+    "ledger/storage/db.py": (
+        "from ledger.config import DB_URL\nfrom ledger.services.alerts import OverdueAlerts\n\n\nclass Database:\n"
+        "    def __init__(self, url=DB_URL):\n        self.url = url\n\n    def query(self, sql, *args):\n        return []\n\n"
+        "    def commit(self):\n        OverdueAlerts(self).overdue()  # refresh alerts after every write\n"),
     "ledger/storage/cache.py": (
         "from ledger.storage.invoices import InvoiceStore\n\n\nclass CachedInvoices:\n"
         "    \"\"\"InvoiceStore with a dict in front; never invalidated.\"\"\"\n\n"
@@ -114,14 +120,18 @@ HEAD = {
 PR = """Cache invoices and add overdue alerts
 
 Billing reads open invoices through a cache now, the account page uses one summary call,
-and there is an overdue-alerts endpoint with a small page. The CSV export was unused and
-is gone.
+and there is an overdue-alerts endpoint with a small page; the database refreshes the
+alerts after every write. The CSV export was unused and is gone.
 """
 
 # What a review agent might say about it, in the form the brief asks for (nolli/review.py):
 # a headline, how expected the change is given the title, what it does to the structure.
 # Targets are ids in review.mmd.
 VERDICTS = [
+    {"target": "n_fs_ledger_storage_db_py --> n_fs_ledger_services_alerts_py", "verdict": "blunder",
+     "reason": "New cycle: `storage/db` now imports `services/alerts`, which imports `storage/db`. The lowest "
+               "box of the backend depends on a service, so every store sits in the cycle too; nothing in "
+               "the title asks the database to know about alerts."},
     {"target": "n_fs_ledger_services_alerts_py --> n_fs_ledger_storage_db_py", "verdict": "problem",
      "reason": "Skips the store layer: `services/alerts` reads `storage/db` directly, while `billing` reaches "
                "it only through `invoices` and `customers`. The title asks for alerts, not for a second way "
@@ -136,11 +146,13 @@ VERDICTS = [
     {"target": "n_fs_web_src_client_ts ==> n_http_GET__alerts_overdue", "verdict": "question",
      "reason": "Client becomes a hub: expected from the title, but `client` now serves both "
                "`/customers` and `/alerts`, and every view goes through it. Split it per area as more arrive?"},
-    {"target": "n_fs_ledger_services_legacy_export_py", "verdict": "fine",
+    {"target": "n_fs_ledger_services_legacy_export_py", "verdict": "brilliant",
      "reason": "Orphan removed: not in the title, but `legacy_export` and its endpoint had no caller in "
-               "`web/src/`; its edge from `services/` into `storage/` goes with it."},
-    {"target": "n_fs_web_src_views_alerts_ts", "verdict": "fine",
-     "reason": "As intended: the new `views/alerts` reaches the backend through `client`, like `views/account`."},
+               "`web/src/`. Removing them takes a box, two endpoints and an edge into `storage/invoices` out of "
+               "the graph, and `api/routes` loses a dependency."},
+    {"target": "n_fs_web_src_views_alerts_ts", "verdict": "good",
+     "reason": "Follows the pattern: the new `views/alerts` reaches the backend only through `client`, like "
+               "`views/account`; no view calls an endpoint of its own."},
     {"target": "n_fs_ledger_api_routes_py", "verdict": "fine",
      "reason": "As intended: `api/routes` wires in `alerts` and the cache and drops the export; it stays "
                "the one box that assembles services and stores."},

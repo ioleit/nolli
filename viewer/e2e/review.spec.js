@@ -35,71 +35,100 @@ const node = (/** @type {import("@playwright/test").Page} */ page, /** @type {st
 // a box's mark is drawn above every box (draw.js), carrying the box's id
 const boxMark = (/** @type {import("@playwright/test").Page} */ page, /** @type {string} */ id) => page.locator(`#root g.verdict[data-id="${id}"]`);
 
-test("problems and questions are marked in the diagram, fine verdicts only in the panel", async ({ page }) => {
+/** Go to a verdict from the panel, put its card away, and hover its mark instead.
+ * @param {import("@playwright/test").Page} page @param {string} row text in the verdict's row @param {import("@playwright/test").Locator} mark */
+async function hoverMark(page, row, mark) {
+  await page.locator("#review .rv-verdict", { hasText: row }).click();
+  // the jump may unfold boxes first; the card it pins comes last
+  await expect(tip(page)).toContainText(row);
+  await page.waitForLoadState("networkidle");
+  await page.keyboard.press("Escape");
+  await expect(tip(page)).toBeHidden();
+  await mark.locator("circle").hover();
+  await expect(tip(page)).toContainText(row);
+}
+
+test("every verdict but fine is marked in the diagram, with its chess annotation", async ({ page }) => {
   await open(page);
   const marks = page.locator("#root g.verdict");
-  await expect(marks).toHaveCount(4);
-  await expect(page.locator("#root g.edge g.verdict.problem")).toHaveCount(1);
-  await expect(page.locator("#root g.edge g.verdict.question")).toHaveCount(2);
+  await expect(marks).toHaveCount(7);
+  await expect(page.locator("#root g.edge g.verdict.blunder text")).toHaveText("??");
+  await expect(page.locator("#root g.edge g.verdict.problem text")).toHaveText("?");
+  await expect(page.locator("#root g.edge g.verdict.question text")).toHaveText(["?!", "?!"]);
   await expect(page.locator("#root g.edge.http g.verdict.question")).toHaveCount(1);
-  await expect(boxMark(page, "fs:ledger/storage/cache.py")).toHaveClass("verdict question");
+  await expect(boxMark(page, "fs:ledger/storage/cache.py").locator("text")).toHaveText("?!");
+  await expect(boxMark(page, "fs:ledger/services/legacy_export.py").locator("text")).toHaveText("!!");
+  // the good one is on views/alerts, inside web/src/, which is folded at first and shows it
+  await expect(boxMark(page, "fs:web/src").locator("text")).toHaveText("!");
   await expect(page.locator("#root g.verdict.fine")).toHaveCount(0);
   // the glyph stays white on a changed or added edge, whose labels take the change's colour
   for (const t of await marks.locator("text").all()) await expect(t).toHaveCSS("fill", "rgb(255, 255, 255)");
 
   const rows = page.locator("#review .rv-verdict");
-  await expect(rows).toHaveCount(7);
-  // worst first, then in file order
-  await expect(rows.locator(".vd")).toHaveClass(["vd problem", "vd question", "vd question", "vd question", "vd fine", "vd fine", "vd fine"]);
-  await expect(page.locator("#review .rv-verdicts")).toContainText("1 ? 3 ✓ 3");
+  // most attention first: doubts, then praise, then fine; in file order within a kind
+  await expect(rows.locator(".vd")).toHaveClass(["blunder", "problem", "question", "question", "question", "brilliant", "good", "fine"].map(v => "vd " + v));
+  await expect(page.locator("#review .rv-verdicts")).toContainText("?? 1 ? 1 ?! 3 !! 1 ! 1 ✓ 1");
 });
 
-test("a review opens on its worst verdict, with the card that explains it", async ({ page }) => {
+test("a review opens on its worst verdict, a blunder, with the card that explains it", async ({ page }) => {
   await open(page);
   await expect(page).toHaveURL(/item=V1/);
   await expect(tip(page)).toBeVisible();
-  await expect(tip(page)).toContainText("Skips the store layer");
+  await expect(tip(page)).toContainText("New cycle");
   // #status ends in timings, different on every run
   await page.addStyleTag({ content: "#status { visibility: hidden }" });
-  await expect(page.locator("#stage")).toHaveScreenshot("problem-on-edge.png");
+  await expect(page.locator("#stage")).toHaveScreenshot("blunder-on-edge.png");
+});
+
+test("hovering a problem on an edge shows its reason", async ({ page }) => {
+  await open(page);
+  const mark = page.locator("#root g.edge g.verdict.problem");
+  await hoverMark(page, "Skips the store layer", mark);
+  await expect(page).toHaveScreenshot("problem-on-edge.png", { clip: await around(page, [mark, tip(page)], 40) });
 });
 
 test("hovering a question on a box shows its reason", async ({ page }) => {
   await open(page);
-  await page.keyboard.press("Escape");
-  await expect(tip(page)).toBeHidden();
-  const box = node(page, "fs:ledger/storage/cache.py");
-  await boxMark(page, "fs:ledger/storage/cache.py").locator("circle").hover();
-  await expect(tip(page)).toContainText("A layer inside storage/");
+  const mark = boxMark(page, "fs:ledger/storage/cache.py");
+  await hoverMark(page, "A layer inside storage/", mark);
   await expect(tip(page)).toContainText("between services/ and storage/");
-  await expect(page).toHaveScreenshot("question-on-box.png", { clip: await around(page, [box, tip(page)]) });
+  await expect(page).toHaveScreenshot("question-on-box.png", { clip: await around(page, [node(page, "fs:ledger/storage/cache.py"), tip(page)]) });
 });
 
 test("hovering a question on an HTTP edge shows its reason", async ({ page }) => {
   await open(page);
-  // the view opens on the problem, with the HTTP API above it out of sight: go there first
-  await page.locator("#review .rv-verdict", { hasText: "Client becomes a hub" }).click();
-  await expect(page).toHaveURL(/item=V4/);
-  await page.keyboard.press("Escape");
-  await expect(tip(page)).toBeHidden();
   const mark = page.locator("#root g.edge.http g.verdict");
-  await mark.locator("circle").hover();
-  await expect(tip(page)).toContainText("Client becomes a hub");
+  await hoverMark(page, "Client becomes a hub", mark);
   await expect(page).toHaveScreenshot("question-on-http-edge.png", { clip: await around(page, [mark, tip(page)], 40) });
 });
 
-test("the review panel lists every verdict, worst first", async ({ page }) => {
+test("hovering a brilliant on a removed box shows its reason", async ({ page }) => {
+  await open(page);
+  const id = "fs:ledger/services/legacy_export.py";
+  await hoverMark(page, "Orphan removed", boxMark(page, id));
+  await expect(page).toHaveScreenshot("brilliant-on-removed-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
+});
+
+test("hovering a good on a box shows its reason", async ({ page }) => {
+  await open(page);
+  const id = "fs:web/src/views/alerts.ts";
+  await hoverMark(page, "Follows the pattern", boxMark(page, id));
+  await expect(boxMark(page, id).locator("text")).toHaveText("!");
+  await expect(page).toHaveScreenshot("good-on-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
+});
+
+test("the review panel lists every verdict, most attention first", async ({ page }) => {
   await open(page);
   await expect(page.locator("#review")).toHaveScreenshot("verdict-list.png");
 });
 
 test("a fine verdict goes to its box from the panel, without a mark on it", async ({ page }) => {
   await open(page);
-  await page.locator("#review .rv-verdict", { hasText: "Orphan removed" }).click();
-  await expect(page).toHaveURL(/item=V5/);
-  const box = node(page, "fs:ledger/services/legacy_export.py");
-  await expect(box).toHaveClass(/\blit\b/);
-  await expect(boxMark(page, "fs:ledger/services/legacy_export.py")).toHaveCount(0);
-  await expect(tip(page)).toContainText("Orphan removed");
-  await expect(page).toHaveScreenshot("fine-on-removed-box.png", { clip: await around(page, [box, tip(page)]) });
+  await page.locator("#review .rv-verdict", { hasText: "the one box that assembles" }).click();
+  await expect(page).toHaveURL(/item=V8/);
+  const id = "fs:ledger/api/routes.py";
+  await expect(node(page, id)).toHaveClass(/\blit\b/);
+  await expect(boxMark(page, id)).toHaveCount(0);
+  await expect(tip(page)).toContainText("the one box that assembles");
+  await expect(page).toHaveScreenshot("fine-on-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
 });
