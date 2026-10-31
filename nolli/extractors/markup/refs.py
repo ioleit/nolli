@@ -24,8 +24,7 @@ import re
 
 from ...model import USE, Provenance, Relation
 from .. import Context
-from ..interfaces import ensure_ext
-from ..typescript.resolve import CDN, package_name
+from ..interfaces import CDN, ensure_ext, package_name
 
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 TEMPLATE = re.compile(r"\{\{|\{%|\$\{|<%")

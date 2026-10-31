@@ -59,6 +59,8 @@ with its verdicts and reasoning on the structural changes.
 | TypeScript, JavaScript | ![supported](https://img.shields.io/badge/supported-2ea44f) | imports, classes, interfaces, type aliases and enums, and references between them through barrels (`index.ts`) and namespaces; type-only dependencies drawn dotted; tsconfig `paths`/`baseUrl`, workspace packages, CommonJS `require` |
 | `fetch`, axios, `EventSource`, `WebSocket` | ![heuristic](https://img.shields.io/badge/heuristic-dbab09) | HTTP calls, bound to the backend route with the same path shape; one level of helper function is followed |
 | `process.env`, `import.meta.env` | ![supported](https://img.shields.io/badge/supported-2ea44f) | environment variables a module reads |
+| HTML | ![supported](https://img.shields.io/badge/supported-2ea44f) | what a page loads: `<script src>`, `<link href>`, images and media, `<style>` blocks; a script from a package CDN is that npm package; paths from the server root (`/src/main.tsx`) are matched heuristically; links between pages are not dependencies |
+| CSS, SCSS, Less | ![supported](https://img.shields.io/badge/supported-2ea44f) | `@import` and `url()`; `@import "tailwindcss"` is that npm package |
 | docker-compose | ![supported](https://img.shields.io/badge/supported-2ea44f) | services, `depends_on`, service URLs in environment values, the variables each service sets |
 | Dockerfile | ![supported](https://img.shields.io/badge/supported-2ea44f) | which directories go into an image (`COPY`, `ADD`) and its entrypoint |
 
