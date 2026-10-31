@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 
-from .model import CONTAIN, Model
+from .model import CONTAIN, SYMBOL_KINDS, Model
 from .rollup import fact_key
 
 
@@ -104,7 +104,7 @@ def node_diff(m: Model, x: str, internal_changes: dict[str, str] | None = None) 
     if status is None:
         return None
     out = {"status": status, **(agg or {"added": 0, "removed": 0, "files": 0, "new": 0, "gone": 0})}
-    if e.kind == "class" and own.get("status") == "same":
+    if e.kind in SYMBOL_KINDS and own.get("status") == "same":
         out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)  # its own lines; files count them for the module
     out["internal"] = len(internal_changes or {})
     for k in ("git", "old_path", "renamed_to"):
@@ -191,7 +191,7 @@ def details(m: Model, x: str) -> dict:
                           "removed": d.get("removed", 0), "binary": d.get("binary", False), "link": links.diff(path),
                           "blob": links.blob(path, "base" if d["git"] == "D" else "head"), "hunks": hunks[:20],
                           "more_hunks": max(0, len(hunks) - 20)})
-        elif e.kind == "class" and (d.get("added") or d.get("removed")) and d["status"] == "same":
+        elif e.kind in SYMBOL_KINDS and (d.get("added") or d.get("removed")) and d["status"] == "same":
             path = e.attrs.get("path")
             first = (d.get("added_lines") or [None])[0]
             classes.append({"id": eid, "name": e.name, "path": path, "added": d.get("added", 0), "removed": d.get("removed", 0),
@@ -237,13 +237,14 @@ def area_of(m: Model, x: str) -> str:
 
 
 def short(m: Model, x: str) -> str:
-    """A readable name: the path for files and directories, path#Name for classes."""
+    """A readable name: the path for files and directories, path#Name for classes (and
+    the other symbols)."""
     if not m.has(x):
         return x
     e = m.entities[x]
     if e.kind in ("file", "directory"):
         return e.attrs.get("path") or e.name
-    if e.kind == "class":
+    if e.kind in SYMBOL_KINDS:
         return f"{e.attrs.get('path')}#{e.name}"
     return e.name
 
@@ -289,13 +290,13 @@ def change_items(m: Model) -> list[dict]:
         if p is not None and (m.entities[p].attrs.get("diff") or {}).get("status") == st:
             continue  # covered by its parent's item
         inner = [c for c in m.descendants(e.id) if (m.entities[c].attrs.get("diff") or {}).get("status") == st]
-        classes = [m.entities[c].name for c in inner if m.entities[c].kind == "class"]
-        if e.kind == "class":
+        classes = [m.entities[c].name for c in inner if m.entities[c].kind in SYMBOL_KINDS]
+        if e.kind in SYMBOL_KINDS:
             classes = []
         lines = d.get("added", 0) if st == "added" else d.get("removed", 0)
         if e.kind == "directory":
             lines = sum((m.entities[c].attrs.get("diff") or {}).get("added" if st == "added" else "removed", 0) for c in inner if m.entities[c].kind == "file")
-        what = {"file": "module", "directory": "package", "class": "class", "package": "external package"}.get(e.kind, e.kind)
+        what = {"file": "module", "directory": "package", "package": "external package"}.get(e.kind, e.kind)
         title = f"{'new' if st == 'added' else 'removed'} {what} {short(m, e.id)}"
         if d.get("old_path") or d.get("renamed_to"):
             title += f" (renamed {'from ' + d['old_path'] if d.get('old_path') else 'to ' + d['renamed_to']})"

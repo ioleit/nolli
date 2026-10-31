@@ -210,6 +210,7 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
             "local": local(e), "single": e.count == 1,
             "weak": weak,
             "heuristic": e.confidence == "heuristic",
+            "types": e.count > 0 and e.types == e.count,  # references only to types (``type_only``): no run-time dependency
             "info": edge_info(ctx, e),
             "diff": ({"status": e.status, "base": e.base, "head": e.head, "facts": sorted(e.changed),
                       "changes": [fact_change(m, by_fact[f], links) for f in sorted(e.changed)[:40] if f in by_fact],

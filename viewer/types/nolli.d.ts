@@ -131,6 +131,8 @@ export interface SceneEdge {
   single: boolean;
   weak: boolean;
   heuristic: boolean;
+  /** references only to types: no dependency at run time */
+  types: boolean;
   info: Info;
   diff?: EdgeDiff | null;
   items?: string[];

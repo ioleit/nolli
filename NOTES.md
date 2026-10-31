@@ -14,9 +14,21 @@ Nothing is a settled design.
 - Facts at the finest resolved level, never pre-aggregated. Coarser edges come from the
   roll-up at view time (`nolli/rollup.md`). This is what makes the depth adjustable.
 - Classes are the finest atom; functions and module-level code are the module's own body.
-  The picture is about architecture, not call graphs. Open for other languages: the
-  "smallest unit with state and an interface" (struct+impl in Rust? package-level types
-  in Go?).
+  The picture is about architecture, not call graphs. In TypeScript the atoms are
+  classes, interfaces, type aliases and enums: interfaces and types are what Python's data
+  classes are, the shapes modules agree on, and real TypeScript has few classes (7 in a
+  265-module CLI next to 182 interfaces and types; 1 in a 98-module React frontend next
+  to 118).
+  React components stay functions of their module: in the frontend looked at, a file
+  holds one component, so the module already is the component. Open for other
+  languages: the "smallest unit with state and an interface" (struct+impl in Rust?
+  package-level types in Go?).
+- A folder's package body (Python's `__init__.py`, an `index.ts`/`index.js`) is the
+  folder's own code, not a module of its own; each language names its body files.
+- A TypeScript reference used only as a type (or imported with `import type`) is marked
+  `type_only`: TypeScript erases it, so it is no dependency at run time and a cycle
+  through it is none either. A drawn edge made only of such references is dotted and
+  says so; a mixed edge says how many are types.
 - References replace imports where they resolve: a `use/ref` edge runs from the class or
   module whose body mentions a name to the class or module it is bound to, following
   re-exports; where references between two modules exist the import edge is dropped. A
@@ -30,9 +42,31 @@ Nothing is a settled design.
 
 ## Extraction
 
+- Two layers that know nothing of each other's code: extraction (`extractors/`, `match`)
+  writes the graph; the operations on it (roll-up, labels, hover text, scene, Mermaid,
+  diff) read only the graph. What they need to know about a language is a fact in the
+  model, written by the file tree: a file is a `module`, a package body is `body` (what
+  it makes its folder: "package", "folder module"), and `meta["languages"]` names the
+  languages. Symbol kinds are the model's vocabulary (`model.SYMBOL_KINDS`), so their
+  icons and nouns live with the picture. A dataset therefore describes itself; one
+  extracted before these facts existed draws package bodies as modules.
+- A language is a plug-in (`extractors/<language>/__init__.py` exports a `Language`):
+  extensions, parser, extractors, resolvers, its name in text, package-body files.
+  Only extraction reads the registry.
+  Extractors of a language share one parse per file where trees are cheap to keep
+  (tree-sitter); Python's `ast` trees are not kept: for a 2,000-file repository they
+  took 700 MB and the garbage collector walking them cost what parsing once saved.
 - Python modules resolve relative to any ancestor directory of the importing file and
   to `src/`, `lib/`, `python/` roots; FastAPI `include_router` prefixes are followed
   through re-exports.
+- TypeScript/JavaScript specifiers resolve the way the compiler does where it matters
+  in practice: `./x.js` finds `x.ts` (NodeNext), a folder its `index`, tsconfig `paths`
+  and `baseUrl` with `extends` followed, packages of the repository's own workspaces to
+  their source (an entry under `dist/` is looked for under `src/`), CDN URLs to their npm
+  package. References follow `export … from` and `export *` through barrels to the
+  class or type, else to the module defining the name; namespace imports (`ns.Name`)
+  and CommonJS `require` (whole or destructured) bind like imports. `import()` stays an
+  import edge, marked `dynamic`.
 - Frontend calls: `fetch`/axios/EventSource with their URL's static shape; one level of
   helper indirection (`fetchJSON(path)`), with module constants (`API_BASE`) folded in;
   a route whose path ends with the called pattern is accepted when the base is unknown.

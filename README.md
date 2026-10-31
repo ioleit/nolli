@@ -58,7 +58,7 @@ or just fine.
 | FastAPI, Starlette | ![supported](https://img.shields.io/badge/supported-2ea44f) | routes from `@router.get(...)`-style decorators, `APIRouter` prefixes, `include_router` chains |
 | Flask | ![partial](https://img.shields.io/badge/partial-e36209) | `@app.get(...)`-style routes; `@app.route` and blueprint prefixes are not read |
 | `os.environ`, `os.getenv` | ![supported](https://img.shields.io/badge/supported-2ea44f) | environment variables a module reads |
-| TypeScript, JavaScript | ![supported](https://img.shields.io/badge/supported-2ea44f) | imports between modules (`.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`) |
+| TypeScript, JavaScript | ![supported](https://img.shields.io/badge/supported-2ea44f) | imports, classes, interfaces, type aliases and enums, and references between them through barrels (`index.ts`) and namespaces; type-only dependencies drawn dotted; tsconfig `paths`/`baseUrl`, workspace packages, CommonJS `require` |
 | `fetch`, axios, `EventSource`, `WebSocket` | ![heuristic](https://img.shields.io/badge/heuristic-dbab09) | HTTP calls, bound to the backend route with the same path shape; one level of helper function is followed |
 | `process.env`, `import.meta.env` | ![supported](https://img.shields.io/badge/supported-2ea44f) | environment variables a module reads |
 | docker-compose | ![supported](https://img.shields.io/badge/supported-2ea44f) | services, `depends_on`, service URLs in environment values, the variables each service sets |

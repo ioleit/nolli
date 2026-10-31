@@ -61,7 +61,7 @@ const at = b => `translate(${b.x},${b.y})`;
 
 /** @param {SceneEdge} e @param {boolean} review */
 function edgeClass(e, review) {
-  return ["edge", e.local && "local", e.single && "single", e.weak && "weak", e.style, e.heuristic && "heuristic",
+  return ["edge", e.local && "local", e.single && "single", e.weak && "weak", e.style, e.heuristic && "heuristic", e.types && "types",
     e.diff ? "d-" + e.diff.status : review && "d-same", e.verdict && "v-" + e.verdict].filter(Boolean).join(" ");
 }
 

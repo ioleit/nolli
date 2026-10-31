@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 
 from . import match
-from .extractors import Context, all_extractors
+from .extractors import Context, all_extractors, language_names
 from .mermaid import render
 from .model import Model
 from .progress import Progress, Quiet
@@ -76,7 +76,7 @@ def extract(repo: Path, config: dict | None = None, progress: Progress | None = 
     with progress.step("matching references"):
         match.run_all(ctx)
     timings["match"] = round(time.time() - t0, 3)
-    m.meta = {"repo": str(repo), "commit": git_head(repo), "files": len(ctx.files), "timings": timings,
+    m.meta = {"repo": str(repo), "commit": git_head(repo), "files": len(ctx.files), "languages": language_names(), "timings": timings,
               "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     return m, ctx
 
@@ -218,7 +218,7 @@ def counts(report: dict) -> str:
     """What a build found, in a few words (from report.json)."""
     ents, rels = report["summary"]["entities"], report["summary"]["relations"]
     parts = [f"{report['meta'].get('files') or ents.get('file', 0)} files"]
-    parts += [f"{ents[k]} {k}{'es' if k == 'class' else 's'}" for k in ("class", "service") if ents.get(k)]
+    parts += [f"{ents[k]} {k}{'es' if k == 'class' else 's'}" for k in ("class", "interface", "type", "enum", "service") if ents.get(k)]
     parts.append(f"{sum(v for k, v in rels.items() if k != 'contain')} dependencies")
     return ", ".join(parts)
 
@@ -350,7 +350,7 @@ def write_dataset(m: Model, out: Path, budget: int, notes: dict, extra: dict | N
         "view": {"visible": len(view["visible"]), "edges": len(rolled.edges), "internal": rolled.internal,
                  "hidden_relations": rolled.hidden_relations, "unresolved": rolled.unresolved},
         "unresolved": sorted(e.id for e in m.entities.values() if e.kind == "unresolved"),
-        "notes": {k: v for k, v in notes.items() if k not in ("py-imports", "js-imports", "py-aliases")},
+        "notes": {k: v for k, v in notes.items() if k not in ("py-imports", "js-imports", "py-aliases", "ts-exports")},
         **(extra or {}),
     }
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str))

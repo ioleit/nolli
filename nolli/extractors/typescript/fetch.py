@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 
 from .. import Context, api
-from .imports import parser_for, walk
+from .imports import walk
 
 AXIOS_METHODS = {"get", "post", "put", "patch", "delete"}
 
@@ -190,14 +190,11 @@ def substitution_idents(node) -> set[str]:
 
 
 def run(ctx: Context) -> None:
-    m = ctx.model
     trees: dict[str, object] = {}
-    for f in ctx.files:
-        rel = ctx.rel(f)
-        p = parser_for(rel)
-        if p is None or not m.has(ctx.fs_id(rel)) or m.entities[ctx.fs_id(rel)].attrs.get("role") == "test":
-            continue
-        trees[rel] = p.parse(ctx.read(rel))
+    for rel in ctx.sources("typescript", tests=False):
+        tree = ctx.tree(rel)
+        if tree is not None:
+            trees[rel] = tree
 
     calls: list[Call] = []
     helpers: dict[str, tuple[int, str]] = {}  # helper name -> (parameter index carrying the URL, static prefix)

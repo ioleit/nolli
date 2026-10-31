@@ -31,7 +31,7 @@ RELATION_KINDS = (CONTAIN, USE, PROVIDE, ALLOCATE)
 # adds so that interfaces, externals and deployment elements have a place in
 # the containment forest; it has no counterpart in the repository.
 ARTIFACT_KINDS = ("directory", "file")
-SYMBOL_KINDS = ("class", "function")  # module-viewtype elements inside a file
+SYMBOL_KINDS = ("class", "interface", "type", "enum", "function")  # module-viewtype elements inside a file
 COMPONENT_KINDS = ("service", "image")
 INTERFACE_KINDS = ("api", "resource", "endpoint", "env", "host")  # api > resource > endpoint: extractors/api.py
 OTHER_KINDS = ("package", "group", "unresolved")

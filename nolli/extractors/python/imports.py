@@ -24,14 +24,9 @@ def module_name_of(rel: str) -> str:
 def run(ctx: Context) -> None:
     m = ctx.model
     pending: list[tuple[str, str, int]] = []  # (file id, module, line)
-    for f in ctx.progress.each(ctx.files):
-        rel = ctx.rel(f)
-        if not rel.endswith(".py") or not m.has(ctx.fs_id(rel)):
-            continue
-        try:
-            tree = ast.parse(ctx.read(rel), filename=rel)
-        except (SyntaxError, ValueError):
-            ctx.notes.setdefault("parse-errors", []).append(rel)
+    for rel in ctx.sources("python"):
+        tree = ctx.tree(rel)
+        if tree is None:
             continue
         fid = ctx.fs_id(rel)
         pkg_parts = rel.split("/")[:-1] if not rel.endswith("__init__.py") else rel.split("/")[:-1]

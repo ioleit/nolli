@@ -44,9 +44,12 @@ solution; solutions are for whoever picks it up.
   structure; WebSocket calls from the frontend arrive as `GET` and don't meet
   `WEBSOCKET` routes.
 - Re-exports as the package's provided interface (`provide(package, Name)`), the same for
-  TypeScript `index.ts` barrels; today re-export edges are simply dropped.
-- TypeScript classes and types as atoms; a TS-only repo currently has nothing to unfold
-  below modules.
+  TypeScript `index.ts` barrels; today references are followed through them and the
+  barrel's own edges into its folder are dropped.
+- TypeScript: dynamic `import()` is marked but drawn like any import, though it often
+  marks a lazily loaded part (code splitting); `declare module` and JSDoc
+  `import("./x").T` types are not read; a local name shadowing an import is counted as
+  the import; Vite/webpack `resolve.alias` outside tsconfig is not read.
 - More front-ends and adapters: Rust (crates as modules and as components), Flask,
   Express, the Modal SDK (functions and web endpoints as interfaces, apps as deployment).
 - The guessed numbers (budget, utility threshold, weak edge, fan size) into one named

@@ -31,7 +31,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .model import CONTAIN, Entity, Model, Relation
+from .model import CONTAIN, SYMBOL_KINDS, Entity, Model, Relation
 
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
@@ -186,7 +186,7 @@ def merge(base: Model, head: Model, changes: dict[str, FileChange]) -> Model:
         old_path = c.old_path or path
         for cid in m.children(fid) + ([] if not c.old_path else m.children(f"fs:{c.old_path}")):
             ce = m.entities[cid]
-            if ce.kind != "class":
+            if ce.kind not in SYMBOL_KINDS:
                 continue
             hb, hh = base.entities.get(cid), head.entities.get(cid)
             added = [n for h in c.hunks for n in h["added"] if hh and hh.attrs.get("line", 0) <= n <= (hh.attrs.get("end_line") or 0)]
@@ -228,7 +228,7 @@ def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None) -> tu
         d = e.attrs.get("diff")
         if d:
             by_status["entities"][f"{e.kind}/{d['status']}"] += 1
-            if e.kind in ("file", "class") and (d.get("added") or d.get("removed")):
+            if (e.kind == "file" or e.kind in SYMBOL_KINDS) and (d.get("added") or d.get("removed")):
                 by_status["content"][e.kind] += 1
     for r in m.relations:
         d = r.attrs.get("diff")
@@ -236,6 +236,7 @@ def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None) -> tu
             by_status["relations"][d["status"]] += 1
     m.meta = {
         "repo": repo.name, "commit": head[:7], "files": sides["head"].meta.get("files"),
+        "languages": sides["base"].meta.get("languages", {}) | sides["head"].meta.get("languages", {}),
         "diff": {"base": base, "head": head, "base_short": base[:7], "head_short": head[:7], "remote": github_remote(repo),
                  "files_changed": len(changes), "added": sum(c.added for c in changes.values()),
                  "removed": sum(c.removed for c in changes.values())},

@@ -1,7 +1,8 @@
 """How the picture names things: shared by the scene and the hover descriptions.
 
 Every box is named the same way: zero or more small icons that say what it is (``D``
-directory, ``m`` module, ``C`` class, ``svc``/``img`` deployment, ``API``, ``/`` a path step
+directory, ``m`` module, the language's symbol icons (``C`` class, ``I`` interface, ``T``
+type, ``E`` enum), ``svc``/``img`` deployment, ``API``, ``/`` a path step
 of an API, the verbs of an operation), then a readable name (``icons_of``, ``name_of``).
 Text that has no icons (hover descriptions, residue) uses ``label_of``."""
 
@@ -10,7 +11,19 @@ from __future__ import annotations
 from .model import Model
 from .rollup import display_path, is_init
 
-MODULE_LANGS = ("python", "typescript", "javascript")
+
+SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "function": "f"}  # model.SYMBOL_KINDS
+
+
+def is_module(e) -> bool:
+    """A file of an extracted language (the file tree marks it): drawn ``m``, unfoldable."""
+    return e.kind == "file" and bool(e.attrs.get("module"))
+
+
+def module_stem(file_name: str) -> str:
+    """A source file's module name: without its extension, ``.d.ts`` included."""
+    stem = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+    return stem[:-2] if stem.endswith(".d") and file_name.endswith(("ts", "mts", "cts")) else stem
 
 
 def is_body(x: str) -> bool:
@@ -26,10 +39,10 @@ def icons_of(m: Model, x: str) -> list[str]:
     e = m.entities[x]
     if e.kind == "directory":
         return ["D"]
-    if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
+    if is_module(e):
         return ["m"]
-    if e.kind == "class":
-        return ["C"]
+    if e.kind in SYMBOL_ICON:
+        return [SYMBOL_ICON[e.kind]]
     if e.kind == "service":
         return ["svc"]
     if e.kind == "image":
@@ -50,8 +63,8 @@ def name_of(m: Model, x: str, expanded: set[str]) -> str:
     e = m.entities[x]
     if e.kind == "directory":
         return e.name if e.attrs.get("root") else display_path(m, x, expanded)
-    if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
-        return e.name.rsplit(".", 1)[0] if "." in e.name else e.name  # a source file is its module
+    if is_module(e):
+        return module_stem(e.name)  # a source file is its module
     if e.kind == "image":
         return e.name.removesuffix("/Dockerfile")
     if e.kind == "endpoint" and "name" in e.attrs:
@@ -63,7 +76,7 @@ def label_of(m: Model, x: str, expanded: set[str]) -> str:
     """The name in running text: the word-like icons stay in front ("svc api", "GET health")."""
     if m.has(x) and m.entities[x].kind == "endpoint":
         return m.entities[x].name
-    icons = [i for i in icons_of(m, x) if i not in ("D", "m", "C", "/")]
+    icons = [i for i in icons_of(m, x) if i not in ("D", "m", "/", *SYMBOL_ICON.values())]
     name = name_of(m, x, expanded)
     return " ".join(icons + ([name] if name else []))
 
