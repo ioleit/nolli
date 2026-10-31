@@ -318,17 +318,23 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
                 continue
         on_node[ends[0]].append(v)
     worst = lambda vs: max((v["verdict"] for v in vs), key=VERDICT_RANK.get, default=None)  # noqa: E731
+    # a verdict is the box's or edge's own when it names that box (or its own code) or that edge;
+    # the others were rolled up from inside, and the card sums them up
+    own = lambda v, ends: [x[5:] if is_body(x) else x for x in v["ends"]] == ends  # noqa: E731
+    split = lambda vs, ends: ([v for v in vs if own(v, ends)], [v for v in vs if not own(v, ends)])  # noqa: E731
     for n in nodes:
         n["items"] = sorted(node_items.get(n["id"], ()), key=lambda i: int(i[1:]))
         vs = on_node.get(n["id"], [])
         n["verdicts"] = [v["id"] for v in vs]
         n["verdict"] = worst(vs)
-        n["review"] = node_review_info(n.get("diff"), vs)  # the card's second part, under a line
+        kind = m.entities[n["id"]].kind if m.has(n["id"]) else "box"
+        # the card's second part, under a line
+        n["review"] = node_review_info(n.get("diff"), *split(vs, [n["id"]]), len(n["items"]), kind.replace("_", " "))
     for e in edges:
         vs = on_edge.get(e["key"], [])
         e["verdicts"] = [v["id"] for v in vs]
         e["verdict"] = worst(vs)
-        e["review"] = edge_review_info(m, e.get("diff"), vs)
+        e["review"] = edge_review_info(m, e.get("diff"), *split(vs, [e["src"], e["dst"]]), len(e["items"]))
 
 
 def state_from_query(q: dict[str, str]) -> ViewState:

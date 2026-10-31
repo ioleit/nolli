@@ -171,3 +171,16 @@ def test_items_verdicts_and_export(repo):
         read_verdicts('[{"id": "C1", "verdict": "fine"}]')
     md = review_markdown(m, "flowchart TD\n", "Why: speed.")
     assert "verdicts.json" in md and "source --> target" in md and "Why: speed." in md
+
+
+def test_rolled_up_verdicts_are_counted():
+    from nolli.review import node_review_info
+
+    v = lambda i, verdict: {"id": f"V{i}", "verdict": verdict, "reason": f"reason {i}"}  # noqa: E731
+    # few verdicts: every reason in full, worst first
+    assert [line[0] for line in node_review_info(None, [v(1, "fine")], [v(2, "problem")])] == [{"verdict": "problem"}, {"verdict": "fine"}]
+    # many from inside: one line counting them, like the review panel; the box's own in full
+    inside = [v(2, "fine"), v(3, "blunder"), v(4, "fine"), v(5, "fine")]
+    lines = node_review_info(None, [v(1, "question")], inside, items=13, kind="directory")
+    assert lines[0] == [{"v": "13 changes"}, " in this directory · verdicts:", " ", {"verdict": "blunder"}, " ", {"v": "1"}, " ", {"verdict": "fine"}, " ", {"v": "3"}]
+    assert lines[1][0] == {"verdict": "question"} and len(lines) == 2
