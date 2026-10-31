@@ -78,8 +78,26 @@ def resolve_verdicts(m: Model, verdicts: list[dict]) -> list[dict]:
     return out
 
 
-EDGE = re.compile(r"^\s*(n_\w+)\s*(?:-->|-\.->|==>)(?:\|[^|]*\|)?\s*(n_\w+)\s*$")
+EDGE = re.compile(r"^\s*(?P<src>n_\w+)\s*(?:-->|-\.->|==>)(?:\|(?P<label>[^|]*)\|)?\s*(?P<dst>n_\w+)\s*$")
 NODE = re.compile(r"^\s*(?:subgraph\s+)?(n_\w+)\s*[\[(]")
+NODE_CLASS = re.compile(r"^\s*(?:subgraph\s+)?(n_\w+)\b.*:::(\w+)\s*$")  # a node drawn with its class
+CLASS = re.compile(r"^\s*class\s+(n_\w+)\s+(\w+)\s*$")  # a class given to a node (or subgraph) afterwards
+CHANGED = ("added", "removed", "changed")
+
+
+def diagram_changes(mermaid: str) -> dict[str, str]:
+    """What the review diagram (review.mmd) draws as changed: a node id (a subgraph's without
+    ``_g``), or ``"<src> <dst>"`` for an edge, to added, removed or changed. What it draws
+    unchanged is missing."""
+    out = {}
+    for line in mermaid.splitlines():
+        if g := EDGE.match(line):
+            word = (g["label"] or "").split(" ")[0]
+            if word in CHANGED:
+                out[f"{g['src']} {g['dst']}"] = word
+        elif (g := NODE_CLASS.match(line) or CLASS.match(line)) and g.group(2) in CHANGED:
+            out[g.group(1).removesuffix("_g")] = g.group(2)
+    return out
 
 
 def check_verdicts(m: Model, mermaid: str, text: str) -> tuple[list[dict], list[str]]:
@@ -99,7 +117,7 @@ def check_verdicts(m: Model, mermaid: str, text: str) -> tuple[list[dict], list[
         return [], ['expected a JSON list of {"target", "verdict", "reason"} (or {"verdicts": [...]})']
     ids = diagram_ids(m)
     nodes = {g.group(1) for line in mermaid.splitlines() if (g := NODE.match(line))}
-    edges = {(ids.get(g.group(1)), ids.get(g.group(2))) for line in mermaid.splitlines() if (g := EDGE.match(line))}
+    edges = {(ids.get(g["src"]), ids.get(g["dst"])) for line in mermaid.splitlines() if (g := EDGE.match(line))}
     errors, ok = [], []
     for i, v in enumerate(data, 1):
         where = f"verdict {i}"

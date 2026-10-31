@@ -37,9 +37,6 @@ LISTED = 5  # verdicts listed in the comment, worst first; fine ones never
 MERMAID_MAX = 40_000  # characters of the review diagram's Mermaid; a comment holds 65536
 # the verdict marks as the viewer draws them (assets/verdicts/), images on GitHub; $NOLLI_ASSETS_URL for another copy
 ASSETS = "https://raw.githubusercontent.com/ioleit/nolli/main/assets/verdicts"
-MMD_EDGE = re.compile(r"^\s*(n_\w+)\s*(?:-->|-\.->|==>)(?:\|([^|]*)\|)?\s*(n_\w+)\s*$")
-MMD_NODE_CLASS = re.compile(r"^\s*(?:subgraph\s+)?(n_\w+)\b.*:::(\w+)\s*$")
-MMD_CLASS = re.compile(r"^\s*class\s+(n_\w+)\s+(\w+)\s*$")
 NEW = {"added": "New", "removed": "Removed", "changed": "Changed"}
 
 
@@ -65,7 +62,7 @@ def comment(ds: Path, skipped: str | None = None) -> str:
     each kind, the worst ones (not fine) with their reasons, and how to open the result.
     ``skipped`` says why no review agent ran: "no-key" (the repository has no API key for
     one) or "fork" (a PR from a fork, which gets no secrets)."""
-    from .review import check_verdicts, resolve_verdicts
+    from .review import check_verdicts, diagram_changes, resolve_verdicts
 
     m = Model.load(ds / "model.json")
     key = key_of(m.meta)
@@ -89,7 +86,7 @@ def comment(ds: Path, skipped: str | None = None) -> str:
         verdicts = None
     else:
         verdicts = resolve_verdicts(m, verdicts)
-        status = diagram_status((ds / "review.mmd").read_text())
+        status = diagram_changes((ds / "review.mmd").read_text())
         total = len(verdicts)
         counts = " &nbsp; ".join(f"{mark(k)} {c}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in verdicts)))
         lines[-1] += f" The review agent's {total} verdict{'' if total == 1 else 's'}: {counts}"
@@ -120,20 +117,6 @@ def mark(verdict: str) -> str:
 
     base = os.environ.get("NOLLI_ASSETS_URL") or ASSETS
     return f'<img src="{base}/{verdict}.svg" height="18" alt="{GLYPH[verdict]}" title="{verdict}" align="top">'
-
-
-def diagram_status(mermaid: str) -> dict[str, str]:
-    """What the review diagram says changed: a node id (or "a b" for an edge) -> added,
-    removed or changed; what it draws unchanged is missing."""
-    out = {}
-    for line in mermaid.splitlines():
-        if g := MMD_EDGE.match(line):
-            word = (g.group(2) or "").split(" ")[0]
-            if word in NEW:
-                out[f"{g.group(1)} {g.group(3)}"] = word
-        elif (g := MMD_NODE_CLASS.match(line) or MMD_CLASS.match(line)) and g.group(2) in NEW:
-            out[g.group(1).removesuffix("_g")] = g.group(2)
-    return out
 
 
 def what(m: Model, v: dict, status: dict[str, str]) -> str:
