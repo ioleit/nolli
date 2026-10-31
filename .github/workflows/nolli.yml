@@ -1,0 +1,140 @@
+# nolli reviews nolli: on every push to a pull request, build the change's dataset (from where
+# the PR left main to its head), let a review agent judge it, store the dataset as an artifact
+# and keep one comment on the PR up to date with the verdicts and the command that opens them
+# (nolli view <owner>/<repo>#<n>@<head>, nolli/ci.py). Only the PR's latest result is kept,
+# none once it closes. Never blocks: the comment is for information.
+#
+# The review needs the repository secret ANTHROPIC_API_KEY; without it the comment counts the
+# changes and says how to add the key. Pull requests from forks get no secrets, so no review.
+# Comments come from the GitHub App nolli-review when the repository has its ID (variable
+# NOLLI_APP_ID) and private key (secret NOLLI_APP_PRIVATE_KEY), else from github-actions.
+# This repository installs nolli from the PR's own checkout; another project would pin a release.
+name: nolli
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, closed]
+
+permissions:
+  contents: read
+  pull-requests: write  # the comment
+  actions: write        # deleting the PR's older results
+
+concurrency:
+  group: nolli-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PR: ${{ github.event.pull_request.number }}
+  REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ github.token }}
+  HAS_APP: ${{ vars.NOLLI_APP_ID != '' && secrets.NOLLI_APP_PRIVATE_KEY != '' }}
+
+jobs:
+  review:
+    name: architecture review
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HEAD: ${{ github.event.pull_request.head.sha }}
+      MODEL: claude-opus-5-5
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      # this repository's comments show the verdict marks of the PR's own commit; others use main's
+      NOLLI_ASSETS_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.sha }}/assets/verdicts
+      FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install .
+
+      - name: build the change's dataset
+        run: |
+          echo "HEAD7=${HEAD::7}" >> "$GITHUB_ENV"
+          nolli agent brief "#$PR" --data "$RUNNER_TEMP/nolli" > "$RUNNER_TEMP/brief.json"
+          cat "$RUNNER_TEMP/brief.json"
+          echo "DATASET=$(jq -r .dataset "$RUNNER_TEMP/brief.json")" >> "$GITHUB_ENV"
+
+      - name: review agent
+        if: env.HAS_KEY == 'true'
+        continue-on-error: true  # the comment says the review failed
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          b="$RUNNER_TEMP/brief.json"
+          repo=$(jq -r .repository "$b")  # the brief's commands read git with -C <repo>
+          prompt="Review this change's architecture with nolli; its dataset is built.
+          Read $(jq -r .brief "$b") and do what it says.
+          Read code only as the change has it: \`$(jq -r .inspect "$b")\` for the diff, and
+          \`git show $(jq -r .head "$b"):<path>\` for a whole file at the head. Don't change anything in the repository.
+          Write your verdicts to $(jq -r .verdicts "$b"): a JSON list of
+          {\"target\": ..., \"verdict\": ..., \"reason\": ...}.
+          Then run \`$(jq -r .check "$b")\`; it prints one line per problem. Fix each in the verdicts
+          file and run it again until it prints \"ok\": true."
+          npx -y @anthropic-ai/claude-code@2.1.316 -p "$prompt" --model "$MODEL" \
+            --allowedTools Read Grep Glob Write Edit "Bash(git diff:*)" "Bash(git show:*)" "Bash(git log:*)" \
+              "Bash(git -C $repo diff:*)" "Bash(git -C $repo show:*)" "Bash(git -C $repo log:*)" "Bash(nolli agent check:*)"
+          nolli agent check "$DATASET"
+
+      - name: store the result
+        uses: actions/upload-artifact@v4
+        with:
+          name: nolli-pr${{ env.PR }}-${{ env.HEAD7 }}
+          path: ${{ env.DATASET }}
+          retention-days: 7
+
+      - name: the nolli-review app's token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.NOLLI_APP_ID }}
+          private-key: ${{ secrets.NOLLI_APP_PRIVATE_KEY }}
+
+      - name: delete the PR's older results
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+        run: |
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
+            --jq ".artifacts[] | select(.name | startswith(\"nolli-pr$PR-\")) | select(.name != \"nolli-pr$PR-$HEAD7\") | .id" |
+          while read -r id; do gh api -X DELETE "repos/$REPO/actions/artifacts/$id"; done
+
+      - name: comment
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          AUTHOR: ${{ steps.app.outputs.app-slug || 'github-actions' }}[bot]
+        run: |
+          skipped=()
+          if [ "$FORK" = true ]; then skipped=(--skipped fork); elif [ "$HAS_KEY" != true ]; then skipped=(--skipped no-key); fi
+          nolli ci comment "$DATASET" "${skipped[@]}" > "$RUNNER_TEMP/comment.md"
+          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- nolli -->"))) | .id' | head -n1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F "body=@$RUNNER_TEMP/comment.md" > /dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F "body=@$RUNNER_TEMP/comment.md" > /dev/null
+          fi
+
+  cleanup:
+    name: delete the PR's results
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: the nolli-review app's token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.NOLLI_APP_ID }}
+          private-key: ${{ secrets.NOLLI_APP_PRIVATE_KEY }}
+
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+        run: |
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
+            --jq ".artifacts[] | select(.name | startswith(\"nolli-pr$PR-\")) | .id" |
+          while read -r id; do gh api -X DELETE "repos/$REPO/actions/artifacts/$id"; done
