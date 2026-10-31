@@ -27,6 +27,7 @@
     <label class="opt" data-help="How many boxes the default cut may show. Changing it recomputes the default cut.">budget <input id="budget" type="number" min="4" max="300" value="28" style="width:52px"></label>
     <button id="reset" data-help="Back to the default cut for this budget.">default cut</button>
     <button id="collapse" data-help="Fold everything down to the top-level entries.">fold all</button>
+    <button id="unfold" hidden data-help="Unfold every area that changed in source code: the diagram the review agent saw.">unfold changes</button>
   </div>
   <label class="opt row" data-help="A box with more than this many incoming edges is a utility: its incoming edges are left out, it says how many boxes use it (&ldquo;used by 7&rdquo;), sits at the bottom and has a dotted border. 0: off.">utilities above <input id="utilities" type="number" min="0" max="99" style="width:52px;margin-left:auto"> edges</label>
   <label class="opt row" data-help="Colours, fonts and box style. Kept in this browser and in the link (th=).">theme <select id="theme"></select></label>

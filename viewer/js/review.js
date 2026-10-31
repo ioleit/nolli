@@ -15,8 +15,7 @@ import { ORDER, RANK, markHTML } from "./verdicts.js";
  * @typedef {import("../types/nolli").FactChange} FactChange
  * @typedef {import("../types/nolli").ReviewVerdict} ReviewVerdict
  * @typedef {{ jump: (id: string) => void, hover: (id: string | null) => void, side: (s: "both" | "base" | "head") => void,
- *             dim: (on: boolean) => void, reload: () => void, roles: (all: boolean) => void,
- *             unfold: (ids: string[]) => void }} ReviewHandlers
+ *             dim: (on: boolean) => void, reload: () => void }} ReviewHandlers
  */
 
 const panel = byId("review");
@@ -33,7 +32,6 @@ let items = [];
 let verdicts = [];
 /** @type {string[]} the boxes to unfold to see every change in source code (the review diagram) */
 let allChanges = [];
-let allRoles = false;
 /** @type {ReviewHandlers | null} */
 let handlers = null;
 /** @type {Set<string>} rows shown expanded */
@@ -41,8 +39,10 @@ const open = new Set();
 
 /** @type {Record<import("../types/nolli").Verdict, number>} */
 
-/** The changes listed: source, or everything. */
-const shownItems = () => items.filter(it => allRoles || it.role === "source");
+/** The changes listed: those in the roles shown (Files in the sidebar). */
+const shownItems = () => items.filter(it => (state.roles || ["source"]).includes(it.role));
+/** The boxes to unfold to see every change in source code. */
+export const changedAreas = () => allChanges;
 /** What j / k step through: the verdicts on something in the diagram, then the changes listed. */
 export function visibleItems() { return [...verdicts.filter(v => v.ends.length), ...shownItems()]; }
 /** A change or a verdict. @param {string} id @returns {ReviewItem | ReviewVerdict | null} */
@@ -106,7 +106,6 @@ export function renderPanel(scene, h) {
   /** @type {Record<string, number>} */
   const counts = {};
   for (const v of verdicts) counts[v.verdict] = (counts[v.verdict] || 0) + 1;
-  const hiddenN = items.length - shown.length;
   const sideBtn = (/** @type {"base" | "both" | "head"} */ s, /** @type {string} */ label, /** @type {string} */ key) =>
     `<button data-side="${s}" class="${state.side === s ? "on" : ""}" title="key ${key}">${label}</button>`;
   let html = `<div class="rv-head">
@@ -130,15 +129,13 @@ export function renderPanel(scene, h) {
     const role = it.role !== "source" ? `<span class="role">${esc(it.role)}</span>` : "";
     html += `<div class="rv-row${cur}" data-item="${esc(it.id)}"><div class="rv-item"><button class="tw" data-open="${esc(it.id)}" title="details">${isOpen ? "▾" : "▸"}</button><span class="id">${esc(it.id)}</span>${statusSpan(it.status)}<span class="t">${esc(shortTitle(it))}</span>${role}</div>${isOpen ? details(it) : ""}</div>`;
   }
-  if (!shown.length) html += `<div class="rv-empty">no changes${hiddenN ? " in source code; press “tests, docs …” below for the rest" : ""}</div>`;
+  if (!shown.length) html += `<div class="rv-empty">no changes${items.length ? " in the roles shown; show more under Files in the sidebar" : ""}</div>`;
   // the controls, docked under the list: one row of buttons, one of keys
   const tog = (/** @type {string} */ id, /** @type {boolean} */ on, /** @type {string} */ label, /** @type {string} */ help) =>
     `<button class="tog" id="${id}" aria-pressed="${on}" title="${help}">${label}</button>`;
   html += `</div><div class="rv-bar">
     <div class="rv-bar-row"><div class="seg">${sideBtn("base", "before", "1")}${sideBtn("both", "changes", "2")}${sideBtn("head", "after", "3")}</div>
-      <button id="rv-all-changes" title="unfold every area that changed in source code: the diagram the review agent saw">unfold all</button>
-      ${tog("rv-dim", state.dim, "fade unchanged", "fade what did not change")}
-      ${tog("rv-all", allRoles, `tests, docs …${hiddenN && !allRoles ? ` <span class="n">+${hiddenN}</span>` : ""}`, "include tests, docs, config and data")}</div>
+      ${tog("rv-dim", state.dim, "fade unchanged", "fade what did not change")}</div>
     <div class="rv-keys">keys: j k next / previous · 1 2 3 before / changes / after · f fit</div>
   </div>`;
   const keepScroll = panel.querySelector(".rv-list")?.scrollTop;
@@ -155,9 +152,7 @@ export function renderPanel(scene, h) {
     r.addEventListener("mouseenter", () => h.hover(id));
     r.addEventListener("mouseleave", () => h.hover(null));
   });
-  byId("rv-all-changes").addEventListener("click", () => h.unfold(allChanges));
   byId("rv-dim").addEventListener("click", ev => { h.dim(!state.dim); /** @type {HTMLElement} */ (ev.currentTarget).setAttribute("aria-pressed", String(state.dim)); });
-  byId("rv-all").addEventListener("click", () => { allRoles = !allRoles; h.roles(allRoles); });
   /** @type {HTMLInputElement} */ (byId("rv-file")).addEventListener("change", ev => uploadVerdicts(/** @type {HTMLInputElement} */ (ev.target)));
 }
 
