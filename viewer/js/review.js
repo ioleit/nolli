@@ -113,15 +113,11 @@ export function renderPanel(scene, h) {
     <div class="rv-title">${esc(d.title || "Change")}</div>
     <div class="rv-sub">${link(d.link, d.pr ? `PR #${d.pr}` : "compare")} · ${esc(d.base_short)} → ${esc(d.head_short)}
       · ${d.files_changed} files <span class="plus">+${d.added}</span> <span class="minus">−${d.removed}</span></div>
-    <div class="seg">${sideBtn("base", "before", "1")}${sideBtn("both", "changes", "2")}${sideBtn("head", "after", "3")}</div>
-    <div class="rv-row-btns"><button id="rv-all-changes" title="unfold every area that changed in source code: the diagram the review agent saw">unfold all changes</button></div>
-    <label><input type="checkbox" id="rv-dim" ${state.dim ? "checked" : ""}> fade what did not change</label>
-    <label><input type="checkbox" id="rv-all" ${allRoles ? "checked" : ""}> include tests, docs, config, data${hiddenN && !allRoles ? ` (${hiddenN} more)` : ""}</label>
     <div class="rv-verdicts">${verdicts.length
       ? "verdicts: " + ORDER.filter(v => counts[v]).map(v => `<span class="vd ${v}" title="${v}">${markHTML(v)}</span> ${counts[v]}`).join(" ")
       : "no verdicts yet"} · <a href="/data/${esc(state.name)}/review.md" target="_blank">review.md</a>
       · <label class="file">load verdicts…<input type="file" id="rv-file" accept=".json,application/json"></label></div>
-  </div><div class="rv-keys">hover a row to light it · click or j / k to go to it · ▸ details · 1 2 3 before / changes / after · f fit</div><div class="rv-list">`;
+  </div><div class="rv-list">`;
   if (verdicts.length) html += `<div class="rv-group">Review</div>`;
   for (const v of verdicts) {
     const cur = state.item === v.id ? " current" : "", off = v.ends.length ? "" : " off";
@@ -134,8 +130,17 @@ export function renderPanel(scene, h) {
     const role = it.role !== "source" ? `<span class="role">${esc(it.role)}</span>` : "";
     html += `<div class="rv-row${cur}" data-item="${esc(it.id)}"><div class="rv-item"><button class="tw" data-open="${esc(it.id)}" title="details">${isOpen ? "▾" : "▸"}</button><span class="id">${esc(it.id)}</span>${statusSpan(it.status)}<span class="t">${esc(shortTitle(it))}</span>${role}</div>${isOpen ? details(it) : ""}</div>`;
   }
-  if (!shown.length) html += `<div class="rv-empty">no changes${hiddenN ? " in source code; tick the box above for the rest" : ""}</div>`;
-  html += `</div>`;
+  if (!shown.length) html += `<div class="rv-empty">no changes${hiddenN ? " in source code; press “tests, docs …” below for the rest" : ""}</div>`;
+  // the controls, docked under the list: one row of buttons, one of keys
+  const tog = (/** @type {string} */ id, /** @type {boolean} */ on, /** @type {string} */ label, /** @type {string} */ help) =>
+    `<button class="tog" id="${id}" aria-pressed="${on}" title="${help}">${label}</button>`;
+  html += `</div><div class="rv-bar">
+    <div class="rv-bar-row"><div class="seg">${sideBtn("base", "before", "1")}${sideBtn("both", "changes", "2")}${sideBtn("head", "after", "3")}</div>
+      <button id="rv-all-changes" title="unfold every area that changed in source code: the diagram the review agent saw">unfold all</button>
+      ${tog("rv-dim", state.dim, "fade unchanged", "fade what did not change")}
+      ${tog("rv-all", allRoles, `tests, docs …${hiddenN && !allRoles ? ` <span class="n">+${hiddenN}</span>` : ""}`, "include tests, docs, config and data")}</div>
+    <div class="rv-keys">keys: j k next / previous · 1 2 3 before / changes / after · f fit</div>
+  </div>`;
   const keepScroll = panel.querySelector(".rv-list")?.scrollTop;
   panel.innerHTML = html;
   const list = panel.querySelector(".rv-list");
@@ -151,8 +156,8 @@ export function renderPanel(scene, h) {
     r.addEventListener("mouseleave", () => h.hover(null));
   });
   byId("rv-all-changes").addEventListener("click", () => h.unfold(allChanges));
-  /** @type {HTMLInputElement} */ (byId("rv-dim")).addEventListener("change", ev => h.dim(/** @type {HTMLInputElement} */ (ev.target).checked));
-  /** @type {HTMLInputElement} */ (byId("rv-all")).addEventListener("change", ev => { allRoles = /** @type {HTMLInputElement} */ (ev.target).checked; h.roles(allRoles); });
+  byId("rv-dim").addEventListener("click", ev => { h.dim(!state.dim); /** @type {HTMLElement} */ (ev.currentTarget).setAttribute("aria-pressed", String(state.dim)); });
+  byId("rv-all").addEventListener("click", () => { allRoles = !allRoles; h.roles(allRoles); });
   /** @type {HTMLInputElement} */ (byId("rv-file")).addEventListener("change", ev => uploadVerdicts(/** @type {HTMLInputElement} */ (ev.target)));
 }
 
