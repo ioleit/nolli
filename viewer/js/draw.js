@@ -129,7 +129,7 @@ function buildBox(n, p, h) {
       f.addEventListener("click", ev => { ev.stopPropagation(); onToggle(n.id); });
     }
     // drawn above the edges (an edge's hover strip would otherwise swallow the click)
-    top = el("g", { class: "node", transform: at(p) }); top.appendChild(f);
+    top = el("g", { class: "node", transform: at(p), "data-fold": n.id }); top.appendChild(f);
   }
   if (n.utility) grp.classList.add("utility");
   /** @type {SVGElement | null} */

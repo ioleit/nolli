@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./guard.js";
 
 // The page loads ELK from a CDN; the tests serve the same version from node_modules, so they
 // run offline and the layout cannot change under them.
