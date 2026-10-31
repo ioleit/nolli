@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..model import Model
+from ..progress import Progress, Quiet
 
 
 @dataclass
@@ -22,6 +23,7 @@ class Context:
     files: list[Path]  # tracked, non-ignored files, relative to repo
     config: dict = field(default_factory=dict)
     notes: dict = field(default_factory=dict)  # scratch space shared between extractors and matchers
+    progress: Progress = field(default_factory=Quiet)  # nolli/progress.py: ctx.progress.each(files) counts them
 
     def rel(self, p: Path) -> str:
         return p.as_posix()

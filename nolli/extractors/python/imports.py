@@ -24,7 +24,7 @@ def module_name_of(rel: str) -> str:
 def run(ctx: Context) -> None:
     m = ctx.model
     pending: list[tuple[str, str, int]] = []  # (file id, module, line)
-    for f in ctx.files:
+    for f in ctx.progress.each(ctx.files):
         rel = ctx.rel(f)
         if not rel.endswith(".py") or not m.has(ctx.fs_id(rel)):
             continue

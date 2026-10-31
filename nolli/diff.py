@@ -198,9 +198,13 @@ def merge(base: Model, head: Model, changes: dict[str, FileChange]) -> Model:
     return m
 
 
-def diff(repo: Path, base_rev: str, head_rev: str, extract) -> tuple[Model, dict]:
-    """The merged model and a summary. ``extract(path) -> (Model, Context)`` is
-    ``nolli.cli.extract``, passed in to keep this module free of the CLI."""
+def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None) -> tuple[Model, dict]:
+    """The merged model and a summary. ``extract(path, progress=…) -> (Model, Context)`` is
+    ``nolli.cli.extract``, passed in to keep this module free of the CLI; ``progress``
+    (nolli/progress.py) reports each side's steps."""
+    from .progress import Quiet
+
+    progress = progress or Quiet()
     repo = repo.resolve()
     base, head = resolve(repo, base_rev), resolve(repo, head_rev)
     t0 = time.time()
@@ -209,13 +213,16 @@ def diff(repo: Path, base_rev: str, head_rev: str, extract) -> tuple[Model, dict
         for name, sha in (("base", base), ("head", head)):
             d = Path(tmp) / name
             d.mkdir()
-            materialise(repo, sha, d)
-            sides[name], _ctx = extract(d)
+            side = progress.under(name)
+            with side.step("checking out the commit"):
+                materialise(repo, sha, d)
+            sides[name], _ctx = extract(d, progress=side)
     for side in sides.values():  # the root is the temporary directory; name it after the repository
         if side.has("fs:."):
             side.entities["fs:."].name = repo.name
-    changes = file_changes(repo, base, head)
-    m = merge(sides["base"], sides["head"], changes)
+    with progress.step("comparing the sides"):
+        changes = file_changes(repo, base, head)
+        m = merge(sides["base"], sides["head"], changes)
     by_status: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for e in m.entities.values():
         d = e.attrs.get("diff")

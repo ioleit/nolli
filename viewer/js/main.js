@@ -30,7 +30,24 @@ import { itemById, loadItems, renderPanel, scrollToCurrent, showPanel, visibleIt
 
 // surface failures instead of a silently blank canvas
 /** @param {string} msg */
-const showError = msg => { const s = byId("status"); s.textContent = "error: " + msg; s.style.color = "#d9534f"; };
+const showError = msg => {
+  const s = byId("status"); s.textContent = "error: " + msg; s.style.color = "#d9534f";
+  document.body.classList.remove("busy");
+  if (!shown) { loading("error: " + msg); byId("loading").classList.add("error"); }
+};
+
+const loadingDataset = () => loading(`loading ${state.name} …`, "reading the model and working out the picture");
+
+/**
+ * What the canvas says until the first picture is drawn; null once it is.
+ * @param {string | null} what @param {string} [why] a second, smaller line
+ */
+function loading(what, why = "") {
+  const el = byId("loading");
+  el.hidden = what === null;
+  el.classList.remove("error");
+  el.replaceChildren(...(what === null ? [] : [what, ...(why ? [Object.assign(document.createElement("div"), { className: "why", textContent: why })] : [])]));
+}
 window.addEventListener("error", ev => showError(ev.message + (ev.lineno ? ` (${(ev.filename || "").split("/").pop()}:${ev.lineno})` : "")));
 window.addEventListener("unhandledrejection", ev => showError(String(ev.reason && ev.reason.message || ev.reason)));
 
@@ -50,9 +67,15 @@ const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 async function refresh(keepZoom = false) {
   const my = ++seq, url = "/api/scene?" + query(), t0 = performance.now();
+  // the server reads the model on the first request and works out the picture on each; a
+  // big repository takes seconds for either
+  if (!shown) loadingDataset();
+  else { byId("status").style.color = ""; byId("status").textContent = "updating …"; }
+  document.body.classList.add("busy");
   const res = await fetch(url);
   const body = await res.json();
   if (my !== seq) return;  // a newer request is under way
+  document.body.classList.remove("busy");
   if (!res.ok) { showError(body.error || res.status); return; }
   body.stats.ms.roundtrip = Math.round(performance.now() - t0);
   /** @type {Scene} */
@@ -71,6 +94,7 @@ async function refresh(keepZoom = false) {
 
 /** Bring the current view up to date: the diagram, the scene as JSON, or the Mermaid export. */
 async function show(keepZoom = false) {
+  if (state.view !== "diagram") loading(null);  // the other views cover the canvas
   if (state.view !== "mermaid") hideMermaid();
   if (state.view === "json") showRawPane();
   else if (state.view === "mermaid") { hideRaw(); byId("status").textContent = ""; if (state.name) await showMermaid(state.name); }
@@ -204,12 +228,14 @@ async function render(keepZoom = false) {
   hideRaw();
   const sc = scene, prev = shown, from = clicked;
   clicked = null;
+  if (!shown) loading(`laying out ${sc.stats.nodes} boxes and ${sc.stats.edges} edges …`);
   const laid = await layout(sc);
   if (sc !== scene) return;  // a newer scene arrived while this one was laid out
   finish();
   const root = byId("root");
   const drawn = draw(root, sc, laid, { toggle, review: !!sc.diff });
   shown = { scene: sc, laid };
+  loading(null);
   if (keepZoom && fitted && prev) {
     // a step from the picture on screen: move from there, keeping the clicked box in place
     const p = plan(prev.scene, prev.laid, sc, laid, from);
@@ -232,6 +258,7 @@ select("theme").addEventListener("change", () => { state.theme = select("theme")
 themeOptions();
 select("dataset").addEventListener("change", async () => {
   Object.assign(state, DEFAULTS, { name: select("dataset").value, item: null }); shown = null;
+  byId("root").replaceChildren();  // the last dataset's picture would stand behind the loading message
   await enter();
 });
 
@@ -242,6 +269,7 @@ select("dataset").addEventListener("change", async () => {
  * @param {string | null} [item] an item named in the link
  */
 async function enter(item = null) {
+  loadingDataset();
   const res = state.expanded === null && !item ? await fetch("/api/changes?d=" + encodeURIComponent(state.name || "")) : null;
   const first = res && res.ok ? (await res.json()).verdicts.length > 0 : false;
   if (first) state.expanded = ["fs:."];
@@ -264,7 +292,7 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   for (const s of sets) { const o = document.createElement("option"); o.value = s.name; o.textContent = s.name; sel.appendChild(o); }
   const h = readHash(location.hash.slice(1));
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
-  if (!name) { byId("status").textContent = "no datasets"; return; }
+  if (!name) { loading("no datasets"); return; }
   sel.value = name;
   Object.assign(state, h.st, { name, theme: initialTheme(h.theme), view: h.view, item: h.item, dim: h.dim });
   applyTheme(state.theme);
