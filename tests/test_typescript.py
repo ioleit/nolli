@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.cli import extract
+from nolli.build import extract
 from nolli.info import edge_info
 from nolli.labels import module_stem
 from nolli.prose import Ctx

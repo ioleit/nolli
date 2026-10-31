@@ -41,7 +41,7 @@ if not __package__:
 
 from nolli import github  # noqa: E402
 from nolli.change import ChangeError, git  # noqa: E402
-from nolli.cli import build_commit, build_diff, fresh  # noqa: E402
+from nolli.build import build_commit, build_diff, fresh  # noqa: E402
 from nolli.progress import Progress  # noqa: E402
 
 try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file

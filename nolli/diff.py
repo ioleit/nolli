@@ -200,7 +200,7 @@ def merge(base: Model, head: Model, changes: dict[str, FileChange]) -> Model:
 
 def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None) -> tuple[Model, dict]:
     """The merged model and a summary. ``extract(path, progress=…) -> (Model, Context)`` is
-    ``nolli.cli.extract``, passed in to keep this module free of the CLI; ``progress``
+    ``nolli.build.extract``, passed in to keep this module free of the CLI; ``progress``
     (nolli/progress.py) reports each side's steps."""
     from .progress import Quiet
 
