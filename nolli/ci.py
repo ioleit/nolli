@@ -55,7 +55,7 @@ def key_of(meta: dict) -> str:
 
 
 def comment(ds: Path, skipped: str | None = None) -> str:
-    """The PR comment for a run's dataset: how many architectural changes, the review's
+    """The PR comment for a run's dataset: how many structural changes, the review's
     noteworthy verdicts (worst first, each with its reason) and how to open the result.
     ``skipped`` says why no review agent ran: "no-key" (the repository has no API key for
     one) or "fork" (a PR from a fork, which gets no secrets)."""
@@ -67,7 +67,7 @@ def comment(ds: Path, skipped: str | None = None) -> str:
     vf = ds / "verdicts.json"
     verdicts, errors = check_verdicts(m, (ds / "review.mmd").read_text(), vf.read_text()) if vf.is_file() else (None, [])
     lines = [MARKER]
-    head = f"**Nolli** found {n} architectural change{'' if n == 1 else 's'}."
+    head = f"**Nolli** found {n} structural change{'' if n == 1 else 's'}."
     if skipped == "no-key":
         repo = key.split("#")[0]
         lines += [head, "", f"Run `gh secret set ANTHROPIC_API_KEY --repo {repo}` for an automatic architecture review."]
