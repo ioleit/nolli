@@ -3,6 +3,7 @@
     nolli view [<change> | <dataset dir>] [--whole] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli agent brief [<change>] | agent check <dataset> | agent skill [--install DIR]
     nolli ci comment <dataset> [--skipped no-key|fork]
+    nolli serve [--cache DIR] [--host H] [--port N]
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
 
@@ -21,6 +22,9 @@ prints where review.md (what to do) is and where verdicts.json goes; check valid
 verdicts against the diagram they answer.
 
 ci is for nolli's CI workflow: comment prints the pull request comment for a run's dataset.
+
+serve is view as a service for public GitHub repositories: /<owner>/<repo>/pull/<n> on its
+host shows that PR (nolli/viewer/hosted.py).
 
 extract and diff write a dataset to a directory of your choice.
 
@@ -251,6 +255,15 @@ def cmd_view(args: argparse.Namespace) -> int:
     return serve(b.data, b.name, args.host, args.port, not args.no_open)
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from .viewer.hosted import main as hosted
+
+    argv = ["--host", args.host, "--budget", str(args.budget)]
+    argv += ["--cache", args.cache] if args.cache else []
+    argv += ["--port", str(args.port)] if args.port else []
+    return hosted(argv)
+
+
 def cmd_brief(args: argparse.Namespace) -> int:
     """nolli agent brief: build the change's dataset and say, as JSON on stdout, where the
     brief is, where the verdicts go and how to check them."""
@@ -425,6 +438,13 @@ def main(argv: list[str] | None = None) -> int:
     cc.add_argument("--skipped", choices=("no-key", "fork"), help="why no review agent ran: the repository has no API key "
                     "for one, or the PR comes from a fork (which gets no secrets)")
     cc.set_defaults(fn=cmd_ci_comment)
+    sv = sub.add_parser("serve", help="the viewer as a service: GitHub's paths (/<owner>/<repo>/pull/<n>) on this host, "
+                        "public repositories only")
+    sv.add_argument("--cache", help="clones and datasets (default: $NOLLI_CACHE, else ~/.cache/nolli-serve)")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, help="default: $PORT, else 8730")
+    sv.add_argument("--budget", type=int, default=34)
+    sv.set_defaults(fn=cmd_serve)
     ex = sub.add_parser("extract", help="extract the model of a repository")
     ex.add_argument("repo")
     ex.add_argument("-o", "--out", required=True)

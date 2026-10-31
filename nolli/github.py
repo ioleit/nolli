@@ -43,8 +43,11 @@ def remotes(repo: Path) -> dict[str, tuple[str, str]]:
     return out
 
 
-def resolve(repo: Path, spec: str) -> tuple[Change, dict]:
-    """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``."""
+AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (token())
+
+
+def resolve(repo: Path, spec: str, tok: str | None | object = AMBIENT) -> tuple[Change, dict]:
+    """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``. ``tok`` as for api()."""
     m = URL.match(spec)
     gh = remotes(repo)
     if m:
@@ -55,7 +58,7 @@ def resolve(repo: Path, spec: str) -> tuple[Change, dict]:
         if pick is None:
             raise ChangeError(f"{repo} has no GitHub remote; give the PR's URL, or its commits: nolli view <base>..<head>")
         owner, name = gh[pick]
-    pr = api(f"repos/{owner}/{name}/pulls/{number}")
+    pr = api(f"repos/{owner}/{name}/pulls/{number}", tok)
     # fetch from the clone's own remote for that repository if it has one (its credentials), else by URL
     remote = next((r for r, (o, n) in gh.items() if (o.lower(), n.lower()) == (owner.lower(), name.lower())),
                   f"https://github.com/{owner}/{name}")
@@ -73,6 +76,10 @@ def resolve(repo: Path, spec: str) -> tuple[Change, dict]:
     return ch, {"pr": number, "remote": f"https://github.com/{owner}/{name}"}
 
 
+class NotFound(ChangeError):
+    """GitHub answered 404: no such thing, or one the token (or nobody) may not see."""
+
+
 def token() -> str | None:
     t = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if t or not shutil.which("gh"):
@@ -81,16 +88,20 @@ def token() -> str | None:
     return r.stdout.strip() or None if r.returncode == 0 else None
 
 
-def api(path: str) -> dict:
+def api(path: str, tok: str | None | object = AMBIENT) -> dict:
+    """GET a GitHub REST path. ``tok``: AMBIENT (the default) uses token(); a server passes the
+    viewer's own token, or None to ask as nobody (public repositories only)."""
     req = urllib.request.Request(f"https://api.github.com/{path}", headers={
         "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "nolli"})
-    t = token()
+    t = token() if tok is AMBIENT else tok
     if t:
         req.add_header("Authorization", f"Bearer {t}")
     try:
         with urllib.request.urlopen(req, timeout=30) as res:
             return json.load(res)
     except urllib.error.HTTPError as exc:
+        if exc.code == 404 and tok is not AMBIENT:
+            raise NotFound(f"GitHub: {path}: 404") from None
         hint = "" if t else " (no token: set GH_TOKEN, or log in with gh, for a private repository)"
         raise ChangeError(f"GitHub: {path}: {exc.code} {exc.reason}{hint}") from None
     except urllib.error.URLError as exc:

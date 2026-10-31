@@ -36,7 +36,8 @@ export function writeHash() {
   const p = query();
   if (state.theme !== DEFAULT_THEME) p.set("th", state.theme); if (state.view !== "diagram") p.set("v", state.view);
   if (state.item) p.set("item", state.item); if (!state.dim) p.set("nodim", "1");
-  history.replaceState(null, "", "#" + p.toString());
+  // the path too: under nolli serve the page has <base href="/">, against which a bare "#…" means "/#…"
+  history.replaceState(null, "", location.pathname + location.search + "#" + p.toString());
 }
 
 /** @param {string} h the location hash without "#" */
