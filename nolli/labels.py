@@ -63,7 +63,7 @@ def label_of(m: Model, x: str, expanded: set[str]) -> str:
     """The name in running text: the word-like icons stay in front ("svc api", "GET health")."""
     if m.has(x) and m.entities[x].kind == "endpoint":
         return m.entities[x].name
-    icons = [i for i in icons_of(m, x) if i not in ("D", "m", "C", "/")]
+    icons = [i for i in icons_of(m, x) if i not in ("D", "m", "/", *symbol_icons().values())]
     name = name_of(m, x, expanded)
     return " ".join(icons + ([name] if name else []))
 

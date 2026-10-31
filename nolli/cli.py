@@ -350,7 +350,7 @@ def write_dataset(m: Model, out: Path, budget: int, notes: dict, extra: dict | N
         "view": {"visible": len(view["visible"]), "edges": len(rolled.edges), "internal": rolled.internal,
                  "hidden_relations": rolled.hidden_relations, "unresolved": rolled.unresolved},
         "unresolved": sorted(e.id for e in m.entities.values() if e.kind == "unresolved"),
-        "notes": {k: v for k, v in notes.items() if k not in ("py-imports", "js-imports", "py-aliases")},
+        "notes": {k: v for k, v in notes.items() if k not in ("py-imports", "js-imports", "py-aliases", "ts-exports")},
         **(extra or {}),
     }
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str))

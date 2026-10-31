@@ -45,6 +45,7 @@ class RolledEdge:
     confidence: str = "exact"
     via: set[str] = field(default_factory=set)
     names: dict[str, int] = field(default_factory=dict)  # referenced names (Python refs) -> references
+    types: int = 0  # of count, references TypeScript erases (``type_only``): no dependency at run time
     # in a diff model (nolli/diff.py): references before and after, and the changed facts
     # underneath (fact key -> added / removed / changed); in a plain model base == head == count
     base: int = 0
@@ -64,12 +65,13 @@ class RolledEdge:
 
     def to_dict(self) -> dict:
         return {"kind": self.kind, "src": self.src, "dst": self.dst, "subkind": self.subkind, "count": self.count,
-                "confidence": self.confidence, "via": sorted(self.via), "names": dict(self.names),
+                "confidence": self.confidence, "via": sorted(self.via), "names": dict(self.names), "types": self.types,
                 "base": self.base, "head": self.head, "changed": dict(sorted(self.changed.items()))}
 
     def absorb(self, other: "RolledEdge") -> None:
         """Count, interfaces, names, confidence and changes of an edge folded into this one."""
         self.count += other.count
+        self.types += other.types
         self.via |= other.via
         for k, v in other.names.items():
             self.names[k] = self.names.get(k, 0) + v
@@ -474,7 +476,8 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
     internal_changes: dict[str, dict[str, str]] = defaultdict(dict)
 
     def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, name: str | None = None,
-            base: int | None = None, head: int | None = None, changed: dict[str, str] | None = None) -> None:
+            base: int | None = None, head: int | None = None, changed: dict[str, str] | None = None,
+            types: bool = False) -> None:
         if kind == PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
         if a == b or owner_of(a) == owner_of(b):
@@ -488,7 +491,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
         e = edges.get(key)
         if e is None:
             e = edges[key] = RolledEdge(kind, a, b, sub, 0, conf)
-        e.absorb(RolledEdge(kind, a, b, sub, count, conf, names={name: count} if name else {},
+        e.absorb(RolledEdge(kind, a, b, sub, count, conf, names={name: count} if name else {}, types=count if types else 0,
                             base=count if base is None else base, head=count if head is None else head, changed=changed or {}))
 
     def sides(r) -> tuple[int, int, str | None]:
@@ -521,7 +524,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
             continue
         rb, rh, st = sides(r)
         add(r.kind, a, b, r.subkind, drawn_count(rb, rh), r.confidence, r.attrs.get("name"), rb, rh,
-            {fact_key(r): st} if st else None)
+            {fact_key(r): st} if st else None, bool(r.attrs.get("type_only")))
 
     # Edges touching a filtered-out group become annotations on the other end (or are left out
     # when both ends are such groups, e.g. environment set by deployment); a code node copied
