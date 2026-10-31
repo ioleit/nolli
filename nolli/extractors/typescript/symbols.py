@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections import Counter
 
 from ...model import USE, Entity, Provenance, Relation
-from .. import Context, language_named
+from .. import Context
 from .imports import read
 
 EXTRACTOR = "typescript-symbols"
@@ -146,7 +146,7 @@ def references(node, bindings: dict[str, tuple]) -> dict[tuple, list[int]]:
     return found
 
 
-def own_code(root, rel: str, symbol_lines: int, total_lines: int | None, reexports: list[str]) -> dict:
+def own_code(root, is_body: bool, symbol_lines: int, total_lines: int | None, reexports: list[str]) -> dict:
     """What a module holds outside its classes and types, for the hover text on its
     own-code dot: top-level functions (declarations and ``const f = () => ...``) and
     constants (UPPER_CASE) in source order, the lines outside its symbols, and for a
@@ -178,7 +178,7 @@ def own_code(root, rel: str, symbol_lines: int, total_lines: int | None, reexpor
         out["constants"] = constants[:NAMES_MAX]
     if total_lines is not None:
         out["own_lines"] = max(0, total_lines - symbol_lines)
-    if reexports and rel.rsplit("/", 1)[-1] in language_named("typescript").package_body:
+    if reexports and is_body:
         out["reexports"] = reexports[:NAMES_MAX]
     return out
 
@@ -248,7 +248,8 @@ def run(ctx: Context) -> None:
             by_stmt[stmt.id] = symbols[name]
         for name, sid in symbols.items():
             bindings[name] = ("local", sid, name)
-        own = own_code(root, rel, symbol_lines, m.entities[fid].attrs.get("lines"), [e for e, _, _ in reexports if e != "*"])
+        own = own_code(root, bool(m.entities[fid].attrs.get("body")), symbol_lines, m.entities[fid].attrs.get("lines"),
+                       [e for e, _, _ in reexports if e != "*"])
         m.entities[fid].attrs.update(own)
         names = set(symbols) | {k for k, b in bindings.items() if b[0] == "local"} | set(own.get("constants", []))
         exports[rel] = {"reexports": reexports, "local": dict(local), "names": names}
