@@ -27,6 +27,17 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 syste
 body.reviewing { grid-template-columns: 250px 1fr 400px; }
 aside { border-right: 1px solid var(--line); padding: 10px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
 aside h1 { font-size: 14px; margin: 0; }
+#navbody { display: flex; flex-direction: column; gap: 8px; }
+.navhead { display: flex; align-items: center; justify-content: space-between; }
+.navtoggle { border: 1px solid transparent; background: none; color: var(--muted); padding: 0 6px; font-size: 15px; line-height: 1.3; border-radius: 4px; cursor: pointer; }
+.navtoggle:hover { color: var(--ink); background: var(--hover-bg); border-color: var(--line); }
+/* folded (js/nav.js): a strip with the button, the name standing on its side */
+body.navclosed { grid-template-columns: 28px 1fr; }
+body.navclosed.reviewing { grid-template-columns: 28px 1fr 400px; }
+body.navclosed aside { padding: 6px 0; overflow: hidden; }
+body.navclosed #navbody { display: none; }
+body.navclosed .navhead { flex-direction: column-reverse; gap: 8px; }
+body.navclosed aside h1 { writing-mode: vertical-rl; color: var(--muted); font-size: 13px; }
 aside h2 { font-size: 11px; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 select, input[type=number] { font: inherit; }
 label { display: block; margin: 1px 0; }

@@ -9,7 +9,8 @@
 </head>
 <body>
 <aside>
-  <h1>nolli</h1>
+  <div class="navhead"><h1>nolli</h1><button id="navtoggle" class="navtoggle" aria-controls="navbody" aria-expanded="true">«</button></div>
+  <div id="navbody">
   <select id="dataset" style="width:100%"></select>
   <div id="meta" style="color:var(--muted);font-size:11px"></div>
 
@@ -32,6 +33,7 @@
 
   <h2>Residue</h2>
   <ul class="plain" id="residue"></ul>
+  </div>
 </aside>
 <main>
   <nav id="views" role="tablist">
