@@ -1,0 +1,148 @@
+"""nolli in a repository's CI: what a pull request's review run leaves behind, and how
+``nolli view`` finds it again.
+
+On every push to a pull request, the workflow (``.github/workflows/nolli.yml``) builds the
+change's dataset, lets a review agent write its verdicts, uploads the dataset as a workflow
+artifact named ``nolli-pr<n>-<head7>`` and keeps one comment on the PR up to date
+(``nolli ci comment``). The comment names the result by its key,
+``<owner>/<repo>#<n>@<head7>``; ``nolli view <key>`` downloads that artifact with the
+viewer's own GitHub login, so the repository's access decides who may see it. The run
+deletes the PR's older results, and all of them when the PR closes.
+
+The comment also carries the verdicts and what they were made on (base, head, nolli's
+version), hidden, so they outlive the artifact.
+"""
+
+from __future__ import annotations
+
+import base64
+import io
+import json
+import re
+import shutil
+import tempfile
+import urllib.error
+import urllib.request
+import zipfile
+import zlib
+from pathlib import Path
+
+from .change import ChangeError
+from .model import Model
+
+KEY = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)@([0-9a-f]{7,40})$")
+MARKER = "<!-- nolli -->"
+RESULT = re.compile(r"<!-- nolli-result (\S+) -->")
+GLYPH = {"blunder": "??", "problem": "?", "question": "?!", "brilliant": "!!", "good": "👍"}  # as the viewer draws them
+WORST_FIRST = ("blunder", "problem", "question", "brilliant", "good")
+
+
+def is_key(spec: str | None) -> bool:
+    return bool(spec and KEY.match(spec))
+
+
+def artifact_name(pr: int | str, head: str) -> str:
+    return f"nolli-pr{pr}-{head[:7]}"
+
+
+def key_of(meta: dict) -> str:
+    """A PR dataset's key, from what its model records (remote, PR number, head)."""
+    d = meta.get("diff") or {}
+    m = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
+    if not m or not d.get("pr"):
+        raise ValueError("not the dataset of a GitHub pull request (no remote or PR number in its model)")
+    return f"{m.group(1)}/{m.group(2)}#{d['pr']}@{d['head'][:7]}"
+
+
+def comment(ds: Path) -> str:
+    """The PR comment for a run's dataset: how many architectural changes, the review's
+    noteworthy verdicts (worst first, each with its reason) and how to open the result."""
+    from .review import check_verdicts, resolve_verdicts
+
+    m = Model.load(ds / "model.json")
+    key = key_of(m.meta)
+    n = len(json.loads((ds / "changes.json").read_text()))
+    vf = ds / "verdicts.json"
+    verdicts, errors = check_verdicts(m, (ds / "review.mmd").read_text(), vf.read_text()) if vf.is_file() else (None, [])
+    lines = [MARKER]
+    head = f"**Nolli** found {n} architectural change{'' if n == 1 else 's'}."
+    if verdicts is None or errors:
+        why = "no review agent ran, or it wrote no verdicts" if verdicts is None else "the review agent's verdicts failed nolli's check"
+        lines.append(f"{head} No review: {why}.")
+        verdicts, noteworthy = None, []
+    else:
+        verdicts = resolve_verdicts(m, verdicts)
+        noteworthy = sorted((v for v in verdicts if v["verdict"] != "fine"), key=lambda v: WORST_FIRST.index(v["verdict"]))
+        counts = ", ".join(f"{c} {GLYPH[k]}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in noteworthy)))
+        lines.append(f"{head} Noteworthy: {counts}." if counts else f"{head} The review found nothing noteworthy.")
+    if noteworthy:
+        lines.append("")
+        lines += [f"- `{GLYPH[v['verdict']]}` **{v['label']}**: {' '.join(v['reason'].split())}" for v in noteworthy]
+    lines += ["", "To see them on the diagram:", "", "```", "pip install nolli-review", f"nolli view {key}", "```"]
+    d = m.meta["diff"]
+    result = {"key": key, "base": d["base"], "head": d["head"], "nolli": m.meta.get("nolli"),
+              "verdicts": [{k: v[k] for k in ("target", "verdict", "reason")} for v in verdicts or []]}
+    packed = base64.b64encode(zlib.compress(json.dumps(result, separators=(",", ":")).encode(), 9)).decode()
+    lines += ["", f"<!-- nolli-result {packed} -->"]
+    return "\n".join(lines) + "\n"
+
+
+def read_result(body: str) -> dict | None:
+    """What a nolli comment carries hidden (see comment()), or None."""
+    m = RESULT.search(body)
+    return json.loads(zlib.decompress(base64.b64decode(m.group(1)))) if m else None
+
+
+def fetch(key: str, data: Path) -> Path:
+    """The dataset a CI run stored under ``key``, downloaded into ``data`` (once)."""
+    from .github import api, token
+
+    owner, repo, pr, head = KEY.match(key).groups()
+    name = artifact_name(pr, head)
+    out = data / f"{repo}-ci-pr{pr}-{head[:7]}"
+    if (out / "model.json").is_file():
+        return out
+    t = token()
+    if not t:
+        raise ChangeError("a CI result is downloaded with your GitHub login: log in with gh (gh auth login), or set GH_TOKEN")
+    live = [a for a in api(f"repos/{owner}/{repo}/actions/artifacts?name={name}&per_page=10")["artifacts"] if not a["expired"]]
+    if not live:
+        raise ChangeError(f"{key}: GitHub keeps no result for it any more (artifact {name}: expired, or replaced by a later "
+                          f"push); the PR's current state: nolli view https://github.com/{owner}/{repo}/pull/{pr}")
+    blob = download(live[0]["archive_download_url"], t)
+    with tempfile.TemporaryDirectory(prefix="nolli-ci-", dir=data if data.is_dir() else None) as tmp:
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            for info in z.infolist():
+                p = Path(info.filename)
+                if p.is_absolute() or ".." in p.parts:
+                    raise ChangeError(f"{key}: the artifact has a file outside its directory: {info.filename}")
+            z.extractall(tmp)
+        if not (Path(tmp) / "model.json").is_file():
+            raise ChangeError(f"{key}: artifact {name} holds no nolli dataset")
+        data.mkdir(parents=True, exist_ok=True)
+        shutil.move(tmp, out)
+    return out
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        return None
+
+
+def download(url: str, tok: str) -> bytes:
+    """An artifact's zip: GitHub answers with a redirect to short-lived storage, which is
+    fetched without the token (the storage rejects it, and should not see it)."""
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "nolli",
+                                               "X-GitHub-Api-Version": "2022-11-28", "Authorization": f"Bearer {tok}"})
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=30) as res:
+            return res.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (301, 302, 303, 307, 308) or not exc.headers.get("Location"):
+            raise ChangeError(f"GitHub: downloading {url}: {exc.code} {exc.reason}") from None
+        location = exc.headers["Location"]
+    try:
+        with urllib.request.urlopen(urllib.request.Request(location, headers={"User-Agent": "nolli"}), timeout=120) as res:
+            return res.read()
+    except urllib.error.URLError as exc:
+        raise ChangeError(f"GitHub: downloading the artifact: {exc}") from None

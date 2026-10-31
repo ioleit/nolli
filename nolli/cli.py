@@ -2,13 +2,16 @@
 
     nolli view [<change> | <dataset dir>] [--whole] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli agent brief [<change>] | agent check <dataset> | agent skill [--install DIR]
+    nolli ci comment <dataset>
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
 
 view shows a change of the git repository you are in, or of --repo: by default the
 current branch against the default branch; <change> can be a branch or commit (what it
 adds to the default branch), <base>..<head> or <base>...<head> (see nolli/change.py), or
-a GitHub pull request: its URL, or '#<n>' on the repository's GitHub remote (nolli/github.py).
+a GitHub pull request: its URL, or '#<n>' on the repository's GitHub remote (nolli/github.py),
+or the key a CI run's PR comment gives, <owner>/<repo>#<n>@<head> (nolli/ci.py): that run's
+dataset, downloaded from GitHub, verdicts and all.
 It builds the change's dataset under --data (default: $NOLLI_DATA, else
 $XDG_DATA_HOME/nolli or ~/.local/share/nolli), reusing one built before, then serves the
 viewer on it and opens it in the browser.
@@ -16,6 +19,8 @@ viewer on it and opens it in the browser.
 agent is for a review agent (the skill, nolli agent skill): brief builds the dataset and
 prints where review.md (what to do) is and where verdicts.json goes; check validates the
 verdicts against the diagram they answer.
+
+ci is for nolli's CI workflow: comment prints the pull request comment for a run's dataset.
 
 extract and diff write a dataset to a directory of your choice.
 
@@ -227,6 +232,16 @@ def cmd_view(args: argparse.Namespace) -> int:
     ds = Path(args.change).expanduser() if args.change else None
     if ds and (ds / "model.json").is_file():  # a dataset directory, as nolli agent brief prints it
         return serve(ds.resolve().parent, ds.resolve().name, args.host, args.port, not args.no_open)
+    from . import ci
+    from .change import ChangeError
+
+    if ci.is_key(args.change):  # a CI run's result, as its PR comment names it
+        try:
+            ds = ci.fetch(args.change, data_dir(args.data))
+        except ChangeError as exc:
+            print(f"nolli view: {exc}", file=sys.stderr)
+            return 2
+        return serve(ds.parent, ds.name, args.host, args.port, not args.no_open)
     b = build(args, "view")
     if b is None:
         return 2
@@ -279,6 +294,18 @@ def cmd_check(args: argparse.Namespace) -> int:
     counts = {v: sum(x["verdict"] == v for x in verdicts) for v in reversed(VERDICTS)}
     print(json.dumps({"ok": not errors, "verdicts": len(verdicts), **counts, "errors": len(errors)}))
     return 1 if errors else 0
+
+
+def cmd_ci_comment(args: argparse.Namespace) -> int:
+    """nolli ci comment: the PR comment for a CI run's dataset, on stdout."""
+    from .ci import comment
+
+    try:
+        print(comment(Path(args.dataset)), end="")
+    except (OSError, ValueError) as exc:
+        print(f"nolli ci comment: {exc}", file=sys.stderr)
+        return 2
+    return 0
 
 
 def cmd_skill(args: argparse.Namespace) -> int:
@@ -362,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     vw = sub.add_parser("view", help="show a change of a git repository (or one commit as a whole) in the viewer")
     vw.add_argument("change", nargs="?", help="a branch or commit, <base>..<head> or <base>...<head>, or a GitHub PR's "
-                    "URL or '#<n>' (default: the current branch against the default branch)")
+                    "URL or '#<n>', or a CI result's key <owner>/<repo>#<n>@<head> (default: the current branch against the default branch)")
     vw.add_argument("--repo", default=".", help="the repository (default: the one you are in)")
     vw.add_argument("--data", help="where datasets are kept (default: $NOLLI_DATA, else $XDG_DATA_HOME/nolli or ~/.local/share/nolli)")
     vw.add_argument("--budget", type=int, default=34)
@@ -391,6 +418,11 @@ def main(argv: list[str] | None = None) -> int:
     sk.add_argument("--install", metavar="DIR", help="a skills directory, e.g. ~/.claude/skills or .claude/skills; "
                     "writes DIR/nolli-review/SKILL.md")
     sk.set_defaults(fn=cmd_skill)
+    ci = sub.add_parser("ci", help="for nolli's CI workflow: the pull request comment of a run")
+    cisub = ci.add_subparsers(dest="ci_cmd", required=True)
+    cc = cisub.add_parser("comment", help="print the PR comment for a run's dataset (Markdown)")
+    cc.add_argument("dataset", help="the dataset directory")
+    cc.set_defaults(fn=cmd_ci_comment)
     ex = sub.add_parser("extract", help="extract the model of a repository")
     ex.add_argument("repo")
     ex.add_argument("-o", "--out", required=True)
