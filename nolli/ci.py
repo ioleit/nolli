@@ -21,8 +21,6 @@ import json
 import re
 import shutil
 import tempfile
-import urllib.error
-import urllib.request
 import zipfile
 import zlib
 from pathlib import Path
@@ -98,7 +96,7 @@ def comment(ds: Path, skipped: str | None = None) -> str:
         listed = sorted((v for v in verdicts if v["verdict"] != "fine"), key=lambda v: WORST_FIRST.index(v["verdict"]))
         if listed:
             lines.append("")
-            lines += [f"- {mark(v['verdict'])} *{what(m, v, status)}*. {' '.join(v['reason'].split())}" for v in listed[:LISTED]]
+            lines += [f"- {mark(v['verdict'])} **{what(m, v, status)}**. {' '.join(v['reason'].split())}" for v in listed[:LISTED]]
             if len(listed) > LISTED:
                 lines.append(f"- {len(listed) - LISTED} more")
     lines += ["", "Run these commands for the interactive viewer:", "",
@@ -168,7 +166,7 @@ def read_result(body: str) -> dict | None:
 
 def fetch(key: str, data: Path) -> Path:
     """The dataset a CI run stored under ``key``, downloaded into ``data`` (once)."""
-    from .github import api, token
+    from .github import api, download, token
 
     owner, repo, pr, head = KEY.match(key).groups()
     name = artifact_name(pr, head)
@@ -195,27 +193,3 @@ def fetch(key: str, data: Path) -> Path:
         data.mkdir(parents=True, exist_ok=True)
         shutil.move(tmp, out)
     return out
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):  # noqa: ANN002, ANN003
-        return None
-
-
-def download(url: str, tok: str) -> bytes:
-    """An artifact's zip: GitHub answers with a redirect to short-lived storage, which is
-    fetched without the token (the storage rejects it, and should not see it)."""
-    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "nolli",
-                                               "X-GitHub-Api-Version": "2022-11-28", "Authorization": f"Bearer {tok}"})
-    try:
-        with urllib.request.build_opener(_NoRedirect).open(req, timeout=30) as res:
-            return res.read()
-    except urllib.error.HTTPError as exc:
-        if exc.code not in (301, 302, 303, 307, 308) or not exc.headers.get("Location"):
-            raise ChangeError(f"GitHub: downloading {url}: {exc.code} {exc.reason}") from None
-        location = exc.headers["Location"]
-    try:
-        with urllib.request.urlopen(urllib.request.Request(location, headers={"User-Agent": "nolli"}), timeout=120) as res:
-            return res.read()
-    except urllib.error.URLError as exc:
-        raise ChangeError(f"GitHub: downloading the artifact: {exc}") from None

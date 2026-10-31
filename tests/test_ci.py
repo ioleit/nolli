@@ -88,8 +88,8 @@ def test_with_review(dataset, capsys):
                      r"&nbsp; <img [^>]*fine\.svg[^>]*> 1$", first), first
     findings = [line for line in text.splitlines() if line.startswith("- ")]
     assert len(findings) == 2  # never the fine one
-    assert re.fullmatch(r'- <img [^>]*alt="\?!"[^>]*> \*New dependency from `shop/cache\.py` to `shop/store\.py`\*\. why --> here\?', findings[0])
-    assert re.fullmatch(r"- <img [^>]*good\.svg[^>]*> \*New module `shop/cache\.py`\*\. a cache in its own module", findings[1])
+    assert re.fullmatch(r'- <img [^>]*alt="\?!"[^>]*> \*\*New dependency from `shop/cache\.py` to `shop/store\.py`\*\*\. why --> here\?', findings[0])
+    assert re.fullmatch(r"- <img [^>]*good\.svg[^>]*> \*\*New module `shop/cache\.py`\*\*\. a cache in its own module", findings[1])
     assert [v["verdict"] for v in read_result(text)["verdicts"]] == ["good", "question", "fine"]  # "-->" kept, hidden
 
 
@@ -100,7 +100,7 @@ def test_listed(dataset, capsys, monkeypatch):
     text = comment(dataset, capsys)
     findings = [line for line in text.splitlines() if line.startswith("- ")]
     assert findings[0].startswith('- <img src="https://example.com/marks/question.svg"')
-    assert findings[0].endswith("*Module `shop/store.py`*. q0")  # drawn, not changed
+    assert findings[0].endswith("**Module `shop/store.py`**. q0")  # drawn, not changed
     assert len(findings) == 6 and findings[-1] == "- 2 more"
     (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_fs_shop_cache_py", "verdict": "fine", "reason": "ok"}]))
     text = comment(dataset, capsys)
