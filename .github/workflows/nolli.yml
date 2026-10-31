@@ -6,6 +6,8 @@
 #
 # The review needs the repository secret ANTHROPIC_API_KEY; without it the comment counts the
 # changes and says how to add the key. Pull requests from forks get no secrets, so no review.
+# Comments come from the GitHub App nolli-review when the repository has its ID (variable
+# NOLLI_APP_ID) and private key (secret NOLLI_APP_PRIVATE_KEY), else from github-actions.
 # This repository installs nolli from the PR's own checkout; another project would pin a release.
 name: nolli
 
@@ -26,6 +28,7 @@ env:
   PR: ${{ github.event.pull_request.number }}
   REPO: ${{ github.repository }}
   GH_TOKEN: ${{ github.token }}
+  HAS_APP: ${{ vars.NOLLI_APP_ID != '' && secrets.NOLLI_APP_PRIVATE_KEY != '' }}
 
 jobs:
   review:
@@ -80,19 +83,32 @@ jobs:
           path: ${{ env.DATASET }}
           retention-days: 7
 
+      - name: the nolli-review app's token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.NOLLI_APP_ID }}
+          private-key: ${{ secrets.NOLLI_APP_PRIVATE_KEY }}
+
       - name: delete the PR's older results
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
         run: |
           gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
             --jq ".artifacts[] | select(.name | startswith(\"nolli-pr$PR-\")) | select(.name != \"nolli-pr$PR-$HEAD7\") | .id" |
           while read -r id; do gh api -X DELETE "repos/$REPO/actions/artifacts/$id"; done
 
       - name: comment
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          AUTHOR: ${{ steps.app.outputs.app-slug || 'github-actions' }}[bot]
         run: |
           skipped=()
           if [ "$FORK" = true ]; then skipped=(--skipped fork); elif [ "$HAS_KEY" != true ]; then skipped=(--skipped no-key); fi
           nolli ci comment "$DATASET" "${skipped[@]}" > "$RUNNER_TEMP/comment.md"
           id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
-            --jq '.[] | select(.body | startswith("<!-- nolli -->")) | .id' | head -n1)
+            --jq '.[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- nolli -->"))) | .id' | head -n1)
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/$REPO/issues/comments/$id" -F "body=@$RUNNER_TEMP/comment.md" > /dev/null
           else
@@ -104,7 +120,17 @@ jobs:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
-      - run: |
+      - name: the nolli-review app's token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.NOLLI_APP_ID }}
+          private-key: ${{ secrets.NOLLI_APP_PRIVATE_KEY }}
+
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+        run: |
           gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
             --jq ".artifacts[] | select(.name | startswith(\"nolli-pr$PR-\")) | .id" |
           while read -r id; do gh api -X DELETE "repos/$REPO/actions/artifacts/$id"; done
