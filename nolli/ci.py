@@ -33,9 +33,16 @@ from .model import Model
 KEY = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)@([0-9a-f]{7,40})$")
 MARKER = "<!-- nolli -->"
 RESULT = re.compile(r"<!-- nolli-result (\S+) -->")
-GLYPH = {"blunder": "??", "problem": "?", "question": "?!", "brilliant": "!!", "good": "👍"}  # as the viewer draws them
+GLYPH = {"blunder": "??", "problem": "?", "question": "?!", "brilliant": "!!", "good": "👍", "fine": "✓"}
+WORST_FIRST = ("blunder", "problem", "question", "brilliant", "good", "fine")
+LISTED = 5  # verdicts listed in the comment, worst first; fine ones never
 MERMAID_MAX = 40_000  # characters of the review diagram's Mermaid; a comment holds 65536
-WORST_FIRST = ("blunder", "problem", "question", "brilliant", "good")
+# the verdict marks as the viewer draws them (assets/verdicts/), images on GitHub; $NOLLI_ASSETS_URL for another copy
+ASSETS = "https://raw.githubusercontent.com/ioleit/nolli/main/assets/verdicts"
+MMD_EDGE = re.compile(r"^\s*(n_\w+)\s*(?:-->|-\.->|==>)(?:\|([^|]*)\|)?\s*(n_\w+)\s*$")
+MMD_NODE_CLASS = re.compile(r"^\s*(?:subgraph\s+)?(n_\w+)\b.*:::(\w+)\s*$")
+MMD_CLASS = re.compile(r"^\s*class\s+(n_\w+)\s+(\w+)\s*$")
+NEW = {"added": "New", "removed": "Removed", "changed": "Changed"}
 
 
 def is_key(spec: str | None) -> bool:
@@ -56,8 +63,8 @@ def key_of(meta: dict) -> str:
 
 
 def comment(ds: Path, skipped: str | None = None) -> str:
-    """The PR comment for a run's dataset: how many structural changes, the review's
-    noteworthy verdicts (worst first, each with its reason) and how to open the result.
+    """The PR comment for a run's dataset: how many structural changes, how many verdicts of
+    each kind, the worst ones (not fine) with their reasons, and how to open the result.
     ``skipped`` says why no review agent ran: "no-key" (the repository has no API key for
     one) or "fork" (a PR from a fork, which gets no secrets)."""
     from .review import check_verdicts, resolve_verdicts
@@ -84,12 +91,16 @@ def comment(ds: Path, skipped: str | None = None) -> str:
         verdicts = None
     else:
         verdicts = resolve_verdicts(m, verdicts)
-        noteworthy = sorted((v for v in verdicts if v["verdict"] != "fine"), key=lambda v: WORST_FIRST.index(v["verdict"]))
-        counts = ", ".join(f"{c} {GLYPH[k]}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in noteworthy)))
-        lines += ["", f"The review agent marked these: {counts}." if counts else "The review agent found nothing noteworthy."]
-        if noteworthy:
+        status = diagram_status((ds / "review.mmd").read_text())
+        total = len(verdicts)
+        counts = " &nbsp; ".join(f"{mark(k)} {c}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in verdicts)))
+        lines[-1] += f" The review agent's {total} verdict{'' if total == 1 else 's'}: {counts}"
+        listed = sorted((v for v in verdicts if v["verdict"] != "fine"), key=lambda v: WORST_FIRST.index(v["verdict"]))
+        if listed:
             lines.append("")
-            lines += [f"- `{GLYPH[v['verdict']]}` **{v['label']}**: {' '.join(v['reason'].split())}" for v in noteworthy]
+            lines += [f"- {mark(v['verdict'])} *{what(m, v, status)}*. {' '.join(v['reason'].split())}" for v in listed[:LISTED]]
+            if len(listed) > LISTED:
+                lines.append(f"- {len(listed) - LISTED} more")
     lines += ["", "Run these commands for the interactive viewer:", "",
               "```", "pip install nolli-review", f"nolli view {key}", "```"]
     mmd = ds / "review.mmd"
@@ -103,6 +114,50 @@ def comment(ds: Path, skipped: str | None = None) -> str:
     packed = base64.b64encode(zlib.compress(json.dumps(result, separators=(",", ":")).encode(), 9)).decode()
     lines += ["", f"<!-- nolli-result {packed} -->"]
     return "\n".join(lines) + "\n"
+
+
+def mark(verdict: str) -> str:
+    """A verdict's mark as an image in the comment, its glyph as the alternative text."""
+    import os
+
+    base = os.environ.get("NOLLI_ASSETS_URL") or ASSETS
+    return f'<img src="{base}/{verdict}.svg" height="18" alt="{GLYPH[verdict]}" title="{verdict}" align="top">'
+
+
+def diagram_status(mermaid: str) -> dict[str, str]:
+    """What the review diagram says changed: a node id (or "a b" for an edge) -> added,
+    removed or changed; what it draws unchanged is missing."""
+    out = {}
+    for line in mermaid.splitlines():
+        if g := MMD_EDGE.match(line):
+            word = (g.group(2) or "").split(" ")[0]
+            if word in NEW:
+                out[f"{g.group(1)} {g.group(3)}"] = word
+        elif (g := MMD_NODE_CLASS.match(line) or MMD_CLASS.match(line)) and g.group(2) in NEW:
+            out[g.group(1).removesuffix("_g")] = g.group(2)
+    return out
+
+
+def what(m: Model, v: dict, status: dict[str, str]) -> str:
+    """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
+    from .changes import short
+    from .labels import is_body, is_module
+
+    ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]
+    st = NEW.get(status.get(" ".join(ids), ""), "")
+    def name(x: str) -> str:
+        return f"`{short(m, x[5:] if is_body(x) else x)}`"
+    if v["edge"]:
+        a, b = v["ends"]
+        return f"{st} dependency from {name(a)} to {name(b)}" if st else f"Dependency from {name(a)} to {name(b)}"
+    if not v["ends"]:
+        return v["label"]
+    x = v["ends"][0]
+    if is_body(x):
+        return f"Own code of {name(x)}"
+    e = m.entities[x]
+    kind = "module" if is_module(e) else "package" if e.kind == "directory" else e.kind
+    return f"{st} {kind} {name(x)}" if st else f"{kind.capitalize()} {name(x)}"
 
 
 def read_result(body: str) -> dict | None:

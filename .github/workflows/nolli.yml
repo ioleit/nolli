@@ -40,6 +40,8 @@ jobs:
       HEAD: ${{ github.event.pull_request.head.sha }}
       MODEL: claude-opus-5-5
       HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      # this repository's comments show the verdict marks of the PR's own commit; others use main's
+      NOLLI_ASSETS_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.sha }}/assets/verdicts
       FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - uses: actions/checkout@v4

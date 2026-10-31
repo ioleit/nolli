@@ -83,19 +83,36 @@ def test_with_review(dataset, capsys):
                 {"target": "n_fs_shop_store_py", "verdict": "fine", "reason": "unchanged"}]
     (dataset / "verdicts.json").write_text(json.dumps(verdicts))
     text = comment(dataset, capsys)
-    assert "The review agent marked these: 1 ?!, 1 👍." in text
+    first = text.splitlines()[1]
+    assert re.search(r"\. The review agent's 3 verdicts: <img src=\"\S+/question\.svg\"[^>]*> 1 &nbsp; <img [^>]*good\.svg[^>]*> 1 "
+                     r"&nbsp; <img [^>]*fine\.svg[^>]*> 1$", first), first
     findings = [line for line in text.splitlines() if line.startswith("- ")]
-    assert findings[0].startswith("- `?!` **") and findings[0].endswith(": why --> here?")  # worst first
-    assert findings[1].startswith("- `👍` **shop/cache.py**: a cache in its own module")
-    assert len(findings) == 2  # fine is not noteworthy
+    assert len(findings) == 2  # never the fine one
+    assert re.fullmatch(r'- <img [^>]*alt="\?!"[^>]*> \*New dependency from `shop/cache\.py` to `shop/store\.py`\*\. why --> here\?', findings[0])
+    assert re.fullmatch(r"- <img [^>]*good\.svg[^>]*> \*New module `shop/cache\.py`\*\. a cache in its own module", findings[1])
     assert [v["verdict"] for v in read_result(text)["verdicts"]] == ["good", "question", "fine"]  # "-->" kept, hidden
+
+
+def test_listed(dataset, capsys, monkeypatch):
+    monkeypatch.setenv("NOLLI_ASSETS_URL", "https://example.com/marks")
+    verdicts = [{"target": "n_fs_shop_store_py", "verdict": "question", "reason": f"q{i}"} for i in range(7)]
+    (dataset / "verdicts.json").write_text(json.dumps(verdicts + [{"target": "n_fs_shop_cache_py", "verdict": "fine", "reason": "ok"}]))
+    text = comment(dataset, capsys)
+    findings = [line for line in text.splitlines() if line.startswith("- ")]
+    assert findings[0].startswith('- <img src="https://example.com/marks/question.svg"')
+    assert findings[0].endswith("*Module `shop/store.py`*. q0")  # drawn, not changed
+    assert len(findings) == 6 and findings[-1] == "- 2 more"
+    (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_fs_shop_cache_py", "verdict": "fine", "reason": "ok"}]))
+    text = comment(dataset, capsys)
+    assert not [line for line in text.splitlines() if line.startswith("- ")]
+    assert "The review agent's 1 verdict: <img" in text
 
 
 def test_failed_review(dataset, capsys):
     (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_nope", "verdict": "good", "reason": "x"}]))
     text = comment(dataset, capsys)
     assert "No review: the review agent’s verdicts failed nolli’s check." in text
-    assert "marked these" not in text
+    assert "verdicts:" not in text
 
 
 def test_not_a_pr(dataset, capsys):
