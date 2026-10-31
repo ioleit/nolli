@@ -9,7 +9,6 @@
   },
   "devDependencies": {
     "@types/node": "26.6.5",
-    "cytoscape": "3.34.4",
     "elkjs": "0.9.3",
     "typescript": "7.0.2"
   }

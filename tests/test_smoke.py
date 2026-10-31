@@ -101,11 +101,13 @@ def test_default_cut_lifts_frontend_to_backend(repo: Path):
     m, _ = extract(repo)
     view = default_view(m, budget=12)
     hidden = hidden_by_role(m) | set(image_aliases(m))
-    rolled = rollup(m, set(view["visible"]), hidden)
+    rolled = rollup(m, set(view["visible"]), hidden, shown_groups={"http"})
     rolled.edges = bundle(m, rolled.edges, set(view["expanded"]))
-    http = [e for e in rolled.edges if e.subkind == "endpoint"]
-    assert http, "frontend -> backend edge derived through the endpoint"
-    assert all(e.src.startswith("fs:frontend") and e.dst.startswith("fs:backend") for e in http)
+    calls = [e for e in rolled.edges if e.subkind == "http"]
+    assert calls, "frontend -> HTTP API edge"
+    assert all(e.src.startswith("fs:frontend") and e.dst == "http" for e in calls)
+    served = [e for e in rolled.edges if e.kind == "provide" and e.src == "http"]
+    assert served and all(e.dst.startswith("fs:backend") for e in served)
     # the test directory is hidden, externals are a badge, not an edge
     assert "fs:backend/tests" not in view["visible"]
     assert not any(e.dst == "ext" or e.src == "ext" for e in rolled.edges)
@@ -154,10 +156,13 @@ def test_hover_descriptions(repo: Path):
         for line in item["info"]:
             assert all(isinstance(p, str) or set(p) in ({"v"}, {"doc"}) for p in line)
             assert not any(t in text(line) for t in ("fs:", "py:", "svc ", "img ")), text(line)
-    # with the HTTP API group hidden, calls are derived through to the handler
-    derived = scene(m, ViewState(budget=12, groups=[]))
-    http = next(e for e in derived["edges"] if e["style"] == "http")
+    http = next(e for e in sc["edges"] if e["style"] == "http")
     assert "to endpoints served by" in text(http["info"][0])
+    # with the HTTP API group hidden, calls are in the caller's hover text, not edges
+    folded = scene(m, ViewState(budget=12, groups=[]))
+    assert not any(e["style"] == "http" for e in folded["edges"])
+    app = next(n for n in folded["nodes"] if n["id"] == "fs:frontend/src/App.tsx")
+    assert "Calls 1 HTTP endpoint" in [text(line) for line in app["info"]]
     # a Python reference edge names what it uses ("api/ references Store in store")
     imp = next(e for e in sc["edges"] if e["style"] == "import" and " references " in text(e["info"][0]))
     assert {"v": "Store"} in imp["info"][0], imp["info"]
@@ -165,7 +170,7 @@ def test_hover_descriptions(repo: Path):
 
 def test_groups_are_a_filter(repo: Path):
     """A shown group is a box like any other (edges attach to it, it unfolds); a group the
-    filter hides is not drawn, its edges are badges or derived through, and it can't be unfolded."""
+    filter hides is not drawn, its edges are badges, and it can't be unfolded."""
     from nolli.scene import ViewState, scene
 
     m, _ = extract(repo)
@@ -181,7 +186,7 @@ def test_groups_are_a_filter(repo: Path):
     hidden = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["http"], groups=[]))
     assert "http" not in hidden["state"]["expanded"]
     assert all(n["id"] != "http" and n["parent"] != "http" for n in hidden["nodes"])
-    assert any(e["style"] == "http" and "http" not in (e["src"], e["dst"]) for e in hidden["edges"])  # caller -> handler
+    assert not any(n["id"] in ("env", "deploy") for n in hidden["nodes"])  # env set by deployment: both hidden, no edge
 
 
 def test_utilities_by_incoming_edges(repo: Path):

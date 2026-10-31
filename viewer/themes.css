@@ -19,7 +19,7 @@
   --group-fill: #4f46e506; --group-stroke: #818cf8;
   --icon: #e3e5f8; --icon-D: #c9cdf0; --icon-m: #dbe3ff; --icon-C: #fbe5bd;
   --anchor: #a5a8d6;
-  --e-other: #9396c4; --e-import: #5d6199; --e-http: #4338ca; --e-env: #0f766e; --e-deploy: #7e22ce; --e-provide: #4f46e5; --e-dangling: #a5a8d6;
+  --e-other: #9396c4; --e-import: #5d6199; --e-http: #4338ca; --e-env: #0f766e; --e-deploy: #7e22ce; --e-provide: #4f46e5;
 }
 /* only leaves cast a shade. Containers are translucent tints (opaque and borderless,
    they would vanish into the page), and a drop shadow follows the shape's opacity: a

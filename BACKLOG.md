@@ -7,7 +7,7 @@ solution; solutions are for whoever picks it up.
 
 - **Deployment relationships.** Compose services, images, `COPY` allocation, env
   wiring and runtime URLs are extracted and look valuable, but the current rendering
-  (chips on code boxes, hidden env wiring, a folded "Deployment" group) is a first guess.
+  (chips on code boxes, a folded "Deployment" group) is a first guess.
   Experiment with different renderings before deciding how this layer should look.
 - **Rendering, open-ended.** The ELK orthogonal edge routing reads like a circuit board
   once there are more than a few dozen edges; labels are tiny; layout direction, edge
@@ -15,12 +15,11 @@ solution; solutions are for whoever picks it up.
   all unexplored beyond defaults. Unfolding animates and keeps the clicked box in place, but the layout
   is still computed from scratch, so other boxes can travel far and cross each other
   mid-step (bench.html measures how much of the arrangement survives).
-  "Layered, each box separately" keeps more (order 0.91 vs 0.81 over the corpus), but
-  its edges between nesting levels are straight lines that cut through boxes; they need
-  a router that avoids boxes. bench.html averages steps equally, so a step that keeps
-  only 2 boxes (1 pair) can score 0 or 1 and swing the worst-step column.
-  The force layout (fCoSE) can leave sibling boxes overlapping (0–4 pairs on the
-  corpus); it has no overlap-removal pass, and its edges are straight, not routed.
+  ELK's "each box separately" mode kept more (order 0.91 vs 0.81 over the corpus), but
+  its edges between nesting levels were straight lines that cut through boxes; it was
+  removed with the force layout (fCoSE) when ELK became the only layout (2026-10-31).
+  bench.html averages steps equally, so a step that keeps only 2 boxes (1 pair) can
+  score 0 or 1 and swing the worst-step column.
 - **Developer experience for reviewing a PR.** Reviewing a pull request takes a checkout
   of this repository and a series of hand-made steps (PR text into a file, merge base and
   head looked up, a hand-written prompt for the agent, the viewer started from the
