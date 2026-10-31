@@ -146,7 +146,7 @@ def version() -> str:
     from importlib.metadata import version as pkg_version
 
     try:
-        return pkg_version("nolli")
+        return pkg_version("nolli-review")
     except PackageNotFoundError:
         return "unknown"
 
