@@ -29,7 +29,7 @@ from pathlib import PurePosixPath
 
 from ...model import USE, Entity, Provenance, Relation
 from .. import Context
-from ..interfaces import ensure_ext
+from ..interfaces import ensure_ext, package_name
 
 NODE_BUILTINS = {
     "assert", "buffer", "child_process", "cluster", "crypto", "dgram", "dns", "events", "fs", "http", "http2", "https",
@@ -61,22 +61,6 @@ def read_json(ctx: Context, rel: str) -> dict | None:
     except (OSError, json.JSONDecodeError):
         return None
     return cfg if isinstance(cfg, dict) else None
-
-
-CDN = re.compile(r"^https?://(?:cdn\.jsdelivr\.net/npm/|unpkg\.com/|esm\.sh/(?:v\d+/)?|cdn\.skypack\.dev/|esm\.run/)"
-                 r"((?:@[^/@]+/)?[^/@?]+)")
-
-
-def package_name(spec: str) -> str:
-    """The npm package a specifier names: ``@scope/name`` or ``name``, also inside a CDN
-    URL (``https://cdn.jsdelivr.net/npm/mermaid@11/...``); another URL is its host."""
-    cdn = CDN.match(spec)
-    if cdn:
-        return cdn.group(1)
-    if spec.startswith(("http://", "https://")):
-        return spec.split("/")[2]
-    bare = spec.removeprefix("node:")
-    return "/".join(bare.split("/")[:2]) if bare.startswith("@") else bare.split("/")[0]
 
 
 class Resolver:

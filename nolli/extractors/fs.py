@@ -89,7 +89,7 @@ def classify(rel: str) -> tuple[str | None, str]:
     if parts & TEST_DIRS or TEST_FILE.search(p.name):
         return lang, "test"
     if lang in ("html", "css"):
-        return lang, "markup"  # part of a frontend, but carries no dependencies we extract
+        return lang, "markup"  # pages and stylesheets; what they load is read by extractors/markup
     if lang:
         return lang, "source"
     if ext in CONFIG_EXT or p.name.startswith("."):

@@ -135,13 +135,15 @@ def language_names() -> dict[str, str]:
 
 def all_extractors():
     """Extraction order: the file tree first (everything attaches to it), then per
-    language its front-end (imports, symbols) and adapters, then infrastructure, then
+    language its front-end (imports, symbols) and adapters, then what pages and
+    stylesheets load (``markup``), then infrastructure, then
     the shared structures the adapters reported into (``api``)."""
     from . import api, fs
     from .infra import compose, dockerfile
+    from .markup import css, html
 
     return [("fs", fs.run), *(x for lang in languages() for x in lang.extractors),
-            ("compose", compose.run), ("dockerfile", dockerfile.run),
+            ("html", html.run), ("css", css.run), ("compose", compose.run), ("dockerfile", dockerfile.run),
             ("api", api.build)]  # the shared API structure from what the adapters reported
 
 
