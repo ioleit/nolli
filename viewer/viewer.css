@@ -21,7 +21,7 @@
   --anchor: #8886;
   --glow-color: #ff5a1f;  /* highlight: a hovered edge or box, its edges and the utilities it uses */
   --glow: drop-shadow(0 0 1px color-mix(in srgb, var(--glow-color) 75%, transparent)) drop-shadow(0 0 3px color-mix(in srgb, var(--glow-color) 40%, transparent));
-  --e-other: #8889; --e-import: #888b; --e-http: #2a7fd4; --e-env: #3a9d5d; --e-deploy: #8e5bd6; --e-provide: #2aa8a8; --e-dangling: #8886;
+  --e-other: #8889; --e-import: #888b; --e-http: #2a7fd4; --e-env: #3a9d5d; --e-deploy: #8e5bd6; --e-provide: #2aa8a8;
 }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 290px 1fr; height: 100vh; }
 body.reviewing { grid-template-columns: 250px 1fr 400px; }
@@ -34,11 +34,22 @@ label { display: block; margin: 1px 0; }
 label.row select { margin-left: auto; }
 .muted { color: var(--muted); }
 [data-help] { cursor: help; }
-label.opt input, details summary, button[data-help] { cursor: pointer; }
-label.opt:hover, details summary:hover { background: var(--hover-bg); }
-details summary { list-style-position: inside; padding: 1px 0; }
-details > div { padding-left: 14px; }
-#groups label .muted { font-size: 11px; }
+label.opt input, button[data-help] { cursor: pointer; }
+label.opt:hover { background: var(--hover-bg); }
+/* the Show filter: toggle chips per group and per role */
+.filter { display: flex; flex-direction: column; gap: 4px; }
+.filter .sub { display: flex; align-items: baseline; justify-content: space-between; margin-top: 4px; font-size: 12px; font-weight: 600; }
+.quick { font-weight: 400; font-size: 11px; color: var(--muted); }
+button.link { border: none; background: none; padding: 0; font: inherit; color: var(--e-http); cursor: pointer; }
+button.link:hover { text-decoration: underline; }
+.togs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tog { display: inline-flex; gap: 5px; align-items: baseline; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted);
+  padding: 2px 9px; font-size: 12px; cursor: pointer; }
+.tog .n { font-size: 10.5px; font-variant-numeric: tabular-nums; opacity: .75; }
+.tog:hover { background: var(--hover-bg); color: var(--ink); }
+.tog[aria-pressed=true] { color: var(--ink); border-color: color-mix(in srgb, var(--e-http) 55%, transparent); background: color-mix(in srgb, var(--e-http) 12%, transparent); }
+.tog[aria-pressed=true]:hover { background: color-mix(in srgb, var(--e-http) 18%, transparent); }
+.tog:focus-visible, button.link:focus-visible { outline: 2px solid var(--e-http); outline-offset: 1px; }
 #help { position: fixed; z-index: 10; display: none; max-width: 300px; background: var(--bg); color: var(--ink); border: 1px solid var(--line);
   box-shadow: 0 2px 8px #0003; padding: 6px 8px; font-size: 12px; line-height: 1.4; pointer-events: none; }
 main { display: grid; grid-template-rows: auto 1fr; overflow: hidden; min-width: 0; }
@@ -96,15 +107,12 @@ svg#g:active { cursor: grabbing; }
 .edge.deploy { color: var(--e-deploy); }
 .edge.provide { color: var(--e-provide); }
 .edge.provide path { stroke-dasharray: 5 3; }
-.edge.dangling path { stroke-dasharray: 3 3; }
 .edge.heuristic { --eo: .65; }
 .edge.local { --eo: .3; }
 .edge.single { --eo: .55; }
 .edge.weak { --eo: .22; }
 .edge.local.single, .edge.local.weak { --eo: .2; }
 .edge.local path, .edge.weak path { stroke-width: .7px !important; }
-svg.nolabels .edge text { display: none; }
-.edge text { font-size: 9.5px; font-family: var(--font-diagram); fill: var(--muted); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
 /* glow: a hovered edge; a hovered leaf box (or own-code dot), its edges and the utilities it uses (.lit, draw.js) */
 .edge:hover, .edge.lit { --eo: 1 !important; filter: var(--glow); }  /* beats the faint local/single/weak levels */
 .node.lit > rect, .node.lit > circle.anchor { filter: var(--glow); }
@@ -129,18 +137,12 @@ svg.nolabels .edge text { display: none; }
 #tip .v, .rv-verdict .v { font-weight: 600; background: color-mix(in srgb, var(--e-http) 14%, transparent); border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: 1px 0; }
-.legend span { display: inline-block; width: 22px; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
-.legend .import { border-color: var(--e-import); } .legend .http { border-color: var(--e-http); } .legend .env { border-color: var(--e-env); }
-.legend .deploy { border-color: var(--e-deploy); } .legend .provide { border-color: var(--e-provide); border-top-style: dashed; }
-.legend .dangling { border-color: var(--e-dangling); border-top-style: dashed; }
 button { font: inherit; padding: 2px 8px; }
 .chip { display: inline-flex; gap: 6px; align-items: center; border: 1px dashed var(--files-stroke); border-radius: 4px; padding: 2px 6px; margin: 2px 2px 2px 0; font-size: 12px; }
 .chip button { padding: 0 6px; font-size: 11px; }
 
 /* ---------- review mode (diff datasets) ---------- */
 :root { --add: #2e9b4f; --rem: #c94040; --chg: #6f8fb4; --question: #d08a1a; }  /* changed: a quiet slate blue, away from the orange glow */
-.review-only { display: none; }
-body.reviewing .review-only { display: block; }
 #review { display: none; border-left: 1px solid var(--line); overflow: hidden; flex-direction: column; min-height: 0; }
 body.reviewing #review { display: flex; }
 .plus { color: var(--add); } .minus { color: var(--rem); }

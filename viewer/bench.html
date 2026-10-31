@@ -11,7 +11,7 @@
   p { margin: 4px 0; color: var(--muted); max-width: 900px; }
   table { border-collapse: collapse; margin: 10px 0; font-variant-numeric: tabular-nums; }
   th, td { padding: 3px 10px; border-bottom: 1px solid var(--line); text-align: right; }
-  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  th:first-child, td:first-child { text-align: left; }
   th { font-weight: 600; font-size: 12px; }
   tr.total td { font-weight: 600; }
   details { margin: 6px 0; }
@@ -27,7 +27,7 @@
 <b>knn</b>: share of each box's 3 nearest boxes that stay its 3 nearest (1 = all).
 <b>residual</b>: movement left after the best shift and uniform scale, as a share of the picture's diagonal (0 = none).
 <b>edges stacked</b>: in the default cut, the share of edge length drawn on top of another edge (0 = none).
-Parameters: <code>?d=name,name</code> datasets, <code>&amp;engines=elk,fcose</code>.</p>
+Parameter: <code>?d=name,name</code> datasets.</p>
 <div id="status">running…</div>
 <div id="out"></div>
 <pre id="result"></pre>

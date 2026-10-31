@@ -13,65 +13,34 @@
   <select id="dataset" style="width:100%"></select>
   <div id="meta" style="color:var(--muted);font-size:11px"></div>
 
+  <section class="filter">
+    <h2>Show</h2>
+    <div class="sub"><span data-help="Cross-cutting things, each one box you can unfold. A hidden group is left out of the picture; the boxes that use it say so in their hover text.">Groups</span></div>
+    <div id="groups" class="togs"></div>
+    <div class="sub"><span data-help="Files and folders by role. A hidden role's boxes are left out, and so are their edges (counted under Residue).">Files</span><span id="rolequick" class="quick"></span></div>
+    <div id="roles" class="togs"></div>
+  </section>
+
   <h2>Detail</h2>
   <div class="row">
     <label class="opt" data-help="How many boxes the default cut may show. Changing it recomputes the default cut.">budget <input id="budget" type="number" min="4" max="300" value="28" style="width:52px"></label>
     <button id="reset" data-help="Back to the default cut for this budget.">default cut</button>
     <button id="collapse" data-help="Fold everything down to the top-level entries.">fold all</button>
   </div>
-
-  <h2>Show</h2>
-  <div id="groups"></div>
-  <details id="rolesbox">
-    <summary data-help="Files and directories by role. A hidden role's boxes are left out, and so are their edges (counted under Residue).">Files by role <span id="rolesum" class="muted"></span></summary>
-    <div id="roles"></div>
-  </details>
-
-  <h2>Edges</h2>
-  <label class="opt" data-help="Hide the count and kind written on each edge. Hover an edge for its details."><input type="checkbox" id="nolabels"> Hide labels</label>
-  <label class="opt" data-help="Draw every edge at one width. Off: an edge is wider the more references it stands for (logarithmic)."><input type="checkbox" id="samewidth"> Same width</label>
-  <label class="opt" data-help="When one box depends on three or more children of another unfolded box, draw one edge to that box's border instead of one per child."><input type="checkbox" id="bundle"> Bundle fan-out</label>
-  <label class="opt" data-help="Edges between boxes inside the same unfolded box are dropped; their count is shown in that box's header."><input type="checkbox" id="hideinternal"> Hide internal</label>
-  <label class="opt" data-help="For endpoints and env variables whose group is not shown: connect the caller (or reader) straight to the handler (or setter). Off: they become badges."><input type="checkbox" id="through"> Through interfaces</label>
-  <label class="opt" data-help="Draw env wiring, reader → setter. Off by default: it mostly repeats what deployment says; the count is under Residue."><input type="checkbox" id="envedges"> Env wiring</label>
-  <label class="opt" data-help="Draw interfaces with one side only: reads of env variables nothing sets, calls to endpoints nothing in the repo serves."><input type="checkbox" id="dangling"> One-sided interfaces</label>
-
-  <h2>Boxes</h2>
-  <label class="opt row" data-help="A box with more than this many incoming edges is a utility: instead of the edges, the boxes that use it carry a badge (→ name), and its border is dotted. 0: off.">utilities above <input id="utilities" type="number" min="0" max="99" style="width:52px;margin-left:auto"> edges</label>
-
-  <h2>Layout</h2>
-  <label class="opt row" data-help="How the diagram is laid out. Layered (ELK) puts callers above what they call.">engine <select id="engine"></select></label>
-  <label class="opt row" data-help="Direction of the layered layouts.">direction <select id="direction"><option value="DOWN">top → down</option><option value="RIGHT">left → right</option></select></label>
+  <label class="opt row" data-help="A box with more than this many incoming edges is a utility: its incoming edges are left out, it says how many boxes use it (&ldquo;used by 7&rdquo;), sits at the bottom and has a dotted border. 0: off.">utilities above <input id="utilities" type="number" min="0" max="99" style="width:52px;margin-left:auto"> edges</label>
   <label class="opt row" data-help="Colours, fonts and box style. Kept in this browser and in the link (th=).">theme <select id="theme"></select></label>
-  <label class="opt" data-help="Animate unfolding and folding, keeping the clicked box in place."><input type="checkbox" id="animate"> Animate</label>
 
-  <h2>Legend</h2>
-  <div class="legend review-only">
-    <div><span style="border-color:#2e9b4f;border-top-width:3px"></span>added</div>
-    <div><span style="border-color:#c94040;border-top-width:3px;border-top-style:dashed"></span>removed (edges: 🚫)</div>
-    <div><span style="border-color:var(--chg);border-top-width:3px"></span>changed: lines inside, or references (edges: ▲40% more, ▼25% fewer)</div>
-    <div style="color:var(--muted)">boxes: <span class="plus">+lines</span> <span class="minus">−lines</span> changed inside · markers: verdicts <b class="vtxt problem">!</b> problem <b class="vtxt question">?</b> question (fine ones only in the panel)<br>hover a change in the list to light it; click it (or j / k) to go there</div>
-  </div>
-  <div class="legend">
-    <div><span class="import"></span>import</div>
-    <div><span class="http"></span>http: caller → handler</div>
-    <div><span class="env"></span>env: reader → setter</div>
-    <div><span class="deploy"></span>deploy: depends_on, url, copies, entrypoint</div>
-    <div><span class="provide"></span>interface → the module that realises it</div>
-    <div><span class="dangling"></span>one-sided interface</div>
-    <div style="margin-top:4px;color:var(--muted)">D directory · m module · C class · dot in a module header = the module's own code<br>width = log(count), unless Same width · pale = heuristic match<br>click a box: unfold all its children · click its − : fold · drag: pan · wheel: zoom</div>
-  </div>
   <h2>Residue</h2>
   <ul class="plain" id="residue"></ul>
 </aside>
 <main>
   <nav id="views" role="tablist">
-    <button role="tab" data-view="diagram" data-help="The scene laid out and drawn (ELK.js or fCoSE, see Layout).">Diagram</button>
+    <button role="tab" data-view="diagram" data-help="The scene laid out (ELK.js, top to bottom) and drawn.">Diagram</button>
     <button role="tab" data-view="json" data-help="The scene the server sent, as JSON. Click an id to unfold or fold it.">JSON</button>
     <button role="tab" data-view="mermaid" data-help="The static Mermaid export written by nolli extract (default.mmd): always the default cut, ignores the controls.">Mermaid</button>
   </nav>
   <div id="stage">
-    <svg id="g" class="nolabels"><g id="root"></g></svg>
+    <svg id="g"><g id="root"></g></svg>
     <div id="status"></div>
     <div id="tip"></div>
     <div id="rawpane"></div>

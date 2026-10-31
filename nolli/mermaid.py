@@ -8,7 +8,7 @@ from .changes import is_diff, node_diff
 from .rollup import HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, display_path, hidden_by_role, image_aliases, is_init
 from .model import Model
 
-ARROW = {"import": "-->", "ref": "-->", "http": "==>", "endpoint": "==>", "env": "-.->", "depends_on": "-->", "url": "-->",
+ARROW = {"import": "-->", "ref": "-->", "http": "==>", "env": "-.->", "depends_on": "-->", "url": "-->",
          "runs_as": "-.->", "copies": "-.->", "entrypoint": "-.->"}
 GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "api": "api"}
 
@@ -117,7 +117,7 @@ def render(m: Model, view: dict, rolled: RolledUp) -> str:
 
     styles: list[str] = []
     for i, e in enumerate(rolled.edges):
-        arrow = "-.->" if e.kind == "provide" else ARROW.get(e.subkind.replace("-dangling", ""), "-->")
+        arrow = "-.->" if e.kind == "provide" else ARROW.get(e.subkind, "-->")
         lab = []
         st = e.status if diff else None
         if st:

@@ -1,17 +1,31 @@
-// The sidebar: dataset meta, the Show filter (groups, roles), residue, and the controls' checked state.
+// The sidebar: dataset meta, the Show filter (groups, files by role), residue, and the controls' values.
 
 import { byId, input, select } from "./dom.js";
-import { ALL_ROLES, OPTIONS, state } from "./state.js";
+import { ALL_ROLES, state } from "./state.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene */
 
 /** @type {Record<string, string>} what showing a group means; the server names the groups */
 const GROUP_HELP = {
-  api: "What this repo serves for others to call: one box per app, unfolding along its paths to the operations. Calls go into it, and from it to the handlers that realise them. Off: calls are drawn straight to the handler (Through interfaces) or become badges.",
-  env: "Environment variables, as one box you can unfold. Readers point into it, and from it to whatever sets them. Off: badges (\"N env\") on the readers.",
-  deploy: "Compose services and images, as one box you can unfold. Off: badges on the code they touch.",
-  ext: "Third-party packages, as one box you can unfold. Off: badges (\"N pkgs\") on the importers.",
+  api: "What this repo serves for others to call: one box per app, unfolding along its paths to the operations. Calls go into it, and from it to the handlers that realise them. Hidden: the callers' hover text counts their calls.",
+  env: "Environment variables, as one box you can unfold. Readers point into it, and from it to the services that set them. Hidden: the readers' hover text counts what they read.",
+  deploy: "Compose services and images, as one box you can unfold. Hidden: the hover text of the code they touch says so.",
+  ext: "Third-party packages, as one box you can unfold. Hidden: the importers' hover text names them.",
 };
+
+/** @type {Record<string, string>} how nolli/extractors/fs.py assigns each role */
+const ROLE_HELP = {
+  source: "Code in a language nolli knows.",
+  mixed: "Folders holding source next to files of other roles.",
+  test: "Files in a test folder or named like a test.",
+  docs: "Markdown, reStructuredText, plain text.",
+  config: "Config formats, lock files, Dockerfiles, Makefiles, tool configs, dot-files and dot-folders.",
+  markup: "HTML and stylesheets.",
+  data: "CSV, JSON Lines, Parquet, XML, GeoJSON.",
+  asset: "Images, audio, video, fonts.",
+  other: "Anything else.",
+};
+const SOURCE_ONLY = ["source", "mixed"];
 
 /**
  * @param {Scene} scene
@@ -26,40 +40,56 @@ export function sidebar(scene, onFilter) {
   const gd = byId("groups"); gd.innerHTML = "";
   const shown = scene.state.groups;
   for (const gr of scene.groups) {
-    const c = check(gd, gr.name, shown.includes(gr.id), GROUP_HELP[gr.id] || `${gr.name}: one box you can unfold. Off: badges on the boxes that use it.`, String(gr.size));
-    c.addEventListener("change", () => { const now = state.groups || shown; state.groups = c.checked ? [...now, gr.id] : now.filter(x => x !== gr.id); onFilter(); });
+    toggle(gd, gr.name, String(gr.size), shown.includes(gr.id), GROUP_HELP[gr.id] || `${gr.name}: one box you can unfold. Hidden: the hover text of the boxes that use it says so.`, on => {
+      const now = state.groups || shown; state.groups = on ? [...now, gr.id] : now.filter(x => x !== gr.id); onFilter();
+    });
   }
-  if (!scene.groups.length) gd.innerHTML = `<div class="muted">no groups in this repository</div>`;
+  if (!scene.groups.length) gd.innerHTML = `<span class="muted">none in this repository</span>`;
 
+  // roles the repository has, in their usual order; a shown role it lacks stays in the state
   const rd = byId("roles"); rd.innerHTML = "";
   const roles = state.roles || [];
-  for (const r of ALL_ROLES) {
-    const c = check(rd, r, roles.includes(r));
-    c.addEventListener("change", () => { const now = state.roles || []; state.roles = c.checked ? [...now, r] : now.filter(x => x !== r); onFilter(); });
+  for (const r of scene.roles) {
+    if (!r.files && !r.dirs) continue;
+    const n = r.files ? String(r.files) : `${r.dirs} dir${r.dirs === 1 ? "" : "s"}`;
+    const help = `${ROLE_HELP[r.id] || r.id} ${r.files} file${r.files === 1 ? "" : "s"}, ${r.dirs} folder${r.dirs === 1 ? "" : "s"}. Hidden: left out, and so are their edges (counted under Residue).`;
+    toggle(rd, r.id, n, roles.includes(r.id), help, on => {
+      const now = state.roles || []; state.roles = on ? [...now, r.id] : now.filter(x => x !== r.id); onFilter();
+    });
   }
-  byId("rolesum").textContent = `${roles.length} of ${ALL_ROLES.length}`;
+  const set = (/** @type {string[]} */ rs) => () => { state.roles = rs; onFilter(); };
+  const same = (/** @type {string[]} */ a, /** @type {string[]} */ b) => a.length === b.length && a.every(x => b.includes(x));
+  quick(byId("rolequick"), [["source only", SOURCE_ONLY, same(roles, SOURCE_ONLY)], ["all", ALL_ROLES, same(roles, ALL_ROLES)]].map(([t, rs, on]) => ({ text: /** @type {string} */ (t), on: /** @type {boolean} */ (on), act: set(/** @type {string[]} */ (rs)) })));
 }
 
-/** A checkbox row. @param {HTMLElement} parent @param {string} text @param {boolean} checked @param {string} [help] @param {string} [note] */
-function check(parent, text, checked, help, note) {
-  const l = document.createElement("label"), c = document.createElement("input");
-  l.className = "opt"; if (help) l.dataset.help = help;
-  c.type = "checkbox"; c.checked = checked;
-  l.append(c, " " + text);
-  if (note) { const s = document.createElement("span"); s.className = "muted"; s.textContent = " " + note; l.append(s); }
-  parent.appendChild(l);
-  return c;
+/**
+ * A toggle chip: name, a muted count, pressed when shown.
+ * @param {HTMLElement} parent @param {string} text @param {string} note @param {boolean} on @param {string} help @param {(on: boolean) => void} change
+ */
+function toggle(parent, text, note, on, help, change) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "tog"; b.dataset.help = help;
+  b.setAttribute("aria-pressed", String(on));
+  b.append(text);
+  const s = document.createElement("span"); s.className = "n"; s.textContent = note; b.append(s);
+  b.addEventListener("click", () => change(!on));
+  parent.appendChild(b);
+}
+
+/** Links that set the filter at once; the one in effect is plain text. @param {HTMLElement} parent @param {{ text: string, on: boolean, act: () => void }[]} items */
+function quick(parent, items) {
+  parent.innerHTML = "";
+  items.forEach((it, i) => {
+    if (i) parent.append(" · ");
+    if (it.on) { const s = document.createElement("span"); s.textContent = it.text; parent.append(s); return; }
+    const a = document.createElement("button"); a.type = "button"; a.className = "link"; a.textContent = it.text;
+    a.addEventListener("click", it.act); parent.append(a);
+  });
 }
 
 export function syncControls() {
   input("budget").value = String(state.budget);
   input("utilities").value = String(state.utilities ?? "");
-  for (const [id, k] of Object.entries(OPTIONS)) input(id).checked = state[k];
-  input("nolabels").checked = state.noLabels; byId("g").classList.toggle("nolabels", state.noLabels);
-  input("samewidth").checked = state.sameWidth;
   select("theme").value = state.theme;
-  input("animate").checked = state.animate;
-  select("direction").value = state.direction;
-  select("engine").value = state.engine;
   for (const b of document.querySelectorAll("#views [data-view]")) b.setAttribute("aria-selected", String(/** @type {HTMLElement} */ (b).dataset.view === state.view));
 }
