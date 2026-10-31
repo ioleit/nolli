@@ -43,7 +43,8 @@ For reference, the steps that the one command should replace:
   branch or commit, `A..B` or `A...B` (`nolli/change.py`). It builds the dataset into a
   default data directory (reused per change and nolli version), serves the viewer and
   opens the browser. Title and description come from the commits.
-- The viewer is in the package (`nolli.viewer`) and offline (`viewer/vendor/`).
+- The viewer is in the package (`nolli.viewer`). Its libraries still come from jsDelivr: working
+  offline is not a goal (owner, 2026-10-31).
 - Tested on 2026-10-30 as a user would before PyPI: `pip install git+file://…@dx-view`
   into a fresh venv outside the checkout, then `nolli view` in a fresh clone of autoforge
   on the branch of its PR #213 (origin's default branch set back to the PR's base), and on

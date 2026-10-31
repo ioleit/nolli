@@ -42,8 +42,3 @@ shift and scale.
 Node is only for development: `npm install`, then `npm run check` (TypeScript checks
 the JavaScript through its JSDoc types, strict) and `npm test` (unit tests of the pure
 modules). The browser loads the `.js` files as they are.
-
-The libraries it uses (ELK.js, Cytoscape.js with fCoSE, Mermaid) are in `vendor/`, so the
-viewer works offline and from an installed package. `npm run vendor` copies them there
-from `node_modules` (`vendor.mjs`; versions in `package.json`, licences in
-`vendor/LICENSES.txt`); run it after changing a version, and commit the result.

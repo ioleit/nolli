@@ -5,16 +5,12 @@
   "type": "module",
   "scripts": {
     "check": "tsc -p .",
-    "test": "node --test test/",
-    "vendor": "node vendor.mjs"
+    "test": "node --test test/"
   },
   "devDependencies": {
     "@types/node": "26.6.5",
     "cytoscape": "3.34.4",
-    "cytoscape-fcose": "2.2.0",
     "elkjs": "0.9.3",
-    "esbuild": "0.28.2",
-    "mermaid": "11.17.2",
     "typescript": "7.0.2"
   }
 }

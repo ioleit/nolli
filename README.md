@@ -30,8 +30,8 @@ commit (what it adds to the default branch; a commit already merged, its own cha
 with its title, description and links; the title and description of any other change
 come from its commits. Only commits count, not uncommitted edits; the repository is read
 through `git archive`, and its working tree is not touched. On the default branch with
-nothing new, it shows the whole repository. The viewer needs no internet, and a change
-is built once (in `$NOLLI_DATA`, default `~/.local/share/nolli`).
+nothing new, it shows the whole repository. A change is built once (in `$NOLLI_DATA`,
+default `~/.local/share/nolli`).
 
 To install (Python 3.11 or later):
 

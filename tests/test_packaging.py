@@ -1,5 +1,5 @@
 """The package's file list in pyproject.toml stays complete: every Python package
-directory, and every file the viewer loads."""
+directory, and every local file the viewer loads."""
 
 from __future__ import annotations
 
@@ -27,9 +27,8 @@ def test_every_file_the_viewer_loads_is_packaged():
     for js in (viewer / "js").rglob("*.js"):
         for ref in re.findall(r'(?:from |import\()\s*"(\.[^"]+\.m?js)"', js.read_text()):
             refs.add(str((js.parent / ref).resolve().relative_to(viewer)))
-        refs |= set(re.findall(r'"(vendor/[^"]+)"', js.read_text()))
+    refs = {r for r in refs if "://" not in r}  # libraries come from a CDN
     assert refs, "found no references"
     for ref in sorted(refs):
         assert (viewer / ref).is_file(), f"{ref} is referenced but missing"
         assert any(fnmatch(ref, p) for p in patterns), f"{ref} is not in package-data"
-    assert not any("cdn." in r or "://" in r for r in refs)
