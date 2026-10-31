@@ -9,6 +9,7 @@ First version; the brief's wording was tuned on one PR.
 from __future__ import annotations
 
 import re
+from collections import Counter
 
 from .changes import Links, ancestors_to_unfold, change_items, short
 from .labels import is_body
@@ -235,13 +236,29 @@ def marked(text: str) -> list:
     return [{"v": t} if i % 2 else t for i, t in enumerate(text.split("`")) if t]
 
 
-def _verdict_lines(verdicts: list[dict]) -> list[list]:
-    """One line per verdict, worst first: [!] reason."""
-    return [[{"verdict": v["verdict"]}, " ", *marked(v["reason"])] for v in sorted(verdicts, key=lambda v: -VERDICT_RANK[v["verdict"]])]
+FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside
 
 
-def node_review_info(nd: dict | None, verdicts: list[dict]) -> list[list]:
-    """Sentences on a box's hover card in a review: what happened to it, and the verdicts on it."""
+def _verdict_lines(verdicts: list[dict], inside: list[dict] = (), items: int = 0, where: str = "") -> list[list]:
+    """One line per verdict, worst first: [!] reason. Verdicts rolled up from inside a folded box
+    or bundled edge (``inside``) become one line that counts them like the review panel does,
+    "15 changes in this directory · verdicts: [??] 1 [✓] 8", once there are more than a card
+    lists (FULL_VERDICTS in all) and more than one of them."""
+    if len(verdicts) + len(inside) <= FULL_VERDICTS or len(inside) < 2:
+        verdicts, inside = [*verdicts, *inside], []
+    lines = [[{"verdict": v["verdict"]}, " ", *marked(v["reason"])] for v in sorted(verdicts, key=lambda v: -VERDICT_RANK[v["verdict"]])]
+    if inside:
+        n = Counter(v["verdict"] for v in inside)
+        line: list = say(f"{{}} {where} · verdicts:", count(items, "change")) if items else [f"Verdicts {where}:"]
+        for v in sorted(n, key=lambda v: -VERDICT_RANK[v]):
+            line += [" ", {"verdict": v}, " ", {"v": str(n[v])}]
+        lines.insert(0, line)
+    return lines
+
+
+def node_review_info(nd: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0, kind: str = "box") -> list[list]:
+    """Sentences on a box's hover card in a review: what happened to it, the verdicts on it, and
+    those on what it holds (``inside``, summed up when there are several; ``items`` changes)."""
     lines: list[list] = []
     if nd:
         lines_changed = nd["added"] or nd["removed"]
@@ -261,12 +278,12 @@ def node_review_info(nd: dict | None, verdicts: list[dict]) -> list[list]:
             lines.append(say("Renamed from {}", nd["old_path"]))
         if nd.get("renamed_to"):
             lines.append(say("Renamed to {}", nd["renamed_to"]))
-    return lines + _verdict_lines(verdicts)
+    return lines + _verdict_lines(verdicts, inside, items, f"in this {kind}")
 
 
-def edge_review_info(m: Model, ed: dict | None, verdicts: list[dict]) -> list[list]:
-    """Sentences on top of an edge's hover card in a review: how its references changed, and
-    which names came or went."""
+def edge_review_info(m: Model, ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0) -> list[list]:
+    """Sentences on top of an edge's hover card in a review: how its references changed, which
+    names came or went, and the verdicts on it and on the dependencies it bundles (``inside``)."""
     lines: list[list] = []
     if ed:
         if ed["status"] == "added":
@@ -282,4 +299,4 @@ def edge_review_info(m: Model, ed: dict | None, verdicts: list[dict]) -> list[li
             lines.append(listing("Now uses {}", came, "more", limit=4))
         if went:
             lines.append(listing("No longer uses {}", went, "more", limit=4))
-    return lines + _verdict_lines(verdicts)
+    return lines + _verdict_lines(verdicts, inside, items, "on this edge")
