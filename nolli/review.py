@@ -75,6 +75,60 @@ def resolve_verdicts(m: Model, verdicts: list[dict]) -> list[dict]:
     return out
 
 
+EDGE = re.compile(r"^\s*(n_\w+)\s*(?:-->|-\.->|==>)(?:\|[^|]*\|)?\s*(n_\w+)\s*$")
+NODE = re.compile(r"^\s*(?:subgraph\s+)?(n_\w+)\s*[\[(]")
+
+
+def check_verdicts(m: Model, mermaid: str, text: str) -> tuple[list[dict], list[str]]:
+    """verdicts.json checked against the review diagram it answers (review.mmd): the verdicts
+    read, and what is wrong with them, each problem a sentence an agent can act on. Stricter
+    than ``read_verdicts``: every target must be a box or an edge drawn in that diagram, and
+    every verdict needs a reason."""
+    import json
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return [], [f"not valid JSON: {exc}"]
+    if isinstance(data, dict):
+        data = data.get("verdicts")
+    if not isinstance(data, list):
+        return [], ['expected a JSON list of {"target", "verdict", "reason"} (or {"verdicts": [...]})']
+    ids = diagram_ids(m)
+    nodes = {g.group(1) for line in mermaid.splitlines() if (g := NODE.match(line))}
+    edges = {(ids.get(g.group(1)), ids.get(g.group(2))) for line in mermaid.splitlines() if (g := EDGE.match(line))}
+    errors, ok = [], []
+    for i, v in enumerate(data, 1):
+        where = f"verdict {i}"
+        if not isinstance(v, dict):
+            errors.append(f"{where}: not an object")
+            continue
+        target, verdict, reason = v.get("target"), v.get("verdict"), v.get("reason")
+        where = f"verdict {i} ({target!r})"
+        if verdict not in VERDICTS:
+            errors.append(f"{where}: verdict is {verdict!r}, must be one of {', '.join(VERDICTS)}")
+        if not isinstance(reason, str) or not reason.strip():
+            errors.append(f"{where}: needs a reason (a non-empty string)")
+        g = TARGET.match(target) if isinstance(target, str) else None
+        if not g:
+            errors.append(f"{where}: target must be a node id of the diagram (n_…) or an edge 'n_a --> n_b'")
+            continue
+        missing = [t for t in g.groups() if t and t not in nodes]
+        if missing:
+            errors.append(f"{where}: {', '.join(missing)} is not a node of the diagram")
+            continue
+        if g.group(2):
+            a, b = ids[g.group(1)], ids[g.group(2)]
+            if (a, b) not in edges:
+                hint = " (the diagram has it the other way round)" if (b, a) in edges else ""
+                errors.append(f"{where}: the diagram draws no edge from {g.group(1)} to {g.group(2)}{hint}")
+                continue
+        ok.append(v)
+    if not data:
+        errors.append("no verdicts: give at least one")
+    return (read_verdicts(json.dumps(ok)) if ok else []), errors
+
+
 def review_expanded(m: Model) -> list[str]:
     """The boxes to unfold so that every change in source code is drawn: what going to each
     of them unfolds, together. The review diagram and the viewer's "all changes" use it."""
