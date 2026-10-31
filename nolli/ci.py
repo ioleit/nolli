@@ -34,6 +34,7 @@ KEY = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)@([0-9a-f]{7,40})$")
 MARKER = "<!-- nolli -->"
 RESULT = re.compile(r"<!-- nolli-result (\S+) -->")
 GLYPH = {"blunder": "??", "problem": "?", "question": "?!", "brilliant": "!!", "good": "👍"}  # as the viewer draws them
+MERMAID_MAX = 40_000  # characters of the default view's Mermaid; a comment holds 65536
 WORST_FIRST = ("blunder", "problem", "question", "brilliant", "good")
 
 
@@ -87,6 +88,10 @@ def comment(ds: Path, skipped: str | None = None) -> str:
     if noteworthy:
         lines.append("")
         lines += [f"- `{GLYPH[v['verdict']]}` **{v['label']}**: {' '.join(v['reason'].split())}" for v in noteworthy]
+    mmd = ds / "default.mmd"
+    if mmd.is_file() and len(mmd.read_text()) <= MERMAID_MAX:
+        lines += ["", "<details open><summary>The change as a diagram</summary>", "", "```mermaid",
+                  mmd.read_text().rstrip(), "```", "", "</details>"]
     lines += ["", "To see them on the diagram:", "", "```", "pip install nolli-review", f"nolli view {key}", "```"]
     d = m.meta["diff"]
     result = {"key": key, "base": d["base"], "head": d["head"], "nolli": m.meta.get("nolli"),

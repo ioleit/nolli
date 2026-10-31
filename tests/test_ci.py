@@ -62,6 +62,7 @@ def test_without_review(dataset, capsys):
     assert text.startswith("<!-- nolli -->\n**Nolli** found ")
     assert "No review: the review agent wrote no verdicts." in text
     assert f"nolli view {key}\n" in text
+    assert "```mermaid\nflowchart" in text
     assert read_result(text)["verdicts"] == [] and read_result(text)["key"] == key
 
 
