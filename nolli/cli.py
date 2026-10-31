@@ -240,7 +240,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
 
 def cmd_check(args: argparse.Namespace) -> int:
     """nolli agent check: verdicts.json against the diagram it answers; problems on stderr."""
-    from .review import check_verdicts
+    from .review import VERDICTS, check_verdicts
 
     target = Path(args.dataset).expanduser()
     ds = target.parent if target.is_file() else target
@@ -256,7 +256,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     verdicts, errors = check_verdicts(Model.load(ds / "model.json"), (ds / "review.mmd").read_text(), vf.read_text())
     for e in errors:
         print(e, file=sys.stderr)
-    counts = {v: sum(x["verdict"] == v for x in verdicts) for v in ("problem", "question", "fine")}
+    counts = {v: sum(x["verdict"] == v for x in verdicts) for v in reversed(VERDICTS)}
     print(json.dumps({"ok": not errors, "verdicts": len(verdicts), **counts, "errors": len(errors)}))
     return 1 if errors else 0
 

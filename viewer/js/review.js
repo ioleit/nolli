@@ -7,6 +7,7 @@
 
 import { byId } from "./dom.js";
 import { state } from "./state.js";
+import { ORDER, RANK, glyph } from "./verdicts.js";
 
 /**
  * @typedef {import("../types/nolli").Scene} Scene
@@ -24,7 +25,6 @@ const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 /** @param {string | null | undefined} href @param {string} text */
 const link = (href, text) => href ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>` : esc(text);
 const GLYPH = { added: "+", removed: "−", changed: "~" };
-const VGLYPH = { fine: "✓", question: "?", problem: "!" };
 const TITLES = { component: "Components added or removed", dependency: "Dependencies between modules", content: "Edited files" };
 
 /** @type {ReviewItem[]} */
@@ -40,7 +40,6 @@ let handlers = null;
 const open = new Set();
 
 /** @type {Record<import("../types/nolli").Verdict, number>} */
-const RANK = { problem: 2, question: 1, fine: 0 };
 
 /** The changes listed: source, or everything. */
 const shownItems = () => items.filter(it => allRoles || it.role === "source");
@@ -69,7 +68,7 @@ const codeSpans = text => esc(text).replace(/`([^`]+)`/g, '<span class="v">$1</s
 /** @param {string} st */
 const statusSpan = st => `<span class="st ${esc(st)}">${GLYPH[/** @type {"added" | "removed" | "changed"} */ (st)] || "•"}</span>`;
 /** @param {{ verdict: string, reason: string } | null | undefined} v */
-const verdictSpan = v => v ? `<span class="vd ${esc(v.verdict)}" title="${esc(v.verdict + ": " + v.reason)}">${VGLYPH[/** @type {"fine" | "question" | "problem"} */ (v.verdict)]}</span>` : "";
+const verdictSpan = v => v ? `<span class="vd ${esc(v.verdict)}" title="${esc(v.verdict + ": " + v.reason)}">${glyph(v.verdict)}</span>` : "";
 
 /** The title without the parts the group heading already says. @param {ReviewItem} it */
 function shortTitle(it) {
@@ -104,8 +103,9 @@ export function renderPanel(scene, h) {
   if (!d) { showPanel(false); return; }
   showPanel(true);
   const shown = shownItems();
-  const counts = { problem: 0, question: 0, fine: 0 };
-  for (const v of verdicts) counts[v.verdict]++;
+  /** @type {Record<string, number>} */
+  const counts = {};
+  for (const v of verdicts) counts[v.verdict] = (counts[v.verdict] || 0) + 1;
   const hiddenN = items.length - shown.length;
   const sideBtn = (/** @type {"base" | "both" | "head"} */ s, /** @type {string} */ label, /** @type {string} */ key) =>
     `<button data-side="${s}" class="${state.side === s ? "on" : ""}" title="key ${key}">${label}</button>`;
@@ -117,8 +117,8 @@ export function renderPanel(scene, h) {
     <div class="rv-row-btns"><button id="rv-all-changes" title="unfold every area that changed in source code: the diagram the review agent saw">unfold all changes</button></div>
     <label><input type="checkbox" id="rv-dim" ${state.dim ? "checked" : ""}> fade what did not change</label>
     <label><input type="checkbox" id="rv-all" ${allRoles ? "checked" : ""}> include tests, docs, config, data${hiddenN && !allRoles ? ` (${hiddenN} more)` : ""}</label>
-    <div class="rv-verdicts">${counts.problem + counts.question + counts.fine
-      ? `verdicts: <span class="vd problem">!</span> ${counts.problem} <span class="vd question">?</span> ${counts.question} <span class="vd fine">✓</span> ${counts.fine}`
+    <div class="rv-verdicts">${verdicts.length
+      ? "verdicts: " + ORDER.filter(v => counts[v]).map(v => `<span class="vd ${v}" title="${v}">${glyph(v)}</span> ${counts[v]}`).join(" ")
       : "no verdicts yet"} · <a href="/data/${esc(state.name)}/review.md" target="_blank">review.md</a>
       · <label class="file">load verdicts…<input type="file" id="rv-file" accept=".json,application/json"></label></div>
   </div><div class="rv-keys">hover a row to light it · click or j / k to go to it · ▸ details · 1 2 3 before / changes / after · f fit</div><div class="rv-list">`;

@@ -16,7 +16,9 @@ from .mermaid import nid
 from .model import Model
 from .prose import count, listing, say
 
-VERDICTS = ("fine", "question", "problem")
+# least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
+# shows the mark of a box's highest-ranked verdict). The brief offers only fine / question / problem.
+VERDICTS = ("fine", "good", "brilliant", "question", "problem", "blunder")
 VERDICT_RANK = {v: i for i, v in enumerate(VERDICTS)}
 
 
@@ -26,7 +28,7 @@ TARGET = re.compile(r"^\s*(n_\w+)\s*(?:-+>|-\.->|==>)?\s*(n_\w+)?\s*$")
 def read_verdicts(text: str) -> list[dict]:
     """verdicts.json: a list (or {"verdicts": [...]}) of {target, verdict, reason}. target is a
     node id of the review diagram (review.mmd), or an edge written ``source --> target`` with
-    two node ids; verdict one of fine / question / problem. Numbered V1, V2, … in file order;
+    two node ids; verdict one of VERDICTS. Numbered V1, V2, … in file order;
     raises ValueError on a bad file."""
     import json
 

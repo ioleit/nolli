@@ -65,7 +65,22 @@ async function refresh(keepZoom = false) {
     renderPanel(sc, reviewHandlers);
   } else showPanel(false);
   document.body.classList.toggle("dim", !!sc.diff && state.dim);
-  await show(keepZoom && !focusNext);
+  try {
+    await show(keepZoom && !focusNext);
+  } catch (err) {
+    // a picture that cannot be drawn: keep the one on screen and go back to the state it shows,
+    // or the next click would toggle boxes in a state nobody sees
+    if (shown && my === seq) {
+      scene = shown.scene;
+      const s = shown.scene.state;
+      state.expanded = s.expanded; state.roles = s.roles; state.groups = s.groups; state.budget = s.budget; state.utilities = s.utilities;
+      syncControls(); sidebar(shown.scene, () => refresh(true));
+      if (shown.scene.diff) renderPanel(shown.scene, reviewHandlers);
+      writeHash();
+    }
+    showError(String(/** @type {Error} */ (err)?.message || err));
+    return;
+  }
   writeHash();
 }
 

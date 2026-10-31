@@ -132,7 +132,9 @@ button { font: inherit; padding: 2px 8px; }
 .chip button { padding: 0 6px; font-size: 11px; }
 
 /* ---------- review mode (diff datasets) ---------- */
-:root { --add: #2e9b4f; --rem: #c94040; --chg: #6f8fb4; --question: #d08a1a; }  /* changed: a quiet slate blue, away from the orange glow */
+:root { --add: #2e9b4f; --rem: #c94040; --chg: #6f8fb4; }
+/* the verdicts, in the colours chess sites give these annotations */
+:root { --v-blunder: #ca3431; --v-problem: #e58f2a; --v-question: #e6ae2a; --v-fine: #81b64c; --v-good: #5c8bb0; --v-brilliant: #1baca6; }  /* changed: a quiet slate blue, away from the orange glow */
 #review { display: none; border-left: 1px solid var(--line); overflow: hidden; flex-direction: column; min-height: 0; }
 body.reviewing #review { display: flex; }
 .plus { color: var(--add); } .minus { color: var(--rem); }
@@ -160,8 +162,13 @@ label.file input { display: none; }
 .rv-empty { color: var(--muted); padding: 8px 12px; }
 .st { font-weight: 700; width: 1em; text-align: center; display: inline-block; }
 .st.added { color: var(--add); } .st.removed { color: var(--rem); } .st.changed { color: var(--chg); }
-.vd, .vtxt { font-weight: 700; display: inline-block; min-width: 1.2em; text-align: center; border-radius: 8px; color: white; font-size: 11px; }
-.vd.problem, .vtxt.problem { background: var(--rem); } .vd.question, .vtxt.question { background: var(--question); } .vd.fine, .vtxt.fine { background: var(--add); }
+.vd, .vtxt { font-weight: 700; display: inline-block; min-width: 1.6em; padding: 0 2px; box-sizing: border-box; letter-spacing: -0.5px; text-align: center; border-radius: 8px; color: white; font-size: 11px; }
+.vd.blunder, .vtxt.blunder { background: var(--v-blunder); }
+.vd.problem, .vtxt.problem { background: var(--v-problem); }
+.vd.question, .vtxt.question { background: var(--v-question); }
+.vd.fine, .vtxt.fine { background: var(--v-fine); }
+.vd.good, .vtxt.good { background: var(--v-good); }
+.vd.brilliant, .vtxt.brilliant { background: var(--v-brilliant); }
 .dt-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 8px 0 2px; }
 .dt-verdict { margin: 4px 0; padding: 4px 6px; border-radius: 4px; background: #8881; }
 .dt-hint, .muted { color: var(--muted); }
@@ -192,8 +199,15 @@ body.dim .node.container.d-same > rect { stroke-opacity: .4; }
 body.dim .node.container.d-same > text { opacity: .55; }
 body.dim .edge.d-same { opacity: .18; }
 .verdict circle { stroke: Canvas; stroke-width: 1.5; }
-.verdict text { font: 700 10px system-ui, sans-serif; fill: white; pointer-events: none; }
-.verdict.problem circle { fill: var(--rem); } .verdict.question circle { fill: var(--question); } .verdict.fine circle { fill: var(--add); }
+/* .edge .verdict: on an edge, .edge.d-changed text and the like would recolour the glyph */
+.verdict text, .edge .verdict text { font: 700 10px system-ui, sans-serif; fill: white; pointer-events: none; }
+.verdict.blunder circle { fill: var(--v-blunder); }
+.verdict.problem circle { fill: var(--v-problem); }
+.verdict.question circle { fill: var(--v-question); }
+.verdict.fine circle { fill: var(--v-fine); }
+.verdict.good circle { fill: var(--v-good); }
+.verdict.brilliant circle { fill: var(--v-brilliant); }
+.verdict.two text { font-size: 8.5px; letter-spacing: -0.6px; }  /* ??, ?!, !! */
 /* changed counts matter less than dependencies that appear or disappear */
 .edge.d-changed path { stroke-width: 1.4px !important; }  /* changed counts matter less than dependencies that appear or disappear */
 .legend span.plus, .legend span.minus { display: inline; width: auto; border: 0; margin: 0; }
