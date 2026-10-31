@@ -7,10 +7,15 @@ resolution that needs several extractors' output (import targets, HTTP calls
 to routes, hostnames to services) is done afterwards in ``nolli.match``.
 
 A language is a package next to this file that exports ``LANGUAGE`` (a ``Language``)
-and is listed in ``LANGUAGE_PACKAGES``. Everything the rest of nolli knows about a
-language comes from there: which files are its modules, how to parse them, its
-extractors and resolvers, how the hover text talks about it, and which file is a
-folder's own code (``__init__.py``, ``index.ts``).
+and is listed in ``LANGUAGE_PACKAGES``: which files are its modules, how to parse them,
+its extractors and resolvers, what it is called and which file is a folder's own code
+(``__init__.py``, ``index.ts``).
+
+Only extraction reads this. What the operations on the graph (roll-up, labels, hover
+text, diff) need to know about a language is written into the model: ``fs`` marks a
+language's files ``module`` and its package bodies ``body``, and ``meta["languages"]``
+names the languages. The rest of nolli never imports from here, except ``cli`` and
+``match``, which run the extraction.
 """
 
 from __future__ import annotations
@@ -19,7 +24,6 @@ import importlib
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
-from types import ModuleType
 from typing import Callable, Iterator
 
 from ..model import Model
@@ -85,10 +89,10 @@ class Language:
     (".jsx" -> "javascript"). ``parse(rel, source)`` returns the tree ``Context.tree``
     caches. ``extractors`` and ``resolvers`` are ``(name, run(ctx))`` pairs: extractors
     run after the file tree, resolvers in ``nolli.match`` before the shared ones (APIs).
-    ``describe`` is the hover vocabulary (``noun``, ``kind``, ``describe``, ``doc``,
-    ``own_code``; see nolli/info.py). ``package_body`` names the files that are their
-    folder's own code rather than a module of their own. ``symbols`` are the entity kinds
-    the language puts inside its modules, each with its icon. ``keep_trees``: parse each
+    ``names`` says how to write each ``language`` value in text ("TypeScript").
+    ``package_body`` names the files that are their folder's own code rather than a
+    module of their own, and ``package`` what such a folder is called ("package").
+    The symbols a language extracts are of the kinds in ``model.SYMBOL_KINDS``. ``keep_trees``: parse each
     file once for all extractors; off for Python, whose ``ast`` trees for a 2,000-file
     repository take 700 MB and make the garbage collector a third of the run time."""
     name: str
@@ -96,9 +100,9 @@ class Language:
     parse: Callable[[str, bytes], object] | None = None
     extractors: list[tuple[str, Callable]] = field(default_factory=list)
     resolvers: list[tuple[str, Callable]] = field(default_factory=list)
-    describe: ModuleType | None = None
+    names: dict[str, str] = field(default_factory=dict)
     package_body: tuple[str, ...] = ()
-    symbols: dict[str, str] = field(default_factory=dict)
+    package: str = "package"
     keep_trees: bool = True
 
 
@@ -124,20 +128,9 @@ def language_of(rel: str) -> Language | None:
     return next((lang for lang in languages() if ext in lang.extensions), None)
 
 
-@cache
-def module_languages() -> frozenset[str]:
-    """The ``language`` values whose files are modules (drawn ``m``, unfoldable)."""
-    return frozenset(v for lang in languages() for v in lang.extensions.values())
-
-
-@cache
-def package_bodies() -> frozenset[str]:
-    return frozenset(n for lang in languages() for n in lang.package_body)
-
-
-@cache
-def symbol_icons() -> dict[str, str]:
-    return {k: v for lang in languages() for k, v in lang.symbols.items()}
+def language_names() -> dict[str, str]:
+    """``language`` value -> its name in text, for ``meta["languages"]``."""
+    return {k: v for lang in languages() for k, v in lang.names.items()}
 
 
 def all_extractors():
@@ -156,8 +149,3 @@ def all_resolvers():
     """Per language its resolvers, in ``languages()`` order (``nolli.match`` runs them)."""
     return [x for lang in languages() for x in lang.resolvers]
 
-
-def describers():
-    """Each language's hover vocabulary, asked in ``languages()`` order; the first that
-    knows an entity answers (see nolli/info.py)."""
-    return [lang.describe for lang in languages() if lang.describe is not None]

@@ -98,3 +98,17 @@ class Ctx:
                 elif m.entities[k].kind == "directory":
                     stack.append(k)
         return out
+
+
+def by_use(ctx: Ctx, file_id: str, names: list[str]) -> list[str]:
+    """Names defined in a module, most referenced from elsewhere first (references carry
+    the name they use), then in source order."""
+    uses: dict[str, int] = {}
+    wanted = set(names)
+    for r in ctx.m.relations:
+        if r.dst == file_id and r.subkind == "ref":
+            n = r.attrs.get("name")
+            if n in wanted:
+                uses[n] = uses.get(n, 0) + r.count
+    order = {n: i for i, n in enumerate(names)}
+    return sorted(names, key=lambda n: (-uses.get(n, 0), order[n]))

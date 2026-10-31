@@ -42,9 +42,17 @@ Nothing is a settled design.
 
 ## Extraction
 
+- Two layers that know nothing of each other's code: extraction (`extractors/`, `match`)
+  writes the graph; the operations on it (roll-up, labels, hover text, scene, Mermaid,
+  diff) read only the graph. What they need to know about a language is a fact in the
+  model, written by the file tree: a file is a `module`, a package body is `body` (what
+  it makes its folder: "package", "folder module"), and `meta["languages"]` names the
+  languages. Symbol kinds are the model's vocabulary (`model.SYMBOL_KINDS`), so their
+  icons and nouns live with the picture. A dataset therefore describes itself; one
+  extracted before these facts existed draws package bodies as modules.
 - A language is a plug-in (`extractors/<language>/__init__.py` exports a `Language`):
-  extensions, parser, extractors, resolvers, hover vocabulary, package-body files,
-  symbol kinds and icons. The core asks the registry instead of naming languages.
+  extensions, parser, extractors, resolvers, its name in text, package-body files.
+  Only extraction reads the registry.
   Extractors of a language share one parse per file where trees are cheap to keep
   (tree-sitter); Python's `ast` trees are not kept: for a 2,000-file repository they
   took 700 MB and the garbage collector walking them cost what parsing once saved.

@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections import Counter
 
 from ...model import USE, Entity, Provenance, Relation
-from .. import Context, package_bodies
+from .. import Context, language_named
 from .imports import string_value
 
 EXTRACTOR = "typescript-symbols"
@@ -257,7 +257,7 @@ def own_code(root, rel: str, symbol_lines: int, total_lines: int | None, reexpor
         out["constants"] = constants[:NAMES_MAX]
     if total_lines is not None:
         out["own_lines"] = max(0, total_lines - symbol_lines)
-    if reexports and rel.rsplit("/", 1)[-1] in package_bodies():
+    if reexports and rel.rsplit("/", 1)[-1] in language_named("typescript").package_body:
         out["reexports"] = reexports[:NAMES_MAX]
     return out
 

@@ -4,49 +4,137 @@ A description is a list of lines; a line is a list of parts: plain strings, {"v"
 for the data in it ("api-mock references 1 name in lib/"), and {"doc": text} for what the
 code says about itself (a docstring). The viewer sets both apart.
 
-What a box *is* comes from its language's describe module next to its extractors
-(extractors/python/describe.py, …); this module adds what is the same for every
-language: what unfolding a folder shows, its size, and what a box depends on outside the
-picture (external packages, utilities, environment, deployment, HTTP), which the boxes
-themselves no longer carry as badges.
+What a box is, is said from the facts extraction wrote into the model, the same way for
+every language: a module (``module``) and its language's name (``meta["languages"]``),
+a folder made a package by its package body (``body``), the classes and types inside a
+module, doc comments (``doc``), and a module's own code (``functions``, ``constants``,
+``reexports``, ``own_lines``). Then what unfolding a folder shows, its size, and what a
+box depends on outside the picture (external packages, utilities, environment,
+deployment, HTTP), which the boxes themselves no longer carry as badges.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 
-from .extractors import describers
-from .labels import is_body
+from .labels import is_body, is_module
+from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE
+from .prose import Ctx, by_use, count, listing, say
 from .rollup import is_init
-from .model import ALLOCATE, PROVIDE, USE
-from .prose import Ctx, count, listing, say
 
-GENERIC_NOUN = {"directory": "subfolder", "file": "file", "class": "class", "interface": "interface", "type": "type",
-                "enum": "enum", "endpoint": "endpoint", "group": "group",
+SYMBOL_NOUN = {"class": "class", "interface": "interface", "type": "type alias", "enum": "enum", "function": "function"}
+GENERIC_NOUN = {"directory": "subfolder", "file": "file", **SYMBOL_NOUN, "endpoint": "endpoint", "group": "group",
                 "env": "variable", "service": "service", "image": "image", "package": "package", "host": "host"}
 WHAT = {"endpoint": "an HTTP endpoint", "env": "an environment variable", "service": "a Compose service",
         "image": "a Docker image", "package": "an external package", "host": "a host"}
-NOUN_ORDER = ["subpackage", "subfolder", "module", "class", "interface", "type", "enum"]  # earlier in a list; the rest by count
+NOUN_ORDER = ["subpackage", "folder module", "subfolder", "module", "class", "interface", "type alias", "enum"]  # earlier in a list; the rest by count
+
+
+def language(ctx: Ctx, x: str) -> str | None:
+    """The name in text of an entity's language ("TypeScript"), if it was extracted."""
+    return (ctx.m.meta.get("languages") or {}).get(ctx.m.entities[x].attrs.get("language") or "")
+
+
+def body_of(ctx: Ctx, x: str) -> str | None:
+    """A folder's package body (``__init__.py``, ``index.ts``)."""
+    m = ctx.m
+    return next((c for c in m.children(x) if is_init(m, c)), None) if m.entities[x].kind == "directory" else None
+
+
+def is_symbol(ctx: Ctx, x: str) -> bool:
+    return ctx.m.entities[x].kind in SYMBOL_KINDS and language(ctx, x) is not None
 
 
 def noun(ctx: Ctx, x: str) -> str:
-    return first("noun", ctx, x) or GENERIC_NOUN.get(ctx.m.entities[x].kind, ctx.m.entities[x].kind)
+    """What a box counts as inside its folder."""
+    e = ctx.m.entities[x]
+    body = body_of(ctx, x)
+    if body:
+        what = ctx.m.entities[body].attrs["body"]
+        return "sub" + what if what == "package" else what
+    if is_module(e) and language(ctx, x):
+        return "module" if e.attrs.get("role") in ("source", None) else language(ctx, x) + " file"
+    return GENERIC_NOUN.get(e.kind, e.kind)
 
 
-def first(fn: str, ctx: Ctx, x: str):
-    """The first language describer's answer to fn (noun, kind, describe, doc)."""
-    for d in describers():
-        said = getattr(d, fn)(ctx, x)
-        if said:
-            return said
+def kind(ctx: Ctx, x: str) -> str | None:
+    """What a folder is, for "<name> is <kind> with …": "a Python package"."""
+    body = body_of(ctx, x)
+    return f"a {language(ctx, body)} {ctx.m.entities[body].attrs['body']}" if body and language(ctx, body) else None
+
+
+def describe(ctx: Ctx, x: str) -> list | None:
+    """The first sentence for a module or a class or type."""
+    e = ctx.m.entities[x]
+    lang = language(ctx, x)
+    if is_module(e) and lang:
+        facts = [count(e.attrs["lines"], "line")] if e.attrs.get("lines") is not None else []
+        inner: dict[str, int] = defaultdict(int)
+        for c in ctx.m.children(x):
+            inner[ctx.m.entities[c].kind] += 1
+        facts += [count(inner[k], SYMBOL_NOUN[k]) for k in SYMBOL_NOUN if inner.get(k)]
+        if not facts:
+            return [say("{} is a " + lang + " module", ctx.name(x))]
+        return [say("{} is a " + lang + " module with ", ctx.name(x)) + listing("{}", facts)]
+    if is_symbol(ctx, x):
+        what = ("an exported " if e.attrs.get("exported") else "a ") + lang + " " + SYMBOL_NOUN[e.kind]
+        where = (e.attrs.get("path") or "").rsplit("/", 1)[-1]
+        if where and e.attrs.get("line"):
+            return [say("{} is " + what + " in {}, line {}", ctx.name(x), where, e.attrs["line"])]
+        return [say("{} is " + what, ctx.name(x))]
     return None
+
+
+def doc(ctx: Ctx, x: str) -> str | None:
+    """The doc comment's summary: a package's from its package body."""
+    body = body_of(ctx, x)
+    if body or is_module(ctx.m.entities[x]) or is_symbol(ctx, x):
+        return ctx.m.entities[body or x].attrs.get("doc")
+    return None
+
+
+def own_code(ctx: Ctx, owner: str) -> list | None:
+    """The own-code dot of a module (what it holds outside its classes and types) or of a
+    package (what its package body defines and re-exports)."""
+    body = body_of(ctx, owner)
+    if not body and not is_module(ctx.m.entities[owner]):
+        return None
+    f = body or owner
+    a = ctx.m.entities[f].attrs
+    name = ctx.name(owner)
+    lead = say("{}'s " + ctx.m.entities[f].name + " defines ", name) if body else say("{} defines ", name)
+    functions = by_use(ctx, f, a.get("functions") or [])
+    constants = a.get("constants") or []
+    lines: list[list] = []
+    if functions:
+        if len(functions) <= 3:  # "rollup defines bundle and rollup"
+            lines.append(lead + listing("{}", functions))
+        else:  # "… defines 20 functions: is_init, … and 17 more" (most used first)
+            lines.append(lead + say("{}: ", count(len(functions), "function")) + listing("{}", functions, "more", limit=3))
+    if constants:
+        many = len(constants) > 3
+        consts = (say("{}: ", count(len(constants), "constant")) if many else say("the constant" + ("s " if len(constants) > 1 else " "))) \
+            + listing("{}", constants, "more", limit=3)
+        lines.append((["Also "] if functions else lead) + consts)
+    if body and a.get("reexports"):
+        lines.append(say("It re-exports ") + listing("{}", a["reexports"], "more", limit=4) + say(" from its modules"))
+    inside = "classes" if all(ctx.m.entities[c].kind == "class" for c in ctx.m.children(f)) else "classes and types"
+    if not lines:
+        lines.append(say("{}'s " + ctx.m.entities[f].name + " only marks the folder as a " + a["body"], name) if body
+                     else say("{} has no functions or constants outside its " + inside, name))
+    total, own = a.get("lines"), a.get("own_lines")
+    if total and own is not None and not body and own != total:
+        lines.append(say("{} of its {} are outside its " + inside, f"{own:,}", count(total, "line")))
+    elif total:
+        lines.append(say("{}", count(total, "line")))
+    return lines
 
 
 def folder(ctx: Ctx, x: str) -> list:
     """"agents/ is a Python package with 6 subpackages and 3 modules": what it holds,
     counted as unfolding draws it (hidden roles left out, __init__ classes in)."""
     e = ctx.m.entities[x]
-    what = "the repository" if e.attrs.get("root") else first("kind", ctx, x) or "a folder"
+    what = "the repository" if e.attrs.get("root") else kind(ctx, x) or "a folder"
     by: dict[str, int] = defaultdict(int)
     for c in ctx.shown_children(x):
         by[noun(ctx, c)] += 1
@@ -135,7 +223,7 @@ class Dependencies:
 def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
     m = ctx.m
     if is_body(x):
-        said = first("own_code", ctx, x[5:])
+        said = own_code(ctx, x[5:])
         if said:
             return said
         owner = ctx.name(x[5:])
@@ -145,7 +233,7 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
         return [say("The code in {} outside its classes and types", owner)]
     e = m.entities[x]
     lines: list[list] = []
-    said = None if e.kind == "directory" else first("describe", ctx, x)
+    said = None if e.kind == "directory" else describe(ctx, x)
     if said:
         lines += said
     else:
@@ -158,7 +246,7 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
             lines.append(say("{} holds {}", ctx.name(x), count(len(m.children(x)), "entry", "entries")))
         else:
             lines.append(say("{} is " + WHAT.get(e.kind, "a " + e.kind), ctx.name(x)))
-    docstring = first("doc", ctx, x)
+    docstring = doc(ctx, x)
     if docstring:
         lines.append([{"doc": docstring}])
     if e.kind == "directory":

@@ -5,8 +5,7 @@ from __future__ import annotations
 import re
 
 from .changes import is_diff, node_diff
-from .extractors import module_languages
-from .labels import module_stem
+from .labels import is_module, module_stem
 from .rollup import HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, display_path, hidden_by_role, image_aliases, is_init
 from .model import SYMBOL_KINDS, Model
 
@@ -17,7 +16,7 @@ GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "api": "api"}
 
 def module_name(e) -> str:
     """A source file is shown as its module: name without the extension."""
-    if e.kind == "file" and e.attrs.get("language") in module_languages():
+    if is_module(e):
         return module_stem(e.name)
     return e.name
 

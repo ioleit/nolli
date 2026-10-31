@@ -6,7 +6,7 @@ from __future__ import annotations
 import ast
 
 from .. import Language
-from . import describe, env, fastapi, imports, resolve, symbols
+from . import env, fastapi, imports, resolve, symbols
 
 
 def parse(rel: str, source: bytes) -> ast.Module:
@@ -20,8 +20,8 @@ LANGUAGE = Language(
     extractors=[("python-imports", imports.run), ("python-symbols", symbols.run),
                 ("python-fastapi", fastapi.run), ("python-env", env.run)],
     resolvers=[("python-imports", resolve.resolve_imports), ("python-refs", resolve.resolve_refs)],
-    describe=describe,
+    names={"python": "Python"},
     package_body=("__init__.py",),
-    symbols={"class": "C"},
+    package="package",
     keep_trees=False,
 )

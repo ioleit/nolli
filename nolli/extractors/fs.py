@@ -53,6 +53,16 @@ def lang_by_ext() -> dict[str, str]:
     return OTHER_LANGS | {ext: v for lang in languages() for ext, v in lang.extensions.items()}
 
 
+def module_facts(name: str, lang: str | None) -> dict:
+    """What the graph operations need to know about a file of an extracted language:
+    it is a ``module``; a package body (``__init__.py``, ``index.ts``) is also ``body``,
+    what it makes its folder ("package", "folder module")."""
+    for language in languages():
+        if lang in language.names:
+            return {"module": True} | ({"body": language.package} if name in language.package_body else {})
+    return {}
+
+
 MAX_COUNTED = 4 << 20  # don't read files over 4 MiB just to count their lines
 
 
@@ -118,6 +128,7 @@ def run(ctx: Context) -> None:
         attrs = {"path": rel, "role": role, "size": size}
         if lang:
             attrs["language"] = lang
+            attrs.update(module_facts(f.name, lang))
             lines = count_lines(ctx.repo / f, size)
             if lines is not None:
                 attrs["lines"] = lines

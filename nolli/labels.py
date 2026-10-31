@@ -8,9 +8,16 @@ Text that has no icons (hover descriptions, residue) uses ``label_of``."""
 
 from __future__ import annotations
 
-from .extractors import module_languages, symbol_icons
 from .model import Model
 from .rollup import display_path, is_init
+
+
+SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "function": "f"}  # model.SYMBOL_KINDS
+
+
+def is_module(e) -> bool:
+    """A file of an extracted language (the file tree marks it): drawn ``m``, unfoldable."""
+    return e.kind == "file" and bool(e.attrs.get("module"))
 
 
 def module_stem(file_name: str) -> str:
@@ -32,10 +39,10 @@ def icons_of(m: Model, x: str) -> list[str]:
     e = m.entities[x]
     if e.kind == "directory":
         return ["D"]
-    if e.kind == "file" and e.attrs.get("language") in module_languages():
+    if is_module(e):
         return ["m"]
-    if e.kind in symbol_icons():
-        return [symbol_icons()[e.kind]]
+    if e.kind in SYMBOL_ICON:
+        return [SYMBOL_ICON[e.kind]]
     if e.kind == "service":
         return ["svc"]
     if e.kind == "image":
@@ -56,7 +63,7 @@ def name_of(m: Model, x: str, expanded: set[str]) -> str:
     e = m.entities[x]
     if e.kind == "directory":
         return e.name if e.attrs.get("root") else display_path(m, x, expanded)
-    if e.kind == "file" and e.attrs.get("language") in module_languages():
+    if is_module(e):
         return module_stem(e.name)  # a source file is its module
     if e.kind == "image":
         return e.name.removesuffix("/Dockerfile")
@@ -69,7 +76,7 @@ def label_of(m: Model, x: str, expanded: set[str]) -> str:
     """The name in running text: the word-like icons stay in front ("svc api", "GET health")."""
     if m.has(x) and m.entities[x].kind == "endpoint":
         return m.entities[x].name
-    icons = [i for i in icons_of(m, x) if i not in ("D", "m", "/", *symbol_icons().values())]
+    icons = [i for i in icons_of(m, x) if i not in ("D", "m", "/", *SYMBOL_ICON.values())]
     name = name_of(m, x, expanded)
     return " ".join(icons + ([name] if name else []))
 

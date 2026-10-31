@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 
 from . import match
-from .extractors import Context, all_extractors
+from .extractors import Context, all_extractors, language_names
 from .mermaid import render
 from .model import Model
 from .progress import Progress, Quiet
@@ -76,7 +76,7 @@ def extract(repo: Path, config: dict | None = None, progress: Progress | None = 
     with progress.step("matching references"):
         match.run_all(ctx)
     timings["match"] = round(time.time() - t0, 3)
-    m.meta = {"repo": str(repo), "commit": git_head(repo), "files": len(ctx.files), "timings": timings,
+    m.meta = {"repo": str(repo), "commit": git_head(repo), "files": len(ctx.files), "languages": language_names(), "timings": timings,
               "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     return m, ctx
 

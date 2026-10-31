@@ -28,7 +28,6 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from .extractors import package_bodies
 from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, Model
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
@@ -145,10 +144,10 @@ def is_file(m: Model, x: str) -> bool:
 
 
 def is_init(m: Model, x: str) -> bool:
-    """A package body (Python's ``__init__.py``, a TypeScript ``index.ts``; see
-    ``Language.package_body``): the folder's own code, not a module of its own."""
+    """A package body (Python's ``__init__.py``, a TypeScript ``index.ts``; the file tree
+    marks it ``body``): the folder's own code, not a module of its own."""
     e = m.entities.get(x)
-    return e is not None and e.kind == "file" and e.name in package_bodies()
+    return e is not None and e.kind == "file" and bool(e.attrs.get("body"))
 
 
 def under(m: Model, x: str, d: str) -> bool:

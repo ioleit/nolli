@@ -236,6 +236,7 @@ def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None) -> tu
             by_status["relations"][d["status"]] += 1
     m.meta = {
         "repo": repo.name, "commit": head[:7], "files": sides["head"].meta.get("files"),
+        "languages": sides["base"].meta.get("languages", {}) | sides["head"].meta.get("languages", {}),
         "diff": {"base": base, "head": head, "base_short": base[:7], "head_short": head[:7], "remote": github_remote(repo),
                  "files_changed": len(changes), "added": sum(c.added for c in changes.values()),
                  "removed": sum(c.removed for c in changes.values())},
