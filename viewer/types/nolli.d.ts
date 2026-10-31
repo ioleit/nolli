@@ -131,7 +131,7 @@ export interface SceneEdge {
   single: boolean;
   weak: boolean;
   heuristic: boolean;
-  /** only TypeScript types: erased, no dependency at run time */
+  /** references only to types: no dependency at run time */
   types: boolean;
   info: Info;
   diff?: EdgeDiff | null;

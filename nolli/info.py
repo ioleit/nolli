@@ -279,7 +279,7 @@ def edge_info(ctx: Ctx, e) -> list:
     lines = edge_lines(ctx, e)
     types = getattr(e, "types", 0)
     if e.subkind == "import" and types and types == e.count:
-        lines.append(say("Only types: TypeScript erases them, so this is no dependency at run time"))
+        lines.append(say("Only types: no dependency at run time"))
     elif e.subkind == "import" and types:
         lines.append(say("{} of {} only for types", f"{types:,}", count(e.count, "reference") + " are" if types > 1 else count(e.count, "reference") + " is"))
     return lines

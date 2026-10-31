@@ -44,7 +44,7 @@ class RolledEdge:
     confidence: str = "exact"
     via: set[str] = field(default_factory=set)
     names: dict[str, int] = field(default_factory=dict)  # referenced names (Python refs) -> references
-    types: int = 0  # of count, references TypeScript erases (``type_only``): no dependency at run time
+    types: int = 0  # of count, references only to types (``type_only``): no dependency at run time
     # in a diff model (nolli/diff.py): references before and after, and the changed facts
     # underneath (fact key -> added / removed / changed); in a plain model base == head == count
     base: int = 0

@@ -108,7 +108,7 @@ svg#g:active { cursor: grabbing; }
 .edge.provide { color: var(--e-provide); }
 .edge.provide path { stroke-dasharray: 5 3; }
 .edge.heuristic { --eo: .65; }
-.edge.types path { stroke-dasharray: 1.5 2.5; }  /* TypeScript types only: no dependency at run time */
+.edge.types path { stroke-dasharray: 1.5 2.5; }  /* references only to types: no dependency at run time */
 .edge.local { --eo: .3; }
 .edge.single { --eo: .55; }
 .edge.weak { --eo: .22; }
