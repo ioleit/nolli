@@ -14,7 +14,7 @@ from ..interfaces import ensure_env
 
 def run(ctx: Context) -> None:
     m = ctx.model
-    for f in ctx.files:
+    for f in ctx.progress.each(ctx.files):
         rel = ctx.rel(f)
         fid = ctx.fs_id(rel)
         if not rel.endswith(".py") or not m.has(fid) or m.entities[fid].attrs.get("role") == "test":

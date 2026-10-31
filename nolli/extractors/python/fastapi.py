@@ -53,7 +53,7 @@ def run(ctx: Context) -> None:
         if rel.endswith(".py") and m.has(ctx.fs_id(rel)):
             module_to_file[module_name_of(rel)] = rel
 
-    for rel in module_to_file.values():
+    for rel in ctx.progress.each(module_to_file.values()):
         if m.entities[ctx.fs_id(rel)].attrs.get("role") == "test":
             continue
         try:

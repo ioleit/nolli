@@ -117,6 +117,13 @@ svg#g:active { cursor: grabbing; }
 .edge:hover, .edge.lit { --eo: 1 !important; filter: var(--glow); }  /* beats the faint local/single/weak levels */
 .node.lit > rect, .node.lit > circle.anchor { filter: var(--glow); }
 #status { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
+/* until the first picture is drawn (main.js: loading()); a big repository takes seconds */
+#loading { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 4px;
+  color: var(--muted); font-size: 13px; pointer-events: none; }
+#loading[hidden] { display: none; }
+#loading .why { font-size: 11.5px; }
+#loading.error { color: #d9534f; }
+body.busy svg#g { cursor: progress; }
 #mmdpane { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 8px; display: none; }
 #mmdpane .req { color: var(--muted); margin-bottom: 6px; }
 #rawpane { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 8px 12px; display: none; font: 11.5px/1.45 ui-monospace, monospace; }

@@ -107,7 +107,7 @@ def run(ctx: Context) -> None:
     m = ctx.model
     aliases_by_file: dict[str, dict[str, tuple[str, str]]] = {}
     pending: Counter[tuple[str, tuple]] = Counter()  # (src entity, binding) -> count
-    for f in ctx.files:
+    for f in ctx.progress.each(ctx.files):
         rel = ctx.rel(f)
         fid = ctx.fs_id(rel)
         if not rel.endswith(".py") or not m.has(fid):

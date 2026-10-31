@@ -36,21 +36,29 @@ from nolli.review import read_verdicts, resolve_verdicts, review_expanded  # noq
 from nolli.scene import scene, state_from_query  # noqa: E402
 
 _models: dict[str, tuple[float, Model]] = {}
+_loading: dict[str, threading.Lock] = {}  # one per model.json: a request waits for a load under way
 _models_lock = threading.Lock()
 
 
 def load_model(path: Path) -> Model:
     """model.json, parsed once per file version."""
-    mtime = path.stat().st_mtime
     with _models_lock:
+        lock = _loading.setdefault(str(path), threading.Lock())
+    with lock:
+        mtime = path.stat().st_mtime
         hit = _models.get(str(path))
         if hit and hit[0] == mtime:
             return hit[1]
-    m = Model.load(path)
-    m.roots()  # build the containment index before threads share the model
-    with _models_lock:
+        m = Model.load(path)
+        m.roots()  # build the containment index before threads share the model
         _models[str(path)] = (mtime, m)
-    return m
+        return m
+
+
+def preload(ds: Path) -> None:
+    """Start reading a dataset's model in the background, for the viewer's first request."""
+    if (ds / "model.json").is_file():
+        threading.Thread(target=load_model, args=(ds / "model.json",), daemon=True).start()
 
 
 def load_verdicts(ds: Path) -> list[dict]:

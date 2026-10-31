@@ -42,6 +42,7 @@ from . import match
 from .extractors import Context, all_extractors
 from .mermaid import render
 from .model import Model
+from .progress import Progress, Quiet
 from .scene import ALL_ROLES, DEFAULT_ROLES, ViewState, compute, scene
 
 
@@ -61,16 +62,19 @@ def git_head(repo: Path) -> str | None:
         return None
 
 
-def extract(repo: Path, config: dict | None = None) -> tuple[Model, Context]:
+def extract(repo: Path, config: dict | None = None, progress: Progress | None = None) -> tuple[Model, Context]:
     m = Model()
-    ctx = Context(repo=repo, model=m, files=tracked_files(repo), config=config or {})
+    progress = progress or Quiet()
+    ctx = Context(repo=repo, model=m, files=tracked_files(repo), config=config or {}, progress=progress)
     timings = {}
     for name, fn in all_extractors():
         t0 = time.time()
-        fn(ctx)
+        with progress.step("file tree" if name == "fs" else name.replace("-", " ")):
+            fn(ctx)
         timings[name] = round(time.time() - t0, 3)
     t0 = time.time()
-    match.run_all(ctx)
+    with progress.step("matching references"):
+        match.run_all(ctx)
     timings["match"] = round(time.time() - t0, 3)
     m.meta = {"repo": str(repo), "commit": git_head(repo), "files": len(ctx.files), "timings": timings,
               "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
@@ -100,14 +104,16 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 
 def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int | None = None, title: str | None = None,
-               description: str | None = None, remote: str | None = None) -> tuple[Model, dict, dict]:
+               description: str | None = None, remote: str | None = None,
+               progress: Progress | None = None) -> tuple[Model, dict, dict]:
     """The dataset of a change: the merged model, changes.json, review.mmd and review.md."""
     from .changes import change_items
     from .diff import diff
     from .review import review_expanded, review_markdown
 
+    progress = progress or Quiet()
     out.mkdir(parents=True, exist_ok=True)
-    m, summary = diff(repo, base, head, extract)
+    m, summary = diff(repo, base, head, extract, progress)
     m.meta["nolli"] = version()
     if remote:
         m.meta["diff"]["remote"] = remote
@@ -115,30 +121,33 @@ def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int
         m.meta["diff"]["pr"] = pr
     if title:
         m.meta["diff"]["title"] = title
-    report = write_dataset(m, out, budget, {}, {"diff": summary})
-    (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
-    st = ViewState(budget=budget, expanded=review_expanded(m))
-    expanded, _hidden, visible, rolled, _utilities = compute(m, st)
-    mmd = render(m, {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible)}, rolled)
-    (out / "review.mmd").write_text(mmd)
-    (out / "review.md").write_text(review_markdown(m, mmd, description))
+    report = write_dataset(m, out, budget, {}, {"diff": summary}, progress)
+    with progress.step("the review's diagram"):
+        (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
+        st = ViewState(budget=budget, expanded=review_expanded(m))
+        expanded, _hidden, visible, rolled, _utilities = compute(m, st)
+        mmd = render(m, {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible)}, rolled)
+        (out / "review.mmd").write_text(mmd)
+        (out / "review.md").write_text(review_markdown(m, mmd, description))
     return m, summary, report
 
 
-def build_commit(repo: Path, sha: str, out: Path, budget: int) -> dict:
+def build_commit(repo: Path, sha: str, out: Path, budget: int, progress: Progress | None = None) -> dict:
     """The dataset of one commit as a whole, extracted from the commit (not the working tree)."""
     import tempfile
 
     from .diff import materialise
 
+    progress = progress or Quiet()
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
-        materialise(repo, sha, Path(tmp))
-        m, ctx = extract(Path(tmp))
+        with progress.step("checking out the commit"):
+            materialise(repo, sha, Path(tmp))
+        m, ctx = extract(Path(tmp), progress=progress)
     if m.has("fs:."):  # the root is the temporary directory; name it after the repository
         m.entities["fs:."].name = repo.name
     m.meta.update({"repo": repo.name, "commit": sha[:7], "nolli": version()})
-    return write_dataset(m, out, budget, ctx.notes)
+    return write_dataset(m, out, budget, ctx.notes, progress=progress)
 
 
 def version() -> str:
@@ -191,16 +200,27 @@ def build(args: argparse.Namespace, cmd: str) -> Built | None:
     what = f"{ch.base[:7]}..{ch.head[:7]}" if ch.is_diff else f"{ch.head[:7]} (the whole repository)"
     print(f"{repo.name}: {what}  {ch.title}", file=sys.stderr)
     if args.rebuild or not fresh(b.out):
-        print(f"building {b.out} …", file=sys.stderr)
+        print(f"building {b.out}", file=sys.stderr, flush=True)
         t0 = time.time()
+        progress = Progress()
         if ch.is_diff:
-            build_diff(repo, ch.base, ch.head, b.out, args.budget, title=ch.title, description=ch.description or None,
-                       pr=host.get("pr"), remote=host.get("remote"))
+            _m, _summary, report = build_diff(repo, ch.base, ch.head, b.out, args.budget, title=ch.title,
+                                              description=ch.description or None, pr=host.get("pr"),
+                                              remote=host.get("remote"), progress=progress)
             (b.out / "pr.md").write_text(ch.description)
         else:
-            build_commit(repo, ch.head, b.out, args.budget)
-        print(f"built in {time.time() - t0:.1f} s", file=sys.stderr)
+            report = build_commit(repo, ch.head, b.out, args.budget, progress)
+        print(f"built in {time.time() - t0:.1f} s: {counts(report)}", file=sys.stderr)
     return b
+
+
+def counts(report: dict) -> str:
+    """What a build found, in a few words (from report.json)."""
+    ents, rels = report["summary"]["entities"], report["summary"]["relations"]
+    parts = [f"{report['meta'].get('files') or ents.get('file', 0)} files"]
+    parts += [f"{ents[k]} {k}{'es' if k == 'class' else 's'}" for k in ("class", "service") if ents.get(k)]
+    parts.append(f"{sum(v for k, v in rels.items() if k != 'contain')} dependencies")
+    return ", ".join(parts)
 
 
 def cmd_view(args: argparse.Namespace) -> int:
@@ -289,13 +309,14 @@ def serve(data: Path, name: str, host: str, port: int, open_browser: bool) -> in
     import webbrowser
     from urllib.parse import quote
 
-    from .viewer.serve import make_server
+    from .viewer.serve import make_server, preload
 
     try:
         srv = make_server(data, host, port)
     except OSError:  # the port is taken (another viewer, perhaps): any free one
         srv = make_server(data, host, 0)
     url = f"http://{host}:{srv.server_address[1]}/#d={quote(name)}"
+    preload(data / name)  # while the browser starts: a big model takes seconds to read
     print(f"viewer: {url}  (Ctrl-C to stop)", file=sys.stderr, flush=True)
     if open_browser:
         webbrowser.open(url)
@@ -308,17 +329,21 @@ def serve(data: Path, name: str, host: str, port: int, open_browser: bool) -> in
     return 0
 
 
-def write_dataset(m: Model, out: Path, budget: int, notes: dict, extra: dict | None = None) -> dict:
+def write_dataset(m: Model, out: Path, budget: int, notes: dict, extra: dict | None = None,
+                  progress: Progress | None = None) -> dict:
     """model.json, view.json, scene.json, default.mmd and report.json for a model."""
-    m.save(out / "model.json")
-    st = ViewState(budget=budget)
-    expanded, _hidden, visible, rolled, _utilities = compute(m, st)
-    view = {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible),
-            "hidden_roles": [r for r in ALL_ROLES if r not in DEFAULT_ROLES]}
-    (out / "view.json").write_text(json.dumps(view, indent=1))
-    (out / "scene.json").write_text(json.dumps(scene(m, st), indent=1))
-    (out / "rollup.json").unlink(missing_ok=True)  # replaced by scene.json
-    (out / "default.mmd").write_text(render(m, view, rolled))
+    progress = progress or Quiet()
+    with progress.step("writing model.json"):
+        m.save(out / "model.json")
+    with progress.step("the default cut"):
+        st = ViewState(budget=budget)
+        expanded, _hidden, visible, rolled, _utilities = compute(m, st)
+        view = {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible),
+                "hidden_roles": [r for r in ALL_ROLES if r not in DEFAULT_ROLES]}
+        (out / "view.json").write_text(json.dumps(view, indent=1))
+        (out / "scene.json").write_text(json.dumps(scene(m, st), indent=1))
+        (out / "rollup.json").unlink(missing_ok=True)  # replaced by scene.json
+        (out / "default.mmd").write_text(render(m, view, rolled))
     report = {
         "meta": m.meta,
         "summary": m.summary(),
