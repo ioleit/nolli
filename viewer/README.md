@@ -1,7 +1,9 @@
 # Viewer
 
-`serve.py` is a small local server (standard library only; it imports `nolli` from the
-checkout it sits in): static files, the datasets under `--data`, and `/api/scene`.
+`serve.py` is a small local server (standard library only): static files, the datasets
+under `--data`, and `/api/scene`. This directory is installed as the package `nolli.viewer`
+(see `pyproject.toml`), and `nolli view` starts the server; run as a script from a clone
+(`python viewer/serve.py --data …`), it imports `nolli` from that clone.
 
 The viewer computes nothing itself: on every click it asks the server for the scene
 (`/api/scene?d=<dataset>&x=<unfolded ids>&…`, the same keys as its location hash, so a
