@@ -21,11 +21,12 @@ solution; solutions are for whoever picks it up.
   only 2 boxes (1 pair) can score 0 or 1 and swing the worst-step column.
   The force layout (fCoSE) can leave sibling boxes overlapping (0–4 pairs on the
   corpus); it has no overlap-removal pass, and its edges are straight, not routed.
-- **Developer experience for reviewing a PR.** Reviewing a pull request takes a checkout
-  of this repository and a series of hand-made steps (PR text into a file, merge base and
-  head looked up, a hand-written prompt for the agent, the viewer started from the
-  checkout). The goal is one `pip install nolli` and the same review on any repository;
-  `docs/developer-experience.md` describes the target and what is missing.
+- **Review brief and check.** Agents reviewing with the skill asked whether a changed
+  group box needs a verdict of its own and which of a module's two ids to use, and
+  `nolli agent check` does not notice a changed box or edge left without a verdict.
+- **Package-dir mappings.** An import of a package that `pyproject.toml` maps to another
+  directory (`nolli.viewer` → `viewer/`) is drawn as an edge to the parent package, so a
+  cycle through it is not drawn.
 - **Tests for the roll-up rules.** Only extraction is tested; none of the rules in
   `nolli/rollup.md` has a test, and two broke silently while they were being built.
 
