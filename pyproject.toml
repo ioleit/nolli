@@ -1,8 +1,18 @@
 [project]
 name = "nolli"
-version = "0.0.1"
-description = "Recover a repository's architecture (components, dependencies, deployment) deterministically and show it at an adjustable level of detail"
+version = "0.1.0"
+description = "Draws a pull request as a change to a repository's architecture, for you and your review agent"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = [
     "tree-sitter>=0.23",
     "tree-sitter-language-pack>=0.7",
@@ -13,7 +23,7 @@ dependencies = [
 nolli = "nolli.cli:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 # The viewer lives in viewer/ (with its Node tooling for type checks and tests) and is
