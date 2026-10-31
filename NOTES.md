@@ -35,8 +35,8 @@ Nothing is a settled design.
   count therefore means references, not import statements.
 - Roles (source, test, config, docs, markup, data, asset) instead of ignore lists; views
   hide roles and report how much they hid. A directory is source if source is at least a
-  tenth of its bytes; dot-directories are config; HTML/CSS are "markup" and do not make a
-  directory source (this hides a directory whose logic lives in HTML; see backlog).
+  tenth of its bytes; dot-directories are config; HTML/CSS are "markup", which does not
+  make a directory source but is shown by default, since what pages load is extracted.
 - Unresolved references are entities under one group, counted in the residue, never
   silently dropped. Standard library and node built-ins are not dependencies.
 
@@ -77,6 +77,12 @@ Nothing is a settled design.
   read meets the service that sets it.
 - Dockerfile `COPY` is `allocate(directory, image)`; `CMD`/`ENTRYPOINT` naming a module
   is `use(image, module)`.
+- Pages and stylesheets (`extractors/markup/`): `<script src>`, `<link href>`, `src` of
+  images and media, `<style>`, CSS `@import` and `url()` are `use` file -> file, drawn as
+  imports (attrs `via` says which). Paths from the server root (`/src/main.tsx`) are tried
+  from the page's directory upwards and in `public/`, marked heuristic. A CDN script and
+  a CSS `@import` of a bare name are the npm package (`ext:js:`), as in TypeScript.
+  Links between pages (`<a href>`) are navigation, not drawn.
 
 - APIs are one structure for every framework and protocol (`extractors/api.py`): adapters
   only report operations (protocol, which API they belong to, verb, path, handler file)

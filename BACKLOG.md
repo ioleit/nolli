@@ -38,8 +38,6 @@ solution; solutions are for whoever picks it up.
 
 - Parse each Python file once; today imports, classes, routes and env reads each parse
   the file again (a 3,000-file repo takes 21 s, most of it parsing).
-- The role rule hides a directory whose logic lives in HTML (the viewer's own directory
-  disappears from the picture of this repo).
 - Root routes (`GET /`, the SPA catch-all) sit as bare operations in the app box; the
   catch-all `/{path:path}` matches every frontend call the real routes don't; recognising
   that a backend serves the frontend build.

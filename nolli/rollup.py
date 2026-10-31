@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, Model
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
-HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "markup", "data", "asset", "other")
+HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "data", "asset", "other")
 
 
 @dataclass
