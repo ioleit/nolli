@@ -2,7 +2,7 @@
 // back a handle per drawn node so an animation can move it (update) and fade it.
 
 import { showTip, hideTip, pinTip } from "./tip.js";
-import { USES_LINE, isAnchor, statsText } from "./layout.js";
+import { ICON_GAP, ICON_H, USES_LINE, iconW, iconsW, isAnchor, statsText } from "./layout.js";
 import { wasDrag } from "./panzoom.js";
 import { glyph } from "./verdicts.js";
 
@@ -91,6 +91,9 @@ function buildAnchor(n, p) {
   return { els: [grp], update: b => grp.setAttribute("transform", at(b)) };
 }
 
+/** CSS class part for an icon: letters kept, "/" is "path". @param {string} icon */
+const iconClass = icon => icon === "/" ? "path" : icon.replace(/[^A-Za-z]/g, "");
+
 /**
  * A box: folded (a leaf) or unfolded (a container whose children are drawn separately).
  * Built at box p; update(b) moves and resizes it, recomputing everything that depends on
@@ -104,14 +107,22 @@ function buildBox(n, p, h) {
   const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind,
     n.diff ? "d-" + n.diff.status : h && h.review ? "d-same" : "", n.verdict ? "v-" + n.verdict : ""].join(" "), transform: at(p), "data-id": n.id });
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
-  const icon = n.icon;
-  const centred = !isC && !icon;
-  if (icon) { const ig = el("g", { class: "icon " + icon, transform: `translate(${isC ? 7 : 6}, ${isC ? 7 : 9})` }); ig.appendChild(el("rect", { width: 12, height: 12, rx: 3 })); const it = el("text", { x: 6, y: 9.5, "text-anchor": "middle" }); it.textContent = icon; ig.appendChild(it); grp.appendChild(ig); }
-  const t = el("text", { x: isC ? (icon ? 24 : 8) : (icon ? 22 : p.w / 2), y: isC ? 18 : 19, "text-anchor": isC || icon ? "start" : "middle", "font-weight": isC ? "600" : "400" });
+  const icons = n.icons;
+  const centred = !isC && !icons.length;
+  let ix = isC ? 7 : 6;
+  for (const icon of icons) {
+    const w = iconW(icon);
+    const ig = el("g", { class: "icon i-" + iconClass(icon), transform: `translate(${ix}, ${isC ? 7 : 9})` });
+    ig.appendChild(el("rect", { width: w, height: ICON_H, rx: 3 }));
+    const it = el("text", { x: w / 2, y: 9.5, "text-anchor": "middle" }); it.textContent = icon; ig.appendChild(it);
+    grp.appendChild(ig);
+    ix += w + ICON_GAP;
+  }
+  const t = el("text", { x: centred ? p.w / 2 : ix + 1, y: isC ? 18 : 19, "text-anchor": centred ? "middle" : "start", "font-weight": isC ? "600" : "400" });
   t.textContent = n.label; grp.appendChild(t);
   // container header: title, then badges right-aligned (truncated to the room left), then the
   // fold button; a container narrower than its title gets the button right after the title
-  const titleW = n.label.length * 7.2 + 8 + (icon ? 16 : 0);
+  const titleW = n.label.length * 7.2 + 8 + iconsW(icons);
   /** @param {number} w */
   const foldX = w => (isC && w < titleW + 40) ? titleW + 10 : w - 14;
   /** @type {SVGElement | null} */

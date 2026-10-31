@@ -10,7 +10,7 @@ from .model import Model
 
 ARROW = {"import": "-->", "ref": "-->", "http": "==>", "env": "-.->", "depends_on": "-->", "url": "-->",
          "runs_as": "-.->", "copies": "-.->", "entrypoint": "-.->"}
-GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "http": "api"}
+GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "api": "api"}
 
 
 MODULE_LANGS = ("python", "typescript", "javascript")

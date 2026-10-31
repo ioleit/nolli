@@ -79,9 +79,16 @@ def test_model_binds_the_seams(repo: Path):
     assert not m.has("py:backend/api/worlds.py#echoes"), "functions are not entities"
     assert ("fs:frontend/src/App.tsx", "fs:frontend/src/lib/api.ts") in uses
     # routes get the include prefix; the helper call is bound to the route
-    assert m.has("http:GET /api/worlds/{world}/echoes")
-    assert ("fs:frontend/src/App.tsx", "http:GET /api/worlds/{world}/echoes") in rel_set(m, "use", "http")
-    assert ("fs:backend/api/worlds.py", "http:GET /api/worlds/{world}/echoes") in rel_set(m, "provide")
+    ep = "api:http:backend/main.py:app GET /api/worlds/{world}/echoes"
+    assert m.has(ep)
+    assert ("fs:frontend/src/App.tsx", ep) in rel_set(m, "use", "http")
+    assert ("fs:backend/api/worlds.py", ep) in rel_set(m, "provide")
+    # the shared API structure: APIs > the app > its merged path steps > operations by verb
+    app = "api:http:backend/main.py:app"
+    assert m.parent(app) == "api" and m.entities[app].kind == "api"
+    worlds = app + "/api/worlds"
+    assert m.parent(worlds) == app and m.entities[worlds].name == "api/worlds"
+    assert sorted(m.entities[c].name for c in m.children(worlds)) == ["GET {world}/echoes", "POST"]
     # env read meets env set; compose and Dockerfile give allocation and runtime use
     assert ("fs:backend/main.py", "env:REDIS_URL") in rel_set(m, "use", "env")
     assert ("svc:api", "env:REDIS_URL") in rel_set(m, "provide", "env")
@@ -101,12 +108,12 @@ def test_default_cut_lifts_frontend_to_backend(repo: Path):
     m, _ = extract(repo)
     view = default_view(m, budget=12)
     hidden = hidden_by_role(m) | set(image_aliases(m))
-    rolled = rollup(m, set(view["visible"]), hidden, shown_groups={"http"})
+    rolled = rollup(m, set(view["visible"]), hidden, shown_groups={"api"})
     rolled.edges = bundle(m, rolled.edges, set(view["expanded"]))
     calls = [e for e in rolled.edges if e.subkind == "http"]
-    assert calls, "frontend -> HTTP API edge"
-    assert all(e.src.startswith("fs:frontend") and e.dst == "http" for e in calls)
-    served = [e for e in rolled.edges if e.kind == "provide" and e.src == "http"]
+    assert calls, "frontend -> APIs edge"
+    assert all(e.src.startswith("fs:frontend") and e.dst == "api" for e in calls)
+    served = [e for e in rolled.edges if e.kind == "provide" and e.src == "api"]
     assert served and all(e.dst.startswith("fs:backend") for e in served)
     # the test directory is hidden, externals are a badge, not an edge
     assert "fs:backend/tests" not in view["visible"]
@@ -158,7 +165,7 @@ def test_hover_descriptions(repo: Path):
             assert not any(t in text(line) for t in ("fs:", "py:", "svc ", "img ")), text(line)
     http = next(e for e in sc["edges"] if e["style"] == "http")
     assert "to endpoints served by" in text(http["info"][0])
-    # with the HTTP API group hidden, calls are in the caller's hover text, not edges
+    # with the APIs group hidden, calls are in the caller's hover text, not edges
     folded = scene(m, ViewState(budget=12, groups=[]))
     assert not any(e["style"] == "http" for e in folded["edges"])
     app = next(n for n in folded["nodes"] if n["id"] == "fs:frontend/src/App.tsx")
@@ -174,18 +181,18 @@ def test_groups_are_a_filter(repo: Path):
     from nolli.scene import ViewState, scene
 
     m, _ = extract(repo)
-    shown = scene(m, ViewState(budget=12, groups=["http"]))
-    http = next(n for n in shown["nodes"] if n["id"] == "http")
-    assert http["foldable"] and not http["container"]
-    assert any("http" in (e["src"], e["dst"]) for e in shown["edges"])
-    assert {g["id"]: g["shown"] for g in shown["groups"]}["http"] is True
+    shown = scene(m, ViewState(budget=12, groups=["api"]))
+    apis = next(n for n in shown["nodes"] if n["id"] == "api")
+    assert apis["foldable"] and not apis["container"]
+    assert any("api" in (e["src"], e["dst"]) for e in shown["edges"])
+    assert {g["id"]: g["shown"] for g in shown["groups"]}["api"] is True
 
-    opened = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["http"], groups=["http"]))
-    assert any(n["parent"] == "http" for n in opened["nodes"])
+    opened = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["api"], groups=["api"]))
+    assert any(n["parent"] == "api" for n in opened["nodes"])
 
-    hidden = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["http"], groups=[]))
-    assert "http" not in hidden["state"]["expanded"]
-    assert all(n["id"] != "http" and n["parent"] != "http" for n in hidden["nodes"])
+    hidden = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["api"], groups=[]))
+    assert "api" not in hidden["state"]["expanded"]
+    assert all(n["id"] != "api" and n["parent"] != "api" for n in hidden["nodes"])
     assert not any(n["id"] in ("env", "deploy") for n in hidden["nodes"])  # env set by deployment: both hidden, no edge
 
 
@@ -201,7 +208,7 @@ def test_utilities_by_incoming_edges(repo: Path):
     before = list(rolled.edges)
     utilities = utility_badges(m, rolled, min_in=0)  # every used box outside a group
     targets = {e.dst for e in before if e.kind == USE}
-    assert utilities == {t for t in targets if t != "http"}
+    assert utilities == {t for t in targets if t != "api"}
     assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
     src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
     assert any(k.startswith("util:") for k in rolled.annotations[src])
@@ -282,3 +289,19 @@ def test_directory_with_source_inside_stays_shown():
     for parent, child in [("fs:.", "fs:evals"), ("fs:evals", "fs:evals/probe.py"), ("fs:evals", "fs:evals/runs.json"), ("fs:.", "fs:docs"), ("fs:docs", "fs:docs/a.md")]:
         m.contain(parent, child, "t")
     assert hidden_by_role(m) == {"fs:evals/runs.json", "fs:docs", "fs:docs/a.md"}
+
+
+def test_box_names_are_icons_then_a_name(repo: Path):
+    """Every box: small icons saying what it is, then a readable name."""
+    from nolli.scene import ViewState, scene
+
+    m, _ = extract(repo)
+    app = "api:http:backend/main.py:app"
+    worlds = app + "/api/worlds"
+    sc = scene(m, ViewState(expanded=["fs:.", "fs:backend", "api", app, worlds], groups=["api"]))
+    names = {n["id"]: (n["icons"], n["label"]) for n in sc["nodes"] if "icons" in n}
+    assert names["fs:backend/store.py"] == (["m"], "store")
+    assert names[app] == (["API"], "backend")
+    assert names[worlds] == (["/"], "api/worlds")
+    assert names[app + " POST /api/worlds"] == (["POST"], "")
+    assert names[app + " GET /api/worlds/{world}/echoes"] == (["GET"], "{world}/echoes")
