@@ -75,6 +75,11 @@ const GRAPH_OPTIONS = {
 /** @param {Scene} scene @returns {ElkNode} */
 function elkGraph(scene) {
   const kidsOf = childrenOf(scene);
+  // anchors go to the first layer and utilities to the last, but ELK refuses an edge between
+  // two boxes pinned to the same end (a review keeps a changed edge between utilities): those
+  // boxes are left free
+  const first = new Set(scene.nodes.filter(isAnchor).map(n => n.id)), last = new Set(scene.nodes.filter(n => !isAnchor(n) && n.utility).map(n => n.id));
+  for (const e of scene.edges) for (const pinned of [first, last]) if (pinned.has(e.src) && pinned.has(e.dst)) { pinned.delete(e.src); pinned.delete(e.dst); }
   /** @param {SceneNode} n @returns {ElkNode} */
   const build = n => {
     /** @type {Record<string, string>} */
@@ -91,8 +96,8 @@ function elkGraph(scene) {
     }
     const { w, h } = leafSize(n);
     node.width = w; node.height = h;
-    if (isAnchor(n)) opts["elk.layered.layering.layerConstraint"] = "FIRST";
-    else if (n.utility) opts["elk.layered.layering.layerConstraint"] = "LAST";  // utilities sit at the bottom
+    if (first.has(n.id)) opts["elk.layered.layering.layerConstraint"] = "FIRST";
+    else if (last.has(n.id)) opts["elk.layered.layering.layerConstraint"] = "LAST";  // utilities sit at the bottom
     return node;
   };
   /** @type {ElkEdge[]} */
