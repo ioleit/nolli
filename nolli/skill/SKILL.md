@@ -28,7 +28,7 @@ nolli agent brief <change>
 ```
 
 Run it in the repository (or add `--repo <path>`). If `nolli` is not found, tell the user
-it needs installing (`pipx install nolli`, or from its repository) and stop. It builds the
+it needs installing (`pipx install nolli-review`) and stop. It builds the
 change's dataset (a few seconds; reused if it exists) and prints JSON on stdout (what it
 resolved and its progress go to stderr):
 

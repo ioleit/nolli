@@ -16,7 +16,7 @@ changes, and how much each one changed.
 ## How to use
 
 ```
-pip install nolli
+pip install nolli-review
 ```
 
 ### Viewing the current state
@@ -46,8 +46,6 @@ nolli agent skill --install ~/.claude/skills
 Then tell your agent to "review PR #48 with nolli". It gives you a link to the viewer,
 with its verdicts on the structure (fine, question, problem, with reasons) on the boxes
 and edges they are about.
-
-![A pull request in Nolli's viewer: changed boxes and edges in orange, a removed dependency dashed red, verdict markers from a review agent](docs/review.png)
 
 ## What it reads
 
