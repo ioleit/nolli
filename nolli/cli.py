@@ -3,6 +3,7 @@
     nolli view [<change> | <dataset dir>] [--whole] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli agent brief [<change>] | agent check <dataset> | agent skill [--install DIR]
     nolli ci comment <dataset> [--skipped no-key|fork]
+    nolli serve [--cache DIR] [--host H] [--port N]
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
 
@@ -22,6 +23,9 @@ verdicts against the diagram they answer.
 
 ci is for nolli's CI workflow: comment prints the pull request comment for a run's dataset.
 
+serve is view as a service for public GitHub repositories: /<owner>/<repo>/pull/<n> on its
+host shows that PR (nolli/viewer/hosted.py).
+
 extract and diff write a dataset to a directory of your choice.
 
 Writes model.json (all facts), view.json (the default cut), scene.json (the
@@ -38,52 +42,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 import time
 from pathlib import Path
 
-from . import match
-from .extractors import Context, all_extractors, language_names
-from .mermaid import render
+from .build import build_commit, build_diff, extract, fresh, write_dataset
 from .model import Model
-from .progress import Progress, Quiet
-from .scene import ALL_ROLES, DEFAULT_ROLES, ViewState, compute, scene
-
-
-def tracked_files(repo: Path) -> list[Path]:
-    try:
-        out = subprocess.run(["git", "-C", str(repo), "ls-files", "-z"], check=True, capture_output=True).stdout
-        files = [Path(p.decode("utf-8", "surrogateescape")) for p in out.split(b"\0") if p]
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        files = [p.relative_to(repo) for p in repo.rglob("*") if p.is_file() and ".git" not in p.parts]
-    return [f for f in files if (repo / f).is_file()]
-
-
-def git_head(repo: Path) -> str | None:
-    try:
-        return subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
-
-
-def extract(repo: Path, config: dict | None = None, progress: Progress | None = None) -> tuple[Model, Context]:
-    m = Model()
-    progress = progress or Quiet()
-    ctx = Context(repo=repo, model=m, files=tracked_files(repo), config=config or {}, progress=progress)
-    timings = {}
-    for name, fn in all_extractors():
-        t0 = time.time()
-        with progress.step("file tree" if name == "fs" else name.replace("-", " ")):
-            fn(ctx)
-        timings[name] = round(time.time() - t0, 3)
-    t0 = time.time()
-    with progress.step("matching references"):
-        match.run_all(ctx)
-    timings["match"] = round(time.time() - t0, 3)
-    m.meta = {"repo": str(repo), "commit": git_head(repo), "files": len(ctx.files), "languages": language_names(), "timings": timings,
-              "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    return m, ctx
+from .progress import Progress
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
@@ -106,63 +71,6 @@ def cmd_diff(args: argparse.Namespace) -> int:
     print(json.dumps({"diff": m.meta["diff"] | {"base": m.meta["diff"]["base_short"], "head": m.meta["diff"]["head_short"]},
                       "changes": summary, "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]}}, indent=1))
     return 0
-
-
-def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int | None = None, title: str | None = None,
-               description: str | None = None, remote: str | None = None,
-               progress: Progress | None = None) -> tuple[Model, dict, dict]:
-    """The dataset of a change: the merged model, changes.json, review.mmd and review.md."""
-    from .changes import change_items
-    from .diff import diff
-    from .review import review_expanded, review_markdown
-
-    progress = progress or Quiet()
-    out.mkdir(parents=True, exist_ok=True)
-    m, summary = diff(repo, base, head, extract, progress)
-    m.meta["nolli"] = version()
-    if remote:
-        m.meta["diff"]["remote"] = remote
-    if pr:
-        m.meta["diff"]["pr"] = pr
-    if title:
-        m.meta["diff"]["title"] = title
-    report = write_dataset(m, out, budget, {}, {"diff": summary}, progress)
-    with progress.step("the review's diagram"):
-        (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
-        st = ViewState(budget=budget, expanded=review_expanded(m))
-        expanded, _hidden, visible, rolled, _utilities = compute(m, st)
-        mmd = render(m, {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible)}, rolled)
-        (out / "review.mmd").write_text(mmd)
-        (out / "review.md").write_text(review_markdown(m, mmd, description))
-    return m, summary, report
-
-
-def build_commit(repo: Path, sha: str, out: Path, budget: int, progress: Progress | None = None) -> dict:
-    """The dataset of one commit as a whole, extracted from the commit (not the working tree)."""
-    import tempfile
-
-    from .diff import materialise
-
-    progress = progress or Quiet()
-    out.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
-        with progress.step("checking out the commit"):
-            materialise(repo, sha, Path(tmp))
-        m, ctx = extract(Path(tmp), progress=progress)
-    if m.has("fs:."):  # the root is the temporary directory; name it after the repository
-        m.entities["fs:."].name = repo.name
-    m.meta.update({"repo": repo.name, "commit": sha[:7], "nolli": version()})
-    return write_dataset(m, out, budget, ctx.notes, progress=progress)
-
-
-def version() -> str:
-    from importlib.metadata import PackageNotFoundError
-    from importlib.metadata import version as pkg_version
-
-    try:
-        return pkg_version("nolli-review")
-    except PackageNotFoundError:
-        return "unknown"
 
 
 def data_dir(arg: str | None) -> Path:
@@ -251,6 +159,15 @@ def cmd_view(args: argparse.Namespace) -> int:
     return serve(b.data, b.name, args.host, args.port, not args.no_open)
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from .viewer.hosted import main as hosted
+
+    argv = ["--host", args.host, "--budget", str(args.budget)]
+    argv += ["--cache", args.cache] if args.cache else []
+    argv += ["--port", str(args.port)] if args.port else []
+    return hosted(argv)
+
+
 def cmd_brief(args: argparse.Namespace) -> int:
     """nolli agent brief: build the change's dataset and say, as JSON on stdout, where the
     brief is, where the verdicts go and how to check them."""
@@ -324,14 +241,6 @@ def cmd_skill(args: argparse.Namespace) -> int:
     return 0
 
 
-def fresh(out: Path) -> bool:
-    """A dataset built before by this version of nolli."""
-    try:
-        return json.loads((out / "report.json").read_text())["meta"].get("nolli") == version()
-    except (OSError, ValueError, KeyError):
-        return False
-
-
 def serve(data: Path, name: str, host: str, port: int, open_browser: bool) -> int:
     import webbrowser
     from urllib.parse import quote
@@ -354,34 +263,6 @@ def serve(data: Path, name: str, host: str, port: int, open_browser: bool) -> in
     finally:
         srv.server_close()
     return 0
-
-
-def write_dataset(m: Model, out: Path, budget: int, notes: dict, extra: dict | None = None,
-                  progress: Progress | None = None) -> dict:
-    """model.json, view.json, scene.json, default.mmd and report.json for a model."""
-    progress = progress or Quiet()
-    with progress.step("writing model.json"):
-        m.save(out / "model.json")
-    with progress.step("the default cut"):
-        st = ViewState(budget=budget)
-        expanded, _hidden, visible, rolled, _utilities = compute(m, st)
-        view = {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible),
-                "hidden_roles": [r for r in ALL_ROLES if r not in DEFAULT_ROLES]}
-        (out / "view.json").write_text(json.dumps(view, indent=1))
-        (out / "scene.json").write_text(json.dumps(scene(m, st), indent=1))
-        (out / "rollup.json").unlink(missing_ok=True)  # replaced by scene.json
-        (out / "default.mmd").write_text(render(m, view, rolled))
-    report = {
-        "meta": m.meta,
-        "summary": m.summary(),
-        "view": {"visible": len(view["visible"]), "edges": len(rolled.edges), "internal": rolled.internal,
-                 "hidden_relations": rolled.hidden_relations, "unresolved": rolled.unresolved},
-        "unresolved": sorted(e.id for e in m.entities.values() if e.kind == "unresolved"),
-        "notes": {k: v for k, v in notes.items() if k not in ("py-imports", "js-imports", "py-aliases", "ts-exports")},
-        **(extra or {}),
-    }
-    (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
-    return report
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -425,6 +306,13 @@ def main(argv: list[str] | None = None) -> int:
     cc.add_argument("--skipped", choices=("no-key", "fork"), help="why no review agent ran: the repository has no API key "
                     "for one, or the PR comes from a fork (which gets no secrets)")
     cc.set_defaults(fn=cmd_ci_comment)
+    sv = sub.add_parser("serve", help="the viewer as a service: GitHub's paths (/<owner>/<repo>/pull/<n>) on this host, "
+                        "public repositories only")
+    sv.add_argument("--cache", help="clones and datasets (default: $NOLLI_CACHE, else ~/.cache/nolli-serve)")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, help="default: $PORT, else 8730")
+    sv.add_argument("--budget", type=int, default=34)
+    sv.set_defaults(fn=cmd_serve)
     ex = sub.add_parser("extract", help="extract the model of a repository")
     ex.add_argument("repo")
     ex.add_argument("-o", "--out", required=True)

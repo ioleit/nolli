@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.cli import extract
+from nolli.build import extract
 from nolli.rollup import bundle, hidden_by_role, image_aliases, rollup
 from nolli.view import default_view
 

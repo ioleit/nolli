@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.cli import extract
+from nolli.build import extract
 from nolli.diff import diff
 
 BASE = {

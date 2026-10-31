@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<style>
+:root { --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a66; --line: #d9d6cf; --accent: #2f5d8a; }
+@media (prefers-color-scheme: dark) { :root { --bg: #17181a; --fg: #e6e4df; --muted: #9a988f; --line: #34363a; --accent: #8db4dc; } }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 12vh 16px; }
+main { max-width: 640px; margin: 0 auto; }
+h1 { font-size: 22px; margin: 0 0 12px; overflow-wrap: anywhere; }
+p { color: var(--muted); }
+a { color: var(--accent); }
+code { font-size: 13px; }
+form { display: flex; gap: 8px; margin-top: 20px; }
+input { flex: 1; min-width: 0; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+button { font: inherit; padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--fg); color: var(--bg); cursor: pointer; }
+pre { font-size: 12px; color: var(--muted); white-space: pre-wrap; border-left: 2px solid var(--line); padding-left: 12px; min-height: 3em; }
+pre .now { color: var(--fg); }
+pre .err { color: #c0392b; }
+</style>
+</head>
+<body>
+<main data-job="{{job}}" data-status="{{status}}">
+{{body}}
+</main>
+<script>
+// a page following a build: poll its status, show the steps, reload once it is done
+(() => {
+  const main = document.querySelector("main"), job = main.dataset.job, log = document.getElementById("log");
+  if (!job || !log) return;
+  const esc = s => s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  const show = st => {
+    const lines = (st.lines || []).map(esc);
+    if (st.state === "waiting") lines.push('<span class="now">waiting for another build to finish…</span>');
+    if (st.current) lines.push(`<span class="now">${esc(st.current)}</span>`);
+    if (st.state === "error") lines.push(`<span class="err">${esc(st.error)}</span>`, "", "Reload the page to try again.");
+    log.innerHTML = lines.join("\n") || '<span class="now">starting…</span>';
+  };
+  const poll = async () => {
+    try {
+      const st = await (await fetch("/api/job?d=" + encodeURIComponent(job))).json();
+      if (st.state === "done") { location.reload(); return; }
+      show(st);
+      if (st.state === "error") return;
+    } catch (e) { /* the server restarting: try again */ }
+    setTimeout(poll, 700);
+  };
+  try { show(JSON.parse(main.dataset.status || "{}")); } catch (e) { /* first poll shows it */ }
+  poll();
+})();
+</script>
+</body>
+</html>

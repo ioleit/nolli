@@ -302,9 +302,12 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
 });
 
 (async () => {
+  // a page served for one dataset (nolli serve) names it; the local viewer offers all it has
+  const pinned = document.querySelector('meta[name="nolli-dataset"]')?.getAttribute("content");
   /** @type {{ name: string }[]} */
-  const sets = await (await fetch("/api/list")).json();
+  const sets = pinned ? [{ name: pinned }] : await (await fetch("/api/list")).json();
   const sel = select("dataset");
+  if (pinned) sel.hidden = true;
   for (const s of sets) { const o = document.createElement("option"); o.value = s.name; o.textContent = s.name; sel.appendChild(o); }
   const h = readHash(location.hash.slice(1));
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
