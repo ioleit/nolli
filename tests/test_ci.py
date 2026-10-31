@@ -60,6 +60,7 @@ def test_without_review(dataset, capsys):
     assert re.fullmatch(r"me/shop#7@[0-9a-f]{7}", key)
     text = comment(dataset, capsys)
     assert text.startswith("<!-- nolli -->\n**Nolli** found ")
+    assert re.search(r"found \d+ structural changes? in this PR \(at \[`[0-9a-f]{7}`\]\(https://github.com/me/shop/pull/7/commits/", text)
     assert "No review: the review agent wrote no verdicts." in text
     assert f"nolli view {key}\n" in text
     assert "```mermaid\nflowchart" in text
@@ -69,8 +70,9 @@ def test_without_review(dataset, capsys):
 def test_skipped(dataset, capsys):
     assert main(["ci", "comment", str(dataset), "--skipped", "no-key"]) == 0
     text = capsys.readouterr().out
-    assert "\n\nRun `gh secret set ANTHROPIC_API_KEY --repo me/shop` for an automatic architecture review.\n" in text
-    assert "nolli view me/shop#7@" in text and "No review" not in text
+    assert text.index("nolli view me/shop#7@") < text.index("<details><summary>") < text.index(
+        "Want an automatic structural review from an AI agent? Add an API key:\n\n```\ngh secret set ANTHROPIC_API_KEY --repo me/shop\n```")
+    assert "No review" not in text
     assert main(["ci", "comment", str(dataset), "--skipped", "fork"]) == 0
     assert "No review: pull requests from forks get no API key for it." in capsys.readouterr().out
 
@@ -81,7 +83,7 @@ def test_with_review(dataset, capsys):
                 {"target": "n_fs_shop_store_py", "verdict": "fine", "reason": "unchanged"}]
     (dataset / "verdicts.json").write_text(json.dumps(verdicts))
     text = comment(dataset, capsys)
-    assert "Noteworthy: 1 ?!, 1 👍." in text
+    assert "The review agent marked these: 1 ?!, 1 👍." in text
     findings = [line for line in text.splitlines() if line.startswith("- ")]
     assert findings[0].startswith("- `?!` **") and findings[0].endswith(": why --> here?")  # worst first
     assert findings[1].startswith("- `👍` **shop/cache.py**: a cache in its own module")
@@ -92,8 +94,8 @@ def test_with_review(dataset, capsys):
 def test_failed_review(dataset, capsys):
     (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_nope", "verdict": "good", "reason": "x"}]))
     text = comment(dataset, capsys)
-    assert "No review: the review agent's verdicts failed nolli's check." in text
-    assert "Noteworthy" not in text
+    assert "No review: the review agent’s verdicts failed nolli’s check." in text
+    assert "marked these" not in text
 
 
 def test_not_a_pr(dataset, capsys):

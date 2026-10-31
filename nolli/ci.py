@@ -34,7 +34,7 @@ KEY = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)@([0-9a-f]{7,40})$")
 MARKER = "<!-- nolli -->"
 RESULT = re.compile(r"<!-- nolli-result (\S+) -->")
 GLYPH = {"blunder": "??", "problem": "?", "question": "?!", "brilliant": "!!", "good": "👍"}  # as the viewer draws them
-MERMAID_MAX = 40_000  # characters of the default view's Mermaid; a comment holds 65536
+MERMAID_MAX = 40_000  # characters of the review diagram's Mermaid; a comment holds 65536
 WORST_FIRST = ("blunder", "problem", "question", "brilliant", "good")
 
 
@@ -64,36 +64,40 @@ def comment(ds: Path, skipped: str | None = None) -> str:
 
     m = Model.load(ds / "model.json")
     key = key_of(m.meta)
+    d = m.meta["diff"]
+    repo = key.split("#")[0]
     n = len(json.loads((ds / "changes.json").read_text()))
     vf = ds / "verdicts.json"
     verdicts, errors = check_verdicts(m, (ds / "review.mmd").read_text(), vf.read_text()) if vf.is_file() else (None, [])
-    lines = [MARKER]
-    head = f"**Nolli** found {n} structural change{'' if n == 1 else 's'}."
+    commit = f"[`{d['head'][:7]}`](https://github.com/{repo}/pull/{d['pr']}/commits/{d['head']})"
+    lines = [MARKER, f"**Nolli** found {n} structural change{'' if n == 1 else 's'} in this PR (at {commit})."]
+    after: list[str] = []  # why there is no review, after everything else
     if skipped == "no-key":
-        repo = key.split("#")[0]
-        lines += [head, "", f"Run `gh secret set ANTHROPIC_API_KEY --repo {repo}` for an automatic architecture review."]
-        verdicts, noteworthy = None, []
+        after = ["Want an automatic structural review from an AI agent? Add an API key:", "",
+                 "```", f"gh secret set ANTHROPIC_API_KEY --repo {repo}", "```"]
+        verdicts = None
     elif skipped == "fork":
-        lines.append(f"{head} No review: pull requests from forks get no API key for it.")
-        verdicts, noteworthy = None, []
+        after = ["No review: pull requests from forks get no API key for it."]
+        verdicts = None
     elif verdicts is None or errors:
-        why = "the review agent wrote no verdicts" if verdicts is None else "the review agent's verdicts failed nolli's check"
-        lines.append(f"{head} No review: {why}.")
-        verdicts, noteworthy = None, []
+        after = [f"No review: {'the review agent wrote no verdicts' if verdicts is None else 'the review agent’s verdicts failed nolli’s check'}."]
+        verdicts = None
     else:
         verdicts = resolve_verdicts(m, verdicts)
         noteworthy = sorted((v for v in verdicts if v["verdict"] != "fine"), key=lambda v: WORST_FIRST.index(v["verdict"]))
         counts = ", ".join(f"{c} {GLYPH[k]}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in noteworthy)))
-        lines.append(f"{head} Noteworthy: {counts}." if counts else f"{head} The review found nothing noteworthy.")
-    if noteworthy:
-        lines.append("")
-        lines += [f"- `{GLYPH[v['verdict']]}` **{v['label']}**: {' '.join(v['reason'].split())}" for v in noteworthy]
-    mmd = ds / "default.mmd"
+        lines += ["", f"The review agent marked these: {counts}." if counts else "The review agent found nothing noteworthy."]
+        if noteworthy:
+            lines.append("")
+            lines += [f"- `{GLYPH[v['verdict']]}` **{v['label']}**: {' '.join(v['reason'].split())}" for v in noteworthy]
+    lines += ["", "Run these commands for the interactive viewer:", "",
+              "```", "pip install nolli-review", f"nolli view {key}", "```"]
+    mmd = ds / "review.mmd"
     if mmd.is_file() and len(mmd.read_text()) <= MERMAID_MAX:
-        lines += ["", "<details open><summary>The change as a diagram</summary>", "", "```mermaid",
+        lines += ["", "<details><summary>Mermaid of all of the changes (experimental)</summary>", "", "```mermaid",
                   mmd.read_text().rstrip(), "```", "", "</details>"]
-    lines += ["", "To see them on the diagram:", "", "```", "pip install nolli-review", f"nolli view {key}", "```"]
-    d = m.meta["diff"]
+    if after:
+        lines += ["", *after]
     result = {"key": key, "base": d["base"], "head": d["head"], "nolli": m.meta.get("nolli"),
               "verdicts": [{k: v[k] for k in ("target", "verdict", "reason")} for v in verdicts or []]}
     packed = base64.b64encode(zlib.compress(json.dumps(result, separators=(",", ":")).encode(), 9)).decode()
