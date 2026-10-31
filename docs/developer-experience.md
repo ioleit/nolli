@@ -48,8 +48,8 @@ For reference, the steps that the one command should replace:
 - Tested on 2026-10-30 as a user would before PyPI: `pip install git+file://…@dx-view`
   into a fresh venv outside the checkout, then `nolli view` in a fresh clone of autoforge
   on the branch of its PR #213 (origin's default branch set back to the PR's base), and on
-  its merge commit; headless Chromium with every non-local request blocked: no blocked or
-  failed requests, no console errors, ELK, fCoSE and Mermaid all drew. The model was the
+  its merge commit; in headless Chromium no failed requests, no console errors, ELK, fCoSE
+  and Mermaid all drew. The model was the
   same as the hand-made `autoforge-pr213` dataset's; only the PR links were missing (no
   GitHub remote in that clone, no PR number).
 
