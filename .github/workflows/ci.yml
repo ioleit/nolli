@@ -1,0 +1,61 @@
+# Tests on every pull request and on main: nolli's Python tests, the viewer's type check and
+# unit tests, and the browser tests of the review view. The browser tests compare screenshots
+# exactly, and they were made on Debian 13 with its Chromium and DejaVu fonts (viewer/README.md),
+# so they run in that system here too.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  python:
+    name: python unit tests (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest -e .
+      - run: pytest -q
+
+  viewer:
+    name: viewer type check and unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: viewer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+
+  browser:
+    name: playwright golden screenshot comparison
+    runs-on: ubuntu-latest
+    container: debian:13
+    steps:
+      - run: DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git chromium fonts-dejavu-core python3 python3-venv
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+      - run: python3 -m venv .venv && .venv/bin/pip install -e .
+      - run: npm ci
+        working-directory: viewer
+      - run: npx playwright test
+        working-directory: viewer
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: viewer/test-results/

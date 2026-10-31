@@ -143,7 +143,7 @@ VERDICTS = [
     {"target": "n_fs_ledger_services_billing_py --> n_fs_ledger_storage_g", "verdict": "question",
      "reason": "Tied to the wrapper: expected that `billing` reads through the cache, but it now imports "
                "`cache` by name, so the service depends on two levels of `storage/` at once."},
-    {"target": "n_fs_web_src_client_ts ==> n_http_GET__alerts_overdue", "verdict": "question",
+    {"target": "n_fs_web_src_client_ts ==> n_api_http_ledger_api_app_py_app_GET__alerts_overdue", "verdict": "question",
      "reason": "Client becomes a hub: expected from the title, but `client` now serves both "
                "`/customers` and `/alerts`, and every view goes through it. Split it per area as more arrive?"},
     {"target": "n_fs_ledger_services_legacy_export_py", "verdict": "brilliant",
