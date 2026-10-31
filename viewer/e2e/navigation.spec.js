@@ -1,6 +1,6 @@
 // Unfolding and folding on a made-up change (tests/fixtures/nav_repo.py) with two utilities
 // and a changed edge between them, which ELK refused while utilities were pinned to its last
-// layer. A click toggles the box clicked and nothing else, and every step lays out without an
+// layer, and a verdict on an edge the viewer bundles. A click toggles the box clicked and nothing else, and every step lays out without an
 // error (guard.js).
 
 import { readFileSync } from "node:fs";
@@ -35,8 +35,8 @@ async function click(page, id) {
   await page.waitForLoadState("networkidle");
 }
 
-test("the default cut, with an edge between two utilities, lays out", async ({ page }) => {
-  await open(page, "");
+test("two utilities with an edge between them lay out", async ({ page }) => {
+  await open(page, "&x=fs:.,fs:tasks,fs:tasks/core");
   await expect(page.locator('#root g.node.utility[data-id="fs:tasks/core/log.py"]')).toBeVisible();
   await expect(page.locator('#root g.node.utility[data-id="fs:tasks/core/clock.py"]')).toBeVisible();
   await expect(page.locator("#root g.edge.d-added")).toHaveCount(1);
@@ -55,3 +55,17 @@ test("each click unfolds or folds the box clicked, and only that one", async ({ 
     expect(drawn.includes(id), `${id} drawn ${want.has(id) ? "unfolded" : "folded"}`).toBe(want.has(id));
   }
 });
+
+test("a verdict on an edge that is bundled sits on the bundle, not on a box", async ({ page }) => {
+  // the review diagram draws worker → store/users/repo; with store's packages folded, the viewer
+  // draws worker's three edges into store as one
+  await open(page, "&x=fs:.,fs:tasks,fs:tasks/jobs,fs:tasks/store");
+  const mark = page.locator("#root g.edge g.verdict.question");
+  await expect(mark).toHaveCount(1);
+  await expect(page.locator("#root g.verdict[data-id]")).toHaveCount(0);  // no box carries it
+  await page.keyboard.press("Escape");
+  await mark.locator("circle").hover();
+  await expect(page.locator("#tip")).toContainText("Reaches past its area");
+  await expect(page.locator("#root g.node.container")).toHaveCount(3);  // tasks, jobs, store: nothing else unfolded
+});
+
