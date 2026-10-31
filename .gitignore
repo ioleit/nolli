@@ -6,3 +6,5 @@ dev/corpus.local.toml
 viewer/data/
 node_modules/
 build/
+viewer/test-results/
+viewer/playwright-report/

@@ -42,3 +42,20 @@ shift and scale.
 Node is only for development: `npm install`, then `npm run check` (TypeScript checks
 the JavaScript through its JSDoc types, strict) and `npm test` (unit tests of the pure
 modules). The browser loads the `.js` files as they are.
+
+## Browser tests of the review
+
+`npm run e2e` runs `e2e/` in Chromium with Playwright: it builds a made-up repository
+with one reviewed change and the agent's verdicts on it (`tests/fixtures/review_repo.py`,
+an invoicing app whose branch adds a cache and overdue alerts and deletes an export),
+serves the viewer on it and checks where the verdicts are drawn, what their hover cards
+say, and screenshots of each (`e2e/__screenshots__/`, one per thing to look at). ELK is
+served from `node_modules` instead of the CDN, so the layout cannot drift under the tests.
+
+The screenshots must match exactly, and fonts differ between systems: make and compare
+them on one (they were made on Debian 13 with its Chromium). After a deliberate change to
+the look, `npm run e2e:update` remakes them; look at every changed image before
+committing it. Python comes from `$NOLLI_PYTHON`, else `../.venv`, else `python3` (with
+nolli's dependencies installed); Chromium from `$NOLLI_CHROMIUM`, else `/usr/bin/chromium`,
+else Playwright's own (`npx playwright install chromium`).
+

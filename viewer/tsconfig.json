@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["js/**/*.js", "types/**/*.d.ts", "test/**/*.js"]
+  "include": ["js/**/*.js", "types/**/*.d.ts", "test/**/*.js", "e2e/**/*.js", "playwright.config.js"]
 }

@@ -192,7 +192,8 @@ body.dim .node.container.d-same > rect { stroke-opacity: .4; }
 body.dim .node.container.d-same > text { opacity: .55; }
 body.dim .edge.d-same { opacity: .18; }
 .verdict circle { stroke: Canvas; stroke-width: 1.5; }
-.verdict text { font: 700 10px system-ui, sans-serif; fill: white; pointer-events: none; }
+/* .edge .verdict: on an edge, .edge.d-changed text and the like would recolour the glyph */
+.verdict text, .edge .verdict text { font: 700 10px system-ui, sans-serif; fill: white; pointer-events: none; }
 .verdict.problem circle { fill: var(--rem); } .verdict.question circle { fill: var(--question); } .verdict.fine circle { fill: var(--add); }
 /* changed counts matter less than dependencies that appear or disappear */
 .edge.d-changed path { stroke-width: 1.4px !important; }  /* changed counts matter less than dependencies that appear or disappear */
