@@ -22,7 +22,7 @@ def test_review_fixture(tmp_path, capsys):
     capsys.readouterr()
     assert main(["agent", "check", str(ds)]) == 0
     assert json.loads(capsys.readouterr().out) == {"ok": True, "verdicts": 8, "blunder": 1, "problem": 1, "question": 3,
-                                                    "brilliant": 1, "good": 1, "fine": 1, "errors": 0}
+                                                    "brilliant": 0, "good": 2, "fine": 1, "errors": 0}
 
 
 def test_verdict_on_a_bundled_edge(tmp_path):

@@ -152,7 +152,7 @@ button { font: inherit; padding: 2px 8px; }
 /* ---------- review mode (diff datasets) ---------- */
 :root { --add: #2e9b4f; --rem: #c94040; --chg: #6f8fb4; }
 /* the verdicts, in the colours chess sites give these annotations */
-:root { --v-blunder: #ca3431; --v-problem: #e58f2a; --v-question: #e6ae2a; --v-fine: #81b64c; --v-good: #5c8bb0; --v-brilliant: #1baca6; }  /* changed: a quiet slate blue, away from the orange glow */
+:root { --v-blunder: #ca3431; --v-problem: #e58f2a; --v-question: #e6ae2a; --v-fine: #a3a3a3; --v-good: #81b64c; --v-brilliant: #1baca6; }  /* changed: a quiet slate blue, away from the orange glow */
 #review { display: none; border-left: 1px solid var(--line); overflow: hidden; flex-direction: column; min-height: 0; }
 body.reviewing #review { display: flex; }
 .plus { color: var(--add); } .minus { color: var(--rem); }
@@ -187,6 +187,7 @@ label.file input { display: none; }
 .vd.fine, .vtxt.fine { background: var(--v-fine); }
 .vd.good, .vtxt.good { background: var(--v-good); }
 .vd.brilliant, .vtxt.brilliant { background: var(--v-brilliant); }
+.vd svg.icon { width: 9px; height: 9px; fill: white; vertical-align: -1px; }
 .dt-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 8px 0 2px; }
 .dt-verdict { margin: 4px 0; padding: 4px 6px; border-radius: 4px; background: #8881; }
 .dt-hint, .muted { color: var(--muted); }
@@ -225,6 +226,8 @@ body.dim .edge.d-same { opacity: .18; }
 .verdict.fine circle { fill: var(--v-fine); }
 .verdict.good circle { fill: var(--v-good); }
 .verdict.brilliant circle { fill: var(--v-brilliant); }
+/* .edge .verdict path: the edge's own line styles (stroke, dashes, width) must not reach the icon */
+.verdict path, .edge .verdict path { fill: white; stroke: none !important; pointer-events: none; }
 .verdict.two text { font-size: 8.5px; letter-spacing: -0.6px; }  /* ??, ?!, !! */
 /* changed counts matter less than dependencies that appear or disappear */
 .edge.d-changed path { stroke-width: 1.4px !important; }  /* changed counts matter less than dependencies that appear or disappear */
@@ -237,5 +240,7 @@ body.dim .edge.d-same { opacity: .18; }
 .rv-verdict > .rv-item { padding: 5px 12px 5px 10px; border-bottom: 1px solid var(--line); }
 .rv-verdict .t { word-break: normal; overflow-wrap: anywhere; line-height: 1.35; }
 .rv-verdict .t b { font-weight: 600; }
+/* fine: nothing to look at, so the row stays in the background until it is hovered or current */
+.rv-verdict.v-fine:not(.current):not(:hover) > .rv-item { opacity: .5; }
 .rv-row.off > .rv-item { cursor: default; opacity: .6; }
 .rv-row-btns button { font: inherit; font-size: 12px; padding: 2px 8px; cursor: pointer; }
