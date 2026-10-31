@@ -29,7 +29,7 @@ from .prose import Ctx
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
-DEFAULT_UTILITY_IN = 6  # more incoming edges than this: a utility, drawn as badges
+DEFAULT_UTILITY_IN = 4  # more incoming edges than this: a utility, drawn as badges
 DEFAULT_GROUPS = ("http",)  # root groups drawn as boxes; the others are badges on their users
 
 
@@ -40,12 +40,7 @@ class ViewState:
     roles: list[str] = field(default_factory=lambda: list(DEFAULT_ROLES))  # shown roles
     budget: int = DEFAULT_BUDGET
     groups: list[str] = field(default_factory=lambda: list(DEFAULT_GROUPS))  # shown root groups
-    through: bool = True  # derive caller -> handler through interfaces
-    dangling_use: bool = False  # show reads of env variables nobody sets
-    env_edges: bool = False  # draw env wiring (reader -> setter)
-    bundle: bool = True  # fan-out edges to a container's boundary
     utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
-    hide_internal: bool = False  # drop edges inside a container, count them in its header
     side: str = "both"  # diff models: "base" or "head" draws one commit, "both" the merged picture
 
 
@@ -78,11 +73,8 @@ def compute(m: Model, st: ViewState) -> tuple[set[str], set[str], set[str], Roll
     walked: set[str] = set()
     visible = visible_from_expanded(m, expanded, hidden, walked=walked)
     expanded = walked
-    rolled = rollup(m, visible, hidden, through_interfaces=st.through,
-                    dangling_use_kinds=("endpoint", "env") if st.dangling_use else (), env_edges=st.env_edges,
-                    shown_groups=shown_groups, side=st.side)
-    if st.bundle:
-        rolled.edges = bundle(m, rolled.edges, expanded)
+    rolled = rollup(m, visible, hidden, shown_groups=shown_groups, side=st.side)
+    rolled.edges = bundle(m, rolled.edges, expanded)  # fan-out edges to a container's boundary
     utilities = utility_badges(m, rolled, st.utilities) if st.utilities > 0 else set()
     return expanded, hidden, visible, rolled, utilities
 
@@ -109,25 +101,13 @@ def badge_text(used_by: int = 0) -> str:
     return f"used by {used_by}" if used_by else ""
 
 
-def edge_label(e) -> str:
-    s = e.subkind.removesuffix("-dangling")
-    parts = [str(e.count)] if e.count > 1 else []
-    if e.kind == "provide":
-        parts.append("realised by")
-    elif s != "import":
-        parts.append("http" if s == "endpoint" else s)
-    if e.subkind.endswith("-dangling"):
-        parts.append("unbound")
-    return " ".join(parts)
-
-
 def edge_style(e) -> str:
-    s = e.subkind.removesuffix("-dangling")
+    s = e.subkind
     if e.kind == "provide":
         return "provide"
     if s == "import":
         return "import"
-    if s in ("http", "endpoint"):
+    if s == "http":
         return "http"
     if s == "env":
         return "env"
@@ -146,19 +126,15 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
     links = Links(m) if diff else None
     by_fact = {fact_key(r): r for r in m.relations if r.attrs.get("diff")} if diff else {}
     shown_groups = set(st.groups)
-    # a root group is drawn when the filter shows it and it has something to unfold; a group
-    # the filter hides is drawn only if an edge still ends on it (both ends in groups)
+    # a root group is drawn when the filter shows it and it has something to unfold (rollup
+    # leaves no edge on one the filter hides)
     root_group = lambda x: is_root_group(m, x) and (x not in shown_groups or not m.children(x))  # noqa: E731
 
     def local(e) -> bool:
         ps = drawn_parent(m, e.src, expanded)
         return ps is not None and ps == drawn_parent(m, e.dst, expanded)
 
-    internal_drawn: dict[str, int] = defaultdict(int)  # local edges per container
-    for e in rolled.edges:
-        if local(e):
-            internal_drawn[drawn_parent(m, e.src, expanded)] += e.count
-    edges = [e for e in rolled.edges if not (st.hide_internal and local(e))]
+    edges = rolled.edges
     out_total: dict[str, int] = defaultdict(int)
     for e in edges:
         if e.kind == USE:
@@ -184,8 +160,6 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
             return {"id": x, "kind": "anchor", "parent": parent, "utilities_used": used_utils(x), "info": node_info(ctx, deps, x)}
         e = m.entities[x]
         badge = badge_text(used_by.get(x, 0))
-        if container and st.hide_internal and internal_drawn.get(x):
-            badge = " · ".join(filter(None, [badge, f"{internal_drawn[x]} internal"]))
         kids = bool(m.children(x))
         return {
             "id": x, "kind": e.kind, "parent": parent, "container": container, "label": label_of(m, x, expanded),
@@ -194,7 +168,6 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
             "chips": [{"id": s, "name": m.entities[s].name, "color": services.index(s) if s in services else -1}
                       for s in rolled.allocations.get(x, [])],
             "service_color": services.index(x) if x in services else None,
-            "internal": internal_drawn.get(x, 0) if container else None,
             "uses": [],  # kept for the viewer; empty: utilities used are in the hover text (info.py)
             "utilities_used": used_utils(x),  # ids of the utilities whose edges from this box became badges
             "info": node_info(ctx, deps, x, used_by.get(x, 0)),
@@ -246,10 +219,10 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
         weak = bool(ot) and e.kind == USE and e.count / ot < 0.05 and e.count < 3
         edge_out.append({
             "key": f"{e.kind}|{e.src}|{e.dst}|{e.subkind}", "kind": e.kind, "subkind": e.subkind, "src": e.src, "dst": e.dst,
-            "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": edge_style(e), "label": edge_label(e),
+            "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": edge_style(e),
             "local": local(e), "single": e.count == 1,
             "weak": weak,
-            "dangling": e.subkind.endswith("-dangling"), "heuristic": e.confidence == "heuristic",
+            "heuristic": e.confidence == "heuristic",
             "info": edge_info(ctx, e),
             "diff": ({"status": e.status, "base": e.base, "head": e.head, "facts": sorted(e.changed),
                       "changes": [fact_change(m, by_fact[f], links) for f in sorted(e.changed)[:40] if f in by_fact],
@@ -261,17 +234,20 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
 
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
     residue += [f"{v} unresolved {k} references" for k, v in sorted(rolled.unresolved.items())]
-    dangling = sum(1 for e in edges if e.subkind.endswith("-dangling"))
-    if dangling:
-        residue.append(f"{dangling} interface edges with one side only")
     if utilities:
-        residue.append("utilities (badges): " + ", ".join(label_of(m, u, expanded) for u in sorted(utilities)))
-    residue += [f"{v} {k} wiring edges not drawn (option)" for k, v in rolled.suppressed.items()]
+        residue.append("utilities: " + ", ".join(label_of(m, u, expanded) for u in sorted(utilities)))
 
     groups = [{"id": r, "name": m.entities[r].name, "size": len(m.children(r)), "shown": r in shown_groups}
               for r in m.roots() if m.entities[r].kind == "group" and r != "unresolved" and m.children(r)]
+    # files and directories per role, for the Show filter ("mixed" is a directory role only)
+    by_role: dict[str, dict[str, int]] = {r: {"files": 0, "dirs": 0} for r in ALL_ROLES}
+    for e in m.entities.values():
+        r = e.attrs.get("role")
+        if r in by_role and e.kind in ("file", "directory") and not e.attrs.get("root"):
+            by_role[r]["files" if e.kind == "file" else "dirs"] += 1
+    roles = [{"id": r, **n} for r, n in by_role.items()]
     state = asdict(st) | {"expanded": sorted(expanded)}
-    out = {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "residue": residue,
+    out = {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "roles": roles, "residue": residue,
            "stats": {"nodes": len(drawn), "edges": len(edge_out)}}
     if diff:
         meta = m.meta["diff"]
@@ -357,12 +333,7 @@ def state_from_query(q: dict[str, str]) -> ViewState:
         st.budget = int(q["b"])
     if q.get("g") is not None:
         st.groups = [g for g in q["g"].split(",") if g]
-    st.through = q.get("t", "1") != "0"
-    st.dangling_use = q.get("u") == "1"
-    st.env_edges = q.get("ev") == "1"
-    st.bundle = q.get("nb") != "1"
     st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
-    st.hide_internal = q.get("hi") == "1"
     if q.get("s") in ("base", "head"):
         st.side = q["s"]
     return st

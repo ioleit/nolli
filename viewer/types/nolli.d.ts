@@ -105,7 +105,6 @@ export interface BoxNode {
   utility: boolean;
   chips: Chip[];
   service_color: number | null;
-  internal: number | null;
   uses: string[];  // unfolded boxes: utilities their children use, one line each at the bottom right
   utilities_used: string[];  // ids of the utilities whose edges from this box became badges
   info: Info;
@@ -128,11 +127,9 @@ export interface SceneEdge {
   confidence: string;
   via: string[];
   style: "import" | "http" | "env" | "deploy" | "provide";
-  label: string;
   local: boolean;
   single: boolean;
   weak: boolean;
-  dangling: boolean;
   heuristic: boolean;
   info: Info;
   diff?: EdgeDiff | null;
@@ -147,12 +144,7 @@ export interface SceneState {
   roles: string[];
   groups: string[];  // root groups drawn as boxes; the others are badges
   budget: number;
-  through: boolean;
-  dangling_use: boolean;
-  env_edges: boolean;
-  bundle: boolean;
   utilities: number;  // more incoming edges than this: a utility; 0: off
-  hide_internal: boolean;
   side: "both" | "base" | "head";
 }
 
@@ -161,6 +153,7 @@ export interface Scene {
   nodes: SceneNode[];  // drawing order: a container before what it contains
   edges: SceneEdge[];
   groups: { id: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
+  roles: { id: string; files: number; dirs: number }[];  // files and directories per role, for the Show filter
   residue: string[];
   stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
   dataset: { name: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
@@ -172,20 +165,10 @@ export interface Point { x: number; y: number }
 /** Absolute, top-left corner. */
 export interface Box { x: number; y: number; w: number; h: number }
 
-/** What every layout engine returns. */
+/** What the layout returns (layout.js). */
 export interface Laid {
   width: number;
   height: number;
   nodes: Map<string, Box>;
   edges: { edge: SceneEdge; sections: Point[][] }[];
-}
-
-export interface LayoutOptions {
-  engine?: string;
-  direction?: "DOWN" | "RIGHT";
-  seed?: string;
-  /** the layout shown before this one, for engines that keep the picture stable */
-  previous?: Laid;
-  /** the node that was unfolded or folded to get here */
-  toggled?: string;
 }

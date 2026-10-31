@@ -172,8 +172,7 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
 COUNTED = {
     "import": ("{} references {} in {}", "name"),
     "http": ("{} makes {} to endpoints served by {}", "call"),
-    "endpoint": ("{} makes {} to endpoints served by {}", "call"),
-    "env": ("{} reads {} set by {}", "variable"),
+    "env": ("{} reads {} from {}", "variable"),
 }
 # deployment relations: a sentence with {} for source and target
 PLAIN = {
@@ -187,13 +186,9 @@ PLAIN = {
 
 def edge_info(ctx: Ctx, e) -> list:
     src, dst = ctx.name(e.src), ctx.name(e.dst)
-    sub = e.subkind.removesuffix("-dangling")
-    dangling = e.subkind.endswith("-dangling")
+    sub = e.subkind
     if e.kind == "provide":
-        return [say("{} serves endpoints that nothing here calls", dst)] if dangling else [say("{} is served by {}", src, dst)]
-    if dangling:
-        return [say("{} reads {} that nothing here sets", src, count(e.count, "variable"))] if sub == "env" \
-            else [say("{} uses {} that nothing here provides", src, count(e.count, "interface"))]
+        return [say("{} is served by {}", src, dst)]
     names = getattr(e, "names", None) or {}
     if sub == "import":
         if not names:  # import statements whose names were not recorded (TypeScript, unresolved Python)

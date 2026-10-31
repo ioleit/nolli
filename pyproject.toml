@@ -38,7 +38,7 @@ packages = ["nolli", "nolli.extractors", "nolli.extractors.infra", "nolli.extrac
 
 [tool.setuptools.package-data]
 "nolli" = ["skill/SKILL.md"]
-"nolli.viewer" = ["*.html", "*.css", "js/*.js", "js/layout/*.js"]
+"nolli.viewer" = ["*.html", "*.css", "js/*.js"]
 
 [tool.ruff]
 line-length = 110

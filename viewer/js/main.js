@@ -2,7 +2,7 @@
 // every label, badge and emphasis flag come from the server: /api/scene (nolli/scene.py).
 //
 //   state.js    view state, URL hash, scene query
-//   layout/     scene -> positions and edge routes, no DOM; one module per engine
+//   layout.js   scene -> positions and edge routes (ELK), no DOM
 //   draw.js     scene + layout -> SVG, with a handle per node to move and fade it
 //   transition.js, animate.js: the step between two pictures (plan, then play)
 //   raw.js      scene -> JSON view;  mermaid.js: the static export as a view
@@ -12,8 +12,8 @@
 // Types: types/nolli.d.ts, checked with `npm run check`.
 
 import { byId, input, select } from "./dom.js";
-import { ALL_ROLES, DEFAULTS, OPTIONS, VIEWS, query, readHash, state, writeHash } from "./state.js";
-import { ENGINES, layout } from "./layout/index.js";
+import { ALL_ROLES, DEFAULTS, VIEWS, query, readHash, state, writeHash } from "./state.js";
+import { layout } from "./layout.js";
 import { draw, drawGhosts, light } from "./draw.js";
 import { hideTip, pinTip } from "./tip.js";
 import { plan } from "./transition.js";
@@ -23,7 +23,7 @@ import { sidebar, syncControls } from "./sidebar.js";
 import { fit, focusOn } from "./panzoom.js";
 import { hideMermaid, showMermaid } from "./mermaid.js";
 import "./help.js";
-import { applyTheme, initialTheme, themeOptions } from "./theme.js";
+import { applyTheme, chooseTheme, initialTheme, themeOptions } from "./theme.js";
 import { itemById, loadItems, renderPanel, scrollToCurrent, showPanel, visibleItems } from "./review.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
@@ -130,7 +130,7 @@ function pointAtItem(moving = false) {
     const { ids, keys } = targets(id);
     const laid = shown.laid;
     const ends = scene.edges.filter(e => keys.includes(e.key)).flatMap(e => [e.src, e.dst]);
-    const smooth = state.animate && !reducedMotion.matches;
+    const smooth = !reducedMotion.matches;
     const ms = focusOn([...ids, ...ends].map(x => laid.nodes.get(x)).filter(/** @returns {b is import("../types/nolli").Box} */ b => !!b), smooth ? GLIDE : 0);
     light(byId("root"), ids, keys, true);
     pinTimer = setTimeout(() => { pinTimer = null; pinItem(id); }, ms + 30);
@@ -204,19 +204,19 @@ async function render(keepZoom = false) {
   hideRaw();
   const sc = scene, prev = shown, from = clicked;
   clicked = null;
-  const laid = await layout(sc, { engine: state.engine, direction: state.direction, seed: state.name || "", previous: prev?.laid, toggled: from || undefined });
+  const laid = await layout(sc);
   if (sc !== scene) return;  // a newer scene arrived while this one was laid out
   finish();
   const root = byId("root");
-  const drawn = draw(root, sc, laid, { toggle, review: !!sc.diff }, state.sameWidth);
+  const drawn = draw(root, sc, laid, { toggle, review: !!sc.diff });
   shown = { scene: sc, laid };
   if (keepZoom && fitted && prev) {
     // a step from the picture on screen: move from there, keeping the clicked box in place
     const p = plan(prev.scene, prev.laid, sc, laid, from);
-    play(p, drawn, drawGhosts(root, prev.scene, prev.laid, p.leaving.keys(), drawn.firstEdge), state.animate && !reducedMotion.matches ? undefined : 0);
+    play(p, drawn, drawGhosts(root, prev.scene, prev.laid, p.leaving.keys(), drawn.firstEdge), reducedMotion.matches ? 0 : undefined);
   } else fit(laid.width, laid.height);
   fitted = true;
-  pointAtItem(keepZoom && !!prev && state.animate && !reducedMotion.matches);
+  pointAtItem(keepZoom && !!prev && !reducedMotion.matches);
   const s = byId("status"); s.style.color = "";
   s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms.scene} ms, round trip ${scene.stats.ms.roundtrip} ms`;
 }
@@ -228,15 +228,8 @@ input("utilities").addEventListener("change", () => { state.utilities = Math.max
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; state.expanded = null; refresh(); });
 byId("reset").addEventListener("click", () => { state.expanded = null; refresh(); });
 byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; refresh(); });
-for (const [id, k] of Object.entries(OPTIONS)) input(id).addEventListener("change", () => { state[k] = input(id).checked; refresh(true); });
-input("nolabels").addEventListener("change", () => { state.noLabels = input("nolabels").checked; byId("g").classList.toggle("nolabels", state.noLabels); writeHash(); });
-input("samewidth").addEventListener("change", () => { state.sameWidth = input("samewidth").checked; writeHash(); if (state.view === "diagram") render(true); });
-select("theme").addEventListener("change", () => { state.theme = select("theme").value; applyTheme(state.theme); writeHash(); });
-input("animate").addEventListener("change", () => { state.animate = input("animate").checked; writeHash(); });
-select("direction").addEventListener("change", () => { state.direction = select("direction").value === "RIGHT" ? "RIGHT" : "DOWN"; writeHash(); if (state.view === "diagram") render(); });
+select("theme").addEventListener("change", () => { state.theme = select("theme").value; chooseTheme(state.theme); writeHash(); });
 themeOptions();
-for (const [k, e] of Object.entries(ENGINES)) { const o = document.createElement("option"); o.value = k; o.textContent = e.label; select("engine").appendChild(o); }
-select("engine").addEventListener("change", () => { state.engine = select("engine").value; writeHash(); if (state.view === "diagram") render(); });
 select("dataset").addEventListener("change", async () => {
   Object.assign(state, DEFAULTS, { name: select("dataset").value, item: null }); shown = null;
   await enter();
@@ -273,8 +266,7 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
   if (!name) { byId("status").textContent = "no datasets"; return; }
   sel.value = name;
-  Object.assign(state, h.st, { name, noLabels: h.noLabels, sameWidth: h.sameWidth, theme: initialTheme(h.theme), direction: h.direction, engine: ENGINES[h.engine] ? h.engine : "elk", animate: h.animate, view: h.view,
-    item: h.item, dim: h.dim });
+  Object.assign(state, h.st, { name, theme: initialTheme(h.theme), view: h.view, item: h.item, dim: h.dim });
   applyTheme(state.theme);
   // a link to an item unfolds what it needs (the hash may come from a different view state)
   await enter(h.item);

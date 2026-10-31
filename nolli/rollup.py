@@ -18,12 +18,9 @@ Two conventions keep the picture readable:
   ("uses 42 external packages"). Cross-cutting things are omnipresent; drawn,
   they hide the structure.
 
-Interfaces (endpoints, env variables) whose group is not shown are derived
-through: ``use(a, I)`` plus ``provide(b, I)`` yields
-``use(rep a, rep b)`` with the interface as ``via``. An interface with only
-one side keeps an edge to the interface's visible group for the kinds where
-the dangling half is informative (an endpoint nobody in the repo calls is
-still the service's surface; an env variable set but never read is noise).
+Interfaces (endpoints, env variables) are boxes in their group like anything else: a
+call or a read ends on the endpoint or variable when its group is shown, and becomes an
+annotation on the caller or reader when it is not.
 """
 
 from __future__ import annotations
@@ -35,9 +32,6 @@ from .model import ALLOCATE, PROVIDE, USE, Model
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "markup", "data", "asset", "other")
-DERIVE_KINDS = ("endpoint", "env")
-DANGLING_PROVIDE_KINDS = ("endpoint",)
-DANGLING_USE_KINDS = ()
 
 
 @dataclass
@@ -94,14 +88,13 @@ class RolledUp:
     allocations: dict[str, list[str]]  # code node -> drawn services it is copied into (chips, not edges)
     hidden_relations: int
     unresolved: dict[str, int]
-    suppressed: dict[str, int] = field(default_factory=dict)  # edge subkind -> count, hidden by option
     internal_changes: dict[str, dict[str, str]] = field(default_factory=dict)  # box -> changed facts inside it
     annotation_changes: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)  # node -> group -> changed facts
 
     def to_dict(self) -> dict:
         return {"visible": self.visible, "edges": [e.to_dict() for e in self.edges], "internal": self.internal,
                 "annotations": self.annotations, "allocations": self.allocations,
-                "hidden_relations": self.hidden_relations, "unresolved": self.unresolved, "suppressed": self.suppressed}
+                "hidden_relations": self.hidden_relations, "unresolved": self.unresolved}
 
 
 def image_aliases(m: Model) -> dict[str, str]:
@@ -459,13 +452,11 @@ def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int
     return sorted(pass_(pass_(edges, "dst"), "src"), key=lambda e: (e.src, e.dst, e.kind, e.subkind))
 
 
-def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_interfaces: bool = True,
-         dangling_use_kinds=DANGLING_USE_KINDS, dangling_provide_kinds=DANGLING_PROVIDE_KINDS,
-         annotate_folded_groups: bool = True, env_edges: bool = False, shown_groups=frozenset(),
-         side: str = "both") -> RolledUp:
+def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
+         shown_groups=frozenset(), side: str = "both") -> RolledUp:
     """``shown_groups``: root groups the viewer draws as boxes (folded or not); edges to them
-    are drawn, and interfaces inside them are not derived through. Other root groups are
-    filtered out of the picture: their edges become annotations.
+    are drawn. Other root groups are filtered out of the picture: their edges become
+    annotations on the other end, and an edge between two of them is left out.
     ``side``: in a diff model, "base" or "head" draws one commit only; "both" draws the
     merged picture, with removed facts counted on their base side."""
     alias = image_aliases(m)
@@ -477,7 +468,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
 
     internal_changes: dict[str, dict[str, str]] = defaultdict(dict)
 
-    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, via: str | None = None, name: str | None = None,
+    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, name: str | None = None,
             base: int | None = None, head: int | None = None, changed: dict[str, str] | None = None) -> None:
         if kind == PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
@@ -492,7 +483,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
         e = edges.get(key)
         if e is None:
             e = edges[key] = RolledEdge(kind, a, b, sub, 0, conf)
-        e.absorb(RolledEdge(kind, a, b, sub, count, conf, via={via} if via else set(), names={name: count} if name else {},
+        e.absorb(RolledEdge(kind, a, b, sub, count, conf, names={name: count} if name else {},
                             base=count if base is None else base, head=count if head is None else head, changed=changed or {}))
 
     def sides(r) -> tuple[int, int, str | None]:
@@ -509,8 +500,6 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
         st = (r.attrs.get("diff") or {}).get("status")
         return not ((side == "base" and st == "added") or (side == "head" and st == "removed"))
 
-    users: dict[str, list] = defaultdict(list)
-    providers: dict[str, list] = defaultdict(list)
     for r in m.relations:
         if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(m, r) or not on_side(r):
             continue
@@ -521,80 +510,40 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(), through_
             continue
         if r.subkind == "runs_as" and r.src in alias:
             continue
-        if through_interfaces and dst_ent.kind in DERIVE_KINDS and r.dst not in visible:
-            g = rep(r.dst)
-            # derive through the interface unless its group is drawn: then the group, route
-            # group or variable is a node and call and handler attach to it directly
-            if g is None or (m.entities[g].kind == "group" and m.parent(g) is None and g not in shown_groups):
-                (users if r.kind == USE else providers)[r.dst].append(r)
-                continue
         a, b = rep(r.src), rep(r.dst)
         if a is None or b is None:
             hidden_count += r.count
             continue
         rb, rh, st = sides(r)
-        add(r.kind, a, b, r.subkind, drawn_count(rb, rh), r.confidence, None, r.attrs.get("name"), rb, rh,
+        add(r.kind, a, b, r.subkind, drawn_count(rb, rh), r.confidence, r.attrs.get("name"), rb, rh,
             {fact_key(r): st} if st else None)
 
-    for iface in set(users) | set(providers):
-        us, ps = users.get(iface, []), providers.get(iface, [])
-        sub = m.entities[iface].kind
-        if us and ps:
-            for u in us:
-                a = rep(u.src)
-                if a is None:
-                    hidden_count += u.count
-                    continue
-                ub, uh, ust = sides(u)
-                for p in ps:
-                    b = rep(p.src)
-                    if b is None:
-                        continue
-                    pb, ph, pst = sides(p)
-                    # the derived edge exists on a side where both the call and the handler do
-                    db, dh = (ub if pb else 0), (uh if ph else 0)
-                    ch = {k: v for k, v in ((fact_key(u), ust), (fact_key(p), pst)) if v}
-                    add(USE, a, b, sub, drawn_count(db, dh), "heuristic" if "heuristic" in (u.confidence, p.confidence) else "exact",
-                        iface, base=db, head=dh, changed=ch)
-        else:
-            g = rep(iface)
-            keep = (us if sub in dangling_use_kinds else []) + (ps if sub in dangling_provide_kinds else [])
-            for r in keep:
-                a = rep(r.src)
-                if a is None or g is None:
-                    hidden_count += r.count
-                    continue
-                rb, rh, st = sides(r)
-                add(r.kind, a, g, sub + "-dangling", drawn_count(rb, rh), r.confidence, iface, base=rb, head=rh,
-                    changed={fact_key(r): st} if st else None)
-
-    # Edges touching a filtered-out group become annotations on the other end; a code node copied
-    # into a drawn service gets a chip instead of an edge; env wiring (reader -> setter) says
-    # the same as allocation and is suppressed unless asked for.
+    # Edges touching a filtered-out group become annotations on the other end (or are left out
+    # when both ends are such groups, e.g. environment set by deployment); a code node copied
+    # into a drawn service gets a chip instead of an edge.
     annotations: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     annotation_changes: dict[str, dict[str, dict[str, str]]] = defaultdict(lambda: defaultdict(dict))
     allocations: dict[str, list[str]] = defaultdict(list)
-    suppressed: dict[str, int] = defaultdict(int)
     kept: list[RolledEdge] = []
     def root_group(x: str) -> bool:
         return m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None and x not in shown_groups
 
     for e in edges.values():
         sg, dg = root_group(e.src), root_group(e.dst)
-        if annotate_folded_groups and (sg or dg) and not (sg and dg):
+        if sg and dg:
+            hidden_count += e.count
+        elif sg or dg:
             node, group = (e.dst, e.src) if sg else (e.src, e.dst)
             annotations[node][group] += e.count
             if e.changed:
                 annotation_changes[node][group].update(e.changed)
         elif e.kind == ALLOCATE and e.subkind == "copies" and m.has(e.dst) and m.entities[e.dst].kind == "service":
             allocations[e.src].append(e.dst)
-        elif e.subkind == "env" and not env_edges:
-            suppressed["env"] += e.count
         else:
             kept.append(e)
 
     return RolledUp(sorted(visible), sorted(kept, key=lambda e: (e.src, e.dst, e.kind, e.subkind)),
                   dict(internal), {k: dict(v) for k, v in annotations.items()},
-                  {k: sorted(v) for k, v in allocations.items()}, hidden_count, dict(unresolved), dict(suppressed),
+                  {k: sorted(v) for k, v in allocations.items()}, hidden_count, dict(unresolved),
                   {k: dict(v) for k, v in internal_changes.items()},
                   {k: {g: dict(c) for g, c in v.items()} for k, v in annotation_changes.items()})

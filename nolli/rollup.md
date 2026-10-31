@@ -22,18 +22,18 @@ readable. Each was a judgement call on a few repositories (reasons in `NOTES.md`
   same target;
 - **groups are a filter**: a group (external packages, environment, deployment, HTTP
   API) the view shows is a box like any other, folded or unfolded; one it doesn't show
-  becomes **badges instead of edges**, as do *utilities*, boxes with more than N
-  incoming edges in the picture (N = 6 by default, a viewer option): their incoming edges
+  becomes **badges instead of edges** (an edge between two hidden groups, such as
+  environment set by deployment, is left out), as do *utilities*, boxes with more than N
+  incoming edges in the picture (N = 4 by default, a viewer option): their incoming edges
   are not drawn; the utility says how many boxes use it ("used by 7"), and an unfolded box
   lists the utilities its children use ("→ progress", bottom right). A folded box lists none. By default only HTTP API is shown;
-- **internal edges** (both ends inside the same unfolded box) are hairlines, or hidden
-  with a count in the box header;
+- **internal edges** (both ends inside the same unfolded box) are hairlines;
 - **weak edges** (a small share of their source's references) are faint and unlabeled;
-- **interfaces** (endpoints, env variables) are derived through when their group is not
-  shown: a call and the route that serves it become one edge caller → handler; when the
-  group is shown, calls go into it (or the route group or endpoint, once unfolded), and
-  `provide` is drawn from it to the module that realises it (the fact keeps UML's
-  direction, the picture reverses it);
+- **interfaces** (endpoints, env variables) are boxes in their group: when the group is
+  shown, calls and reads go into it (or the route group, endpoint or variable, once
+  unfolded), and `provide` is drawn from it to the module that realises it (the fact
+  keeps UML's direction, the picture reverses it); when it is not, they are badges like
+  any other hidden group;
 - **a module's own code** (functions, constants, statements outside any class) is a small
   anchor in the module's header, not a box; a Python package's `__init__` is the
   package's own code in the same way, and its edges into its own package are dropped as
