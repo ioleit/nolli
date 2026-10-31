@@ -16,7 +16,7 @@ changes, and how much each one changed.
 ## How to use
 
 ```
-pip install nolli
+pip install nolli-review
 ```
 
 ### Viewing the current state
