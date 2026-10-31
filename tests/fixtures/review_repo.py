@@ -5,9 +5,9 @@ a TypeScript web client that calls it, and a compose file. The branch ``cache-an
 puts a cache in front of the invoice store, adds overdue alerts (which reach into the
 database directly, and which the database calls back after every write), moves the web
 client to a new summary endpoint and deletes a legacy export module. ``verdicts.json``
-judges its structure the way a review agent would, with every kind of verdict: a blunder,
-a problem, three questions, a brilliant, a good and a fine. (The brief does not offer the
-blunder and the praise yet; they are here for the viewer.)
+judges its structure the way a review agent would, with most kinds of verdict: a blunder,
+a problem, three questions, two goods and a fine. (The brief does not offer the blunder
+yet; it is here for the viewer.)
 
     python tests/fixtures/review_repo.py <out_dir>
 
@@ -146,7 +146,7 @@ VERDICTS = [
     {"target": "n_fs_web_src_client_ts ==> n_api_http_ledger_api_app_py_app_GET__alerts_overdue", "verdict": "question",
      "reason": "Client becomes a hub: expected from the title, but `client` now serves both "
                "`/customers` and `/alerts`, and every view goes through it. Split it per area as more arrive?"},
-    {"target": "n_fs_ledger_services_legacy_export_py", "verdict": "brilliant",
+    {"target": "n_fs_ledger_services_legacy_export_py", "verdict": "good",
      "reason": "Orphan removed: not in the title, but `legacy_export` and its endpoint had no caller in "
                "`web/src/`. Removing them takes a box, two endpoints and an edge into `storage/invoices` out of "
                "the graph, and `api/routes` loses a dependency."},

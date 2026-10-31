@@ -57,7 +57,7 @@ test("every verdict but fine is marked in the diagram, with its chess annotation
   await expect(page.locator("#root g.edge g.verdict.question text")).toHaveText(["?!", "?!"]);
   await expect(page.locator("#root g.edge.http g.verdict.question")).toHaveCount(1);
   await expect(boxMark(page, "fs:ledger/storage/cache.py").locator("text")).toHaveText("?!");
-  await expect(boxMark(page, "fs:ledger/services/legacy_export.py").locator("text")).toHaveText("!!");
+  await expect(boxMark(page, "fs:ledger/services/legacy_export.py").locator("path")).toHaveCount(1);
   // the good one is on views/alerts, inside web/src/, which is folded at first and shows it
   await expect(boxMark(page, "fs:web/src").locator("path")).toHaveCount(1);  // a thumbs up, not a glyph
   await expect(page.locator("#root g.verdict.fine")).toHaveCount(0);
@@ -66,8 +66,8 @@ test("every verdict but fine is marked in the diagram, with its chess annotation
 
   const rows = page.locator("#review .rv-verdict");
   // most attention first: doubts, then praise, then fine; in file order within a kind
-  await expect(rows.locator(".vd")).toHaveClass(["blunder", "problem", "question", "question", "question", "brilliant", "good", "fine"].map(v => "vd " + v));
-  await expect(page.locator("#review .rv-verdicts")).toContainText("?? 1 ? 1 ?! 3 !! 1 1 ✓ 1");  // good's mark is an icon
+  await expect(rows.locator(".vd")).toHaveClass(["blunder", "problem", "question", "question", "question", "good", "good", "fine"].map(v => "vd " + v));
+  await expect(page.locator("#review .rv-verdicts")).toContainText("?? 1 ? 1 ?! 3 2 ✓ 1");  // good's mark is an icon
   await expect(page.locator("#review .rv-verdicts .vd.good svg")).toHaveCount(1);
   // fine is greyed out in the list
   await expect(rows.filter({ has: page.locator(".vd.fine") }).locator(".rv-item")).toHaveCSS("opacity", "0.5");
@@ -105,11 +105,11 @@ test("hovering a question on an HTTP edge shows its reason", async ({ page }) =>
   await expect(page).toHaveScreenshot("question-on-http-edge.png", { clip: await around(page, [mark, tip(page)], 40) });
 });
 
-test("hovering a brilliant on a removed box shows its reason", async ({ page }) => {
+test("hovering a good on a removed box shows its reason", async ({ page }) => {
   await open(page);
   const id = "fs:ledger/services/legacy_export.py";
   await hoverMark(page, "Orphan removed", boxMark(page, id));
-  await expect(page).toHaveScreenshot("brilliant-on-removed-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
+  await expect(page).toHaveScreenshot("good-on-removed-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
 });
 
 test("hovering a good on a box shows its reason", async ({ page }) => {
