@@ -218,7 +218,7 @@ def counts(report: dict) -> str:
     """What a build found, in a few words (from report.json)."""
     ents, rels = report["summary"]["entities"], report["summary"]["relations"]
     parts = [f"{report['meta'].get('files') or ents.get('file', 0)} files"]
-    parts += [f"{ents[k]} {k}{'es' if k == 'class' else 's'}" for k in ("class", "service") if ents.get(k)]
+    parts += [f"{ents[k]} {k}{'es' if k == 'class' else 's'}" for k in ("class", "interface", "type", "enum", "service") if ents.get(k)]
     parts.append(f"{sum(v for k, v in rels.items() if k != 'contain')} dependencies")
     return ", ".join(parts)
 

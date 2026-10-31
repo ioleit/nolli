@@ -11,19 +11,12 @@ import re
 from pathlib import PurePosixPath
 
 from ..model import Entity, Provenance
-from . import Context
+from . import Context, languages
 
-LANG_BY_EXT = {
-    ".py": "python",
+# Languages nolli only names (their files are drawn, not read); the extracted languages
+# add their own extensions (``Language.extensions``, see ``lang_by_ext``).
+OTHER_LANGS = {
     ".pyi": "python",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".mts": "typescript",
-    ".cts": "typescript",
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
     ".go": "go",
     ".rs": "rust",
     ".java": "java",
@@ -56,6 +49,10 @@ CONFIG_FILES = {"Dockerfile", "Procfile", "Makefile", ".gitignore", ".gitattribu
 CONFIG_CODE = re.compile(r"(^|\.)(config|conf|rc)\.[cm]?[jt]sx?$|^\.(eslintrc|prettierrc|babelrc)|^(vite|vitest|jest|tailwind|postcss|eslint|babel|webpack|rollup|playwright|next|nuxt|svelte|astro)\.config\.")
 
 
+def lang_by_ext() -> dict[str, str]:
+    return OTHER_LANGS | {ext: v for lang in languages() for ext, v in lang.extensions.items()}
+
+
 MAX_COUNTED = 4 << 20  # don't read files over 4 MiB just to count their lines
 
 
@@ -76,7 +73,7 @@ def classify(rel: str) -> tuple[str | None, str]:
     p = PurePosixPath(rel)
     parts = set(p.parts[:-1])
     ext = p.suffix.lower()
-    lang = LANG_BY_EXT.get(ext)
+    lang = lang_by_ext().get(ext)
     if p.name in CONFIG_FILES or p.name.startswith("Dockerfile") or CONFIG_CODE.search(p.name):
         return lang, "config"
     if parts & TEST_DIRS or TEST_FILE.search(p.name):

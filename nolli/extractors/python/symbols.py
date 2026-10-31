@@ -107,14 +107,10 @@ def run(ctx: Context) -> None:
     m = ctx.model
     aliases_by_file: dict[str, dict[str, tuple[str, str]]] = {}
     pending: Counter[tuple[str, tuple]] = Counter()  # (src entity, binding) -> count
-    for f in ctx.progress.each(ctx.files):
-        rel = ctx.rel(f)
+    for rel in ctx.sources("python"):
         fid = ctx.fs_id(rel)
-        if not rel.endswith(".py") or not m.has(fid):
-            continue
-        try:
-            tree = ast.parse(ctx.read(rel), filename=rel)
-        except (SyntaxError, ValueError):
+        tree = ctx.tree(rel)
+        if tree is None:
             continue
         doc = doc_summary(tree)
         if doc:

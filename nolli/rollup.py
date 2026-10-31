@@ -28,7 +28,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from .model import ALLOCATE, PROVIDE, USE, Model
+from .extractors import package_bodies
+from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, Model
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "markup", "data", "asset", "other")
@@ -142,9 +143,10 @@ def is_file(m: Model, x: str) -> bool:
 
 
 def is_init(m: Model, x: str) -> bool:
-    """A Python package's ``__init__.py``: the body of the package, not a module of its own."""
+    """A package body (Python's ``__init__.py``, a TypeScript ``index.ts``; see
+    ``Language.package_body``): the folder's own code, not a module of its own."""
     e = m.entities.get(x)
-    return e is not None and e.kind == "file" and e.name == "__init__.py"
+    return e is not None and e.kind == "file" and e.name in package_bodies()
 
 
 def under(m: Model, x: str, d: str) -> bool:
@@ -170,7 +172,7 @@ def init_anchor_dirs(m: Model, hidden: set[str]) -> set[str]:
     """Directories whose ``__init__`` body still has edges after the default ones are
     dropped: these get an anchor node when unfolded, the others get nothing."""
     out: set[str] = set()
-    drawn_kinds = ("directory", "file", "class", "service", "image")  # badge targets (externals, env, endpoints) don't count
+    drawn_kinds = ("directory", "file", *SYMBOL_KINDS, "service", "image")  # badge targets (externals, env, endpoints) don't count
     for r in m.relations:
         if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(m, r):
             continue

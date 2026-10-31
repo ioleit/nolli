@@ -14,14 +14,10 @@ from ..interfaces import ensure_env
 
 def run(ctx: Context) -> None:
     m = ctx.model
-    for f in ctx.progress.each(ctx.files):
-        rel = ctx.rel(f)
+    for rel in ctx.sources("python", tests=False):
         fid = ctx.fs_id(rel)
-        if not rel.endswith(".py") or not m.has(fid) or m.entities[fid].attrs.get("role") == "test":
-            continue
-        try:
-            tree = ast.parse(ctx.read(rel), filename=rel)
-        except (SyntaxError, ValueError):
+        tree = ctx.tree(rel)
+        if tree is None:
             continue
         for node in ast.walk(tree):
             name = None

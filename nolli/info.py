@@ -17,14 +17,16 @@ from collections import defaultdict
 
 from .extractors import describers
 from .labels import is_body
+from .rollup import is_init
 from .model import ALLOCATE, PROVIDE, USE
 from .prose import Ctx, count, listing, say
 
-GENERIC_NOUN = {"directory": "subfolder", "file": "file", "class": "class", "endpoint": "endpoint", "group": "group",
+GENERIC_NOUN = {"directory": "subfolder", "file": "file", "class": "class", "interface": "interface", "type": "type",
+                "enum": "enum", "endpoint": "endpoint", "group": "group",
                 "env": "variable", "service": "service", "image": "image", "package": "package", "host": "host"}
 WHAT = {"endpoint": "an HTTP endpoint", "env": "an environment variable", "service": "a Compose service",
         "image": "a Docker image", "package": "an external package", "host": "a host"}
-NOUN_ORDER = ["subpackage", "subfolder", "module", "class"]  # earlier in a list; the rest by count
+NOUN_ORDER = ["subpackage", "subfolder", "module", "class", "interface", "type", "enum"]  # earlier in a list; the rest by count
 
 
 def noun(ctx: Ctx, x: str) -> str:
@@ -138,8 +140,9 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
             return said
         owner = ctx.name(x[5:])
         if m.entities[x[5:]].kind == "directory":
-            return [say("The code in {}'s __init__ file beyond re-exporting its modules", owner)]
-        return [say("The code in {} outside any class", owner)]
+            body = next((m.entities[c].name for c in m.children(x[5:]) if is_init(m, c)), "package")
+            return [say("The code in {}'s " + body + " beyond re-exporting its modules", owner)]
+        return [say("The code in {} outside its classes and types", owner)]
     e = m.entities[x]
     lines: list[list] = []
     said = None if e.kind == "directory" else first("describe", ctx, x)

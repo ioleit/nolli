@@ -12,7 +12,7 @@ def init_of(ctx: Ctx, x: str) -> str | None:
     m = ctx.m
     if m.entities[x].kind != "directory":
         return None
-    return next((c for c in m.children(x) if is_init(m, c)), None)
+    return next((c for c in m.children(x) if is_init(m, c) and m.entities[c].attrs.get("language") == "python"), None)
 
 
 def is_module(ctx: Ctx, x: str) -> bool:

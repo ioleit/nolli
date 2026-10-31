@@ -1,16 +1,16 @@
 """How the picture names things: shared by the scene and the hover descriptions.
 
 Every box is named the same way: zero or more small icons that say what it is (``D``
-directory, ``m`` module, ``C`` class, ``svc``/``img`` deployment, ``API``, ``/`` a path step
+directory, ``m`` module, the language's symbol icons (``C`` class, ``I`` interface, ``T``
+type, ``E`` enum), ``svc``/``img`` deployment, ``API``, ``/`` a path step
 of an API, the verbs of an operation), then a readable name (``icons_of``, ``name_of``).
 Text that has no icons (hover descriptions, residue) uses ``label_of``."""
 
 from __future__ import annotations
 
+from .extractors import module_languages, symbol_icons
 from .model import Model
 from .rollup import display_path, is_init
-
-MODULE_LANGS = ("python", "typescript", "javascript")
 
 
 def is_body(x: str) -> bool:
@@ -26,10 +26,10 @@ def icons_of(m: Model, x: str) -> list[str]:
     e = m.entities[x]
     if e.kind == "directory":
         return ["D"]
-    if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
+    if e.kind == "file" and e.attrs.get("language") in module_languages():
         return ["m"]
-    if e.kind == "class":
-        return ["C"]
+    if e.kind in symbol_icons():
+        return [symbol_icons()[e.kind]]
     if e.kind == "service":
         return ["svc"]
     if e.kind == "image":
@@ -50,7 +50,7 @@ def name_of(m: Model, x: str, expanded: set[str]) -> str:
     e = m.entities[x]
     if e.kind == "directory":
         return e.name if e.attrs.get("root") else display_path(m, x, expanded)
-    if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
+    if e.kind == "file" and e.attrs.get("language") in module_languages():
         return e.name.rsplit(".", 1)[0] if "." in e.name else e.name  # a source file is its module
     if e.kind == "image":
         return e.name.removesuffix("/Dockerfile")

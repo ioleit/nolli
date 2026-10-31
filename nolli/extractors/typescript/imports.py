@@ -13,20 +13,19 @@ from tree_sitter_language_pack import get_parser
 from ...model import USE, Entity, Provenance, Relation
 from .. import Context
 
-PARSER_BY_LANG = {"typescript": None, "javascript": None}
-EXT_LANG = {".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx", ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript"}
+GRAMMAR = {".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",
+           ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript"}
 
 _parsers: dict[str, object] = {}
 
 
-def parser_for(rel: str):
-    ext = "." + rel.rsplit(".", 1)[-1] if "." in rel else ""
-    lang = EXT_LANG.get(ext)
-    if not lang:
-        return None
-    if lang not in _parsers:
-        _parsers[lang] = get_parser(lang)
-    return _parsers[lang]
+def parse(rel: str, source: bytes):
+    """A tree-sitter tree: the TSX grammar for .tsx, TypeScript's for the other TS
+    extensions, JavaScript's (which reads JSX) for the JS ones."""
+    grammar = GRAMMAR["." + rel.rsplit(".", 1)[-1].lower()]
+    if grammar not in _parsers:
+        _parsers[grammar] = get_parser(grammar)
+    return _parsers[grammar].parse(source)
 
 
 def string_value(node) -> str | None:
@@ -73,15 +72,9 @@ def specifiers(tree) -> list[tuple[str, int]]:
 def run(ctx: Context) -> None:
     m = ctx.model
     pending: list[tuple[str, str, int]] = []
-    for f in ctx.files:
-        rel = ctx.rel(f)
-        p = parser_for(rel)
-        if p is None or not m.has(ctx.fs_id(rel)):
-            continue
-        try:
-            tree = p.parse(ctx.read(rel))
-        except Exception:
-            ctx.notes.setdefault("parse-errors", []).append(rel)
+    for rel in ctx.sources("typescript"):
+        tree = ctx.tree(rel)
+        if tree is None:
             continue
         fid = ctx.fs_id(rel)
         for spec, line in specifiers(tree):

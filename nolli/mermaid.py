@@ -5,20 +5,18 @@ from __future__ import annotations
 import re
 
 from .changes import is_diff, node_diff
+from .extractors import module_languages
 from .rollup import HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, display_path, hidden_by_role, image_aliases, is_init
-from .model import Model
+from .model import SYMBOL_KINDS, Model
 
 ARROW = {"import": "-->", "ref": "-->", "http": "==>", "env": "-.->", "depends_on": "-->", "url": "-->",
          "runs_as": "-.->", "copies": "-.->", "entrypoint": "-.->"}
 GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "api": "api"}
 
 
-MODULE_LANGS = ("python", "typescript", "javascript")
-
-
 def module_name(e) -> str:
     """A source file is shown as its module: name without the extension."""
-    if e.kind == "file" and e.attrs.get("language") in MODULE_LANGS:
+    if e.kind == "file" and e.attrs.get("language") in module_languages():
         return e.name.rsplit(".", 1)[0]
     return e.name
 
@@ -38,8 +36,8 @@ def label(m: Model, eid: str, ann: dict[str, int] | None, expanded: set[str] = f
             base = (e.name if e.attrs.get("root") else display_path(m, eid, expanded)) + "/"
         elif e.kind == "file":
             base = module_name(e)
-        elif e.kind == "class":
-            base = f"class {e.name}"
+        elif e.kind in SYMBOL_KINDS:
+            base = f"{e.kind} {e.name}"
         elif e.kind == "service":
             base = f"svc {e.name}"
         elif e.kind == "image":
@@ -95,7 +93,7 @@ def render(m: Model, view: dict, rolled: RolledUp) -> str:
         elif n in visible:
             if e.kind == "group" and m.parent(n) is None and n not in touched:
                 return  # folded root groups appear as annotations on the nodes that use them
-            cls = ":::ext" if e.kind == "package" else ":::deploy" if e.kind in ("service", "image", "host") else ":::group" if e.kind == "group" else ":::symbol" if e.kind in ("class", "function") else ""
+            cls = ":::ext" if e.kind == "package" else ":::deploy" if e.kind in ("service", "image", "host") else ":::group" if e.kind == "group" else ":::symbol" if e.kind in SYMBOL_KINDS else ""
             st = status_of(n)
             out.append(f'{pad}{nid(n)}["{label(m, n, rolled.annotations.get(n), expanded, rolled.allocations.get(n))}"]{":::" + st if st else cls}')
 
