@@ -1,6 +1,6 @@
 ---
 name: nolli-review
-description: Architecture review of a code change with nolli - a branch, a commit range or a GitHub pull request. Builds the diagram of what the change does to the repository's structure, judges each changed box and edge (fine / question / problem), checks the verdicts and opens them in nolli's viewer. Use when the user asks to review a change, branch or PR with nolli, or for an architecture or structural review of a change.
+description: Architecture review of a code change with nolli - a branch, a commit range or a GitHub pull request. Builds the diagram of what the change does to the repository's structure, judges each changed box and edge (fine / good / question / problem), checks the verdicts and opens them in nolli's viewer. Use when the user asks to review a change, branch or PR with nolli, or for an architecture or structural review of a change.
 ---
 
 # Architecture review of a change with nolli
@@ -48,7 +48,7 @@ commit or have uncommitted edits; don't read files from it. Don't change anythin
 repository.
 
 Write your verdicts to the `verdicts` path: a JSON list of
-`{"target": ..., "verdict": "fine" | "question" | "problem", "reason": ...}`.
+`{"target": ..., "verdict": "fine" | "good" | "question" | "problem", "reason": ...}`.
 
 ## 4. Check
 

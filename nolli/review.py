@@ -17,7 +17,8 @@ from .model import Model
 from .prose import count, listing, say
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
-# shows the mark of a box's highest-ranked verdict). The brief offers only fine / question / problem.
+# shows the mark of a box's highest-ranked verdict). The brief offers fine / good / question / problem;
+# brilliant and blunder are not offered yet.
 VERDICTS = ("fine", "good", "brilliant", "question", "problem", "blunder")
 VERDICT_RANK = {v: i for i, v in enumerate(VERDICTS)}
 
@@ -159,16 +160,16 @@ unfolded, everything else folded. Boxes and edges carry the classes `added`, `re
 `changed`; an edge's label says how its number of references changed (`added 0→3`). A
 reviewer looks at this same picture in a viewer, and your verdicts are shown on it: each
 one as a mark on one box or edge. Clicking the mark shows your reason on its own, not next
-to your other verdicts and not next to the code. The reviewer has seen the diagram and the
-title of the change, nothing else.
+to your other verdicts and not next to the code. Before the diagram, the reviewer has seen
+only the heading above: what the change is for.
 
 Review the way they do:
 
-1. **The diagram first, with only the title.** For each added, removed or changed box and
-   edge: how expected is it, given what the change is for? Does it make a structure of the
-   graph better or worse: create or break a cycle, depend upwards across layers (a
-   lower-level module on a higher-level one), add a hub or a fan-out, cross between areas
-   that were separate, leave something orphaned or duplicated?
+1. **The diagram first, knowing only what the change is for.** For each added, removed or
+   changed box and edge: how expected is it, given what the change is for? Does it make a
+   structure of the graph better or worse: create or break a cycle, depend upwards across
+   layers (a lower-level module on a higher-level one), add a hub or a fan-out, cross
+   between areas that were separate, leave something orphaned or duplicated?
 2. **Then the reasons, where they help.** Read the description below and, if needed, the
    code, to find out why a box or edge was added or removed.
 
@@ -176,6 +177,9 @@ Give every changed box and edge a verdict:
 
 - `fine`: expected for what the change is for, or surprising but justified by the reason
   you found;
+- `good`: it makes the structure clearly better: it breaks a cycle, removes an upward
+  dependency or a duplicate, or separates areas that were tangled. Not for a change that
+  is only as intended or tidy; most changes have none or a few of these;
 - `question`: surprising, or it makes the structure worse, and you found no convincing
   reason; something to ask the author;
 - `problem`: it makes the structure worse, and the reason you found does not justify it.
@@ -183,18 +187,27 @@ Give every changed box and edge a verdict:
 Leave a change out only when another verdict already covers it (the classes of a new
 module, when you judge the module).
 
-Judge "expected" by the title literally: a change that is what the title describes (a new
-dependency on the thing the title says calls now go through) is expected. Say so in a few
-words; do not make it sound surprising.
+Judge "expected" literally by what the change says it is for: a change that does just that
+(a new dependency on the thing the change says calls now go through) is expected. Say so in
+a few words; do not make it sound surprising.
 
-Each reason is about the box or edge it is on. It starts with a headline of one to four
-words and a colon that sums up the whole verdict, the point a reviewer takes away without
-reading on: "As intended:", "New cycle:", "Upward dependency:", "Redundant import:",
-"Domain rule in events/:". Then at most three short sentences, in this order: how expected
-the change is, given the title; what it does to the structure of the graph, in terms of the
-diagram's boxes; and only if it adds something, the actual reason, phrased so that it needs
-no knowledge of the code. Name boxes as the diagram labels them, never by their node ids. A
-concern about a different box or edge goes on that one.
+Each reason is about the box or edge it is on, and is read on its own, without the heading
+or the description: call the change "this change", never "the title" or "the description".
+It starts with a headline of one to four words and a colon that sums up the whole verdict,
+the point a reviewer takes away without reading on.
+
+- A `fine` reason is "As intended:" and one short sentence: what the box or edge is in this
+  change, and, if it says something, why it sits where it does. "As intended: the cache this
+  change puts in front of the store. Next to `store`, where its callers already are." Not
+  how its code works.
+- Any other verdict names its point in the headline: "Cycle broken:", "Upward dependency
+  removed:", "New cycle:", "Upward dependency:", "Redundant import:", "Domain rule in
+  events/:". Then at most three short sentences, in this order: how expected the change is;
+  what it does to the structure of the graph, in terms of the diagram's boxes; and only if
+  it adds something, the actual reason, phrased so that it needs no knowledge of the code.
+
+Name boxes as the diagram labels them, never by their node ids. A concern about a different
+box or edge goes on that one.
 
 Write every name in backticks, as Markdown code: boxes (`events/service`), modules,
 classes, functions and other symbols (`PuppetGateway`, `character_conv_id`). The viewer
