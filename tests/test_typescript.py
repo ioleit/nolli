@@ -12,6 +12,7 @@ import pytest
 
 from nolli.cli import extract
 from nolli.info import edge_info
+from nolli.labels import module_stem
 from nolli.prose import Ctx
 from nolli.rollup import RolledEdge, is_init
 
@@ -140,6 +141,10 @@ def test_resolution_particulars(model):
     assert ("ts:legacy/server.js#Server", "fs:legacy/http.js") in refs
     assert ("ts:legacy/server.js#Server", "fs:legacy/db.js") in refs
     assert ctx.notes["js-resolution"].get("unresolved", 0) == 0
+
+
+def test_declaration_files_are_named_as_modules():
+    assert module_stem("vite-env.d.ts") == "vite-env" and module_stem("api.ts") == "api" and module_stem("a.b.js") == "a.b"
 
 
 def test_index_is_the_folders_own_code(model):

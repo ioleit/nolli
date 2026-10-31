@@ -13,6 +13,12 @@ from .model import Model
 from .rollup import display_path, is_init
 
 
+def module_stem(file_name: str) -> str:
+    """A source file's module name: without its extension, ``.d.ts`` included."""
+    stem = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+    return stem[:-2] if stem.endswith(".d") and file_name.endswith(("ts", "mts", "cts")) else stem
+
+
 def is_body(x: str) -> bool:
     return x.startswith("body:")
 
@@ -51,7 +57,7 @@ def name_of(m: Model, x: str, expanded: set[str]) -> str:
     if e.kind == "directory":
         return e.name if e.attrs.get("root") else display_path(m, x, expanded)
     if e.kind == "file" and e.attrs.get("language") in module_languages():
-        return e.name.rsplit(".", 1)[0] if "." in e.name else e.name  # a source file is its module
+        return module_stem(e.name)  # a source file is its module
     if e.kind == "image":
         return e.name.removesuffix("/Dockerfile")
     if e.kind == "endpoint" and "name" in e.attrs:
