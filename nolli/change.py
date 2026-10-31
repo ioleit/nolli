@@ -7,6 +7,7 @@ Plain git only; nothing here knows about GitHub or any other host.
   HEAD); on the default branch itself, or with nothing new on the branch, HEAD as a whole;
 - ``A..B``: exactly from A to B;
 - ``A...B``: from where A and B diverged to B (what B adds, as a pull request shows it);
+- ``--whole`` (a separate option): HEAD, or the commit given, as a whole;
 - one revision R: what R adds to the default branch, from where they diverged to R; if R
   is already on the default branch (a commit, or a merged pull request's merge commit),
   R's own change against its first parent.
@@ -115,6 +116,11 @@ def resolve(repo: Path, spec: str | None) -> Change:
     if parent is None:
         return describe(repo, Change(head=head), rev)
     return describe(repo, Change(head=head, base=parent), rev)
+
+
+def whole(repo: Path, rev: str = "HEAD") -> Change:
+    """One commit as a whole, no change: ``nolli view --whole [<commit>]``."""
+    return describe(repo, Change(head=commit(repo, rev)), rev)
 
 
 def describe(repo: Path, ch: Change, rev: str) -> Change:

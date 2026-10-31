@@ -14,24 +14,27 @@ changes, and how much each one changed.
 
 ## How to use
 
-Install (Python 3.11 or later):
-
 ```
-pipx install git+https://github.com/ioleit/nolli
+pip install nolli
 ```
 
-Then, in the repository:
+### Viewing the current state
+
+In a git repository:
 
 ```
-nolli view '#48'            # a GitHub pull request (or its URL)
+nolli view --whole
+```
+
+### Viewing changes
+
+```
 nolli view                  # your current branch
+nolli view '#48'            # a GitHub pull request (or its URL)
+nolli view <base>..<head>   # any two revisions
 ```
 
-It opens the change in your browser.
-
-![A pull request in Nolli's viewer: changed boxes and edges in orange, a removed dependency dashed red, verdict markers from a review agent](docs/review.png)
-
-## Reviewing with an agent
+### Reviewing changes with an agent
 
 Install the skill for your coding agent:
 
@@ -39,9 +42,11 @@ Install the skill for your coding agent:
 nolli agent skill --install ~/.claude/skills
 ```
 
-Then tell your agent to "review PR #48 with nolli". It reviews the change and gives you a
-link to the viewer, where its verdicts on the structure (fine, question, problem, with
-reasons) sit on the boxes and edges they are about, worst first.
+Then tell your agent to "review PR #48 with nolli". It gives you a link to the viewer,
+with its verdicts on the structure (fine, question, problem, with reasons) on the boxes
+and edges they are about.
+
+![A pull request in Nolli's viewer: changed boxes and edges in orange, a removed dependency dashed red, verdict markers from a review agent](docs/review.png)
 
 ## What it reads
 

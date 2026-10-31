@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.change import ChangeError, dataset_name, default_branch, resolve
+from nolli.change import ChangeError, dataset_name, default_branch, resolve, whole
 
 
 def git(repo: Path, *args: str) -> str:
@@ -73,6 +73,13 @@ def test_a_commit_on_main_is_its_own_change(repo):
     assert (ch.base, ch.head) == (c["c2"], c["m"])
     one = resolve(r, c["f1"])  # merged already, so against its parent; one commit gives subject and body
     assert (one.base, one.head, one.title, one.description) == (c["c2"], c["f1"], "Add f1", "Why f1 exists.")
+
+
+def test_whole(repo):
+    r, c = repo
+    git(r, "checkout", "-q", "feature")
+    assert (whole(r).base, whole(r).head) == (None, c["f2"])  # on a branch: HEAD as a whole, not the change
+    assert whole(r, "main").head == c["m"]
 
 
 def test_ranges(repo):

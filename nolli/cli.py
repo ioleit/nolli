@@ -1,6 +1,6 @@
 """nolli command line.
 
-    nolli view [<change> | <dataset dir>] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
+    nolli view [<change> | <dataset dir>] [--whole] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli agent brief [<change>] | agent check <dataset> | agent skill [--install DIR]
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
@@ -172,12 +172,14 @@ def build(args: argparse.Namespace, cmd: str) -> Built | None:
     """Resolve args.change in args.repo and build its dataset unless a fresh one exists.
     Progress goes to stderr; None (after saying why) if the change cannot be resolved."""
     from . import github
-    from .change import ChangeError, dataset_name, resolve, toplevel
+    from .change import ChangeError, dataset_name, resolve, toplevel, whole
 
     host: dict = {}
     try:
         repo = toplevel(Path(args.repo).resolve())
-        if github.is_pull_request(args.change):
+        if getattr(args, "whole", False):
+            ch = whole(repo, args.change or "HEAD")
+        elif github.is_pull_request(args.change):
             ch, host = github.resolve(repo, args.change)
         else:
             ch = resolve(repo, args.change)
@@ -186,7 +188,7 @@ def build(args: argparse.Namespace, cmd: str) -> Built | None:
         return None
     data = data_dir(args.data)
     b = Built(repo, ch, host, data, dataset_name(repo, ch, host.get("pr")))
-    what = f"{ch.base[:7]}..{ch.head[:7]}" if ch.is_diff else f"{ch.head[:7]} (the whole repository; no change to show)"
+    what = f"{ch.base[:7]}..{ch.head[:7]}" if ch.is_diff else f"{ch.head[:7]} (the whole repository)"
     print(f"{repo.name}: {what}  {ch.title}", file=sys.stderr)
     if args.rebuild or not fresh(b.out):
         print(f"building {b.out} …", file=sys.stderr)
@@ -339,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
     vw.add_argument("--repo", default=".", help="the repository (default: the one you are in)")
     vw.add_argument("--data", help="where datasets are kept (default: $NOLLI_DATA, else $XDG_DATA_HOME/nolli or ~/.local/share/nolli)")
     vw.add_argument("--budget", type=int, default=34)
+    vw.add_argument("--whole", action="store_true", help="the whole repository at HEAD (or at <change>, a commit), not a change")
     vw.add_argument("--rebuild", action="store_true", help="build the dataset again even if it exists")
     vw.add_argument("--build-only", action="store_true", help="build the dataset, print its directory, don't serve")
     vw.add_argument("--host", default="127.0.0.1")
