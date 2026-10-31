@@ -242,8 +242,7 @@ export function draw(g, scene, laid, handlers) {
     for (const pts of sections) {
       const d = "M" + pts.map(p => `${p.x},${p.y}`).join("L");
       const line = "M" + shortened(pts).map(p => `${p.x},${p.y}`).join("L");
-      const width = Math.min(2.6, 0.8 + 0.4 * Math.log2(e.count));  // wider the more references it stands for
-      ge.appendChild(el("path", { d: line, "stroke-width": width }));
+      ge.appendChild(el("path", { d: line, "stroke-width": 1.2 }));  // every edge one width, whatever its count
       if (pts.length > 1) ge.appendChild(el("polygon", { class: "head", points: head(pts) }));
       ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
       const a = pts[Math.floor((pts.length - 1) / 2)], b = pts[Math.ceil((pts.length - 1) / 2)]; mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
