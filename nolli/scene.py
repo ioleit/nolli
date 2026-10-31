@@ -287,15 +287,36 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
             if r is not None and r in drawn:
                 node_items[r].add(it["id"])
                 break
-    # verdicts: on the drawn box that stands for their target, or the drawn edge between the
-    # boxes that stand for its two ends (an edge that fell inside one box lands on that box)
+    # verdicts: on the drawn box that stands for their target, or on the drawn edge that carries
+    # the edge between its two ends. Roll-up and fan bundling both draw an edge between boxes
+    # that contain its ends (a folded box, or the unfolded box a bundle ends at), so that is the
+    # drawn edge between the boxes around the two ends, the innermost there is. An edge that
+    # fell inside one box lands on that box; one drawn as a badge, on its source.
     def drawn_box(x: str) -> str | None:
         r = x if x in drawn else rep(x[5:] if is_body(x) else x)
         return r if r in drawn else None
 
+    parent = {n["id"]: n.get("parent") for n in nodes}
+
+    def around(x: str) -> list[str]:
+        """x and the drawn boxes around it, innermost first."""
+        out = [x]
+        while parent.get(out[-1]) in drawn:
+            out.append(parent[out[-1]])
+        return out
+
     edge_at: dict[tuple[str, str], dict] = {}
     for e in edges:
         edge_at.setdefault((e["src"], e["dst"]), e)
+
+    def carrier(a: str, b: str) -> dict | None:
+        """The drawn edge that carries an edge from a to b (drawn boxes), or from b to a."""
+        for s, d in ((a, b), (b, a)):
+            found = [(i + j, edge_at[(x, y)]) for i, x in enumerate(around(s)) for j, y in enumerate(around(d)) if (x, y) in edge_at]
+            if found:
+                return min(found, key=lambda f: f[0])[1]
+        return None
+
     on_node: dict[str, list[dict]] = defaultdict(list)
     on_edge: dict[str, list[dict]] = defaultdict(list)
     for v in verdicts:
@@ -303,7 +324,7 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
         if not ends or None in ends:
             continue
         if len(ends) == 2 and ends[0] != ends[1]:
-            e = edge_at.get((ends[0], ends[1])) or edge_at.get((ends[1], ends[0]))
+            e = carrier(ends[0], ends[1])
             if e is not None:
                 on_edge[e["key"]].append(v)
                 continue
