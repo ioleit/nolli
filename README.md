@@ -64,8 +64,19 @@ nolli serve
 serves any public GitHub repository, pull request or commit under GitHub's own paths:
 `/<owner>/<repo>/pull/48` shows what `nolli view https://github.com/<owner>/<repo>/pull/48`
 shows. A pull request's page shows the verdicts nolli's CI left for its head commit, if
-there are any. With `ANTHROPIC_API_KEY` set (and the `[api]` extra), anyone who can open
-the server's pages can start a review on it.
+there are any. With `ANTHROPIC_API_KEY` set, anyone who can open the server's pages can
+start a review on it.
+
+Without a token the server asks GitHub as nobody, which allows 60 requests an hour. A
+GitHub App's token raises that to 5,000: set `NOLLI_GITHUB_APP_ID` and
+`NOLLI_GITHUB_APP_PRIVATE_KEY` (or `NOLLI_GITHUB_APP_PRIVATE_KEY_FILE`), and
+`NOLLI_GITHUB_APP_INSTALLATION_ID` if the app has more than one installation; or give any
+token as `NOLLI_GITHUB_TOKEN`. Private repositories are never shown, whatever the token
+can see.
+
+```
+pip install 'nolli-review[serve]'
+```
 
 ![A pull request in Nolli's viewer: added edges in green, a removed module dashed red, verdict marks from a review agent in chess notation, and the card of the worst one, a new import cycle](https://raw.githubusercontent.com/ioleit/nolli/main/viewer/e2e/__screenshots__/review.spec.js/blunder-on-edge.png)
 

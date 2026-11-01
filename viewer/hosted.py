@@ -8,10 +8,11 @@ shows, ``/<owner>/<repo>/commit/<sha>`` the change that commit makes to its pare
 visit builds the dataset in the background (a page says how far it got); later visits find
 it under ``<cache>/data``, named after the commits, so a new push is a new dataset.
 
-Repositories are kept as bare clones under ``<cache>/repos``. Everything is asked for as
-nobody: GitHub's API without a token and git with no credentials and none of this machine's
-git configuration, so only public repositories can be shown, whatever this machine's own
-logins could reach. A private repository answers 404 like a missing one.
+Repositories are kept as bare clones under ``<cache>/repos``. git runs with no credentials
+and none of this machine's git configuration. GitHub's API is asked with the token of
+nolli/github_app.py if one is configured (a GitHub App's, for 5,000 requests an hour instead
+of 60), else as nobody; either way only public repositories are shown: one GitHub says is
+private answers 404 like a missing one, whatever the token or this machine's logins reach.
 
 Each commit's extraction is kept under ``<cache>/extractions`` (nolli/extractions.py), so a pull
 request's base is extracted once for all its pushes. With ``--keep 20G`` the cache stays within
@@ -51,7 +52,7 @@ HERE = Path(__file__).resolve().parent
 if not __package__:
     sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
-from nolli import github, retention  # noqa: E402
+from nolli import github, github_app, retention  # noqa: E402
 from nolli.change import ChangeError, git  # noqa: E402
 from nolli.build import build_commit, build_diff, fresh, version  # noqa: E402
 from nolli.extractions import Extractions  # noqa: E402
@@ -119,7 +120,7 @@ class Job:
 class Site:
     """The datasets and clones under one cache directory, and the builds under way."""
 
-    def __init__(self, cache: Path, budget: int = 34, keep: int | None = None):
+    def __init__(self, cache: Path, budget: int = 34, keep: int | None = None, token: github_app.Token | None = None):
         self.cache, self.budget = cache, budget
         self.data, self.repos = cache / "data", cache / "repos"
         self.data.mkdir(parents=True, exist_ok=True)
@@ -132,20 +133,42 @@ class Site:
         self.repo_locks: dict[str, threading.Lock] = {}
         self.answers: dict[str, tuple[float, dict]] = {}
         self.ci: dict[str, tuple[float, dict]] = {}  # dataset name -> when its PR's comments were read, what they had
+        self.github = token or github_app.Token()
+        self.token_failed = ""  # why the token could not be had, said once
 
     def api(self, path: str) -> dict:
         """GitHub's answer for ``path``, asked as nobody, reused for LOOKUP_TTL seconds."""
         hit = self.answers.get(path)
         if hit and time.time() - hit[0] < LOOKUP_TTL:
             return hit[1]
-        out = github.api(path, None)
+        out = self.ask(path)
         self.answers[path] = (time.time(), out)
         return out
+
+    def ask(self, path: str) -> dict:
+        """GitHub's answer for ``path``, with the server's token if it has one. An installation
+        token may not see a public repository the app is not installed on: a 404 with it is asked
+        again as nobody. A token that cannot be had (a wrong key) is said once, then nobody asks."""
+        try:
+            tok = self.github.token()
+        except (ChangeError, ValueError, ImportError) as exc:
+            if str(exc) != self.token_failed:
+                self.token_failed = str(exc)
+                print(f"nolli serve: no GitHub token, asking as nobody: {exc}", file=sys.stderr, flush=True)
+            tok = None
+        try:
+            return github.api(path, tok)
+        except github.NotFound:
+            if not tok:
+                raise
+            return github.api(path, None)
 
     def plan(self, owner: str, repo: str, pull: int | None = None, sha: str | None = None) -> Plan:
         """What ``/<owner>/<repo>[/pull/<n> | /commit/<sha>]`` shows. Raises github.NotFound for a
         missing or private repository, ChangeError if GitHub cannot be asked."""
         info = self.api(f"repos/{owner}/{repo}")
+        if info.get("private") is not False:  # what a token sees beyond public repositories stays unseen
+            raise github.NotFound(f"GitHub: repos/{owner}/{repo}: private")
         owner, repo = info["full_name"].split("/")  # GitHub's spelling (paths are case-insensitive)
         remote, key = f"https://github.com/{owner}/{repo}", f"{owner}_{repo}"
         if pull is not None:
@@ -206,7 +229,7 @@ class Site:
             return {"found": None, "applies": False}
         info: dict = {"found": None, "applies": True}
         try:
-            comments = github.api(f"repos/{m.group(1)}/{m.group(2)}/issues/{d['pr']}/comments?per_page=100", None)
+            comments = self.ask(f"repos/{m.group(1)}/{m.group(2)}/issues/{d['pr']}/comments?per_page=100")
         except ChangeError as exc:
             info["error"] = str(exc)
             self.ci[ds.name] = (time.time(), info)
@@ -434,7 +457,7 @@ def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: 
     # git: no credentials, prompts, or this machine's configuration (an insteadOf could reach private repos by ssh)
     os.environ.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_ASKPASS="true",
                       SSH_ASKPASS="true", GIT_SSH_COMMAND="false")
-    site = Site(Path(cache).expanduser().resolve(), budget, keep)
+    site = Site(Path(cache).expanduser().resolve(), budget, keep, github_app.from_env())
     threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now
     HostedHandler.site = site
     HostedHandler.data_root = site.data
@@ -451,7 +474,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="the cache's size at most, e.g. 20G: what was used longest ago goes first (default: keep everything)")
     args = ap.parse_args(argv)
     srv = make_server(Path(args.cache), args.host, args.port, args.budget, args.keep)
-    print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {HostedHandler.site.cache})", file=sys.stderr, flush=True)
+    print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {HostedHandler.site.cache}; "
+          f"{HostedHandler.site.github.describe()})", file=sys.stderr, flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
