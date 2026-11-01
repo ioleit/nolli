@@ -32,5 +32,5 @@ def scan(ctx: Context, rel: str, text: str, first_line: int = 1, extractor: str 
 def run(ctx: Context) -> None:
     for f in ctx.progress.each(ctx.files):
         rel = ctx.rel(f)
-        if rel.lower().endswith(EXTENSIONS) and ctx.model.has(ctx.fs_id(rel)):
+        if rel.lower().endswith(EXTENSIONS) and ctx.model.has(ctx.repo_id(rel)):
             scan(ctx, rel, ctx.read(rel).decode("utf-8", "replace"))

@@ -25,6 +25,7 @@ import zipfile
 import zlib
 from pathlib import Path
 
+from . import address
 from .change import ChangeError
 from .model import Model
 
@@ -122,19 +123,19 @@ def mark(verdict: str) -> str:
 def what(m: Model, v: dict, status: dict[str, str]) -> str:
     """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
     from .changes import short
-    from .labels import is_body, is_module
+    from .labels import is_module
 
     ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]
     st = NEW.get(status.get(" ".join(ids), ""), "")
     def name(x: str) -> str:
-        return f"`{short(m, x[5:] if is_body(x) else x)}`"
+        return f"`{short(m, address.owner(x))}`"
     if v["edge"]:
         a, b = v["ends"]
         return f"{st} dependency from {name(a)} to {name(b)}" if st else f"Dependency from {name(a)} to {name(b)}"
     if not v["ends"]:
         return v["label"]
     x = v["ends"][0]
-    if is_body(x):
+    if address.is_own_code(x):
         return f"Own code of {name(x)}"
     e = m.entities[x]
     kind = "module" if is_module(e) else "package" if e.kind == "directory" else e.kind

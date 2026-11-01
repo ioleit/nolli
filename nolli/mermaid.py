@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from . import address
 from .changes import is_diff, node_diff
 from .labels import is_module, module_stem
 from .rollup import HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, display_path, hidden_by_role, image_aliases, is_init
@@ -11,7 +12,6 @@ from .model import SYMBOL_KINDS, Model
 
 ARROW = {"import": "-->", "ref": "-->", "http": "==>", "env": "-.->", "depends_on": "-->", "url": "-->",
          "runs_as": "-.->", "copies": "-.->", "entrypoint": "-.->"}
-GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "api": "api"}
 
 
 def module_name(e) -> str:
@@ -28,8 +28,8 @@ def nid(eid: str) -> str:
 def label(m: Model, eid: str, ann: dict[str, int] | None, expanded: set[str] = frozenset(), alloc: list[str] | None = None,
           show_files: dict[str, int] | None = None) -> str:
     show_files = show_files or {}
-    if eid.startswith("body:"):
-        base = module_name(m.entities[eid[5:]])  # the module's own code: the module itself
+    if address.is_own_code(eid):
+        base = module_name(m.entities[address.owner(eid)])  # the module's own code: the module itself
     else:
         e = m.entities[eid]
         if e.kind == "directory":
@@ -51,10 +51,10 @@ def label(m: Model, eid: str, ann: dict[str, int] | None, expanded: set[str] = f
                 t = g[5:]
                 parts.append("→ " + (m.entities[t].name + "/" if m.has(t) and m.entities[t].kind == "directory" else m.entities[t].name if m.has(t) else t))
             else:
-                parts.append(f"{GROUP_SHORT.get(g, g)} {c}")
+                parts.append(f"{g.removesuffix(':')} {c}")  # a hidden namespace's root: its scheme
         base += " (" + ", ".join(parts) + ")"
     if alloc:
-        base += " [" + ", ".join(s.removeprefix("svc:") for s in alloc) + "]"
+        base += " [" + ", ".join(m.entities[s].name for s in alloc) + "]"
     return base.replace('"', "'")
 
 
@@ -77,8 +77,8 @@ def render(m: Model, view: dict, rolled: RolledUp) -> str:
             out.append(f'{pad}subgraph {nid(n)}_g ["{label(m, n, None, expanded)}"]')
             if status_of(n):
                 classed.append((f"{nid(n)}_g", status_of(n)))
-            if f"body:{n}" in visible:
-                out.append(f'{pad}  {nid("body:" + n)}(("{label(m, "body:" + n, rolled.annotations.get("body:" + n))}"))')
+            if address.own_code(n) in visible:
+                out.append(f'{pad}  {nid(address.own_code(n))}(("{label(m, address.own_code(n), rolled.annotations.get(address.own_code(n)))}"))')
             for c in m.children(n):
                 if e.kind == "directory" and is_init(m, c):
                     for cc in m.children(c):  # the package's own classes

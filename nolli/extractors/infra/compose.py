@@ -1,13 +1,14 @@
 """Deployment: services from docker-compose files.
 
-- each service is a ``service`` entity under the ``deploy`` group;
-- ``build`` gives an ``image`` entity (the Dockerfile) and ``allocate``
+- each service is a ``service`` in ``runtime:``, by the host name the other services
+  reach it at (``runtime:db``);
+- ``build`` gives an ``image`` in ``pkg:`` (``pkg:build/<Dockerfile>``) and ``allocate``
   image -> service ("runs as");
 - ``depends_on`` is ``use`` service -> service (subkind depends_on);
 - environment values that contain ``scheme://<host>`` where <host> is another
   service are ``use`` service -> service (subkind url, exact); other hosts
-  become ``host`` entities (external systems);
-- every environment variable a service sets is ``provide`` service -> env:NAME,
+  become ``host`` entities in ``runtime:`` (external systems);
+- every environment variable a service sets is ``provide`` service -> ``config:NAME``,
   so code that reads it (env-reads) is linked to where it runs.
 """
 
@@ -18,6 +19,7 @@ from pathlib import PurePosixPath
 
 import yaml
 
+from ... import address
 from ...model import ALLOCATE, CONTAIN, PROVIDE, USE, Entity, Provenance, Relation
 from .. import Context
 from ..interfaces import ensure_env
@@ -25,13 +27,6 @@ from ..interfaces import ensure_env
 COMPOSE_NAMES = re.compile(r"(^|/)(docker-)?compose(\.[\w-]+)?\.ya?ml$")
 URL_HOST = re.compile(r"[a-z][a-z0-9+.-]*://(?:[^@/\s]*@)?([A-Za-z0-9_.-]+)(?::\d+)?")
 PERMISSION_KEY = re.compile(r"CORS|ORIGIN|ALLOWED|WHITELIST|TRUSTED", re.I)
-
-
-def ensure_group(ctx: Context) -> str:
-    m = ctx.model
-    if not m.has("deploy"):
-        m.add_entity(Entity("deploy", "group", "Deployment", {"synthetic": True}, Provenance("compose")))
-    return "deploy"
 
 
 def run(ctx: Context) -> None:
@@ -48,11 +43,11 @@ def run(ctx: Context) -> None:
         services = doc.get("services") or {}
         if not isinstance(services, dict):
             continue
-        group = ensure_group(ctx)
+        group = m.ensure_root(address.RUNTIME, "compose")
         base = PurePosixPath(rel).parent
         svc_ids: dict[str, str] = {}
         for name, spec in services.items():
-            sid = f"svc:{name}"
+            sid = address.runtime(name)
             attrs = {"compose": rel}
             spec = spec or {}
             if isinstance(spec.get("image"), str):
@@ -75,10 +70,10 @@ def run(ctx: Context) -> None:
                 df_path = (ctx_path / dockerfile)
                 df_rel = str(PurePosixPath(*[p for p in df_path.parts if p != "."])) if df_path.parts else "Dockerfile"
                 df_rel = df_rel.replace("//", "/")
-                iid = f"img:{df_rel}"
+                iid = address.built_image(df_rel)
                 if not m.has(iid):
                     m.add_entity(Entity(iid, "image", df_rel, {"dockerfile": df_rel, "context": str(ctx_path) if str(ctx_path) != "." else "."}, Provenance("compose", rel)))
-                    m.add_relation(Relation(CONTAIN, group, iid, provenance=Provenance("compose", rel)))
+                    m.add_relation(Relation(CONTAIN, m.ensure_root(address.PKG, "compose"), iid, provenance=Provenance("compose", rel)))
                 m.add_relation(Relation(ALLOCATE, iid, sid, "runs_as", provenance=Provenance("compose", rel)))
             deps = spec.get("depends_on") or []
             for d in (deps if isinstance(deps, list) else list(deps.keys())):
@@ -97,7 +92,7 @@ def run(ctx: Context) -> None:
                         if host != name:
                             m.add_relation(Relation(USE, sid, svc_ids[host], "url", provenance=Provenance("compose", rel), attrs={"env": str(k)}))
                     elif host not in ("localhost", "127.0.0.1", "0.0.0.0") and "." in host:
-                        hid = f"host:{host}"
+                        hid = address.runtime(host)
                         if not m.has(hid):
                             m.add_entity(Entity(hid, "host", host, {}, Provenance("compose", rel)))
                             m.add_relation(Relation(CONTAIN, group, hid, provenance=Provenance("compose", rel)))

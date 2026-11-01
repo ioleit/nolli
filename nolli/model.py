@@ -24,12 +24,14 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator
 
+from . import address
+
 CONTAIN, USE, PROVIDE, ALLOCATE = "contain", "use", "provide", "allocate"
 RELATION_KINDS = (CONTAIN, USE, PROVIDE, ALLOCATE)
 
-# Entity kinds by UML metaclass. ``group`` is a synthetic container the tool
-# adds so that interfaces, externals and deployment elements have a place in
-# the containment forest; it has no counterpart in the repository.
+# Entity kinds by UML metaclass. Which namespace holds which kinds is in address.py;
+# ``group`` is a namespace's root, a synthetic container with no counterpart in the
+# repository.
 ARTIFACT_KINDS = ("directory", "file")
 SYMBOL_KINDS = ("class", "interface", "type", "enum", "function")  # module-viewtype elements inside a file
 COMPONENT_KINDS = ("service", "image")
@@ -83,8 +85,11 @@ class Model:
     def add_entity(self, e: Entity) -> Entity:
         if e.kind not in ENTITY_KINDS:
             raise ValueError(f"unknown entity kind {e.kind!r}")
+        address.check(e.id, e.kind)
         existing = self.entities.get(e.id)
         if existing:
+            if existing.kind != e.kind:
+                raise ValueError(f"{e.id} is a {existing.kind}, not a {e.kind}")
             existing.attrs.update({k: v for k, v in e.attrs.items() if k not in existing.attrs})
             return existing
         self.entities[e.id] = e
@@ -97,10 +102,18 @@ class Model:
         if r.src not in self.entities or r.dst not in self.entities:
             missing = r.src if r.src not in self.entities else r.dst
             raise KeyError(f"relation {r.kind} {r.src} -> {r.dst}: unknown entity {missing}")
+        address.check_relation(r.kind, r.src, r.dst)
         if r.kind == CONTAIN:
             self._parent = self._children = None
         self.relations.append(r)
         return r
+
+    def ensure_root(self, scheme: str, extractor: str) -> str:
+        """The root group of a namespace (``nolli/address.py``), added if missing."""
+        rid = address.root(scheme)
+        if rid not in self.entities:
+            self.add_entity(Entity(rid, "group", address.NAMESPACES[scheme].title, {"synthetic": True}, Provenance(extractor)))
+        return rid
 
     def contain(self, parent: str, child: str, extractor: str) -> None:
         self.add_relation(Relation(CONTAIN, parent, child, provenance=Provenance(extractor)))

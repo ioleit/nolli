@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from tree_sitter_language_pack import get_parser
 
+from ... import address
 from ...model import USE, Entity, Provenance, Relation
 from .. import Context
 
@@ -166,15 +167,15 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = ctx.fs_id(rel)
+        fid = ctx.repo_id(rel)
         for imp in read(tree):
             attrs = {"type_only": True} if imp.type_only else {"dynamic": True} if imp.dynamic else {}
             pending.append((fid, imp.spec, imp.line, attrs))
     ctx.notes["js-imports"] = pending
     for fid, spec, line, attrs in pending:
         relative = spec.startswith(".") or spec.startswith("/")
-        uid = f"unresolved:js:{spec}@{fid[3:]}" if relative else f"unresolved:js:{spec}"
+        uid = address.unresolved("js", f"{spec}@{address.path_of(fid)}" if relative else spec)
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", spec, {"language": "javascript"}, Provenance("ts-imports")))
-        m.add_relation(Relation(USE, fid, uid, "import", provenance=Provenance("ts-imports", fid[3:], line),
+        m.add_relation(Relation(USE, fid, uid, "import", provenance=Provenance("ts-imports", address.path_of(fid), line),
                                 attrs=attrs))

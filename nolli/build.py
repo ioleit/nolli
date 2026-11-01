@@ -10,7 +10,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import match
+from . import address, match
 from .extractors import Context, all_extractors, language_names
 from .mermaid import render
 from .model import Model
@@ -94,8 +94,8 @@ def build_commit(repo: Path, sha: str, out: Path, budget: int, progress: Progres
         with progress.step("checking out the commit"):
             materialise(repo, sha, Path(tmp))
         m, ctx = extract(Path(tmp), progress=progress)
-    if m.has("fs:."):  # the root is the temporary directory; name it after the repository
-        m.entities["fs:."].name = repo.name
+    if m.has(address.REPO_ROOT):  # the root is the temporary directory; name it after the repository
+        m.entities[address.REPO_ROOT].name = repo.name
     m.meta.update({"repo": repo.name, "commit": sha[:7], "nolli": version()})
     return write_dataset(m, out, budget, ctx.notes, progress=progress)
 

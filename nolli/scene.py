@@ -4,8 +4,8 @@ A view state is the set of unfolded containers plus the display options. ``scene
 turns it into a flat list of nodes (in drawing order, each naming its drawn parent) and
 a list of edges, with labels, badges, emphasis flags and hover descriptions (info.py) already decided. The
 viewer only lays this out (ELK) and draws it; ``nolli extract`` writes the scene of the
-default cut. Ids are stable across states (entity ids, ``body:<id>`` for a module's own
-code, ``kind|src|dst|subkind`` for edges), so a client can diff two scenes to animate
+default cut. Ids are stable across states (entity ids, ``<id>#`` for a module's own
+code (address.own_code), ``kind|src|dst|subkind`` for edges), so a client can diff two scenes to animate
 the step between them.
 """
 
@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 
+from . import address
 from .model import USE, Model
 from .rollup import (
     HIDDEN_ROLES_DEFAULT, fact_key, hidden_by_role, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
@@ -22,7 +23,7 @@ from .rollup import (
 from .changes import Links, change_items, diff_index, fact_change, is_diff, node_diff
 from .review import VERDICT_RANK, edge_review_info, node_review_info, resolve_verdicts
 from .view import default_view
-from .labels import icons_of, is_body, label_of, leaf_count, name_of
+from .labels import icons_of, label_of, leaf_count, name_of
 from .info import Dependencies, edge_info, node_info
 from .prose import Ctx
 
@@ -30,7 +31,7 @@ ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "ass
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
 DEFAULT_UTILITY_IN = 4  # more incoming edges than this: a utility, drawn as badges
-DEFAULT_GROUPS = ("api",)  # root groups drawn as boxes; the others are badges on their users
+DEFAULT_GROUPS = (address.root(address.API),)  # root groups drawn as boxes; the others are badges on their users
 
 
 @dataclass
@@ -143,7 +144,7 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
         return sorted(g[5:] for g in (rolled.annotations.get(x) or {}) if g.startswith("util:"))
 
     def node(x: str, parent: str | None, container: bool) -> dict:
-        if is_body(x):
+        if address.is_own_code(x):
             return {"id": x, "kind": "anchor", "parent": parent, "utilities_used": used_utils(x), "info": node_info(ctx, deps, x)}
         e = m.entities[x]
         badge = badge_text(used_by.get(x, 0))
@@ -165,7 +166,7 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
         e = m.entities[x]
         if x in expanded and m.children(x):
             rec = node(x, parent, True)
-            if e.attrs.get("root") and x == "fs:.":
+            if x == address.REPO_ROOT:
                 rec = None  # the repository root is the canvas, not a box
             else:
                 nodes.append(rec)
@@ -179,8 +180,8 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
                     continue
                 ch.append(chain_end(m, c, hidden) if e.kind == "directory" and m.entities[c].kind == "directory" else c)
             n = 0
-            if f"body:{x}" in visible:
-                nodes.append(node(f"body:{x}", me or parent, False))
+            if address.own_code(x) in visible:
+                nodes.append(node(address.own_code(x), me or parent, False))
                 n += 1
             for c in ch:
                 if c in visible or (c in expanded and m.children(c)):
@@ -225,8 +226,8 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
     if utilities:
         residue.append("utilities: " + ", ".join(label_of(m, u, expanded) for u in sorted(utilities)))
 
-    groups = [{"id": r, "name": m.entities[r].name, "size": len(m.children(r)), "shown": r in shown_groups}
-              for r in m.roots() if m.entities[r].kind == "group" and r != "unresolved" and m.children(r)]
+    groups = [{"id": r, "namespace": address.scheme_of(r), "name": m.entities[r].name, "size": len(m.children(r)), "shown": r in shown_groups}
+              for r in m.roots() if m.entities[r].kind == "group" and address.NAMESPACES[address.scheme_of(r)].structural and m.children(r)]
     # files and directories per role, for the Show filter ("mixed" is a directory role only)
     by_role: dict[str, dict[str, int]] = {r: {"files": 0, "dirs": 0} for r in ALL_ROLES}
     for e in m.entities.values():
@@ -281,7 +282,7 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
     # drawn edge between the boxes around the two ends, the innermost there is. An edge that
     # fell inside one box lands on that box; one drawn as a badge, on its source.
     def drawn_box(x: str) -> str | None:
-        r = x if x in drawn else rep(x[5:] if is_body(x) else x)
+        r = x if x in drawn else rep(address.owner(x))
         return r if r in drawn else None
 
     parent = {n["id"]: n.get("parent") for n in nodes}
@@ -320,7 +321,7 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
     worst = lambda vs: max((v["verdict"] for v in vs), key=VERDICT_RANK.get, default=None)  # noqa: E731
     # a verdict is the box's or edge's own when it names that box (or its own code) or that edge;
     # the others were rolled up from inside, and the card sums them up
-    own = lambda v, ends: [x[5:] if is_body(x) else x for x in v["ends"]] == ends  # noqa: E731
+    own = lambda v, ends: [address.owner(x) for x in v["ends"]] == ends  # noqa: E731
     split = lambda vs, ends: ([v for v in vs if own(v, ends)], [v for v in vs if not own(v, ends)])  # noqa: E731
     for n in nodes:
         n["items"] = sorted(node_items.get(n["id"], ()), key=lambda i: int(i[1:]))

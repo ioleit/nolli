@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 
+from . import address
 from .model import CONTAIN, SYMBOL_KINDS, Model
 from .rollup import fact_key
 
@@ -93,7 +94,7 @@ def diff_index(m: Model) -> dict[str, dict]:
 
 def node_diff(m: Model, x: str, internal_changes: dict[str, str] | None = None) -> dict | None:
     """What the viewer shows on a drawn box: its status and the totals inside it."""
-    if x.startswith("body:"):
+    if address.is_own_code(x):
         return None
     e = m.entities[x]
     own = e.attrs.get("diff") or {}
@@ -174,7 +175,7 @@ def details(m: Model, x: str) -> dict:
     classes with changed lines, entities added or removed inside it, and the changed
     dependencies that start or end inside it."""
     links = Links(m)
-    target = x[5:] if x.startswith("body:") else x
+    target = address.owner(x)
     sub = {target} | set(m.descendants(target))
     files, classes, entities = [], [], []
     for eid in sorted(sub):
@@ -183,7 +184,7 @@ def details(m: Model, x: str) -> dict:
         if not d:
             continue
         if e.kind == "file" and "git" in d:
-            path = e.attrs.get("path", eid[3:])
+            path = e.attrs.get("path", address.path_of(eid))
             hunks = [{"new": h["new"], "old": h["old"], "added": len(h["added"]), "removed": len(h["removed"]),
                       "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0],
                                          "head" if h["added"] else "base")} for h in d.get("hunks", [])]

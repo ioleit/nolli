@@ -10,12 +10,12 @@ the same for every protocol, and ``resolve`` (run by ``nolli.match``) binds call
 operations with the protocol's matcher (``MATCHERS``). Only the matcher and the way a
 path splits into segments are protocol knowledge; the rest is shared.
 
-The structure (entity kind, id):
+The structure (entity kind, id; ``nolli/address.py`` makes the ids):
 
-    group     api                                  "APIs": the root group the filter shows or hides
+    group     api:                                 "APIs": the root group the filter shows or hides
     api       api:<protocol>:<key>                 one served API: an app, a server, a service definition
     resource  api:<protocol>:<key>/<seg>/<seg>     a step in the API's path tree (a parameter is ``{}``)
-    endpoint  api:<protocol>:<key> <VERB> <path>   one operation
+    endpoint  api:<protocol>:<key>/<seg>#<VERB>    one operation: its method on its path
 
 Names follow the picture's pattern, icons then a readable name (``nolli/labels.py``):
 an API is named after the directory it is declared in (``API server``), a resource by
@@ -36,10 +36,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
+from .. import address
 from ..model import CONTAIN, PROVIDE, USE, Entity, Provenance, Relation
 from . import Context
-
-GROUP = "api"
 
 
 @dataclass
@@ -74,11 +73,11 @@ def provide(ctx: Context, op: Operation) -> None:
 
 def call(ctx: Context, c: Call) -> None:
     m = ctx.model
-    uid = f"unresolved:{c.protocol}:{c.verb} {c.pattern}"
+    uid = address.unresolved(c.protocol, f"{c.verb} {c.pattern}")
     if not m.has(uid):
         m.add_entity(Entity(uid, "unresolved", f"{c.verb} {c.pattern}",
                             {"protocol": c.protocol, "method": c.verb, "pattern": c.pattern}, Provenance(c.extractor)))
-    m.add_relation(Relation(USE, ctx.fs_id(c.file), uid, c.protocol, confidence="heuristic",
+    m.add_relation(Relation(USE, ctx.repo_id(c.file), uid, c.protocol, confidence="heuristic",
                             provenance=Provenance(c.extractor, c.file, c.line), attrs={"via": c.via}))
 
 
@@ -91,7 +90,7 @@ def segments(protocol: str, path: str) -> list[str]:
 def step_key(seg: str) -> str:
     """Parameters (adapters write them ``{name}``) at one position are one step, whatever
     each route calls them: ``/projects/{name}`` and ``/projects/{project_name}``."""
-    return "{}" if seg.startswith("{") and seg.endswith("}") else seg
+    return address.param(seg)
 
 
 @dataclass
@@ -131,7 +130,7 @@ def build(ctx: Context) -> None:
         return
     m = ctx.model
     prov = Provenance("api")
-    m.add_entity(Entity(GROUP, "group", "APIs", {"synthetic": True}, prov))
+    group = m.ensure_root(address.API, "api")
 
     by_api: dict[tuple[str, str], list[Operation]] = defaultdict(list)
     for op in ops:
@@ -139,11 +138,11 @@ def build(ctx: Context) -> None:
 
     names = api_names({k: v[0].api_file for k, v in by_api.items()})
     for (protocol, key), api_ops in sorted(by_api.items()):
-        aid = f"api:{protocol}:{key}"
+        aid = address.api_app(protocol, key)
         m.add_entity(Entity(aid, "api", names[(protocol, key)],
                             {"protocol": protocol, "key": key, "file": api_ops[0].api_file,
                              "about": api_ops[0].api_about, "operations": len(api_ops)}, prov))
-        m.add_relation(Relation(CONTAIN, GROUP, aid, provenance=prov))
+        m.add_relation(Relation(CONTAIN, group, aid, provenance=prov))
 
         root = _step()
         for op in api_ops:
@@ -154,13 +153,13 @@ def build(ctx: Context) -> None:
             s.ops.append(op)
 
         def endpoint(op: Operation, parent: str, name: str) -> None:
-            eid = f"{aid} {op.verb} {op.path}"
+            eid = address.api_operation(aid, segments(protocol, op.path), op.verb)
             if not m.has(eid):
                 m.add_entity(Entity(eid, "endpoint", f"{op.verb} {name}".rstrip(),
                                     {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "name": name},
                                     Provenance(op.extractor, op.file, op.line)))
                 m.add_relation(Relation(CONTAIN, parent, eid, provenance=prov))
-            m.add_relation(Relation(PROVIDE, ctx.fs_id(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
+            m.add_relation(Relation(PROVIDE, ctx.repo_id(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
                                     provenance=Provenance(op.extractor, op.file, op.line), attrs={"handler": op.handler}))
 
         def emit(s: _Step, parent: str, path: list[str], label: list[str]) -> None:
@@ -174,7 +173,7 @@ def build(ctx: Context) -> None:
                 for op in s.ops:
                     endpoint(op, parent, text)
                 return
-            rid = f"{aid}/" + "/".join(path)
+            rid = address.api_step(aid, path)
             m.add_entity(Entity(rid, "resource", text, {"protocol": protocol, "path": "/" + "/".join(path), "api": aid}, prov))
             m.add_relation(Relation(CONTAIN, parent, rid, provenance=prov))
             for op in sorted(s.ops, key=lambda o: o.verb):
@@ -241,7 +240,7 @@ def resolve(ctx: Context) -> None:
     stats: dict[str, int] = defaultdict(int)
     out: list[Relation] = []
     for r in m.relations:
-        ph = m.entities.get(r.dst) if r.kind == USE and r.dst.startswith("unresolved:") else None
+        ph = m.entities.get(r.dst) if r.kind == USE and address.is_unresolved(r.dst) else None
         protocol = ph.attrs.get("protocol") if ph is not None else None
         if protocol is None:
             out.append(r)

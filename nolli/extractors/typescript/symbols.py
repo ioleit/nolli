@@ -3,7 +3,7 @@ references between them.
 
 Each top-level ``class``, ``interface``, ``type`` alias and ``enum`` (exported or not;
 ``abstract``, ``const enum`` and ``declare`` forms included) becomes an entity
-``ts:<file>#<Name>`` of that kind, contained in its module. In TypeScript the interfaces
+``repo:<file>#<Name>`` of that kind, contained in its module. In TypeScript the interfaces
 and type aliases are what Python's data classes are: the shapes modules agree on, so
 they are atoms like classes. Functions are not entities, components included: a
 module's functions and its top-level code are the module's own body, as in Python (the
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from ... import address
 from ...model import USE, Entity, Provenance, Relation
 from .. import Context
 from .imports import read
@@ -192,7 +193,7 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = ctx.fs_id(rel)
+        fid = ctx.repo_id(rel)
         lang = m.entities[fid].attrs.get("language", "typescript")
         root = tree.root_node
         doc = file_doc(root)
@@ -234,7 +235,7 @@ def run(ctx: Context) -> None:
                 continue
             if stmt.type == "export_statement" and any(c.type == "default" for c in stmt.children):
                 local.append(("default", name))
-            sid = f"ts:{rel}#{name}"
+            sid = address.part(fid, name)
             if name not in symbols:
                 attrs = {"path": rel, "line": stmt.start_point[0] + 1, "end_line": stmt.end_point[0] + 1, "language": lang,
                          "exported": stmt.type == "export_statement"}
@@ -266,7 +267,7 @@ def run(ctx: Context) -> None:
 
     ctx.notes["ts-exports"] = exports
     for (src, b), n in pending.items():
-        file = (src.split("#")[0][3:] if src.startswith("ts:") else src[3:])
+        file = address.path_of(src)
         if b[0] == "local":
             m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance(EXTRACTOR, file),
                                     {"name": b[2], "type_only": values[(src, b)] == 0, "language": "javascript"}))
@@ -275,7 +276,7 @@ def run(ctx: Context) -> None:
         shown = b[4] if name == "default" else name or spec.rsplit("/", 1)[-1]  # a default import by its local name
         type_only = type_only or values[(src, b)] == 0
         key = f"{spec}@{file}|{name}"
-        uid = f"unresolved:tsref:{key}"
+        uid = address.unresolved("tsref", key)
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", f"{spec} {name}".strip(),
                                 {"language": "javascript", "ref": True, "spec": spec, "from": file, "name": name}, Provenance(EXTRACTOR)))

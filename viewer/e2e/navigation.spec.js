@@ -36,16 +36,16 @@ async function click(page, id) {
 }
 
 test("two utilities with an edge between them lay out", async ({ page }) => {
-  await open(page, "&x=fs:.,fs:tasks,fs:tasks/core");
-  await expect(page.locator('#root g.node.utility[data-id="fs:tasks/core/log.py"]')).toBeVisible();
-  await expect(page.locator('#root g.node.utility[data-id="fs:tasks/core/clock.py"]')).toBeVisible();
+  await open(page, "&x=repo:,repo:tasks,repo:tasks/core");
+  await expect(page.locator('#root g.node.utility[data-id="repo:tasks/core/log.py"]')).toBeVisible();
+  await expect(page.locator('#root g.node.utility[data-id="repo:tasks/core/clock.py"]')).toBeVisible();
   await expect(page.locator("#root g.edge.d-added")).toHaveCount(1);
 });
 
 test("each click unfolds or folds the box clicked, and only that one", async ({ page }) => {
-  await open(page, "&x=fs:.,fs:tasks");
+  await open(page, "&x=repo:,repo:tasks");
   // folded, core is the utility; unfolded, log and clock are, with the new edge between them
-  for (const id of ["fs:tasks/api", "fs:tasks/core", "fs:tasks/api", "fs:tasks/jobs", "fs:tasks/core"]) {
+  for (const id of ["repo:tasks/api", "repo:tasks/core", "repo:tasks/api", "repo:tasks/jobs", "repo:tasks/core"]) {
     const before = await unfolded(page);
     await click(page, id);
     const after = await unfolded(page);
@@ -59,7 +59,7 @@ test("each click unfolds or folds the box clicked, and only that one", async ({ 
 test("a verdict on an edge that is bundled sits on the bundle, not on a box", async ({ page }) => {
   // the review diagram draws worker → store/users/repo; with store's packages folded, the viewer
   // draws worker's three edges into store as one
-  await open(page, "&x=fs:.,fs:tasks,fs:tasks/jobs,fs:tasks/store");
+  await open(page, "&x=repo:,repo:tasks,repo:tasks/jobs,repo:tasks/store");
   const mark = page.locator("#root g.edge g.verdict.question");
   await expect(mark).toHaveCount(1);
   await expect(page.locator("#root g.verdict[data-id]")).toHaveCount(0);  // no box carries it

@@ -9,6 +9,9 @@
  *   item: the review item last gone to ("C3"); dim: fade what did not change (diff datasets)
  */
 
+/** The repository's root directory, the canvas (nolli/address.py REPO_ROOT). */
+export const REPO_ROOT = "repo:";
+
 // expanded / roles / groups / budget / utilities null: let the server choose (default cut, roles, groups, threshold)
 /** @type {SceneQuery} */
 export const DEFAULTS = { expanded: null, roles: null, groups: null, budget: null, utilities: null, side: "both" };

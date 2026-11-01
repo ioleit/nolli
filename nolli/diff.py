@@ -31,6 +31,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import address
 from .model import CONTAIN, SYMBOL_KINDS, Entity, Model, Relation
 
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -171,20 +172,20 @@ def merge(base: Model, head: Model, changes: dict[str, FileChange]) -> Model:
         m.add_relation(Relation(rep.kind, rep.src, rep.dst, rep.subkind, nh or nb, rep.confidence, rep.provenance, attrs))
     # content: files, then classes inside them
     for path, c in changes.items():
-        fid = f"fs:{path}"
+        fid = address.repo(path)
         if not m.has(fid):
             continue  # a file nolli does not track (generated, ignored role)
         rec = m.entities[fid].attrs.setdefault("diff", {"status": "same"})
         rec.update({"git": c.git, "added": c.added, "removed": c.removed, "hunks": c.hunks})
         if c.old_path:
             rec["old_path"] = c.old_path
-            old = f"fs:{c.old_path}"
+            old = address.repo(c.old_path)
             if m.has(old):
                 m.entities[old].attrs.setdefault("diff", {"status": "removed"})["renamed_to"] = path
         if c.binary:
             rec["binary"] = True
         old_path = c.old_path or path
-        for cid in m.children(fid) + ([] if not c.old_path else m.children(f"fs:{c.old_path}")):
+        for cid in m.children(fid) + ([] if not c.old_path else m.children(address.repo(c.old_path))):
             ce = m.entities[cid]
             if ce.kind not in SYMBOL_KINDS:
                 continue
@@ -218,8 +219,8 @@ def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None) -> tu
                 materialise(repo, sha, d)
             sides[name], _ctx = extract(d, progress=side)
     for side in sides.values():  # the root is the temporary directory; name it after the repository
-        if side.has("fs:."):
-            side.entities["fs:."].name = repo.name
+        if side.has(address.REPO_ROOT):
+            side.entities[address.REPO_ROOT].name = repo.name
     with progress.step("comparing the sides"):
         changes = file_changes(repo, base, head)
         m = merge(sides["base"], sides["head"], changes)

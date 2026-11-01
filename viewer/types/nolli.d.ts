@@ -155,7 +155,7 @@ export interface Scene {
   state: SceneState;
   nodes: SceneNode[];  // drawing order: a container before what it contains
   edges: SceneEdge[];
-  groups: { id: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
+  groups: { id: string; namespace: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
   roles: { id: string; files: number; dirs: number }[];  // files and directories per role, for the Show filter
   residue: string[];
   stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };

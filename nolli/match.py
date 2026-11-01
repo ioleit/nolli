@@ -10,8 +10,9 @@ entities so views can count them. Placeholders bound everywhere are removed.
 
 from __future__ import annotations
 
+from . import address
 from .extractors import Context, all_resolvers, api
-from .model import CONTAIN, Entity, Provenance, Relation
+from .model import CONTAIN, Provenance, Relation
 
 
 def prune_unresolved(ctx: Context) -> None:
@@ -25,10 +26,9 @@ def prune_unresolved(ctx: Context) -> None:
     m._parent = m._children = None
     loose = [e for e, ent in m.entities.items() if ent.kind == "unresolved" and m.parent(e) is None]
     if loose:
-        if not m.has("unresolved"):
-            m.add_entity(Entity("unresolved", "group", "Unresolved references", {"synthetic": True}, Provenance("match")))
+        group = m.ensure_root(address.UNRESOLVED, "match")
         for e in loose:
-            m.add_relation(Relation(CONTAIN, "unresolved", e, provenance=Provenance("match")))
+            m.add_relation(Relation(CONTAIN, group, e, provenance=Provenance("match")))
 
 
 def run_all(ctx: Context) -> None:

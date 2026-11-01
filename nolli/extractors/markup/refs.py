@@ -10,7 +10,7 @@ serves ``/src/...`` from the directory of ``index.html`` and ``/logo.png`` from
 
 A script from a package CDN (``https://cdn.jsdelivr.net/npm/elkjs@0.9.3/...``) and a
 stylesheet ``@import`` of a bare package name (``@import "tailwindcss"``) are uses of
-that npm package, the same ``ext:js:`` entity the TypeScript front-end gives it
+that npm package, the same ``pkg:npm/`` entity the TypeScript front-end gives it
 (``package`` below). Other URLs with a scheme (``https:``, ``data:``), protocol-relative
 ones (``//cdn...``), fragments and template expressions (``{{ x }}``, ``${x}``) are not
 the repository's files and are skipped. A reference that looks like a file of the
@@ -55,10 +55,10 @@ def target(ctx: Context, rel: str, ref: str) -> tuple[str, str] | None:
     if path.startswith("/"):
         d = here
         while True:
-            fid = ctx.fs_id(posixpath.normpath(posixpath.join(d, path.lstrip("/"))))
+            fid = ctx.repo_id(posixpath.normpath(posixpath.join(d, path.lstrip("/"))))
             if file_exists(ctx, fid):
                 return fid, "heuristic"
-            fid = ctx.fs_id(posixpath.normpath(posixpath.join(d, "public", path.lstrip("/"))))
+            fid = ctx.repo_id(posixpath.normpath(posixpath.join(d, "public", path.lstrip("/"))))
             if file_exists(ctx, fid):
                 return fid, "heuristic"
             if not d:
@@ -66,8 +66,8 @@ def target(ctx: Context, rel: str, ref: str) -> tuple[str, str] | None:
             d = posixpath.dirname(d)
     else:
         p = posixpath.normpath(posixpath.join(here, path))
-        if not p.startswith("../") and file_exists(ctx, ctx.fs_id(p)):
-            return ctx.fs_id(p), "exact"
+        if not p.startswith("../") and file_exists(ctx, ctx.repo_id(p)):
+            return ctx.repo_id(p), "exact"
     ctx.notes.setdefault("markup-unmatched", []).append((rel, ref))
     return None
 
@@ -83,9 +83,9 @@ def link(ctx: Context, rel: str, ref: str, line: int, how: str, extractor: str) 
     ``image``, ``import``, ``url``) is kept in attrs."""
     pkg = package(ref.strip(), how)
     t = (ensure_ext(ctx.model, "js", pkg[0], extractor), pkg[1]) if pkg else target(ctx, rel, ref)
-    if t is None or t[0] == ctx.fs_id(rel):
+    if t is None or t[0] == ctx.repo_id(rel):
         return
     fid, confidence = t
-    language = ctx.model.entities[ctx.fs_id(rel)].attrs.get("language")
-    ctx.model.add_relation(Relation(USE, ctx.fs_id(rel), fid, "import", 1, confidence, Provenance(extractor, rel, line),
+    language = ctx.model.entities[ctx.repo_id(rel)].attrs.get("language")
+    ctx.model.add_relation(Relation(USE, ctx.repo_id(rel), fid, "import", 1, confidence, Provenance(extractor, rel, line),
                                     {"language": language, "via": how}))

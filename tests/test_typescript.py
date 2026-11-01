@@ -80,48 +80,48 @@ def refs_between(m, src, dst):
 
 def test_classes_and_types_are_entities(model):
     m, _ = model
-    kinds = {e.id: e.kind for e in m.entities.values() if e.id.startswith("ts:")}
+    kinds = {e.id: e.kind for e in m.entities.values() if "#" in e.id}
     assert kinds == {
-        "ts:app/src/model/task.ts#Task": "interface",
-        "ts:app/src/model/task.ts#TaskId": "type",
-        "ts:app/src/model/task.ts#Priority": "enum",
-        "ts:app/src/store/store.ts#Store": "class",
-        "ts:legacy/server.js#Server": "class",
+        "repo:app/src/model/task.ts#Task": "interface",
+        "repo:app/src/model/task.ts#TaskId": "type",
+        "repo:app/src/model/task.ts#Priority": "enum",
+        "repo:app/src/store/store.ts#Store": "class",
+        "repo:legacy/server.js#Server": "class",
     }, "one entity per name (merged declarations), functions are not entities"
-    task = m.entities["ts:app/src/model/task.ts#Task"]
-    assert m.parent(task.id) == "fs:app/src/model/task.ts"
+    task = m.entities["repo:app/src/model/task.ts#Task"]
+    assert m.parent(task.id) == "repo:app/src/model/task.ts"
     assert task.attrs["doc"] == "A task as the API returns it." and task.attrs["exported"]
-    assert m.entities["ts:legacy/server.js#Server"].attrs["language"] == "javascript"
-    store = m.entities["fs:app/src/store/store.ts"].attrs
+    assert m.entities["repo:legacy/server.js#Server"].attrs["language"] == "javascript"
+    store = m.entities["repo:app/src/store/store.ts"].attrs
     assert store["constants"] == ["MAX_ITEMS"]
-    assert m.entities["fs:app/src/commands/list.ts"].attrs["functions"] == ["list", "later"]
+    assert m.entities["repo:app/src/commands/list.ts"].attrs["functions"] == ["list", "later"]
 
 
 def test_references_follow_barrels_and_namespaces(model):
     m, _ = model
     refs = uses(m, "ref")
     # a type through ``export * from`` in the barrel, a value through tsconfig ``paths``
-    assert ("ts:app/src/store/store.ts#Store", "ts:app/src/model/task.ts#Task") in refs
-    assert ("ts:app/src/store/store.ts#Store", "ts:app/src/model/task.ts#Priority") in refs
+    assert ("repo:app/src/store/store.ts#Store", "repo:app/src/model/task.ts#Task") in refs
+    assert ("repo:app/src/store/store.ts#Store", "repo:app/src/model/task.ts#Priority") in refs
     # ``fmt.title`` through ``import * as fmt`` from a ``baseUrl`` path: the module that defines it
-    assert ("ts:app/src/store/store.ts#Store", "fs:app/src/lib/format.ts") in refs
+    assert ("repo:app/src/store/store.ts#Store", "repo:app/src/lib/format.ts") in refs
     # a default import, and a renamed re-export (``Store as TaskStore``) to the class itself
-    assert {r.attrs["name"] for r in refs_between(m, "fs:app/src/commands/list.ts", "ts:app/src/store/store.ts#Store")} \
+    assert {r.attrs["name"] for r in refs_between(m, "repo:app/src/commands/list.ts", "repo:app/src/store/store.ts#Store")} \
         == {"Store", "TaskStore"}
     # a type referencing a type of its own module
-    assert ("ts:app/src/model/task.ts#Task", "ts:app/src/model/task.ts#TaskId") in refs
+    assert ("repo:app/src/model/task.ts#Task", "repo:app/src/model/task.ts#TaskId") in refs
     # the import edges are replaced where references cover them
-    assert ("fs:app/src/commands/list.ts", "fs:app/src/store/store.ts") not in uses(m, "import")
+    assert ("repo:app/src/commands/list.ts", "repo:app/src/store/store.ts") not in uses(m, "import")
 
 
 def test_type_only_dependencies(model):
     m, _ = model
     refs = uses(m, "ref")
-    assert refs[("ts:app/src/store/store.ts#Store", "ts:app/src/model/task.ts#Task")].attrs["type_only"], "import type"
-    assert refs[("fs:app/src/lib/format.ts", "ts:app/src/model/task.ts#Task")].attrs["type_only"], "used in type positions only"
-    assert not refs[("ts:app/src/store/store.ts#Store", "ts:app/src/model/task.ts#Priority")].attrs["type_only"]
+    assert refs[("repo:app/src/store/store.ts#Store", "repo:app/src/model/task.ts#Task")].attrs["type_only"], "import type"
+    assert refs[("repo:app/src/lib/format.ts", "repo:app/src/model/task.ts#Task")].attrs["type_only"], "used in type positions only"
+    assert not refs[("repo:app/src/store/store.ts#Store", "repo:app/src/model/task.ts#Priority")].attrs["type_only"]
     ctx = Ctx(m, None, set(), set())
-    e = RolledEdge("use", "fs:app/src/lib/format.ts", "ts:app/src/model/task.ts#Task", "import", 1, types=1)
+    e = RolledEdge("use", "repo:app/src/lib/format.ts", "repo:app/src/model/task.ts#Task", "import", 1, types=1)
     assert "no dependency at run time" in str(edge_info(ctx, e))
 
 
@@ -129,17 +129,17 @@ def test_resolution_particulars(model):
     m, ctx = model
     imports = uses(m, "import")
     # workspace packages resolve to their source, the entry from ``main`` mapped dist/ -> src/
-    assert ("fs:app/src/commands/list.ts", "fs:packages/util/src/index.ts") in uses(m)
-    assert ("fs:app/src/commands/list.ts", "fs:packages/util/src/render.ts") in uses(m)
-    assert not m.has("ext:js:@acme/util")
-    assert ("fs:app/src/main.tsx", "ext:js:react") in imports
-    assert ("fs:app/src/main.tsx", "ext:js:marked") in imports, "a CDN URL names its package"
+    assert ("repo:app/src/commands/list.ts", "repo:packages/util/src/index.ts") in uses(m)
+    assert ("repo:app/src/commands/list.ts", "repo:packages/util/src/render.ts") in uses(m)
+    assert not m.has("pkg:npm/@acme/util")
+    assert ("repo:app/src/main.tsx", "pkg:npm/react") in imports
+    assert ("repo:app/src/main.tsx", "pkg:npm/marked") in imports, "a CDN URL names its package"
     # a dynamic import() stays an import edge, marked
-    assert imports[("fs:app/src/commands/list.ts", "fs:app/src/commands/later.ts")].attrs["dynamic"]
+    assert imports[("repo:app/src/commands/list.ts", "repo:app/src/commands/later.ts")].attrs["dynamic"]
     # CommonJS: destructured and namespace require
     refs = uses(m, "ref")
-    assert ("ts:legacy/server.js#Server", "fs:legacy/http.js") in refs
-    assert ("ts:legacy/server.js#Server", "fs:legacy/db.js") in refs
+    assert ("repo:legacy/server.js#Server", "repo:legacy/http.js") in refs
+    assert ("repo:legacy/server.js#Server", "repo:legacy/db.js") in refs
     assert ctx.notes["js-resolution"].get("unresolved", 0) == 0
 
 
@@ -164,5 +164,5 @@ def test_imports_of_a_file_that_does_not_parse_whole():
 
 def test_index_is_the_folders_own_code(model):
     m, _ = model
-    assert is_init(m, "fs:app/src/model/index.ts")
-    assert m.entities["fs:app/src/model/index.ts"].attrs["reexports"] == ["TaskStore"]
+    assert is_init(m, "repo:app/src/model/index.ts")
+    assert m.entities["repo:app/src/model/index.ts"].attrs["reexports"] == ["TaskStore"]

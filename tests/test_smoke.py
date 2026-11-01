@@ -71,54 +71,54 @@ def test_model_binds_the_seams(repo: Path):
     uses = rel_set(m, "use")
     # imports resolve inside the repo, relative and absolute; Python references bind at
     # symbol level (module-level code -> a module variable stays at file level)
-    assert ("fs:backend/main.py", "fs:backend/api/worlds.py") in uses
+    assert ("repo:backend/main.py", "repo:backend/api/worlds.py") in uses
     # the function ``echoes`` is the module's own body, so the reference comes from the module
-    assert ("fs:backend/api/worlds.py", "py:backend/store.py#Store") in rel_set(m, "use", "ref")
-    assert ("fs:backend/api/worlds.py", "fs:backend/store.py") not in uses, "import edge replaced by the reference"
-    assert m.entities["py:backend/store.py#Store"].kind == "class"
-    assert not m.has("py:backend/api/worlds.py#echoes"), "functions are not entities"
-    assert ("fs:frontend/src/App.tsx", "fs:frontend/src/lib/api.ts") in uses
+    assert ("repo:backend/api/worlds.py", "repo:backend/store.py#Store") in rel_set(m, "use", "ref")
+    assert ("repo:backend/api/worlds.py", "repo:backend/store.py") not in uses, "import edge replaced by the reference"
+    assert m.entities["repo:backend/store.py#Store"].kind == "class"
+    assert not m.has("repo:backend/api/worlds.py#echoes"), "functions are not entities"
+    assert ("repo:frontend/src/App.tsx", "repo:frontend/src/lib/api.ts") in uses
     # routes get the include prefix; the helper call is bound to the route
-    ep = "api:http:backend/main.py:app GET /api/worlds/{world}/echoes"
+    ep = "api:http:backend/main.py:app/api/worlds/{}/echoes#GET"
     assert m.has(ep)
-    assert ("fs:frontend/src/App.tsx", ep) in rel_set(m, "use", "http")
-    assert ("fs:backend/api/worlds.py", ep) in rel_set(m, "provide")
+    assert ("repo:frontend/src/App.tsx", ep) in rel_set(m, "use", "http")
+    assert ("repo:backend/api/worlds.py", ep) in rel_set(m, "provide")
     # the shared API structure: APIs > the app > its merged path steps > operations by verb
     app = "api:http:backend/main.py:app"
-    assert m.parent(app) == "api" and m.entities[app].kind == "api"
+    assert m.parent(app) == "api:" and m.entities[app].kind == "api"
     worlds = app + "/api/worlds"
     assert m.parent(worlds) == app and m.entities[worlds].name == "api/worlds"
     assert sorted(m.entities[c].name for c in m.children(worlds)) == ["GET {world}/echoes", "POST"]
     # env read meets env set; compose and Dockerfile give allocation and runtime use
-    assert ("fs:backend/main.py", "env:REDIS_URL") in rel_set(m, "use", "env")
-    assert ("svc:api", "env:REDIS_URL") in rel_set(m, "provide", "env")
-    assert ("fs:backend", "img:backend/Dockerfile") in rel_set(m, "allocate", "copies")
-    assert ("img:backend/Dockerfile", "svc:api") in rel_set(m, "allocate", "runs_as")
-    assert ("svc:api", "svc:redis") in rel_set(m, "use", "depends_on")
-    assert ("svc:api", "svc:redis") in rel_set(m, "use", "url")
-    assert ("img:backend/Dockerfile", "fs:backend/main.py") in rel_set(m, "use", "entrypoint")
+    assert ("repo:backend/main.py", "config:REDIS_URL") in rel_set(m, "use", "env")
+    assert ("runtime:api", "config:REDIS_URL") in rel_set(m, "provide", "env")
+    assert ("repo:backend", "pkg:build/backend/Dockerfile") in rel_set(m, "allocate", "copies")
+    assert ("pkg:build/backend/Dockerfile", "runtime:api") in rel_set(m, "allocate", "runs_as")
+    assert ("runtime:api", "runtime:redis") in rel_set(m, "use", "depends_on")
+    assert ("runtime:api", "runtime:redis") in rel_set(m, "use", "url")
+    assert ("pkg:build/backend/Dockerfile", "repo:backend/main.py") in rel_set(m, "use", "entrypoint")
     # externals, no stdlib, nothing unresolved
-    assert m.has("ext:py:fastapi") and m.has("ext:js:react") and not m.has("ext:py:os")
+    assert m.has("pkg:python/fastapi") and m.has("pkg:npm/react") and not m.has("pkg:python/os")
     assert not [e for e in m.entities.values() if e.kind == "unresolved"]
     # tests are role-tagged, not dropped
-    assert m.entities["fs:backend/tests/test_store.py"].attrs["role"] == "test"
+    assert m.entities["repo:backend/tests/test_store.py"].attrs["role"] == "test"
 
 
 def test_default_cut_lifts_frontend_to_backend(repo: Path):
     m, _ = extract(repo)
     view = default_view(m, budget=12)
     hidden = hidden_by_role(m) | set(image_aliases(m))
-    rolled = rollup(m, set(view["visible"]), hidden, shown_groups={"api"})
+    rolled = rollup(m, set(view["visible"]), hidden, shown_groups={"api:"})
     rolled.edges = bundle(m, rolled.edges, set(view["expanded"]))
     calls = [e for e in rolled.edges if e.subkind == "http"]
     assert calls, "frontend -> APIs edge"
-    assert all(e.src.startswith("fs:frontend") and e.dst == "api" for e in calls)
-    served = [e for e in rolled.edges if e.kind == "provide" and e.src == "api"]
-    assert served and all(e.dst.startswith("fs:backend") for e in served)
+    assert all(e.src.startswith("repo:frontend") and e.dst == "api:" for e in calls)
+    served = [e for e in rolled.edges if e.kind == "provide" and e.src == "api:"]
+    assert served and all(e.dst.startswith("repo:backend") for e in served)
     # the test directory is hidden, externals are a badge, not an edge
-    assert "fs:backend/tests" not in view["visible"]
-    assert not any(e.dst == "ext" or e.src == "ext" for e in rolled.edges)
-    assert any("ext" in a for a in rolled.annotations.values())
+    assert "repo:backend/tests" not in view["visible"]
+    assert not any(e.dst == "pkg:" or e.src == "pkg:" for e in rolled.edges)
+    assert any("pkg:" in a for a in rolled.annotations.values())
 
 
 def test_scene_of_default_cut(repo: Path):
@@ -145,10 +145,10 @@ def test_folding_drops_what_was_unfolded_inside(repo: Path):
     from nolli.scene import ViewState, scene
 
     m, _ = extract(repo)
-    inner = ViewState(expanded=["fs:.", "fs:backend", "fs:backend/store.py"])
-    assert "fs:backend/store.py" in scene(m, inner)["state"]["expanded"]
-    folded = scene(m, ViewState(expanded=["fs:.", "fs:backend/store.py"]))
-    assert folded["state"]["expanded"] == ["fs:."]
+    inner = ViewState(expanded=["repo:", "repo:backend", "repo:backend/store.py"])
+    assert "repo:backend/store.py" in scene(m, inner)["state"]["expanded"]
+    folded = scene(m, ViewState(expanded=["repo:", "repo:backend/store.py"]))
+    assert folded["state"]["expanded"] == ["repo:"]
 
 
 def test_hover_descriptions(repo: Path):
@@ -167,7 +167,7 @@ def test_hover_descriptions(repo: Path):
     # with the APIs group hidden, calls are in the caller's hover text, not edges
     folded = scene(m, ViewState(budget=12, groups=[]))
     assert not any(e["style"] == "http" for e in folded["edges"])
-    app = next(n for n in folded["nodes"] if n["id"] == "fs:frontend/src/App.tsx")
+    app = next(n for n in folded["nodes"] if n["id"] == "repo:frontend/src/App.tsx")
     assert "Calls 1 HTTP endpoint" in text(app["info"]).split("\n\n")
     # a Python reference edge names what it uses ("api/ references Store in store")
     imp = next(e for e in sc["edges"] if e["style"] == "import" and " references " in text(e["info"]))
@@ -180,19 +180,19 @@ def test_groups_are_a_filter(repo: Path):
     from nolli.scene import ViewState, scene
 
     m, _ = extract(repo)
-    shown = scene(m, ViewState(budget=12, groups=["api"]))
-    apis = next(n for n in shown["nodes"] if n["id"] == "api")
+    shown = scene(m, ViewState(budget=12, groups=["api:"]))
+    apis = next(n for n in shown["nodes"] if n["id"] == "api:")
     assert apis["foldable"] and not apis["container"]
-    assert any("api" in (e["src"], e["dst"]) for e in shown["edges"])
-    assert {g["id"]: g["shown"] for g in shown["groups"]}["api"] is True
+    assert any("api:" in (e["src"], e["dst"]) for e in shown["edges"])
+    assert {g["id"]: g["shown"] for g in shown["groups"]}["api:"] is True
 
-    opened = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["api"], groups=["api"]))
-    assert any(n["parent"] == "api" for n in opened["nodes"])
+    opened = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["api:"], groups=["api:"]))
+    assert any(n["parent"] == "api:" for n in opened["nodes"])
 
-    hidden = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["api"], groups=[]))
-    assert "api" not in hidden["state"]["expanded"]
-    assert all(n["id"] != "api" and n["parent"] != "api" for n in hidden["nodes"])
-    assert not any(n["id"] in ("env", "deploy") for n in hidden["nodes"])  # env set by deployment: both hidden, no edge
+    hidden = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["api:"], groups=[]))
+    assert "api:" not in hidden["state"]["expanded"]
+    assert all(n["id"] != "api:" and n["parent"] != "api:" for n in hidden["nodes"])
+    assert not any(n["id"] in ("config:", "runtime:") for n in hidden["nodes"])  # env set by deployment: both hidden, no edge
 
 
 def test_utilities_by_incoming_edges(repo: Path):
@@ -207,7 +207,7 @@ def test_utilities_by_incoming_edges(repo: Path):
     before = list(rolled.edges)
     utilities = utility_badges(m, rolled, min_in=0)  # every used box outside a group
     targets = {e.dst for e in before if e.kind == USE}
-    assert utilities == {t for t in targets if t != "api"}
+    assert utilities == {t for t in targets if t != "api:"}
     assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
     src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
     assert any(k.startswith("util:") for k in rolled.annotations[src])
@@ -223,15 +223,15 @@ def test_folder_text_matches_unfolding(repo: Path):
 
     m, _ = extract(repo)
     text = lambda line: line.replace("`", "")  # noqa: E731
-    before = scene(m, ViewState(expanded=["fs:."]))
-    backend = next(n for n in before["nodes"] if n["id"] == "fs:backend")
+    before = scene(m, ViewState(expanded=["repo:"]))
+    backend = next(n for n in before["nodes"] if n["id"] == "repo:backend")
     said = text(backend["info"].split("\n\n")[0])
     assert said.startswith("backend/ is a Python package with "), said
     promised = sum(int(n) for n in re.findall(r"(\d+) ", said))
-    after = scene(m, ViewState(expanded=["fs:.", "fs:backend"]))
-    drawn = [n for n in after["nodes"] if n["parent"] == "fs:backend" and n["kind"] != "anchor"]
+    after = scene(m, ViewState(expanded=["repo:", "repo:backend"]))
+    drawn = [n for n in after["nodes"] if n["parent"] == "repo:backend" and n["kind"] != "anchor"]
     assert promised == len(drawn), (said, [n["id"] for n in drawn])
-    store = next(n for n in after["nodes"] if n["id"] == "fs:backend/store.py")
+    store = next(n for n in after["nodes"] if n["id"] == "repo:backend/store.py")
     assert re.search(r"is a Python module with \d+ lines? and 1 class", text(store["info"])), store["info"]
     assert not any("pkgs" in (n.get("badge") or "") for n in after["nodes"])  # dependencies are in the text, not on the box
 
@@ -246,12 +246,12 @@ def test_docstrings(tmp_path: Path):
     (tmp_path / "pkg/core.py").write_text('"""The core frobber."""\nimport sys\nsys.exit("must not run")\n\n'
                                           'class Frob:\n    """Frobs one thing at a time."""\n')
     m, _ = extract(tmp_path)
-    assert m.entities["fs:pkg/core.py"].attrs["doc"] == "The core frobber."
-    assert m.entities["py:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
-    sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
+    assert m.entities["repo:pkg/core.py"].attrs["doc"] == "The core frobber."
+    assert m.entities["repo:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
+    sc = scene(m, ViewState(expanded=["repo:", "repo:pkg", "repo:pkg/core.py"]))
     docs = {n["id"]: [p[2:].replace("\\", "") for p in n["info"].split("\n\n") if p.startswith("> ")] for n in sc["nodes"]}
-    assert docs["fs:pkg"] == ["Tools for frobbing."]  # first paragraph only
-    assert docs["py:pkg/core.py#Frob"] == ["Frobs one thing at a time."]
+    assert docs["repo:pkg"] == ["Tools for frobbing."]  # first paragraph only
+    assert docs["repo:pkg/core.py#Frob"] == ["Frobs one thing at a time."]
 
 
 def test_own_code_dot(tmp_path: Path):
@@ -265,15 +265,15 @@ def test_own_code_dot(tmp_path: Path):
                                           "class Frob:\n    def go(self):\n        return frob()\n")
     (tmp_path / "pkg/use.py").write_text("from .core import frob\nfrob(); frob()\n")
     m, _ = extract(tmp_path)
-    core = m.entities["fs:pkg/core.py"].attrs
+    core = m.entities["repo:pkg/core.py"].attrs
     assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
-    assert m.entities["fs:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
-    sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
+    assert m.entities["repo:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
+    sc = scene(m, ViewState(expanded=["repo:", "repo:pkg", "repo:pkg/core.py"]))
     text = lambda line: line.replace("`", "")  # noqa: E731
     info = {n["id"]: text(n["info"]).split("\n\n") for n in sc["nodes"]}
-    assert info["body:fs:pkg/core.py"][0] == "core defines frob and helper"  # frob is referenced, helper not
-    assert "the constant LIMIT" in info["body:fs:pkg/core.py"][1]
-    assert any("re-exports Frob and frob" in t for t in info.get("body:fs:pkg", [])) or "body:fs:pkg" not in info
+    assert info["repo:pkg/core.py#"][0] == "core defines frob and helper"  # frob is referenced, helper not
+    assert "the constant LIMIT" in info["repo:pkg/core.py#"][1]
+    assert any("re-exports Frob and frob" in t for t in info.get("repo:pkg#", [])) or "repo:pkg#" not in info
 
 
 def test_directory_with_source_inside_stays_shown():
@@ -282,12 +282,12 @@ def test_directory_with_source_inside_stays_shown():
     from nolli.rollup import hidden_by_role
 
     m = Model()
-    for eid, kind, role in [("fs:.", "directory", "mixed"), ("fs:evals", "directory", "config"), ("fs:evals/probe.py", "file", "source"),
-                            ("fs:evals/runs.json", "file", "config"), ("fs:docs", "directory", "docs"), ("fs:docs/a.md", "file", "docs")]:
-        m.add_entity(Entity(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "fs:." else {})}, Provenance("t")))
-    for parent, child in [("fs:.", "fs:evals"), ("fs:evals", "fs:evals/probe.py"), ("fs:evals", "fs:evals/runs.json"), ("fs:.", "fs:docs"), ("fs:docs", "fs:docs/a.md")]:
+    for eid, kind, role in [("repo:", "directory", "mixed"), ("repo:evals", "directory", "config"), ("repo:evals/probe.py", "file", "source"),
+                            ("repo:evals/runs.json", "file", "config"), ("repo:docs", "directory", "docs"), ("repo:docs/a.md", "file", "docs")]:
+        m.add_entity(Entity(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("t")))
+    for parent, child in [("repo:", "repo:evals"), ("repo:evals", "repo:evals/probe.py"), ("repo:evals", "repo:evals/runs.json"), ("repo:", "repo:docs"), ("repo:docs", "repo:docs/a.md")]:
         m.contain(parent, child, "t")
-    assert hidden_by_role(m) == {"fs:evals/runs.json", "fs:docs", "fs:docs/a.md"}
+    assert hidden_by_role(m) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
 
 
 def test_box_names_are_icons_then_a_name(repo: Path):
@@ -297,13 +297,13 @@ def test_box_names_are_icons_then_a_name(repo: Path):
     m, _ = extract(repo)
     app = "api:http:backend/main.py:app"
     worlds = app + "/api/worlds"
-    sc = scene(m, ViewState(expanded=["fs:.", "fs:backend", "api", app, worlds], groups=["api"]))
+    sc = scene(m, ViewState(expanded=["repo:", "repo:backend", "api:", app, worlds], groups=["api:"]))
     names = {n["id"]: (n["icons"], n["label"]) for n in sc["nodes"] if "icons" in n}
-    assert names["fs:backend/store.py"] == (["m"], "store")
+    assert names["repo:backend/store.py"] == (["m"], "store")
     assert names[app] == (["API"], "backend")
     assert names[worlds] == (["/"], "api/worlds")
-    assert names[app + " POST /api/worlds"] == (["POST"], "")
-    assert names[app + " GET /api/worlds/{world}/echoes"] == (["GET"], "{world}/echoes")
+    assert names[worlds + "#POST"] == (["POST"], "")
+    assert names[worlds + "/{}/echoes#GET"] == (["GET"], "{world}/echoes")
 
 
 def test_markdown_from_repository_text():

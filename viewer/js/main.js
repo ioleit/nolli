@@ -12,7 +12,7 @@
 // Types: types/nolli.d.ts, checked with `npm run check`.
 
 import { byId, input, select } from "./dom.js";
-import { DEFAULTS, VIEWS, query, readHash, state, writeHash } from "./state.js";
+import { DEFAULTS, REPO_ROOT, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { layout } from "./layout.js";
 import { draw, drawGhosts, light } from "./draw.js";
 import { hideTip, pinTip } from "./tip.js";
@@ -257,7 +257,7 @@ onRawToggle(toggle);
 input("utilities").addEventListener("change", () => { state.utilities = Math.max(0, Math.round(+input("utilities").value || 0)); refresh(true); });
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; state.expanded = null; refresh(); });
 byId("reset").addEventListener("click", () => { state.expanded = null; refresh(); });
-byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; refresh(); });
+byId("collapse").addEventListener("click", () => { state.expanded = [REPO_ROOT]; refresh(); });
 byId("unfold").addEventListener("click", () => { state.expanded = [...new Set([...(state.expanded || []), ...changedAreas()])]; refresh(true); });
 select("theme").addEventListener("change", () => { state.theme = select("theme").value; chooseTheme(state.theme); writeHash(); });
 themeOptions();
@@ -277,7 +277,7 @@ async function enter(item = null) {
   loadingDataset();
   const res = state.expanded === null && !item ? await fetch("/api/changes?d=" + encodeURIComponent(state.name || "")) : null;
   const first = res && res.ok ? (await res.json()).verdicts.length > 0 : false;
-  if (first) state.expanded = ["fs:."];
+  if (first) state.expanded = [REPO_ROOT];
   await refresh();
   const loaded = /** @type {Scene | null} */ (scene);  // set by refresh(); TypeScript cannot see that through the await
   if (!loaded?.diff) return;

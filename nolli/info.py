@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from .labels import is_body, is_module
+from . import address
+from .labels import is_module
 from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE
 from .prose import Ctx, by_use, count, listing, paragraphs, quote, say
 from .rollup import is_init
@@ -227,13 +228,13 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> str:
 
 def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[str]:
     m = ctx.m
-    if is_body(x):
-        said = own_code(ctx, x[5:])
+    if address.is_own_code(x):
+        said = own_code(ctx, address.owner(x))
         if said:
             return said
-        owner = ctx.name(x[5:])
-        if m.entities[x[5:]].kind == "directory":
-            body = next((m.entities[c].name for c in m.children(x[5:]) if is_init(m, c)), "package")
+        owner = ctx.name(address.owner(x))
+        if m.entities[address.owner(x)].kind == "directory":
+            body = next((m.entities[c].name for c in m.children(address.owner(x)) if is_init(m, c)), "package")
             return [say("The code in {}'s {} beyond re-exporting its modules", owner, body)]
         return [say("The code in {} outside its classes and types", owner)]
     e = m.entities[x]

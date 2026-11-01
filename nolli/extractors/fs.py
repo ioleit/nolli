@@ -105,7 +105,7 @@ def classify(rel: str) -> tuple[str | None, str]:
 
 def run(ctx: Context) -> None:
     m = ctx.model
-    root = m.add_entity(Entity("fs:.", "directory", ctx.repo.name, {"path": ".", "root": True}, Provenance("fs")))
+    root = m.add_entity(Entity(ctx.repo_id(""), "directory", ctx.repo.name, {"path": ".", "root": True}, Provenance("fs")))
     seen_dirs = {".": root.id}
     for f in ctx.files:
         rel = ctx.rel(f)
@@ -116,7 +116,7 @@ def run(ctx: Context) -> None:
         for part in f.parts[:-1]:
             acc = f"{acc}/{part}" if acc else part
             if acc not in seen_dirs:
-                d = m.add_entity(Entity(ctx.fs_id(acc), "directory", part, {"path": acc}, Provenance("fs", acc)))
+                d = m.add_entity(Entity(ctx.repo_id(acc), "directory", part, {"path": acc}, Provenance("fs", acc)))
                 m.contain(parent_id, d.id, "fs")
                 seen_dirs[acc] = d.id
             parent_id = seen_dirs[acc]
@@ -132,7 +132,7 @@ def run(ctx: Context) -> None:
             lines = count_lines(ctx.repo / f, size)
             if lines is not None:
                 attrs["lines"] = lines
-        e = m.add_entity(Entity(ctx.fs_id(rel), "file", f.name, attrs, Provenance("fs", rel)))
+        e = m.add_entity(Entity(ctx.repo_id(rel), "file", f.name, attrs, Provenance("fs", rel)))
         m.contain(parent_id, e.id, "fs")
 
     # Directory roles, by bytes: a directory is "source" (or "mixed", when other roles sit

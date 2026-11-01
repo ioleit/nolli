@@ -28,6 +28,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from . import address
 from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, Model
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
@@ -208,10 +209,10 @@ def visible_from_expanded(m: Model, expanded: set[str], hidden: set[str], show_f
 
     An unfolded container shows *all* its non-hidden children (a partially opened
     container hides problems); children that are unfolded themselves are walked. An
-    unfolded module also gets ``body:<module>``, the anchor for its own code. Single-child
+    unfolded module also gets ``<module>#`` (address.own_code), the anchor for its own code. Single-child
     directory chains are compressed to their end, so ``expanded`` should name chain ends.
     A package's ``__init__`` is not a node: its classes are children of the package and its
-    body is the package's anchor ``body:<dir>``, present only if it has edges.
+    body is the package's anchor ``<dir>#``, present only if it has edges.
     ``show_files`` and ``degree`` are accepted for compatibility and ignored. ``walked``,
     if given, receives the unfolded containers actually reached (the effective unfold set).
     """
@@ -223,9 +224,9 @@ def visible_from_expanded(m: Model, expanded: set[str], hidden: set[str], show_f
             walked.add(n)
         kind = m.entities[n].kind
         if kind == "file":
-            visible.add(f"body:{n}")
+            visible.add(address.own_code(n))
         if kind == "directory" and n in anchors:
-            visible.add(f"body:{n}")
+            visible.add(address.own_code(n))
         for c in m.children(n):
             if c in hidden:
                 continue
@@ -275,13 +276,13 @@ def representative(m: Model, visible: set[str], hidden: set[str], alias: dict[st
             if cur in visible:
                 result = cur
                 break
-            if m.entities[cur].kind == "file" and f"body:{cur}" in visible:
-                result = f"body:{cur}"  # the module is unfolded: its own code
+            if m.entities[cur].kind == "file" and address.own_code(cur) in visible:
+                result = address.own_code(cur)  # the module is unfolded: its own code
                 break
             if is_init(m, cur):
                 p = m.parent(cur)
-                if p is not None and f"body:{p}" in visible:
-                    result = f"body:{p}"  # the package is unfolded: its own code
+                if p is not None and address.own_code(p) in visible:
+                    result = address.own_code(p)  # the package is unfolded: its own code
                     break
             cur = m.parent(cur)
         cache[x] = result
@@ -296,7 +297,7 @@ def fact_key(r) -> str:
 
 
 def owner_of(node: str) -> str:
-    return node.split(":", 1)[1] if node.startswith(("files:", "body:")) else node
+    return address.owner(node)
 
 
 def top_of(m: Model, node: str, expanded: set[str]) -> str:
@@ -392,8 +393,8 @@ def reveal_scores(m: Model, hidden: set[str]) -> tuple[dict[str, int], dict[str,
 
 
 def drawn_parent(m: Model, node: str, expanded: set[str]) -> str | None:
-    """The unfolded container a drawn node sits in (``files:C`` sits in C, ``body:F`` in F)."""
-    if node.startswith(("files:", "body:")):
+    """The unfolded container a drawn node sits in (the own code ``F#`` sits in F)."""
+    if address.is_own_code(node):
         return owner_of(node)
     p = m.parent(node)
     while p is not None:
