@@ -2,7 +2,23 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
-## Unreleased
+## 0.4.0
+
+### New
+
+- **HTML and CSS**: what pages and stylesheets load is extracted (`<script src>`,
+  `<link href>`, images and media, `<style>` blocks, CSS `@import` and `url()`). A script
+  from a package CDN is that npm package. HTML and CSS have the role "markup": shown by
+  default, but they don't make a directory source.
+- **Mermaid follows the viewer**: the viewer has three tabs on one scene, Interactive,
+  Mermaid and JSON. The Mermaid tab follows the controls, can be copied, and unfolds a box
+  on click. Presets (`p=default|folded|changes|unfolded`) name a cut in a link and replace
+  the "default cut", "fold all" and "unfold changes" buttons. `default.mmd` and
+  `review.mmd` are rendered from the same scene, and are closer to the drawing.
+- **`nolli serve` extracts each commit once**: extractions are kept by commit under
+  `<cache>/extractions`, so a pull request's base is extracted once for all its pushes.
+  `--keep 20G` (or `NOLLI_CACHE_KEEP`) keeps the cache within a size; after each build,
+  what was used longest ago is deleted.
 
 ### Changed
 
@@ -19,6 +35,9 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   are these namespaces: Artifacts holds packages and images, Runtime services and hosts.
   The model rejects an entity or relation outside them. Datasets and verdicts from
   earlier versions no longer load; extract again.
+- **Hover texts are Markdown**, rendered in one place in the viewer. File names, values
+  and counts are code spans, and docstrings are quoted with their own code spans kept.
+  Pinned cards show as they are, wherever you open them from.
 
 ## 0.3.0
 
