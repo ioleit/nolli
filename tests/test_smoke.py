@@ -156,23 +156,22 @@ def test_hover_descriptions(repo: Path):
     from nolli.scene import ViewState, scene
 
     m, _ = extract(repo)
-    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
+    text = lambda line: line.replace("`", "")  # noqa: E731
     sc = scene(m, ViewState(budget=12))
     for item in sc["nodes"] + sc["edges"]:
         assert item["info"], item.get("id") or item.get("key")
-        for line in item["info"]:
-            assert all(isinstance(p, str) or set(p) in ({"v"}, {"doc"}) for p in line)
-            assert not any(t in text(line) for t in ("fs:", "py:", "svc ", "img ")), text(line)
+        assert isinstance(item["info"], str)
+        assert not any(t in text(item["info"]) for t in ("fs:", "py:", "svc ", "img ")), item["info"]
     http = next(e for e in sc["edges"] if e["style"] == "http")
-    assert "to endpoints served by" in text(http["info"][0])
+    assert "to endpoints served by" in text(http["info"])
     # with the APIs group hidden, calls are in the caller's hover text, not edges
     folded = scene(m, ViewState(budget=12, groups=[]))
     assert not any(e["style"] == "http" for e in folded["edges"])
     app = next(n for n in folded["nodes"] if n["id"] == "fs:frontend/src/App.tsx")
-    assert "Calls 1 HTTP endpoint" in [text(line) for line in app["info"]]
+    assert "Calls 1 HTTP endpoint" in text(app["info"]).split("\n\n")
     # a Python reference edge names what it uses ("api/ references Store in store")
-    imp = next(e for e in sc["edges"] if e["style"] == "import" and " references " in text(e["info"][0]))
-    assert {"v": "Store"} in imp["info"][0], imp["info"]
+    imp = next(e for e in sc["edges"] if e["style"] == "import" and " references " in text(e["info"]))
+    assert "`Store`" in imp["info"], imp["info"]
 
 
 def test_groups_are_a_filter(repo: Path):
@@ -223,17 +222,17 @@ def test_folder_text_matches_unfolding(repo: Path):
     from nolli.scene import ViewState, scene
 
     m, _ = extract(repo)
-    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
+    text = lambda line: line.replace("`", "")  # noqa: E731
     before = scene(m, ViewState(expanded=["fs:."]))
     backend = next(n for n in before["nodes"] if n["id"] == "fs:backend")
-    said = text(backend["info"][0])
+    said = text(backend["info"].split("\n\n")[0])
     assert said.startswith("backend/ is a Python package with "), said
     promised = sum(int(n) for n in re.findall(r"(\d+) ", said))
     after = scene(m, ViewState(expanded=["fs:.", "fs:backend"]))
     drawn = [n for n in after["nodes"] if n["parent"] == "fs:backend" and n["kind"] != "anchor"]
     assert promised == len(drawn), (said, [n["id"] for n in drawn])
     store = next(n for n in after["nodes"] if n["id"] == "fs:backend/store.py")
-    assert re.search(r"is a Python module with \d+ lines? and 1 class", text(store["info"][0])), store["info"]
+    assert re.search(r"is a Python module with \d+ lines? and 1 class", text(store["info"])), store["info"]
     assert not any("pkgs" in (n.get("badge") or "") for n in after["nodes"])  # dependencies are in the text, not on the box
 
 
@@ -250,7 +249,7 @@ def test_docstrings(tmp_path: Path):
     assert m.entities["fs:pkg/core.py"].attrs["doc"] == "The core frobber."
     assert m.entities["py:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
     sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
-    docs = {n["id"]: [p["doc"] for line in n["info"] for p in line if isinstance(p, dict) and "doc" in p] for n in sc["nodes"]}
+    docs = {n["id"]: [p[2:].replace("\\", "") for p in n["info"].split("\n\n") if p.startswith("> ")] for n in sc["nodes"]}
     assert docs["fs:pkg"] == ["Tools for frobbing."]  # first paragraph only
     assert docs["py:pkg/core.py#Frob"] == ["Frobs one thing at a time."]
 
@@ -270,8 +269,8 @@ def test_own_code_dot(tmp_path: Path):
     assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
     assert m.entities["fs:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
     sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
-    text = lambda line: "".join(p if isinstance(p, str) else p["v"] for p in line)  # noqa: E731
-    info = {n["id"]: [text(l) for l in n["info"]] for n in sc["nodes"]}
+    text = lambda line: line.replace("`", "")  # noqa: E731
+    info = {n["id"]: text(n["info"]).split("\n\n") for n in sc["nodes"]}
     assert info["body:fs:pkg/core.py"][0] == "core defines frob and helper"  # frob is referenced, helper not
     assert "the constant LIMIT" in info["body:fs:pkg/core.py"][1]
     assert any("re-exports Frob and frob" in t for t in info.get("body:fs:pkg", [])) or "body:fs:pkg" not in info
@@ -305,3 +304,13 @@ def test_box_names_are_icons_then_a_name(repo: Path):
     assert names[worlds] == (["/"], "api/worlds")
     assert names[app + " POST /api/worlds"] == (["POST"], "")
     assert names[app + " GET /api/worlds/{world}/echoes"] == (["GET"], "{world}/echoes")
+
+
+def test_markdown_from_repository_text():
+    """Names and docstrings from a repository can't turn into Markdown (prose.py)."""
+    from nolli.prose import code, esc, quote, say
+
+    assert say("{} references {} in {}", "api/", "1 name", "lib/") == "`api/` references `1 name` in `lib/`"
+    assert code("a`b") == "``a`b``" and code("`x`") == "`` `x` ``"
+    assert esc("__init__.py *[x](y)*") == r"\_\_init\_\_.py \*\[x\](y)\*"
+    assert quote("The core\n  frobber.") == "> The core frobber."

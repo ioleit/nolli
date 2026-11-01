@@ -6,6 +6,7 @@
 // needs, centre on it, flash it and open its card.
 
 import { byId } from "./dom.js";
+import { inlineHTML } from "./md.js";
 import { state } from "./state.js";
 import { ORDER, RANK, markHTML } from "./verdicts.js";
 
@@ -62,9 +63,6 @@ export async function loadItems(name) {
 /** @param {boolean} on */
 export function showPanel(on) { document.body.classList.toggle("reviewing", on); }
 
-/** Escaped text with `code` spans set apart, like values on the cards. @param {string} text */
-const codeSpans = text => esc(text).replace(/`([^`]+)`/g, '<span class="v">$1</span>');
-
 /** @param {string} st */
 const statusSpan = st => `<span class="st ${esc(st)}">${GLYPH[/** @type {"added" | "removed" | "changed"} */ (st)] || "•"}</span>`;
 /** @param {{ verdict: string, reason: string } | null | undefined} v */
@@ -120,7 +118,7 @@ export function renderPanel(scene, h) {
   if (verdicts.length) html += `<div class="rv-group">Review</div>`;
   for (const v of verdicts) {
     const cur = state.item === v.id ? " current" : "", off = v.ends.length ? "" : " off";
-    html += `<div class="rv-row rv-verdict v-${esc(v.verdict)}${cur}${off}" data-item="${esc(v.id)}"><div class="rv-item">${verdictSpan(v)}<span class="t"><b>${esc(v.label)}</b>${v.ends.length ? "" : ` <span class="muted">(not in the diagram)</span>`}<br>${codeSpans(v.reason)}</span></div></div>`;
+    html += `<div class="rv-row rv-verdict v-${esc(v.verdict)}${cur}${off}" data-item="${esc(v.id)}"><div class="rv-item">${verdictSpan(v)}<span class="t"><b>${esc(v.label)}</b>${v.ends.length ? "" : ` <span class="muted">(not in the diagram)</span>`}<br>${inlineHTML(v.reason)}</span></div></div>`;
   }
   let last = "";
   for (const it of shown) {

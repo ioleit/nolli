@@ -159,8 +159,8 @@ def test_items_verdicts_and_export(repo):
     assert len(marked) == 1 and marked[0]["verdict"] == "problem" and (marked[0]["src"], marked[0]["dst"]) == ("fs:app/api.py", "fs:app/store.py")
     store = next(n for n in sc["nodes"] if n["id"] == "fs:app/store.py")  # Index is inside the folded store module
     assert store["verdicts"] == ["V2"] and store["verdict"] == "question"
-    assert any(p == {"verdict": "question"} for line in store["review"] for p in line)
-    assert not any(p == {"verdict": "question"} for line in store["info"] for p in line)
+    assert "[question](verdict:question)" in store["review"]
+    assert "verdict:" not in store["info"]
     assert not any("V3" in x.get("verdicts", []) for x in sc["nodes"] + sc["edges"])  # an unknown target is not drawn
     sc = scene(m, ViewState(expanded=["fs:."]), v)  # app folded: the edge falls inside it, so does the verdict
     app = next(n for n in sc["nodes"] if n["id"] == "fs:app")
@@ -178,9 +178,9 @@ def test_rolled_up_verdicts_are_counted():
 
     v = lambda i, verdict: {"id": f"V{i}", "verdict": verdict, "reason": f"reason {i}"}  # noqa: E731
     # few verdicts: every reason in full, worst first
-    assert [line[0] for line in node_review_info(None, [v(1, "fine")], [v(2, "problem")])] == [{"verdict": "problem"}, {"verdict": "fine"}]
+    assert node_review_info(None, [v(1, "fine")], [v(2, "problem")]) == "[problem](verdict:problem) reason 2\n\n[fine](verdict:fine) reason 1"
     # many from inside: one line counting them, like the review panel; the box's own in full
     inside = [v(2, "fine"), v(3, "blunder"), v(4, "fine"), v(5, "fine")]
-    lines = node_review_info(None, [v(1, "question")], inside, items=13, kind="directory")
-    assert lines[0] == [{"v": "13 changes"}, " in this directory · verdicts:", " ", {"verdict": "blunder"}, " ", {"v": "1"}, " ", {"verdict": "fine"}, " ", {"v": "3"}]
-    assert lines[1][0] == {"verdict": "question"} and len(lines) == 2
+    lines = node_review_info(None, [v(1, "question")], inside, items=13, kind="directory").split("\n\n")
+    assert lines == ["`13 changes` in this directory · verdicts: [blunder](verdict:blunder) `1` [fine](verdict:fine) `3`",
+                     "[question](verdict:question) reason 1"]

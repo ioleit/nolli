@@ -12,6 +12,7 @@
 // Types: types/nolli.d.ts, checked with `npm run check`.
 
 import { byId, input, select } from "./dom.js";
+import { code, mark, oneLine, paragraphsOf } from "./md.js";
 import { DEFAULTS, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { layout } from "./layout.js";
 import { draw, drawGhosts, light } from "./draw.js";
@@ -196,17 +197,13 @@ function pinItem(id) {
   const target = useEdge ? edge && root.querySelector(`.edge[data-key="${CSS.escape(edge.key)}"]`) : root.querySelector(`.node[data-id="${CSS.escape(node.id)}"]`);
   const shown = useEdge ? edge : node;
   if (!target || !shown) return;
-  /** @type {import("../types/nolli").Info} */
-  const review = shown.review || [];
+  const review = paragraphsOf(shown.review || "");
   if ("verdict" in it) {
-    // the card already has this verdict's line; move it to the top
-    const mine = (/** @type {import("../types/nolli").Parts} */ l) => l.some(x => typeof x === "object" && "verdict" in x) && l.includes(it.reason.split("`")[0]);
-    pinTip({ info: shown.info, review: [[{ verdict: it.verdict }, " ", ...marked(it.reason)], ...review.filter(l => !mine(l))] }, target);
-  } else pinTip({ info: shown.info, review: [[{ v: it.title }], ...review] }, target);
+    // the card already has this verdict's line (as nolli/review.py writes it); move it to the top
+    const line = mark(it.verdict) + " " + oneLine(it.reason);
+    pinTip({ info: shown.info, review: [line, ...review.filter(l => l !== line)].join("\n\n") }, target);
+  } else pinTip({ info: shown.info, review: [code(it.title), ...review].join("\n\n") }, target);
 }
-
-/** Text with `code` spans as parts, the spans set apart (as nolli/review.py marked). @param {string} text */
-const marked = text => text.split("`").map((t, i) => i % 2 ? { v: t } : t).filter(t => typeof t !== "string" || t);
 
 /** @param {number} step +1 next, -1 previous */
 function stepItem(step) {
