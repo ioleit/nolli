@@ -108,10 +108,11 @@ export function renderPanel(scene, h) {
     <div class="rv-title">${esc(d.title || "Change")}</div>
     <div class="rv-sub">${link(d.link, d.pr ? `PR #${d.pr}` : "compare")} · ${esc(d.base_short)} → ${esc(d.head_short)}
       · ${d.files_changed} files <span class="plus">+${d.added}</span> <span class="minus">−${d.removed}</span></div>
-    ${verdicts.length ? `<div class="rv-verdicts">verdicts: ${ORDER.filter(v => counts[v]).map(v => `<span class="vd ${v}" title="${v}">${markHTML(v)}</span> ${counts[v]}`).join(" ")}</div>` : ""}
-    <div id="rv-review" class="rr"></div>
   </div><div class="rv-list">`;
-  if (verdicts.length) html += `<div class="rv-group">Review</div>`;
+  // the review: its heading has the verdicts' counts, where they came from and "again" (reviewer.js)
+  const tally = ORDER.filter(v => counts[v]).map(v => `<span class="vd ${v}" title="${v}">${markHTML(v)}</span>${counts[v]}`).join(" ");
+  html += `<div class="rv-group rr-group"><span>Review</span>${tally ? `<span class="rr-tally">${tally}</span>` : ""}<span id="rr-head" class="rr-head"></span></div>
+    <div id="rv-review" class="rr"></div>`;
   for (const v of verdicts) {
     const cur = state.item === v.id ? " current" : "", off = v.ends.length ? "" : " off";
     html += `<div class="rv-row rv-verdict v-${esc(v.verdict)}${cur}${off}" data-item="${esc(v.id)}"><div class="rv-item">${verdictSpan(v)}<span class="t"><b>${esc(v.label)}</b>${v.ends.length ? "" : ` <span class="muted">(not in the diagram)</span>`}<br>${inlineHTML(v.reason)}</span></div></div>`;

@@ -1,4 +1,4 @@
-// The review block at the top of the review panel: where the verdicts shown came from, and
+// The review, at the top of the review panel's list: where the verdicts shown came from, and
 // "Review structural changes", which starts a review agent on the server (POST /api/review,
 // viewer/reviews.py). A run takes minutes: the block follows it (GET /api/review) wherever
 // the reader goes meanwhile, says what the agent is doing, and can cancel it; the tab's
@@ -87,17 +87,18 @@ function ago(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
-/** Where the verdicts shown came from, in one line. */
+/** Where the verdicts shown came from, in a few words; the details in its title. */
 function origin() {
   const v = status?.verdicts;
   if (!v) return "";
+  const when = ago(v.at);
   if (v.by === "ci") {
-    const dropped = v.dropped ? ` · ${v.dropped} did not fit this drawing` : "";
-    return `by nolli CI on this commit, ${esc(ago(v.at))} · <a href="${esc(v.link)}" target="_blank" rel="noopener">the PR comment ↗</a>${dropped}`;
+    const dropped = v.dropped ? `; ${v.dropped} did not fit this drawing` : "";
+    return `<a href="${esc(v.link)}" target="_blank" rel="noopener" title="nolli CI's review of this commit, from its PR comment${esc(dropped)}">nolli CI · ${esc(when)} ↗</a>`;
   }
-  if (v.by === "agent") return `by a review agent (${esc(v.model)}) run here, ${esc(ago(v.at))} · ${clock(v.seconds || 0)}`;
-  if (v.by === "upload") return `loaded from a file, ${esc(ago(v.at))}`;
-  return "from verdicts.json in the dataset";
+  if (v.by === "agent") return `<span title="${esc(`A review agent (${v.model}) run here, in ${clock(v.seconds || 0)}`)}">agent · ${esc(when)}</span>`;
+  if (v.by === "upload") return `<span title="Loaded from a file">file · ${esc(when)}</span>`;
+  return "";
 }
 
 /** What nolli's CI says about this commit, when there are no verdicts yet. */
@@ -149,41 +150,45 @@ function waysHTML() {
 const whyNot = why => ({ key: "Needs an Anthropic API key where nolli runs.", package: "Needs the API client (nolli-review[api]) where nolli runs.",
   repo: "Needs the change's repository, which this viewer was not given.", dataset: "This dataset has no review diagram (built by an older nolli?)." })[why || ""] || "";
 
-/** Draw the block into #rv-review (the review panel's head has it); nothing if the panel is not shown. */
+/** Draw the review: its part of the Review heading (#rr-head: where the verdicts came from,
+ * "Review again", other ways) and what goes under it (#rv-review: a run under way, how a run
+ * ended, and, without verdicts, the button and how else to get a review). */
 export function draw() {
-  const box = document.getElementById("rv-review");
-  if (!box) return;
+  const head = document.getElementById("rr-head"), box = document.getElementById("rv-review");
+  if (!head || !box) return;
   const st = status;
   const run = st?.run;
+  const has = !!st?.verdicts;
+  const can = !!st?.can_run && !busy;
+  const waysBtn = `<button class="rr-link" id="rr-ways" aria-expanded="${ways}" title="Other ways to review">other ways</button>`;
+  head.innerHTML = has ? `${origin()}<span class="rr-tools">${st?.can_run && !running()
+    ? `<button id="rr-start" class="rr-again"${can ? "" : " disabled"} title="${esc(`Run a review agent (${st?.model}) again; these verdicts stay until its own are ready`)}">${ICON}again</button>` : ""}${waysBtn}</span>` : "";
   let html = "";
-  if (st?.verdicts) html += `<div class="rr-origin">${origin()}</div>`;
   if (run && running()) {
     const waiting = run.state === "queued";
-    html += `<div class="rr-run" role="status">
-      <div class="rr-line"><span class="spin" aria-hidden="true"></span><b>${waiting ? "Waiting for another review to finish" : "Reviewing structural changes"}…</b>
-        <span class="rr-clock">${clock(waiting ? run.waiting : run.seconds)}</span>
-        <button class="rr-cancel" id="rr-cancel"${busy ? " disabled" : ""}>Cancel</button></div>
-      ${waiting ? "" : `<div class="rr-step">${inlineHTML(run.step || "starting")}</div>
-      <div class="rr-meta">turn ${run.turns || 1} · usually 2–6 minutes · you can keep looking around${st?.verdicts ? "; the verdicts shown stay until the new ones are ready" : ""}</div>`}
+    html += `<div class="rr-run" role="status" title="${has ? "The verdicts shown stay until the new ones are ready" : "You can keep looking around meanwhile"}">
+      <span class="spin" aria-hidden="true"></span><b>${waiting ? "Waiting for another review" : "Reviewing"}…</b>
+      <span class="rr-step">${waiting ? "" : inlineHTML(run.step || "starting")}</span>
+      <span class="rr-clock">${clock(waiting ? run.waiting : run.seconds)}</span>
+      <button class="rr-cancel" id="rr-cancel"${busy ? " disabled" : ""}>Cancel</button></div>`;
+  } else if (run?.state === "failed") html += `<div class="rr-fail">The review failed: ${esc(run.error)}</div>`;
+  else if (run?.state === "cancelled") html += `<div class="rr-note">Review cancelled.</div>`;
+  if (!has && !running() && st) {
+    const label = run?.state === "failed" ? "Try again" : "Review structural changes";
+    html += `<div class="rr-act">
+      <button id="rr-start" class="rr-start"${can ? "" : " disabled"} title="${esc(can ? `A review agent (${st.model}) judges every changed box and edge` : whyNot(st.why_not))}">${ICON}<span>${label}</span></button>
+      ${st.can_run ? "" : `<span class="rr-why">${esc(whyNot(st.why_not))}</span>`}
     </div>`;
-  } else {
-    if (run?.state === "failed") html += `<div class="rr-fail">The review failed: ${esc(run.error)}</div>`;
-    if (run?.state === "cancelled") html += `<div class="rr-note">Review cancelled.</div>`;
-    if (run?.state === "done" && st?.verdicts?.by === "agent") html += `<div class="rr-done">Review ready: the verdicts are on the drawing. <span class="muted">j / k go through them.</span></div>`;
-    const again = !!st?.verdicts;
-    const label = again ? "Review again" : run?.state === "failed" ? "Try again" : "Review structural changes";
-    const can = !!st?.can_run && !busy;
-    if (!again || st?.can_run) html += `<div class="rr-act">
-      <button id="rr-start" class="rr-start${again ? " quiet" : ""}"${can ? "" : " disabled"} title="${esc(can ? `A review agent (${st?.model}) judges every changed box and edge` : whyNot(st?.why_not))}">${ICON}<span>${label}</span></button>
-      ${st && !st.can_run ? `<span class="rr-why">${esc(whyNot(st.why_not))}</span>` : ""}
-    </div>`;
-    if (!st?.verdicts && !run && st?.can_run) html += `<div class="rr-meta">A review agent judges every changed box and edge of this drawing. A few minutes; you can keep looking around meanwhile.</div>`;
-    if (!st?.verdicts && st?.ci) html += `<div class="rr-meta">${ciNote()}</div>`;
-    if (st) html += `<details class="rr-more"${ways || (!st.can_run && !st.verdicts) ? " open" : ""}><summary>${st.can_run || st.verdicts ? "Other ways to review" : "How to get a review"}</summary>${waysHTML()}</details>`;
-  }
+    if (st.can_run && !run) html += `<div class="rr-meta">A review agent judges every changed box and edge of this drawing. It takes a few minutes; you can keep looking around meanwhile.</div>`;
+    if (st.ci) html += `<div class="rr-meta">${ciNote()}</div>`;
+    html += `<details class="rr-more"${ways || !st.can_run ? " open" : ""}><summary>${st.can_run ? "Other ways to review" : "How to get a review"}</summary>${waysHTML()}</details>`;
+  } else if (has && ways) html += waysHTML();
   box.innerHTML = html;
   document.title = running() ? `◌ Reviewing · ${baseTitle}` : baseTitle;
-  box.querySelector("#rr-start")?.addEventListener("click", () => act("start"));
+  for (const el of [head, box]) {
+    el.querySelector("#rr-start")?.addEventListener("click", () => act("start"));
+    el.querySelector("#rr-ways")?.addEventListener("click", () => { ways = !ways; draw(); });
+  }
   box.querySelector("#rr-cancel")?.addEventListener("click", () => act("cancel"));
   box.querySelector("details")?.addEventListener("toggle", ev => { ways = /** @type {HTMLDetailsElement} */ (ev.target).open; });
   box.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", async () => {
