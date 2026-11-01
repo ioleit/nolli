@@ -15,8 +15,9 @@ repositories are shown: one GitHub says is private answers 404 like a missing on
 the token or this machine's logins reach.
 
 A service built on this one passes make_server() a Token of its own (one per repository, say
-a GitHub App's installation token for each installation) and a subclass of HostedHandler for
-pages and routes of its own; main() takes both too.
+a GitHub App's installation token for each installation), a subclass of HostedHandler for
+pages and routes of its own, and a reviewer of its own for "Review structural changes"
+(nolli.reviewer.Reviewer is nolli's agent); main() takes them too.
 
 Each commit's extraction is kept under ``<cache>/extractions`` (nolli/extractions.py), so a pull
 request's base is extracted once for all its pushes. With ``--keep 20G`` the cache stays within
@@ -73,10 +74,10 @@ from nolli.progress import Progress  # noqa: E402
 
 try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file
     from .serve import Handler, preload
-    from .reviews import ci_pull, from_ci
+    from .reviews import Reviews, ci_pull, from_ci
 except ImportError:
     from serve import Handler, preload  # type: ignore[no-redef]
-    from reviews import ci_pull, from_ci  # type: ignore[no-redef]
+    from reviews import Reviews, ci_pull, from_ci  # type: ignore[no-redef]
 
 OWNER = r"(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
 REPO = r"(?P<repo>[A-Za-z0-9._-]{1,100})"
@@ -579,9 +580,10 @@ NOT_A_PAGE = """<h1>Not a nolli page</h1>
 
 def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: int = 34, keep: int | None = None,
                 builds: int = BUILDS, timeout: float = TIMEOUT, max_repo: int | None = MAX_REPO, token: Token | None = None,
-                handler: type[HostedHandler] | None = None) -> ThreadingHTTPServer:
+                handler: type[HostedHandler] | None = None, reviewer=None) -> ThreadingHTTPServer:
     """A server for ``cache``, not yet serving. git runs as nobody; GitHub's API is asked with ``token``
-    (default: token_from_env()). ``handler``: a subclass of HostedHandler, for a service's own routes."""
+    (default: token_from_env()). ``handler``: a subclass of HostedHandler, for a service's own routes.
+    ``reviewer``: what runs a review (default: nolli.reviewer.Reviewer)."""
     # git: no credentials, prompts, or this machine's configuration (an insteadOf could reach private repos by ssh)
     os.environ.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_ASKPASS="true",
                       SSH_ASKPASS="true", GIT_SSH_COMMAND="false")
@@ -591,11 +593,13 @@ def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: 
     handler = handler or HostedHandler
     handler.site = site
     handler.data_root = site.data
+    handler.reviews = Reviews(reviewer)
     return ThreadingHTTPServer((host, port), partial(handler, directory=str(HERE)))
 
 
-def main(argv: list[str] | None = None, token: Token | None = None, handler: type[HostedHandler] | None = None) -> int:
-    """``nolli serve``'s options from ``argv``; ``token`` and ``handler`` as make_server() takes them."""
+def main(argv: list[str] | None = None, token: Token | None = None, handler: type[HostedHandler] | None = None,
+         reviewer=None) -> int:
+    """``nolli serve``'s options from ``argv``; ``token``, ``handler`` and ``reviewer`` as make_server() takes them."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cache", default=os.environ.get("NOLLI_CACHE") or str(Path.home() / ".cache" / "nolli-serve"))
     ap.add_argument("--host", default="127.0.0.1")
@@ -611,7 +615,7 @@ def main(argv: list[str] | None = None, token: Token | None = None, handler: typ
                     help="the largest repository built, by GitHub's size of it, e.g. 500M; 0 for no limit (default: $NOLLI_MAX_REPO, else 1G)")
     args = ap.parse_args(argv)
     srv = make_server(Path(args.cache), args.host, args.port, args.budget, args.keep, args.builds, args.timeout,
-                      args.max_repo or None, token, handler)
+                      args.max_repo or None, token, handler, reviewer)
     site = (handler or HostedHandler).site
     print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {site.cache}; {site.github.describe()})",
           file=sys.stderr, flush=True)

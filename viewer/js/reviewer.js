@@ -146,9 +146,9 @@ function waysHTML() {
   return `<ol class="rr-ways">${keyStep}${own}${hand}</ol>`;
 }
 
-/** Why the button is disabled, in a few words. @param {string | null | undefined} why */
+/** Why the button is disabled, in a few words: a word the server uses, or the server's own sentence. @param {string | null | undefined} why */
 const whyNot = why => ({ key: "Needs an Anthropic API key where nolli runs.", package: "Needs the API client (nolli-review[api]) where nolli runs.",
-  repo: "Needs the change's repository, which this viewer was not given.", dataset: "This dataset has no review diagram (built by an older nolli?)." })[why || ""] || "";
+  repo: "Needs the change's repository, which this viewer was not given.", dataset: "This dataset has no review diagram (built by an older nolli?)." })[why || ""] || why || "";
 
 /** Draw the review: its part of the Review heading (#rr-head: where the verdicts came from,
  * "Review again", other ways) and what goes under it (#rv-review: a run under way, how a run

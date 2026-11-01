@@ -106,9 +106,7 @@ class Handler(SimpleHTTPRequestHandler):
     def review_status(self, ds: Path) -> dict:
         """What the review panel shows: the verdicts' origin, the run under way or the last one,
         and whether (and why not) a run can be started here."""
-        from nolli import reviewer
-
-        why = reviewer.available()
+        why = self.reviews.reviewer.available()
         if why is None and not (ds / "review.mmd").is_file():
             why = "dataset"
         if why is None and self.review_repo(ds) is None:
@@ -116,7 +114,7 @@ class Handler(SimpleHTTPRequestHandler):
         job = self.reviews.job(ds.name)
         return {"verdicts": provenance(ds), "run": job.status() if job else None,
                 "can_run": why is None, "why_not": why, "uploads": self.uploads,
-                "model": reviewer.MODEL, "server": "view"}
+                "model": self.reviews.reviewer.model(), "server": "view"}
 
     def send_json(self, obj, status: int = 200) -> None:
         body = json.dumps(obj).encode()

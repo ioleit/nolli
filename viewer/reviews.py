@@ -107,7 +107,13 @@ class Job:
 class Reviews:
     """The review runs of one server, by dataset name."""
 
-    def __init__(self):
+    def __init__(self, reviewer=None):
+        """``reviewer``: what runs a review (nolli.reviewer.Reviewer, the default, or a service's own)."""
+        if reviewer is None:
+            from nolli.reviewer import Reviewer
+
+            reviewer = Reviewer()
+        self.reviewer = reviewer
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
 
@@ -152,7 +158,7 @@ class Reviews:
             shutil.rmtree(work, ignore_errors=True)
             try:
                 job.step = "fetching the change's commits"
-                run = reviewer.review(ds, repo(), work, on_step, job.cancel)
+                run = self.reviewer.review(ds, repo(), work, on_step, job.cancel)
                 verdicts = json.loads((work / "verdicts.json").read_text())
                 store(ds, verdicts, {"by": "agent", "model": run.model, "seconds": run.seconds, "turns": run.turns,
                                      "cost": round(run.cost, 2)})

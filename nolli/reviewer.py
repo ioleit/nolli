@@ -77,6 +77,31 @@ class Run:
         return sum(self.usage[k] * PRICE[k] for k in PRICE) / 1e6
 
 
+class Reviewer:
+    """What a server's "Review structural changes" runs: by default this module's agent. A service
+    built on nolli serve can give the server a reviewer of its own (``make_server(reviewer=...)``)
+    with other tools, models or loops; what it has to keep is the contract: it reads the dataset
+    (``model.json``, ``review.mmd``, ``review.md``) and the change's repository, and leaves
+    ``out/verdicts.json`` that passes nolli's check (``check_verdicts``)."""
+
+    def available(self) -> str | None:
+        """Why no review can run here, or None. A word the viewer knows ("key", "package") or a
+        sentence it shows as it is."""
+        return available()
+
+    def model(self) -> str:
+        """What the review panel names as the reviewer."""
+        return MODEL
+
+    def review(self, ds: Path, repo: Path, out: Path, on_step: Callable[[str, Run], None] | None = None,
+               cancel: threading.Event | None = None) -> Run:
+        """As review() below: writes out/verdicts.json, reports steps to ``on_step``, stops when
+        ``cancel`` is set (Cancelled), raises Failed without verdicts that pass the check. The Run
+        says the model, time and turns; a reviewer that pays otherwise than PRICE subclasses it
+        for its own ``cost``."""
+        return review(ds, repo, out, on_step, cancel)
+
+
 def prompt(brief: str, head: str) -> str:
     return (f"Review this change's architecture with nolli. Its brief (review.md) follows; do what it says.\n\n"
             f"Read code only as the change has it, with the git tool: `diff <base>..<head>` for the diff, "
