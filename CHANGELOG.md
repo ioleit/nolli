@@ -2,6 +2,15 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## Unreleased
+
+### Changed
+
+- **nolli in CI comments once per commit**: the example workflow no longer edits one
+  comment but adds one for each pushed commit, so the PR's conversation reads commit,
+  review, commit, review. Each commit's result stays downloadable (`nolli view`) until
+  its artifact expires; a re-run on the same commit updates that commit's comment.
+
 ## 0.3.0
 
 ### New

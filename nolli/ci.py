@@ -3,11 +3,11 @@
 
 On every push to a pull request, the workflow (``.github/workflows/nolli.yml``) builds the
 change's dataset, lets a review agent write its verdicts, uploads the dataset as a workflow
-artifact named ``nolli-pr<n>-<head7>`` and keeps one comment on the PR up to date
+artifact named ``nolli-pr<n>-<head7>`` and comments on the PR, once per pushed commit
 (``nolli ci comment``). The comment names the result by its key,
 ``<owner>/<repo>#<n>@<head7>``; ``nolli view <key>`` downloads that artifact with the
-viewer's own GitHub login, so the repository's access decides who may see it. The run
-deletes the PR's older results, and all of them when the PR closes.
+viewer's own GitHub login, so the repository's access decides who may see it. Artifacts
+expire after 7 days; the PR's are deleted when it closes.
 
 The comment also carries the verdicts and what they were made on (base, head, nolli's
 version), hidden, so they outlive the artifact.
