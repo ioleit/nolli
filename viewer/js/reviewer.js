@@ -3,7 +3,7 @@
 // viewer/reviews.py). A run takes minutes: the block follows it (GET /api/review) wherever
 // the reader goes meanwhile, says what the agent is doing, and can cancel it; the tab's
 // title says it too. Without an API key where nolli runs the button is disabled, and "Other
-// ways to review" says how to add one, and how to review for free with your own coding agent
+// ways to review" says how to add one, and how to review with your own coding agent
 // (nolli's skill), or by hand (review.md, then load the verdicts) where the server stores them.
 
 import { inlineHTML } from "./md.js";
@@ -134,10 +134,10 @@ function waysHTML() {
     : why === "repo"
       ? `<li><b>Here, with the repository:</b> this viewer was opened on a dataset, without the repository the agent reads the code from. Open the change itself instead, e.g. <code>nolli view ${esc(diff?.pr ? "'#" + diff.pr + "'" : (diff?.base_short || "") + ".." + (diff?.head_short || ""))}</code>.</li>`
       : "";
-  const own = `<li><b>Free, with your own coding agent</b> (Claude Code, or another that reads skills): install nolli's review skill once,
+  const own = `<li><b>With your own coding agent</b> (Claude Code, or another that reads skills): install nolli's review skill once,
       ${code("pipx install nolli-review && nolli agent skill --install ~/.claude/skills")}
       then ask, in a clone of the repository:${code(agentPrompt())}
-      The agent builds this same picture on your machine and opens its verdicts in a viewer there. It runs on your agent's subscription; no API key needed.</li>`;
+      The agent builds this same picture on your machine and opens its verdicts in a viewer there.</li>`;
   const hand = st?.uploads
     ? `<li><b>By hand:</b> give any agent <a href="/data/${esc(name)}/review.md" target="_blank">review.md</a> (the diagram and how to answer),
         save its answer as a .json file and <label class="file">load it here…<input type="file" id="rv-file" accept=".json,application/json"></label></li>`

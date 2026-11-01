@@ -65,7 +65,7 @@ serves any public GitHub repository, pull request or commit under GitHub's own p
 `/<owner>/<repo>/pull/48` shows what `nolli view https://github.com/<owner>/<repo>/pull/48`
 shows. A pull request's page shows the verdicts nolli's CI left for its head commit, if
 there are any. With `ANTHROPIC_API_KEY` set (and the `[api]` extra), anyone who can open
-the server's pages can start a review on it, paid from that key.
+the server's pages can start a review on it.
 
 ![A pull request in Nolli's viewer: added edges in green, a removed module dashed red, verdict marks from a review agent in chess notation, and the card of the worst one, a new import cycle](https://raw.githubusercontent.com/ioleit/nolli/main/viewer/e2e/__screenshots__/review.spec.js/blunder-on-edge.png)
 
