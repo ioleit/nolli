@@ -13,9 +13,10 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **Hovering an edge lights the boxes at its two ends**, as hovering a box lights its
   edges. Every hover, verdict mark and review item lights the same set for the same box or
   edge, and its card keeps clear of whatever is lit (and of the titles of unfolded boxes).
-- **A hover card goes as near as it can without covering anything.** Each spot beside a box
-  or edge moves away from it step by step, out to the edge of the canvas, until it covers
-  nothing; covering something is the last resort, the less the better.
+- **A hover card goes as near as it can without covering what is lit or a verdict mark.**
+  Each spot beside a box or edge moves away from it step by step, out to the edge of the
+  canvas, while that is worth it: the rest of the picture may be covered a little to stay
+  near.
 
 ## 0.6.0
 
