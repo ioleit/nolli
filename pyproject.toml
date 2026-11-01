@@ -1,6 +1,6 @@
 [project]
 name = "nolli-review"
-version = "0.4.0"
+version = "0.5.0"
 description = "Draws a pull request as a change to a repository's architecture, for you and your review agent"
 readme = "README.md"
 license = "Apache-2.0"

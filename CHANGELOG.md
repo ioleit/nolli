@@ -2,6 +2,39 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## 0.5.0
+
+### New
+
+- **Reviews in the viewer.** With `ANTHROPIC_API_KEY` set where nolli runs, "Review
+  structural changes" starts a review agent on the server (`nolli view`, and `nolli serve`
+  for every visitor, on the key's owner). You can keep looking around while it runs:
+  one line shows the step, the time and Cancel. Without a key the panel says how else to
+  get a review. Where verdicts came from (CI, an agent run, a file) is recorded in
+  `review.json` and shown in the Review heading.
+- **CI verdicts in `nolli serve`**: a pull request's page reads the verdicts nolli's CI
+  left in the PR's comments for its head commit, and opens on the worst one. Only the
+  bots' comments count. Verdicts from before 0.4 are translated to today's ids.
+- **GitHub App token for `nolli serve`**: `NOLLI_GITHUB_APP_ID` and
+  `NOLLI_GITHUB_APP_PRIVATE_KEY` (or `NOLLI_GITHUB_APP_PRIVATE_KEY_FILE`) let the server
+  ask GitHub's API with the app's installation token, 5,000 requests an hour instead of
+  60 (`NOLLI_GITHUB_APP_INSTALLATION_ID` picks the installation; `NOLLI_GITHUB_TOKEN`
+  takes any token). A repository GitHub says is private is still not shown, and clones
+  stay anonymous. The startup line names the GitHub access.
+- **Extras**: `nolli-review[api]` for the review agent, `nolli-review[serve]` for running
+  `nolli serve` as a service (the agent, and `cryptography` for the app's token).
+
+### Changed
+
+- **`nolli serve` builds in processes of their own**, `--builds` at once (default: the
+  CPUs, at most 4), so a server with more CPUs builds more at once. Anyone can ask for any
+  public repository, so there are limits: `--timeout` (default 600 s) stops a longer
+  build, and `--max-repo` (default 1G, GitHub's size of the repository) refuses a larger
+  one before anything is fetched. Each has an environment variable: `NOLLI_BUILDS`,
+  `NOLLI_BUILD_TIMEOUT`, `NOLLI_MAX_REPO`.
+- The panel's head says only what is compared; the review's counts and origin are the
+  heading of the Review section.
+
 ## 0.4.0
 
 ### New
