@@ -70,7 +70,7 @@ def run(ctx: Context) -> None:
                 df_path = (ctx_path / dockerfile)
                 df_rel = str(PurePosixPath(*[p for p in df_path.parts if p != "."])) if df_path.parts else "Dockerfile"
                 df_rel = df_rel.replace("//", "/")
-                iid = address.built_image(df_rel)
+                iid = address.built(df_rel)  # the image, by its Dockerfile
                 if not m.has(iid):
                     m.add_entity(Entity(iid, "image", df_rel, {"dockerfile": df_rel, "context": str(ctx_path) if str(ctx_path) != "." else "."}, Provenance("compose", rel)))
                     m.add_relation(Relation(CONTAIN, m.ensure_root(address.PKG, "compose"), iid, provenance=Provenance("compose", rel)))

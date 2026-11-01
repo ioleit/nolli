@@ -62,7 +62,7 @@ def test_other_namespaces():
     assert address.package("js", "elkjs") == "pkg:npm/elkjs"
     assert address.package("js", "@scope/name") == "pkg:npm/%40scope/name"
     assert address.package("py", "yaml") == "pkg:python/yaml"
-    assert address.built_image("web/Dockerfile") == "pkg:build/web/Dockerfile"
+    assert address.built("web/Dockerfile") == "pkg:build/web/Dockerfile"
     assert address.runtime("db") == "runtime:db" and address.config("HOME") == "config:HOME"
     u = address.unresolved("py", "a.b")
     assert address.unresolved_key(u, "py") == "a.b" and address.unresolved_key(u, "js") is None

@@ -28,8 +28,9 @@ The namespaces, by scheme:
     An artifact: a built unit that is immutable and versioned, as a package URL
     (https://github.com/package-url/purl-spec): ``pkg:npm/elkjs``, ``pkg:npm/%40scope/name``.
     A Python import names a module, not the distribution on PyPI that provides it, so it is
-    ``pkg:python/yaml``, not ``pkg:pypi/...``. An artifact built here that no registry names
-    is ``pkg:build/`` and the path of its recipe (``pkg:build/web/Dockerfile``).
+    ``pkg:python/yaml``, not ``pkg:pypi/...``. An artifact built in the repository that no registry
+    names is ``pkg:build/`` and the repository path of the recipe it is built from
+    (``pkg:build/web/Dockerfile``); ``build`` is nolli's own type, not a registered one.
 ``runtime:``
     Something that executes and is reachable at runtime, by its host name: a compose
     service (``runtime:db``, which the other services reach as host ``db``), a host outside
@@ -234,8 +235,9 @@ def package(lang: str, name: str) -> str:
     return f"{PKG}:{kind}/{quote(name, safe='')}"
 
 
-def built_image(recipe: str) -> str:
-    """An image built here from a Dockerfile at ``recipe`` (a repository path)."""
+def built(recipe: str) -> str:
+    """An artifact built from the recipe at the repository path ``recipe`` that has no
+    registry name."""
     return f"{PKG}:build/{recipe}"
 
 

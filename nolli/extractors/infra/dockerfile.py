@@ -49,7 +49,7 @@ def run(ctx: Context) -> None:
         if not (name == "Dockerfile" or name.startswith("Dockerfile.") or name.endswith(".Dockerfile")):
             continue
         group = m.ensure_root(address.PKG, "dockerfile")
-        iid = address.built_image(rel)
+        iid = address.built(rel)  # the image, by its Dockerfile
         if not m.has(iid):
             m.add_entity(Entity(iid, "image", rel, {"dockerfile": rel, "context": str(PurePosixPath(rel).parent)}, Provenance("dockerfile", rel)))
             m.add_relation(Relation(CONTAIN, group, iid, provenance=Provenance("dockerfile", rel)))
