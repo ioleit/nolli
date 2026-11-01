@@ -1,11 +1,9 @@
 // The text shown for a box or an edge under the pointer (Info, from nolli/info.py): Markdown,
 // one paragraph per sentence, the data in it set apart (md.js renders it).
 //
-// It goes where it hides the least of the picture: of a few spots around the box (or
-// around the pointer, for an edge), the one covering the fewest other boxes and edges,
-// never the box itself, and above all not what is lit: what it describes glows with what
-// goes with it (draw.js, interestOf), and the card keeps clear of all of that, and of the
-// verdict marks. Of the spots that cover little, it takes the nearest.
+// It goes as near as it can to the box (or the pointer, for an edge) without covering what
+// is lit or a verdict mark: what it describes glows with what goes with it (draw.js,
+// interestOf), and the rest of the picture may lie under the card.
 //
 // A card can also be kept open (pinTip): clicking a verdict mark, or going to a review item.
 // It stays when the pointer leaves, until Esc, a click on the canvas, a pan or zoom, or
@@ -49,34 +47,28 @@ function along(path, step) {
 }
 
 /**
- * What the text should not cover, in page coordinates: every folded box, what's written in the
- * header of every unfolded one (its icons, title, changed lines, badges and − button; a card
- * can't stay off all of the box), and points along
- * every edge (one per 16 px); `lit`, what is lit and the verdict marks, kept apart.
+ * What the text should not cover, in page coordinates: the lit boxes (of an unfolded one, what's
+ * written in its header: a card can't stay off all of it), points along the lit edges (one per
+ * 16 px), and the verdict marks, which are what a reader looks for.
  * @param {Element | null} self the hovered box (not an obstacle to itself)
- * @returns {{ other: Shapes, lit: Shapes }}
+ * @returns {Shapes}
  */
 function obstacles(self) {
-  /** @type {{ other: Shapes, lit: Shapes }} */
-  const o = { other: { boxes: [], points: [] }, lit: { boxes: [], points: [] } };
-  for (const g of document.querySelectorAll("#root g.node")) {
+  /** @type {Shapes} */
+  const o = { boxes: [], points: [] };
+  for (const g of document.querySelectorAll("#root g.node.lit")) {
     if (self && self === g) continue;
     const shape = g.querySelector(":scope > rect, :scope > circle");
     if (!shape) continue;
-    const r = shape.getBoundingClientRect(), on = g.classList.contains("lit") ? o.lit : o.other;
-    if (g.classList.contains("folded")) on.boxes.push(r);
-    // what's written in its header, each piece on its own: the strip between them is free
-    else for (const x of g.querySelectorAll(":scope > text:not(.uses), :scope > g")) on.boxes.push(x.getBoundingClientRect());
+    if (g.classList.contains("folded")) o.boxes.push(shape.getBoundingClientRect());
+    else for (const x of g.querySelectorAll(":scope > text:not(.uses), :scope > g")) o.boxes.push(x.getBoundingClientRect());
   }
-  for (const f of document.querySelectorAll("#root g[data-fold] g.fold > rect")) o.other.boxes.push(f.getBoundingClientRect());
-  // the review's marks: they are what a reader looks for, so a card keeps off them as off what is lit
-  for (const m of document.querySelectorAll("#root g.verdict > circle")) o.lit.boxes.push(m.getBoundingClientRect());
-  for (const p of /** @type {NodeListOf<SVGPathElement>} */ (document.querySelectorAll("#root g.edge > path:first-of-type")))
-    (p.parentElement?.classList.contains("lit") ? o.lit : o.other).points.push(...along(p, 16));
+  for (const m of document.querySelectorAll("#root g.verdict > circle")) o.boxes.push(m.getBoundingClientRect());
+  for (const p of /** @type {NodeListOf<SVGPathElement>} */ (document.querySelectorAll("#root g.edge.lit > path:first-of-type"))) o.points.push(...along(p, 16));
   return o;
 }
 
-/** @param {{ x: number, y: number, w: number, h: number }} t @param {Shapes} o */
+/** How much of `o` a text at t covers: px² of boxes, 120 per edge point. @param {{ x: number, y: number, w: number, h: number }} t @param {Shapes} o */
 function covered(t, o) {
   let area = 0;
   for (const b of o.boxes) {
@@ -89,10 +81,7 @@ function covered(t, o) {
 }
 
 const STEP = 8;     // px a spot moves away from its place at a time, out to the canvas's edge
-// Costs, in px of distance: what is lit is not to be covered, whatever the distance; the rest
-// of the picture may be, a little, if the card stays much nearer for it
-const LIT = 1000;     // per px² of a lit box, or 120 per point of a lit edge (covered())
-const OTHER = 0.02;   // the same for the rest: a whole 100 × 40 box 80 px, an edge point 2.4 px
+const LIT = 1000;  // cost of covering, per px² (covered()), against 1 per px of distance: not to be paid
 
 /** The distance between a w × h text at t and a place, 0 where they touch or overlap.
  * @param {{ x: number, y: number, w: number, h: number }} t @param {Around} a */
@@ -103,10 +92,9 @@ function gap(t, a) {
 
 /**
  * Where to put a w × h text next to one of `arounds` (page coordinates; the first is what the
- * text is about), inside `bounds`: never over the place it is beside, not over what is lit,
- * and otherwise near the first place, at the price of covering a little of the rest (LIT,
- * OTHER). Each spot beside a place moves away from it step by step, out to the canvas's edge,
- * while that is worth it.
+ * text is about), inside `bounds`: never over the place it is beside, nor over the obstacles
+ * if it can help it, and else as near the first place as it can. Each spot beside a place
+ * moves away from it step by step, out to the canvas's edge, until it is clear.
  * @param {Around[]} arounds
  * @param {number} w @param {number} h @param {DOMRect} bounds @param {ReturnType<typeof obstacles>} o
  */
@@ -123,7 +111,7 @@ function place(arounds, w, h, bounds, o) {
         const near = gap(t, arounds[0]) + j * 1e-3;
         if (near >= bestScore) continue;  // can't beat the best even covering nothing
         const overSelf = Math.min(t.x + w, around.right) - Math.max(t.x, around.left) > 0 && Math.min(t.y + h, around.bottom) - Math.max(t.y, around.top) > 0;
-        const cover = covered(t, o.other) * OTHER + covered(t, o.lit) * LIT + (overSelf ? 1e9 : 0);
+        const cover = covered(t, o) * LIT + (overSelf ? 1e9 : 0);
         if (cover + near < bestScore) { best = t; bestScore = cover + near; }
         if (!cover) break;  // the nearest clean spot this way
       }

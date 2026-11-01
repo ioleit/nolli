@@ -12,11 +12,10 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **"fine" verdicts are marked in the diagram too**, with their grey ✓.
 - **Hovering an edge lights the boxes at its two ends**, as hovering a box lights its
   edges. Every hover, verdict mark and review item lights the same set for the same box or
-  edge, and its card keeps clear of whatever is lit (and of the titles of unfolded boxes).
+  edge.
 - **A hover card goes as near as it can without covering what is lit or a verdict mark.**
   Each spot beside a box or edge moves away from it step by step, out to the edge of the
-  canvas, while that is worth it: the rest of the picture may be covered a little to stay
-  near.
+  canvas, until it is clear of those; the rest of the picture may lie under it.
 
 ## 0.6.0
 
