@@ -2,6 +2,14 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## Unreleased
+
+### Changed
+
+- **Hovering an edge lights the boxes at its two ends**, as hovering a box lights its
+  edges. Every hover, verdict mark and review item lights the same set for the same box or
+  edge, and its card keeps clear of whatever is lit (and of the titles of unfolded boxes).
+
 ## 0.6.0
 
 ### Changed

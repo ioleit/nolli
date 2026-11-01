@@ -90,6 +90,25 @@ test("hovering a problem on an edge shows its reason", async ({ page }) => {
   await expect(page).toHaveScreenshot("problem-on-edge.png", { clip: await around(page, [mark, tip(page)], 40) });
 });
 
+test("hovering an edge lights it with its two ends, and its card covers none of them", async ({ page }) => {
+  await open(page);
+  await page.keyboard.press("Escape");
+  const edge = page.locator("#root g.edge", { has: page.locator("g.verdict.problem") });
+  await edge.locator("g.verdict circle").hover();
+  await expect(tip(page)).toContainText("Skips the store layer");
+  const ends = ["repo:ledger/services/alerts.py", "repo:ledger/storage/db.py"].map(id => node(page, id));
+  for (const x of [edge, ...ends]) await expect(x).toHaveClass(/\blit\b/);
+  const card = await tip(page).boundingBox();
+  for (const x of ends) {
+    const b = await x.locator(":scope > rect").boundingBox();
+    if (!card || !b) throw new Error("not drawn");
+    const apart = card.x >= b.x + b.width || b.x >= card.x + card.width || card.y >= b.y + b.height || b.y >= card.y + card.height;
+    expect(apart, "the card is clear of " + await x.getAttribute("data-id")).toBe(true);
+  }
+  await page.mouse.move(5, 5);
+  await expect(page.locator("#root .lit")).toHaveCount(0);
+});
+
 test("hovering a question on a box shows its reason", async ({ page }) => {
   await open(page);
   const mark = boxMark(page, "repo:ledger/storage/cache.py");
