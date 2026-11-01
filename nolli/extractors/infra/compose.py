@@ -21,7 +21,7 @@ import yaml
 
 from ...model import ALLOCATE, CONTAIN, PROVIDE, USE, Entity, Provenance, Relation, address
 from .. import Context
-from ..interfaces import ensure_env
+from ..interfaces import ensure_env, ensure_host
 
 COMPOSE_NAMES = re.compile(r"(^|/)(docker-)?compose(\.[\w-]+)?\.ya?ml$")
 URL_HOST = re.compile(r"[a-z][a-z0-9+.-]*://(?:[^@/\s]*@)?([A-Za-z0-9_.-]+)(?::\d+)?")
@@ -91,9 +91,6 @@ def run(ctx: Context) -> None:
                         if host != name:
                             m.add_relation(Relation(USE, sid, svc_ids[host], "url", provenance=Provenance("compose", rel), attrs={"env": str(k)}))
                     elif host not in ("localhost", "127.0.0.1", "0.0.0.0") and "." in host:
-                        hid = address.runtime(host)
-                        if not m.has(hid):
-                            m.add_entity(Entity(hid, "host", host, {}, Provenance("compose", rel)))
-                            m.add_relation(Relation(CONTAIN, group, hid, provenance=Provenance("compose", rel)))
+                        hid = ensure_host(m, host, "compose", rel)
                         m.add_relation(Relation(USE, sid, hid, "url", provenance=Provenance("compose", rel), attrs={"env": str(k)}))
         ctx.notes.setdefault("compose-files", []).append(rel)

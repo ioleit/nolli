@@ -30,12 +30,13 @@ def ensure_ext(m, lang: str, name: str, extractor: str = "match") -> str:
     return eid
 
 
-def ensure_host(m, host: str, extractor: str) -> str:
-    """A host outside, reached by URL (``runtime:fonts.googleapis.com``)."""
+def ensure_host(m, host: str, extractor: str, path: str | None = None) -> str:
+    """A host outside, reached by URL (``runtime:fonts.googleapis.com``); ``path``: the file
+    that names it."""
     eid = address.runtime(host)
     if not m.has(eid):
-        m.add_entity(Entity(eid, "host", host, {}, Provenance(extractor)))
-        m.add_relation(Relation(CONTAIN, m.ensure_root(address.RUNTIME, extractor), eid, provenance=Provenance(extractor)))
+        m.add_entity(Entity(eid, "host", host, {}, Provenance(extractor, path)))
+        m.add_relation(Relation(CONTAIN, m.ensure_root(address.RUNTIME, extractor), eid, provenance=Provenance(extractor, path)))
     return eid
 
 
