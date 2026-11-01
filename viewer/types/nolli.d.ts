@@ -2,11 +2,12 @@
 
 export interface Chip { id: string; name: string; color: number }
 
-/** Prose with data in it: plain strings, { v } for a value to set apart, { doc } for what the code says about itself (a docstring). */
-export type Parts = (string | { v: string } | { doc: string } | { verdict: Verdict })[];
-
-/** What hovering over a box or an edge shows (nolli/info.py): sentences, one per line. */
-export type Info = Parts[];
+/**
+ * What hovering over a box or an edge shows (nolli/info.py): Markdown, one paragraph per
+ * sentence, `code spans` for the values in it, a "> " quoted paragraph for a docstring,
+ * [problem](verdict:problem) for a verdict's mark (nolli/prose.py, rendered by js/md.js).
+ */
+export type Info = string;
 
 // ---------- review mode (diff datasets, nolli/review.py) ----------
 

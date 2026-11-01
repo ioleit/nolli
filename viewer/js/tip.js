@@ -1,6 +1,5 @@
-// The text shown for a box or an edge under the pointer (Info, from nolli/info.py): one
-// paragraph per sentence, the data in it set apart. Everything goes in as text
-// (textContent), never as HTML: names come from the repository.
+// The text shown for a box or an edge under the pointer (Info, from nolli/info.py): Markdown,
+// one paragraph per sentence, the data in it set apart (md.js renders it).
 //
 // It goes where it hides the least of the picture: of a few spots around the box (or
 // around the pointer, for an edge), the one covering the fewest other boxes and edges,
@@ -12,7 +11,7 @@
 
 import { byId } from "./dom.js";
 import { wasDrag } from "./panzoom.js";
-import { markHTML } from "./verdicts.js";
+import { render as paragraphs } from "./md.js";
 
 /**
  * @typedef {import("../types/nolli").Info} Info
@@ -25,28 +24,12 @@ const GAP = 12;  // between the text and what it describes
 
 /** @param {Card} card */
 function render(card) {
-  if (!card.review?.length) return paragraphs(card.info);
+  if (!card.review) return paragraphs(card.info);
   const cols = document.createElement("div"); cols.className = "parts";
   const main = document.createElement("div"); main.className = "main"; main.appendChild(paragraphs(card.info));
   const rev = document.createElement("div"); rev.className = "rev"; rev.appendChild(paragraphs(card.review));
   cols.append(main, rev);
   return cols;
-}
-
-/** @param {Info} info */
-function paragraphs(info) {
-  const f = document.createDocumentFragment();
-  for (const line of info) {
-    const p = document.createElement("p");
-    for (const part of line) {
-      if (typeof part === "string") { p.appendChild(document.createTextNode(part)); continue; }
-      if ("verdict" in part) { const b = document.createElement("span"); b.className = "vd " + part.verdict; b.innerHTML = markHTML(part.verdict); p.appendChild(b); continue; }
-      if ("doc" in part) { const q = document.createElement("q"); q.className = "doc"; q.textContent = part.doc; p.appendChild(q); continue; }
-      const v = document.createElement("span"); v.className = "v"; v.textContent = part.v; p.appendChild(v);
-    }
-    f.appendChild(p);
-  }
-  return f;
 }
 
 /**
@@ -154,7 +137,7 @@ let pinned = false;
  */
 function put(card, arounds, self, own = []) {
   tipEl.replaceChildren(render(card)); shown = card;
-  tipEl.classList.toggle("two", !!card.review?.length);
+  tipEl.classList.toggle("two", !!card.review);
   tipEl.style.display = "block";
   const canvas = svg.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
   const t = place(arounds, w, h, canvas, obstacles(self), own);

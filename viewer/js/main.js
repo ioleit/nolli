@@ -182,8 +182,7 @@ let pinTimer = null;
 
 /**
  * Keep open the card of what shows a change or carries a verdict (an edge for a dependency
- * or a verdict on an edge, else a box). A verdict's card leads with it; a change's with its
- * title.
+ * or a verdict on an edge, else a box), as it is: the card says the same wherever you come from.
  * @param {string} id
  */
 function pinItem(id) {
@@ -195,18 +194,8 @@ function pinItem(id) {
   const useEdge = edge && ("edge" in it ? it.edge : it.category === "dependency") || !node;
   const target = useEdge ? edge && root.querySelector(`.edge[data-key="${CSS.escape(edge.key)}"]`) : root.querySelector(`.node[data-id="${CSS.escape(node.id)}"]`);
   const shown = useEdge ? edge : node;
-  if (!target || !shown) return;
-  /** @type {import("../types/nolli").Info} */
-  const review = shown.review || [];
-  if ("verdict" in it) {
-    // the card already has this verdict's line; move it to the top
-    const mine = (/** @type {import("../types/nolli").Parts} */ l) => l.some(x => typeof x === "object" && "verdict" in x) && l.includes(it.reason.split("`")[0]);
-    pinTip({ info: shown.info, review: [[{ verdict: it.verdict }, " ", ...marked(it.reason)], ...review.filter(l => !mine(l))] }, target);
-  } else pinTip({ info: shown.info, review: [[{ v: it.title }], ...review] }, target);
+  if (target && shown) pinTip(shown, target);
 }
-
-/** Text with `code` spans as parts, the spans set apart (as nolli/review.py marked). @param {string} text */
-const marked = text => text.split("`").map((t, i) => i % 2 ? { v: t } : t).filter(t => typeof t !== "string" || t);
 
 /** @param {number} step +1 next, -1 previous */
 function stepItem(step) {

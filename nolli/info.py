@@ -1,8 +1,8 @@
 """What the viewer shows when the pointer rests on a box or an edge: plain sentences.
 
-A description is a list of lines; a line is a list of parts: plain strings, {"v": value}
-for the data in it ("api-mock references 1 name in lib/"), and {"doc": text} for what the
-code says about itself (a docstring). The viewer sets both apart.
+A description is Markdown (prose.py): one paragraph per sentence, code spans for the data
+in it ("`api-mock` references `1 name` in `lib/`"), a quoted paragraph for what the code
+says about itself (a docstring). The viewer sets both apart.
 
 What a box is, is said from the facts extraction wrote into the model, the same way for
 every language: a module (``module``) and its language's name (``meta["languages"]``),
@@ -19,7 +19,7 @@ from collections import defaultdict
 
 from .labels import is_body, is_module
 from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE
-from .prose import Ctx, by_use, count, listing, say
+from .prose import Ctx, by_use, count, listing, paragraphs, quote, say
 from .rollup import is_init
 
 SYMBOL_NOUN = {"class": "class", "interface": "interface", "type": "type alias", "enum": "enum", "function": "function"}
@@ -63,7 +63,7 @@ def kind(ctx: Ctx, x: str) -> str | None:
     return f"a {language(ctx, body)} {ctx.m.entities[body].attrs['body']}" if body and language(ctx, body) else None
 
 
-def describe(ctx: Ctx, x: str) -> list | None:
+def describe(ctx: Ctx, x: str) -> list[str] | None:
     """The first sentence for a module or a class or type."""
     e = ctx.m.entities[x]
     lang = language(ctx, x)
@@ -93,7 +93,7 @@ def doc(ctx: Ctx, x: str) -> str | None:
     return None
 
 
-def own_code(ctx: Ctx, owner: str) -> list | None:
+def own_code(ctx: Ctx, owner: str) -> list[str] | None:
     """The own-code dot of a module (what it holds outside its classes and types) or of a
     package (what its package body defines and re-exports)."""
     body = body_of(ctx, owner)
@@ -102,10 +102,10 @@ def own_code(ctx: Ctx, owner: str) -> list | None:
     f = body or owner
     a = ctx.m.entities[f].attrs
     name = ctx.name(owner)
-    lead = say("{}'s " + ctx.m.entities[f].name + " defines ", name) if body else say("{} defines ", name)
+    lead = say("{}'s {} defines ", name, ctx.m.entities[f].name) if body else say("{} defines ", name)
     functions = by_use(ctx, f, a.get("functions") or [])
     constants = a.get("constants") or []
-    lines: list[list] = []
+    lines: list[str] = []
     if functions:
         if len(functions) <= 3:  # "rollup defines bundle and rollup"
             lines.append(lead + listing("{}", functions))
@@ -115,12 +115,12 @@ def own_code(ctx: Ctx, owner: str) -> list | None:
         many = len(constants) > 3
         consts = (say("{}: ", count(len(constants), "constant")) if many else say("the constant" + ("s " if len(constants) > 1 else " "))) \
             + listing("{}", constants, "more", limit=3)
-        lines.append((["Also "] if functions else lead) + consts)
+        lines.append(("Also " if functions else lead) + consts)
     if body and a.get("reexports"):
         lines.append(say("It re-exports ") + listing("{}", a["reexports"], "more", limit=4) + say(" from its modules"))
     inside = "classes" if all(ctx.m.entities[c].kind == "class" for c in ctx.m.children(f)) else "classes and types"
     if not lines:
-        lines.append(say("{}'s " + ctx.m.entities[f].name + " only marks the folder as a " + a["body"], name) if body
+        lines.append(say("{}'s {} only marks the folder as a " + a["body"], name, ctx.m.entities[f].name) if body
                      else say("{} has no functions or constants outside its " + inside, name))
     total, own = a.get("lines"), a.get("own_lines")
     if total and own is not None and not body and own != total:
@@ -130,7 +130,7 @@ def own_code(ctx: Ctx, owner: str) -> list | None:
     return lines
 
 
-def folder(ctx: Ctx, x: str) -> list:
+def folder(ctx: Ctx, x: str) -> str:
     """"agents/ is a Python package with 6 subpackages and 3 modules": what it holds,
     counted as unfolding draws it (hidden roles left out, __init__ classes in)."""
     e = ctx.m.entities[x]
@@ -144,7 +144,7 @@ def folder(ctx: Ctx, x: str) -> list:
     return say("{} is " + what + " with ", ctx.name(x)) + listing("{}", [count(by[k], k) for k in order], limit=6)
 
 
-def size(ctx: Ctx, x: str) -> list | None:
+def size(ctx: Ctx, x: str) -> str | None:
     files = ctx.files_below(x)
     if not files:
         return None
@@ -200,7 +200,7 @@ class Dependencies:
                 for b in boxes(r.dst):
                     self.deployed[b].add(s.name.removesuffix("/Dockerfile"))
 
-    def lines(self, ctx: Ctx, x: str) -> list[list]:
+    def lines(self, ctx: Ctx, x: str) -> list[str]:
         out = []
         ext = self.ext.get(x)
         if ext:
@@ -220,7 +220,12 @@ class Dependencies:
         return out
 
 
-def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
+def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> str:
+    """What a box's hover card says, as Markdown."""
+    return paragraphs(node_lines(ctx, deps, x, used_by))
+
+
+def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[str]:
     m = ctx.m
     if is_body(x):
         said = own_code(ctx, x[5:])
@@ -229,10 +234,10 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
         owner = ctx.name(x[5:])
         if m.entities[x[5:]].kind == "directory":
             body = next((m.entities[c].name for c in m.children(x[5:]) if is_init(m, c)), "package")
-            return [say("The code in {}'s " + body + " beyond re-exporting its modules", owner)]
+            return [say("The code in {}'s {} beyond re-exporting its modules", owner, body)]
         return [say("The code in {} outside its classes and types", owner)]
     e = m.entities[x]
-    lines: list[list] = []
+    lines: list[str] = []
     said = None if e.kind == "directory" else describe(ctx, x)
     if said:
         lines += said
@@ -248,7 +253,7 @@ def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list:
             lines.append(say("{} is " + WHAT.get(e.kind, "a " + e.kind), ctx.name(x)))
     docstring = doc(ctx, x)
     if docstring:
-        lines.append([{"doc": docstring}])
+        lines.append(quote(docstring))
     if e.kind == "directory":
         total = size(ctx, x)
         if total:
@@ -275,17 +280,18 @@ PLAIN = {
 }
 
 
-def edge_info(ctx: Ctx, e) -> list:
+def edge_info(ctx: Ctx, e) -> str:
+    """What an edge's hover card says, as Markdown."""
     lines = edge_lines(ctx, e)
     types = getattr(e, "types", 0)
     if e.subkind == "import" and types and types == e.count:
         lines.append(say("Only types: no dependency at run time"))
     elif e.subkind == "import" and types:
         lines.append(say("{} of {} only for types", f"{types:,}", count(e.count, "reference") + " are" if types > 1 else count(e.count, "reference") + " is"))
-    return lines
+    return paragraphs(lines)
 
 
-def edge_lines(ctx: Ctx, e) -> list:
+def edge_lines(ctx: Ctx, e) -> list[str]:
     src, dst = ctx.name(e.src), ctx.name(e.dst)
     sub = e.subkind
     if e.kind == "provide":
