@@ -124,7 +124,7 @@ def test_a_build_whose_process_dies_is_an_error(site, tmp_path):
 
 def test_a_repository_too_large_is_not_built(site, monkeypatch):
     site.max_repo = 500 << 20
-    monkeypatch.setattr(site, "api", lambda path: {"full_name": "o/big", "private": False, "size": 600 << 10, "default_branch": "main"})
+    monkeypatch.setattr(site, "api", lambda owner, repo, rest="": {"full_name": "o/big", "private": False, "size": 600 << 10, "default_branch": "main"})
     with pytest.raises(TooLarge, match="600 MB"):
         site.plan("o", "big")
 

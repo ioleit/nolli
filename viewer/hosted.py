@@ -9,10 +9,14 @@ visit builds the dataset in the background (a page says how far it got); later v
 it under ``<cache>/data``, named after the commits, so a new push is a new dataset.
 
 Repositories are kept as bare clones under ``<cache>/repos``. git runs with no credentials
-and none of this machine's git configuration. GitHub's API is asked with the token of
-nolli/github_app.py if one is configured (a GitHub App's, for 5,000 requests an hour instead
-of 60), else as nobody; either way only public repositories are shown: one GitHub says is
-private answers 404 like a missing one, whatever the token or this machine's logins reach.
+and none of this machine's git configuration. GitHub's API is asked with ``NOLLI_GITHUB_TOKEN``
+if it is set (5,000 requests an hour instead of 60), else as nobody; either way only public
+repositories are shown: one GitHub says is private answers 404 like a missing one, whatever
+the token or this machine's logins reach.
+
+A service built on this one passes make_server() a Token of its own (one per repository, say
+a GitHub App's installation token for each installation) and a subclass of HostedHandler for
+pages and routes of its own; main() takes both too.
 
 Each commit's extraction is kept under ``<cache>/extractions`` (nolli/extractions.py), so a pull
 request's base is extracted once for all its pushes. With ``--keep 20G`` the cache stays within
@@ -61,7 +65,7 @@ HERE = Path(__file__).resolve().parent
 if not __package__:
     sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
-from nolli import github, github_app, retention  # noqa: E402
+from nolli import github, retention  # noqa: E402
 from nolli.change import ChangeError, git  # noqa: E402
 from nolli.build import build_commit, build_diff, fresh, version  # noqa: E402
 from nolli.extractions import Extractions  # noqa: E402
@@ -96,6 +100,38 @@ class Plan:
 
 class TooLarge(Exception):
     pass
+
+
+class Token:
+    """Which token GitHub's API is asked with about a repository; None asks as nobody (60 requests
+    an hour for the whole server). token() may raise ChangeError (or ValueError, ImportError) when
+    it cannot make one: the server then says so once and asks as nobody."""
+
+    def token(self, owner: str, repo: str) -> str | None:
+        return None
+
+    def describe(self) -> str:
+        """For the startup line: what GitHub access the server has."""
+        return "no GitHub token: 60 API requests an hour"
+
+
+class Fixed(Token):
+    """One token for every repository."""
+
+    def __init__(self, value: str):
+        self.value = value
+
+    def token(self, owner: str, repo: str) -> str | None:
+        return self.value
+
+    def describe(self) -> str:
+        return "GitHub token from NOLLI_GITHUB_TOKEN"
+
+
+def token_from_env(env: dict | None = None) -> Token:
+    """``NOLLI_GITHUB_TOKEN`` if it is set, else none."""
+    value = (os.environ if env is None else env).get("NOLLI_GITHUB_TOKEN")
+    return Fixed(value) if value else Token()
 
 
 @contextlib.contextmanager
@@ -217,7 +253,7 @@ class Site:
     """The datasets and clones under one cache directory, and the builds under way."""
 
     def __init__(self, cache: Path, budget: int = 34, keep: int | None = None, builds: int = BUILDS, timeout: float = TIMEOUT,
-                 max_repo: int | None = MAX_REPO, token: github_app.Token | None = None):
+                 max_repo: int | None = MAX_REPO, token: Token | None = None):
         self.cache, self.budget = cache, budget
         self.builds, self.timeout, self.max_repo = threading.BoundedSemaphore(builds), timeout, max_repo
         self.processes = processes()
@@ -231,24 +267,27 @@ class Site:
         self.lock = threading.Lock()
         self.answers: dict[str, tuple[float, dict]] = {}
         self.ci: dict[str, tuple[float, dict]] = {}  # dataset name -> when its PR's comments were read, what they had
-        self.github = token or github_app.Token()
+        self.github = token or Token()
         self.token_failed = ""  # why the token could not be had, said once
 
-    def api(self, path: str) -> dict:
-        """GitHub's answer for ``path``, asked as nobody, reused for LOOKUP_TTL seconds."""
+    def api(self, owner: str, repo: str, rest: str = "") -> dict:
+        """GitHub's answer for ``repos/<owner>/<repo><rest>``, reused for LOOKUP_TTL seconds."""
+        path = f"repos/{owner}/{repo}{rest}"
         hit = self.answers.get(path)
         if hit and time.time() - hit[0] < LOOKUP_TTL:
             return hit[1]
-        out = self.ask(path)
+        out = self.ask(owner, repo, rest)
         self.answers[path] = (time.time(), out)
         return out
 
-    def ask(self, path: str) -> dict:
-        """GitHub's answer for ``path``, with the server's token if it has one. An installation
-        token may not see a public repository the app is not installed on: a 404 with it is asked
-        again as nobody. A token that cannot be had (a wrong key) is said once, then nobody asks."""
+    def ask(self, owner: str, repo: str, rest: str = "") -> dict:
+        """GitHub's answer for ``repos/<owner>/<repo><rest>``, with the token for that repository if
+        there is one. A token may not see a public repository (an installation token of an app not
+        installed there): a 404 with it is asked again as nobody. A token that cannot be had (a
+        wrong key) is said once, and the request goes as nobody."""
+        path = f"repos/{owner}/{repo}{rest}"
         try:
-            tok = self.github.token()
+            tok = self.github.token(owner, repo)
         except (ChangeError, ValueError, ImportError) as exc:
             if str(exc) != self.token_failed:
                 self.token_failed = str(exc)
@@ -264,7 +303,7 @@ class Site:
     def plan(self, owner: str, repo: str, pull: int | None = None, sha: str | None = None) -> Plan:
         """What ``/<owner>/<repo>[/pull/<n> | /commit/<sha>]`` shows. Raises github.NotFound for a
         missing or private repository, ChangeError if GitHub cannot be asked."""
-        info = self.api(f"repos/{owner}/{repo}")
+        info = self.api(owner, repo)
         if info.get("private") is not False:  # what a token sees beyond public repositories stays unseen
             raise github.NotFound(f"GitHub: repos/{owner}/{repo}: private")
         owner, repo = info["full_name"].split("/")  # GitHub's spelling (paths are case-insensitive)
@@ -273,19 +312,19 @@ class Site:
             raise TooLarge(f"{owner}/{repo} is {info['size'] >> 10} MB on GitHub; this host builds repositories up to {self.max_repo >> 20} MB")
         common = {"budget": self.budget, "extractions": self.extractions}
         if pull is not None:
-            pr = self.api(f"repos/{owner}/{repo}/pulls/{pull}")
+            pr = self.api(owner, repo, f"/pulls/{pull}")
             head, base = pr["head"]["sha"], pr["base"]["sha"]
             return Plan(f"{key}_pr{pull}_{base[:7]}_{head[:7]}", f"{owner}/{repo}#{pull}: {pr.get('title') or ''}", remote,
                         partial(build_pull, remote=remote, pull=pull, **common,
                                 pr={k: pr.get(k) for k in ("head", "base", "title", "body")}))
         if sha is not None:
-            c = self.api(f"repos/{owner}/{repo}/commits/{sha}")
+            c = self.api(owner, repo, f"/commits/{sha}")
             full, parents = c["sha"], [p["sha"] for p in c.get("parents", [])]
             subject, _, body = (c.get("commit", {}).get("message") or "").partition("\n")
             return Plan(f"{key}_c{full[:7]}", f"{owner}/{repo}@{full[:7]}: {subject}", remote,
                         partial(build_one, remote=remote, sha=full, parents=parents, subject=subject, body=body.strip(), **common))
         branch = info["default_branch"]
-        head = self.api(f"repos/{owner}/{repo}/branches/{quote(branch, safe='')}")["commit"]["sha"]
+        head = self.api(owner, repo, f"/branches/{quote(branch, safe='')}")["commit"]["sha"]
         return Plan(f"{key}_{head[:7]}", f"{owner}/{repo} at {branch}", remote, partial(build_whole, sha=head, **common))
 
     def ci_review(self, ds: Path) -> dict:
@@ -299,7 +338,7 @@ class Site:
             return {"found": None, "applies": False}
         owner, repo, n = pull
         try:
-            info = from_ci(ds, self.ask(f"repos/{owner}/{repo}/issues/{n}/comments?per_page=100"))
+            info = from_ci(ds, self.ask(owner, repo, f"/issues/{n}/comments?per_page=100"))
         except ChangeError as exc:
             info = {"found": None, "applies": True, "error": str(exc)}
         self.ci[ds.name] = (time.time(), info)
@@ -539,19 +578,24 @@ NOT_A_PAGE = """<h1>Not a nolli page</h1>
 
 
 def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: int = 34, keep: int | None = None,
-                builds: int = BUILDS, timeout: float = TIMEOUT, max_repo: int | None = MAX_REPO) -> ThreadingHTTPServer:
-    """A server for ``cache``, not yet serving. Asks GitHub and git as nobody (module docstring)."""
+                builds: int = BUILDS, timeout: float = TIMEOUT, max_repo: int | None = MAX_REPO, token: Token | None = None,
+                handler: type[HostedHandler] | None = None) -> ThreadingHTTPServer:
+    """A server for ``cache``, not yet serving. git runs as nobody; GitHub's API is asked with ``token``
+    (default: token_from_env()). ``handler``: a subclass of HostedHandler, for a service's own routes."""
     # git: no credentials, prompts, or this machine's configuration (an insteadOf could reach private repos by ssh)
     os.environ.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_ASKPASS="true",
                       SSH_ASKPASS="true", GIT_SSH_COMMAND="false")
-    site = Site(Path(cache).expanduser().resolve(), budget, keep, builds, timeout, max_repo, github_app.from_env())
+    site = Site(Path(cache).expanduser().resolve(), budget, keep, builds, timeout, max_repo,
+                token if token is not None else token_from_env())
     threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now
-    HostedHandler.site = site
-    HostedHandler.data_root = site.data
-    return ThreadingHTTPServer((host, port), partial(HostedHandler, directory=str(HERE)))
+    handler = handler or HostedHandler
+    handler.site = site
+    handler.data_root = site.data
+    return ThreadingHTTPServer((host, port), partial(handler, directory=str(HERE)))
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, token: Token | None = None, handler: type[HostedHandler] | None = None) -> int:
+    """``nolli serve``'s options from ``argv``; ``token`` and ``handler`` as make_server() takes them."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cache", default=os.environ.get("NOLLI_CACHE") or str(Path.home() / ".cache" / "nolli-serve"))
     ap.add_argument("--host", default="127.0.0.1")
@@ -566,9 +610,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-repo", type=retention.parse_size, default=os.environ.get("NOLLI_MAX_REPO") or str(MAX_REPO),
                     help="the largest repository built, by GitHub's size of it, e.g. 500M; 0 for no limit (default: $NOLLI_MAX_REPO, else 1G)")
     args = ap.parse_args(argv)
-    srv = make_server(Path(args.cache), args.host, args.port, args.budget, args.keep, args.builds, args.timeout, args.max_repo or None)
-    print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {HostedHandler.site.cache}; "
-          f"{HostedHandler.site.github.describe()})", file=sys.stderr, flush=True)
+    srv = make_server(Path(args.cache), args.host, args.port, args.budget, args.keep, args.builds, args.timeout,
+                      args.max_repo or None, token, handler)
+    site = (handler or HostedHandler).site
+    print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {site.cache}; {site.github.describe()})",
+          file=sys.stderr, flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

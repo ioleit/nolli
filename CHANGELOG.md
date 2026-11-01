@@ -2,6 +2,20 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## Unreleased
+
+### Changed
+
+- **`nolli serve` knows no GitHub App any more.** It asks GitHub's API with
+  `NOLLI_GITHUB_TOKEN`, or as nobody. `NOLLI_GITHUB_APP_ID`,
+  `NOLLI_GITHUB_APP_PRIVATE_KEY[_FILE]` and `NOLLI_GITHUB_APP_INSTALLATION_ID` are no longer
+  read, and `[serve]` no longer installs `cryptography`. A service built on `nolli serve`
+  brings its own: `make_server()` and `main()` in `nolli.viewer.hosted` take a `Token`
+  (which token to ask with, per repository) and a subclass of `HostedHandler` (pages and
+  routes of its own).
+- **nolli's own CI comments as `github-actions`**: the workflow no longer signs in as a
+  GitHub App with a private key kept in the repository's secrets.
+
 ## 0.5.0
 
 ### New
