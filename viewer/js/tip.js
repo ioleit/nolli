@@ -21,7 +21,7 @@ import { render as paragraphs } from "./md.js";
 
 const tipEl = byId("tip");
 const svg = byId("g");
-const GAP = 12;  // between the text and what it describes
+const GAP = 12;  // the least room between the text and what it describes
 
 /** @param {Card} card */
 function render(card) {
@@ -85,47 +85,65 @@ function covered(t, o) {
   return area + pts * 120;  // an edge point counts like a small patch of box
 }
 
+const STEP = 8;     // px a spot moves away from its place at a time, out to the canvas's edge
+const NEAR = 0.1;  // cost of a px of distance: 1000 px weigh less than one edge point covered
+
+/** The distance between a w × h text at t and a place, 0 where they touch or overlap.
+ * @param {{ x: number, y: number, w: number, h: number }} t @param {Around} a */
+function gap(t, a) {
+  const dx = Math.max(0, t.x - a.right, a.left - (t.x + t.w)), dy = Math.max(0, t.y - a.bottom, a.top - (t.y + t.h));
+  return Math.hypot(dx, dy);
+}
+
 /**
- * Where to put a w × h text next to one of `arounds` (page coordinates, in order of
- * preference), inside `bounds`, covering as little as possible, much less of what is lit,
- * and never the place it is beside.
- * @param {{ left: number, top: number, right: number, bottom: number }[]} arounds
+ * Where to put a w × h text next to one of `arounds` (page coordinates; the first is what the
+ * text is about), inside `bounds`: covering as little as possible, much less of what is lit,
+ * never the place it is beside, and of the spots that cover equally little, the nearest to the
+ * first place. Each spot beside a place moves away from it step by step, out to the canvas's
+ * edge, until it covers nothing.
+ * @param {Around[]} arounds
  * @param {number} w @param {number} h @param {DOMRect} bounds @param {ReturnType<typeof obstacles>} o
  */
 function place(arounds, w, h, bounds, o) {
   let best = null, bestScore = Infinity;
-  arounds.forEach((around, i) => {
-    for (const [j, t] of spotsAround(around, w, h, bounds).entries()) {
-      const overSelf = Math.min(t.x + w, around.right) - Math.max(t.x, around.left) > 0 && Math.min(t.y + h, around.bottom) - Math.max(t.y, around.top) > 0;
-      const score = covered(t, o.other) + covered(t, o.lit) * 1000 + (overSelf ? 1e9 : 0) + i * 400 + j;
-      if (score < bestScore) { best = t; bestScore = score; }
+  /** @param {number} x @param {number} y */
+  const inside = (x, y) => ({ x: Math.min(Math.max(x, bounds.left + 8), bounds.right - w - 8), y: Math.min(Math.max(y, bounds.top + 8), bounds.bottom - h - 8), w, h });
+  for (const around of arounds) {
+    for (const [j, s] of spotsAround(around, w, h).entries()) {
+      for (let k = 0, last = null; ; k++) {
+        const t = inside(s.x + s.dx * k * STEP, s.y + s.dy * k * STEP);
+        if (last && t.x === last.x && t.y === last.y) break;  // pushed against the canvas's edge
+        last = t;
+        const near = NEAR * gap(t, arounds[0]) + j * 1e-3;
+        if (near >= bestScore) continue;  // can't beat the best even covering nothing
+        const overSelf = Math.min(t.x + w, around.right) - Math.max(t.x, around.left) > 0 && Math.min(t.y + h, around.bottom) - Math.max(t.y, around.top) > 0;
+        const cover = covered(t, o.other) + covered(t, o.lit) * 1000 + (overSelf ? 1e9 : 0);
+        if (cover + near < bestScore) { best = t; bestScore = cover + near; }
+        if (!cover) break;  // the nearest clean spot this way
+      }
     }
-  });
+  }
   return best || { x: arounds[0].right + GAP, y: arounds[0].top, w, h };
 }
 
 /**
- * The spots for a w × h text around one place, kept inside `bounds`.
- * @param {{ left: number, top: number, right: number, bottom: number }} around
- * @param {number} w @param {number} h @param {DOMRect} bounds
+ * The spots for a w × h text around one place, each with the way it moves away from it.
+ * @param {Around} around @param {number} w @param {number} h
  */
-function spotsAround(around, w, h, bounds) {
+function spotsAround(around, w, h) {
   const cx = (around.left + around.right) / 2, cy = (around.top + around.bottom) / 2;
-  const spots = [  // in order of preference when they hide equally little
-    { x: around.right + GAP, y: around.top },                 // right, top-aligned
-    { x: around.left, y: around.bottom + GAP },               // below, left-aligned
-    { x: around.right + GAP, y: cy - h / 2 },                 // right, centred
-    { x: around.left - GAP - w, y: around.top },              // left
-    { x: around.left, y: around.top - GAP - h },              // above
-    { x: cx - w / 2, y: around.bottom + GAP },                // below, centred
-    { x: around.right + GAP, y: around.bottom - h },          // right, bottom-aligned
-    { x: around.left - GAP - w, y: cy - h / 2 },              // left, centred
-    { x: around.left - GAP - w, y: around.bottom - h },       // left, bottom-aligned
-    { x: around.right - w, y: around.top - GAP - h },         // above, right-aligned
+  return [  // in order of preference when they hide equally little, equally near
+    { x: around.right + GAP, y: around.top, dx: 1, dy: 0 },                 // right, top-aligned
+    { x: around.left, y: around.bottom + GAP, dx: 0, dy: 1 },               // below, left-aligned
+    { x: around.right + GAP, y: cy - h / 2, dx: 1, dy: 0 },                 // right, centred
+    { x: around.left - GAP - w, y: around.top, dx: -1, dy: 0 },             // left
+    { x: around.left, y: around.top - GAP - h, dx: 0, dy: -1 },             // above
+    { x: cx - w / 2, y: around.bottom + GAP, dx: 0, dy: 1 },                // below, centred
+    { x: around.right + GAP, y: around.bottom - h, dx: 1, dy: 0 },          // right, bottom-aligned
+    { x: around.left - GAP - w, y: cy - h / 2, dx: -1, dy: 0 },             // left, centred
+    { x: around.left - GAP - w, y: around.bottom - h, dx: -1, dy: 0 },      // left, bottom-aligned
+    { x: around.right - w, y: around.top - GAP - h, dx: 0, dy: -1 },        // above, right-aligned
   ];
-  // keep inside the canvas; a spot pushed back over what it describes scores badly in place()
-  return spots.map(s => ({ x: Math.min(Math.max(s.x, bounds.left + 8), bounds.right - w - 8),
-                          y: Math.min(Math.max(s.y, bounds.top + 8), bounds.bottom - h - 8), w, h }));
 }
 
 /** Points along a drawn edge's line, every 12 px on screen. @param {Element} ge */
