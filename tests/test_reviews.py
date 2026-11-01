@@ -16,7 +16,7 @@ import pytest
 
 from nolli import reviewer
 from nolli.viewer import hosted, serve
-from tests.test_ci import bot_comment, comment, dataset  # noqa: F401  # the fixture
+from test_ci import bot_comment, comment, dataset  # noqa: F401  # the fixture
 
 
 def call(srv, path: str, method: str = "GET", body: bytes | None = None) -> tuple[int, dict]:
