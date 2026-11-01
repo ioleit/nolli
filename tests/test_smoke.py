@@ -314,3 +314,5 @@ def test_markdown_from_repository_text():
     assert code("a`b") == "``a`b``" and code("`x`") == "`` `x` ``"
     assert esc("__init__.py *[x](y)*") == r"\_\_init\_\_.py \*\[x\](y)\*"
     assert quote("The core\n  frobber.") == "> The core frobber."
+    # a docstring's own code spans stay, backslashes and all; the rest is text
+    assert quote("Used by ``nolli/cli.py`` and `a_b`, not *this* or ` alone") == r"> Used by ``nolli/cli.py`` and `a_b`, not \*this\* or \` alone"

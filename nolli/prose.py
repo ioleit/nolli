@@ -4,7 +4,8 @@ A description is Markdown, one paragraph per sentence, in a small subset the vie
 renders (viewer/js/md.js) and GitHub shows as it is:
 
 - `code spans` for the data in a sentence ("`api-mock` references `1 name` in `lib/`"),
-- a paragraph quoted with "> " for what the code says about itself (a docstring),
+- a paragraph quoted with "> " for what the code says about itself (a docstring), its own
+  code spans kept,
 - ``[problem](verdict:problem)``, a link to the made-up scheme ``verdict:``, for a verdict's mark,
 - backslash escapes; nothing else is interpreted.
 
@@ -33,14 +34,29 @@ def code(value) -> str:
     return fence + pad + s + pad + fence
 
 
+MD_PUNCT = re.compile(r"([\\`*_\[\]<>~|#])")
+
+
 def esc(text: str) -> str:
     """Text from the repository as plain Markdown text, on one line."""
-    return re.sub(r"([\\`*_\[\]<>~|#])", r"\\\1", " ".join(text.split()))
+    return MD_PUNCT.sub(r"\\\1", " ".join(text.split()))
 
 
 def quote(text: str) -> str:
-    """What the code says about itself, as a quoted paragraph."""
-    return "> " + esc(text)
+    """What the code says about itself, as a quoted paragraph: its code spans (``x`` in a
+    docstring, `x` in a doc comment) stay code spans, the rest is text."""
+    text = " ".join(text.split())
+    out, i = "", 0
+    for run in re.finditer(r"`+", text):
+        if run.start() < i:
+            continue
+        close = next((m for m in re.finditer(r"`+", text[run.end():]) if len(m.group()) == len(run.group())), None)
+        if close is None:
+            continue  # an unpaired run is text, escaped with the rest
+        end = run.end() + close.end()
+        out += MD_PUNCT.sub(r"\\\1", text[i:run.start()]) + text[run.start():end]
+        i = end
+    return "> " + out + MD_PUNCT.sub(r"\\\1", text[i:])
 
 
 def mark(verdict: str) -> str:

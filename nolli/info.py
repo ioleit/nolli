@@ -19,7 +19,7 @@ from collections import defaultdict
 
 from .labels import is_body, is_module
 from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE
-from .prose import Ctx, by_use, count, esc, listing, paragraphs, quote, say
+from .prose import Ctx, by_use, count, listing, paragraphs, quote, say
 from .rollup import is_init
 
 SYMBOL_NOUN = {"class": "class", "interface": "interface", "type": "type alias", "enum": "enum", "function": "function"}
@@ -102,7 +102,7 @@ def own_code(ctx: Ctx, owner: str) -> list[str] | None:
     f = body or owner
     a = ctx.m.entities[f].attrs
     name = ctx.name(owner)
-    lead = say("{}'s " + esc(ctx.m.entities[f].name) + " defines ", name) if body else say("{} defines ", name)
+    lead = say("{}'s {} defines ", name, ctx.m.entities[f].name) if body else say("{} defines ", name)
     functions = by_use(ctx, f, a.get("functions") or [])
     constants = a.get("constants") or []
     lines: list[str] = []
@@ -120,7 +120,7 @@ def own_code(ctx: Ctx, owner: str) -> list[str] | None:
         lines.append(say("It re-exports ") + listing("{}", a["reexports"], "more", limit=4) + say(" from its modules"))
     inside = "classes" if all(ctx.m.entities[c].kind == "class" for c in ctx.m.children(f)) else "classes and types"
     if not lines:
-        lines.append(say("{}'s " + esc(ctx.m.entities[f].name) + " only marks the folder as a " + a["body"], name) if body
+        lines.append(say("{}'s {} only marks the folder as a " + a["body"], name, ctx.m.entities[f].name) if body
                      else say("{} has no functions or constants outside its " + inside, name))
     total, own = a.get("lines"), a.get("own_lines")
     if total and own is not None and not body and own != total:
@@ -234,7 +234,7 @@ def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[s
         owner = ctx.name(x[5:])
         if m.entities[x[5:]].kind == "directory":
             body = next((m.entities[c].name for c in m.children(x[5:]) if is_init(m, c)), "package")
-            return [say("The code in {}'s " + esc(body) + " beyond re-exporting its modules", owner)]
+            return [say("The code in {}'s {} beyond re-exporting its modules", owner, body)]
         return [say("The code in {} outside its classes and types", owner)]
     e = m.entities[x]
     lines: list[str] = []
