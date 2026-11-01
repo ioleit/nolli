@@ -69,10 +69,10 @@ from nolli.progress import Progress  # noqa: E402
 
 try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file
     from .serve import Handler, preload
-    from .reviews import provenance, store
+    from .reviews import ci_pull, from_ci
 except ImportError:
     from serve import Handler, preload  # type: ignore[no-redef]
-    from reviews import provenance, store  # type: ignore[no-redef]
+    from reviews import ci_pull, from_ci  # type: ignore[no-redef]
 
 OWNER = r"(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
 REPO = r"(?P<repo>[A-Za-z0-9._-]{1,100})"
@@ -289,49 +289,19 @@ class Site:
         return Plan(f"{key}_{head[:7]}", f"{owner}/{repo} at {branch}", remote, partial(build_whole, sha=head, **common))
 
     def ci_review(self, ds: Path) -> dict:
-        """What nolli's CI left for a pull request dataset's head commit, read from the PR's comments
-        (at most once per LOOKUP_TTL): ``{"found": "verdicts" | "no-review" | "earlier" | None, ...}``.
-        Verdicts found are stored as the dataset's, unless it has some already."""
-        from nolli.ci import results, upgrade
-        from nolli.model import Model
-        from nolli.review import check_verdicts
-
+        """What nolli's CI left for a pull request dataset's head commit (reviews.from_ci), from the
+        PR's comments, read at most once per LOOKUP_TTL."""
         hit = self.ci.get(ds.name)
         if hit and time.time() - hit[0] < LOOKUP_TTL:
             return hit[1]
-        try:
-            d = json.loads((ds / "report.json").read_text())["meta"].get("diff") or {}
-        except (OSError, ValueError, KeyError):
-            d = {}
-        m = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
-        if not m or not d.get("pr"):
+        pull = ci_pull(ds)
+        if pull is None:
             return {"found": None, "applies": False}
-        info: dict = {"found": None, "applies": True}
+        owner, repo, n = pull
         try:
-            comments = self.ask(f"repos/{m.group(1)}/{m.group(2)}/issues/{d['pr']}/comments?per_page=100")
+            info = from_ci(ds, self.ask(f"repos/{owner}/{repo}/issues/{n}/comments?per_page=100"))
         except ChangeError as exc:
-            info["error"] = str(exc)
-            self.ci[ds.name] = (time.time(), info)
-            return info
-        found = results(comments if isinstance(comments, list) else [])
-        mine = [r for r in found if r["head"] == d["head"]]
-        if mine:
-            r = mine[0]
-            info.update(link=r["link"], at=r["at"], nolli=r.get("nolli"))
-            if not r.get("verdicts"):
-                info["found"] = "no-review"
-            else:
-                info["found"] = "verdicts"
-                if provenance(ds) is None:
-                    model = Model.load(ds / "model.json")
-                    given = upgrade(r["verdicts"], r.get("nolli"))
-                    ok, errors = check_verdicts(model, (ds / "review.mmd").read_text(), json.dumps(given))
-                    info["dropped"] = len(errors)
-                    if ok:
-                        store(ds, ok, {"by": "ci", "link": r["link"], "at": r["at"], "nolli": r.get("nolli"),
-                                       "dropped": len(r["verdicts"]) - len(ok)})
-        elif found:
-            info.update(found="earlier", head=found[0]["head"][:7], link=found[0]["link"])
+            info = {"found": None, "applies": True, "error": str(exc)}
         self.ci[ds.name] = (time.time(), info)
         return info
 

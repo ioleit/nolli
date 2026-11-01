@@ -140,3 +140,25 @@ def test_serve_reads_the_ci_review_and_stores_no_uploads(tmp_path, dataset, caps
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+def test_from_ci_without_github(dataset, capsys):  # noqa: F811
+    from nolli.viewer.reviews import ci_pull, from_ci
+
+    report = json.loads((dataset / "report.json").read_text())
+    report["meta"]["diff"] |= {"remote": "https://github.com/me/shop", "pr": 7}
+    (dataset / "report.json").write_text(json.dumps(report))
+    assert ci_pull(dataset) == ("me", "shop", 7)
+    without = comment(dataset, capsys)  # a run without an agent: no verdicts in it
+    (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}]))
+    reviewed = comment(dataset, capsys)
+    (dataset / "verdicts.json").unlink()
+
+    assert from_ci(dataset, []) == {"found": None, "applies": True}
+    assert from_ci(dataset, [bot_comment(without)])["found"] == "no-review" and not (dataset / "verdicts.json").exists()
+    info = from_ci(dataset, [bot_comment(reviewed)])
+    assert info["found"] == "verdicts" and info["dropped"] == 0
+    assert json.loads((dataset / "review.json").read_text())["by"] == "ci"
+    (dataset / "review.json").write_text(json.dumps({"by": "agent"}))  # a review run here since: kept
+    from_ci(dataset, [bot_comment(reviewed)])
+    assert json.loads((dataset / "review.json").read_text())["by"] == "agent"

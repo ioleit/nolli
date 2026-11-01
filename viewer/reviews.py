@@ -1,7 +1,9 @@
 """Reviews of a server's datasets: where a dataset's verdicts came from, and review agent runs
 started from the viewer ("Review structural changes").
 
-A dataset's verdicts are its ``verdicts.json``; ``review.json`` next to it says who made them:
+A dataset's verdicts are its ``verdicts.json``; ``review.json`` next to it says who made them
+(store(), provenance()). A pull request's dataset can take its verdicts from nolli's CI
+(from_ci(), given the PR's comments; the server asks GitHub for them). ``review.json``:
 ``{"by": "agent" | "ci" | "upload", "at": <ISO time>, ...}``, with the model, time and cost
 of an agent run here, or the link to the CI comment they were read from. A run
 (nolli/reviewer.py) works in ``<dataset>/.review`` (its transcript stays there) and replaces the verdicts only when its own
@@ -12,6 +14,7 @@ restarts forgets runs under way, not verdicts.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import threading
 import time
@@ -41,6 +44,44 @@ def store(ds: Path, verdicts: list[dict], by: dict) -> None:
     """Make ``verdicts`` (checked) the dataset's, with where they came from."""
     (ds / "verdicts.json").write_text(json.dumps([{k: v[k] for k in ("target", "verdict", "reason")} for v in verdicts], indent=1))
     (ds / "review.json").write_text(json.dumps({**by, "at": by.get("at") or now()}, indent=1))
+
+
+def ci_pull(ds: Path) -> tuple[str, str, int] | None:
+    """The GitHub pull request a dataset was built from: (owner, repo, number), or None."""
+    try:
+        d = json.loads((ds / "report.json").read_text())["meta"].get("diff") or {}
+    except (OSError, ValueError, KeyError):
+        return None
+    m = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
+    return (m.group(1), m.group(2), int(d["pr"])) if m and d.get("pr") else None
+
+
+def from_ci(ds: Path, comments: list | dict) -> dict:
+    """What nolli's CI left in a pull request's comments (GitHub's answer) for the dataset's head
+    commit: ``{"found": "verdicts" | "no-review" | "earlier" | None, "applies": True, ...}``. Its
+    verdicts, translated from an earlier nolli's ids and checked against this dataset's
+    diagram, become the dataset's, unless it has some already."""
+    from nolli.ci import results, upgrade
+    from nolli.model import Model
+    from nolli.review import check_verdicts
+
+    head = json.loads((ds / "report.json").read_text())["meta"]["diff"]["head"]
+    found = results(comments if isinstance(comments, list) else [])
+    info: dict = {"found": None, "applies": True}
+    mine = [r for r in found if r["head"] == head]
+    if not mine:
+        if found:
+            info.update(found="earlier", head=found[0]["head"][:7], link=found[0]["link"])
+        return info
+    r = mine[0]
+    info.update(link=r["link"], at=r["at"], nolli=r.get("nolli"), found="verdicts" if r.get("verdicts") else "no-review")
+    if r.get("verdicts") and provenance(ds) is None:
+        given = upgrade(r["verdicts"], r.get("nolli"))
+        ok, errors = check_verdicts(Model.load(ds / "model.json"), (ds / "review.mmd").read_text(), json.dumps(given))
+        info["dropped"] = len(errors)
+        if ok:
+            store(ds, ok, {"by": "ci", "link": r["link"], "at": r["at"], "nolli": r.get("nolli"), "dropped": len(errors)})
+    return info
 
 
 @dataclass
