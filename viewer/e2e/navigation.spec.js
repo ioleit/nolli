@@ -27,6 +27,8 @@ const drawnContainers = page => page.evaluate(() => [...document.querySelectorAl
 /** Click a box and wait for the picture to settle. @param {import("@playwright/test").Page} page @param {string} id */
 async function click(page, id) {
   const before = await page.evaluate(() => location.hash);
+  // a click keeps the zoom, so the picture may have grown under the review panel: fit it first
+  await page.keyboard.press("f");
   // an unfolded box folds with its − (drawn above the edges, data-fold), a folded one unfolds with a click
   const fold = page.locator(`#root g[data-fold="${id}"] g.fold`);
   await ((await fold.count()) ? fold : page.locator(`#root g.node[data-id="${id}"] > rect`).first()).click();

@@ -48,10 +48,10 @@ async function hoverMark(page, row, mark) {
   await expect(tip(page)).toContainText(row);
 }
 
-test("every verdict but fine is marked in the diagram, with its chess annotation", async ({ page }) => {
+test("every verdict is marked in the diagram, with its chess annotation", async ({ page }) => {
   await open(page);
   const marks = page.locator("#root g.verdict");
-  await expect(marks).toHaveCount(7);
+  await expect(marks).toHaveCount(8);
   await expect(page.locator("#root g.edge g.verdict.blunder text")).toHaveText("??");
   await expect(page.locator("#root g.edge g.verdict.problem text")).toHaveText("?");
   await expect(page.locator("#root g.edge g.verdict.question text")).toHaveText(["?!", "?!"]);
@@ -60,7 +60,7 @@ test("every verdict but fine is marked in the diagram, with its chess annotation
   await expect(boxMark(page, "repo:ledger/services/legacy_export.py").locator("path")).toHaveCount(1);
   // the good one is on views/alerts, inside web/src/, which is folded at first and shows it
   await expect(boxMark(page, "repo:web/src").locator("path")).toHaveCount(1);  // a thumbs up, not a glyph
-  await expect(page.locator("#root g.verdict.fine")).toHaveCount(0);
+  await expect(boxMark(page, "repo:ledger/api").locator("text")).toHaveText("✓");  // fine, on api/routes.py
   // the glyph stays white on a changed or added edge, whose labels take the change's colour
   for (const t of await marks.locator("text, path").all()) await expect(t).toHaveCSS("fill", "rgb(255, 255, 255)");
 
@@ -88,6 +88,25 @@ test("hovering a problem on an edge shows its reason", async ({ page }) => {
   const mark = page.locator("#root g.edge g.verdict.problem");
   await hoverMark(page, "Skips the store layer", mark);
   await expect(page).toHaveScreenshot("problem-on-edge.png", { clip: await around(page, [mark, tip(page)], 40) });
+});
+
+test("hovering an edge lights it with its two ends, and its card covers none of them", async ({ page }) => {
+  await open(page);
+  await page.keyboard.press("Escape");
+  const edge = page.locator("#root g.edge", { has: page.locator("g.verdict.problem") });
+  await edge.locator("g.verdict circle").hover();
+  await expect(tip(page)).toContainText("Skips the store layer");
+  const ends = ["repo:ledger/services/alerts.py", "repo:ledger/storage/db.py"].map(id => node(page, id));
+  for (const x of [edge, ...ends]) await expect(x).toHaveClass(/\blit\b/);
+  const card = await tip(page).boundingBox();
+  for (const x of ends) {
+    const b = await x.locator(":scope > rect").boundingBox();
+    if (!card || !b) throw new Error("not drawn");
+    const apart = card.x >= b.x + b.width || b.x >= card.x + card.width || card.y >= b.y + b.height || b.y >= card.y + card.height;
+    expect(apart, "the card is clear of " + await x.getAttribute("data-id")).toBe(true);
+  }
+  await page.mouse.move(5, 5);
+  await expect(page.locator("#root .lit")).toHaveCount(0);
 });
 
 test("hovering a question on a box shows its reason", async ({ page }) => {
@@ -126,13 +145,13 @@ test("the review panel lists every verdict, most attention first", async ({ page
   await expect(page.locator("#review")).toHaveScreenshot("verdict-list.png");
 });
 
-test("a fine verdict goes to its box from the panel, without a mark on it", async ({ page }) => {
+test("a fine verdict goes to its box from the panel, with a grey mark on it", async ({ page }) => {
   await open(page);
   await page.locator("#review .rv-verdict", { hasText: "the one box that assembles" }).click();
   await expect(page).toHaveURL(/item=V8/);
   const id = "repo:ledger/api/routes.py";
   await expect(node(page, id)).toHaveClass(/\blit\b/);
-  await expect(boxMark(page, id)).toHaveCount(0);
+  await expect(boxMark(page, id).locator("text")).toHaveText("✓");
   await expect(tip(page)).toContainText("the one box that assembles");
   await expect(page).toHaveScreenshot("fine-on-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
 });

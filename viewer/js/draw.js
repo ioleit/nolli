@@ -73,8 +73,8 @@ function edgeClass(e, review) {
  * @param {SVGElement} mark @param {import("./tip.js").Card} card @param {Element} target what the card goes beside
  */
 function cardOnMark(mark, card, target) {
-  mark.addEventListener("mouseenter", ev => showTip(/** @type {MouseEvent} */ (ev), card, target));
-  mark.addEventListener("mouseleave", () => hideTip());
+  mark.addEventListener("mouseenter", ev => focus(target, card, /** @type {MouseEvent} */ (ev)));
+  mark.addEventListener("mouseleave", blur);
   mark.addEventListener("mousedown", ev => ev.stopPropagation());  // don't start a pan
   mark.addEventListener("click", ev => { ev.stopPropagation(); pinTip(card, target); });
 }
@@ -163,10 +163,10 @@ function buildBox(n, p, h) {
   /** @param {number} w */
   const badgeX = w => isC ? w - 28 : stats ? w - 6 : (w + n.chips.length * 11) / 2;
   if (fitted(p.w)) { badge = el("text", { class: "badge", x: badgeX(p.w), y: isC ? 18 : 33, "text-anchor": isC || stats ? "end" : "middle" }); badge.textContent = fitted(p.w); if (isC) badge.appendChild(el("title")).textContent = n.badge; grp.appendChild(badge); }
-  // the review's verdict on what this box contains, on its top-right corner; "fine" only in the panel
+  // the review's verdict on what this box contains, on its top-right corner
   /** @type {SVGElement | null} */
   let mark = null;
-  if (n.verdict && n.verdict !== "fine") { mark = verdictMark(n.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
+  if (n.verdict) { mark = verdictMark(n.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
   n.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
   // an unfolded box lists the utilities its children use, one per line, bottom right
   /** @type {SVGElement[]} */
@@ -215,6 +215,8 @@ export function draw(g, scene, laid, handlers) {
   const nodes = new Map();
   /** @type {Map<string, Element>} */
   const boxEl = new Map();
+  /** @type {Map<string, Element>} */
+  const edgeEl = new Map();
 
   // scene nodes come in drawing order: a container before what it contains
   for (const n of scene.nodes) {
@@ -237,73 +239,91 @@ export function draw(g, scene, laid, handlers) {
     const after = foldLayer[0] && foldLayer[0].parentNode === g ? foldLayer[0] : null;
     if (ge.nextSibling !== after) g.insertBefore(ge, after);
   };
-  for (const { edge: e, sections } of laid.edges) {
+  for (const { edge: e, sections, mark } of laid.edges) {
     const ge = el("g", { class: edgeClass(e, review), "data-key": e.key });
-    /** @type {{ x: number, y: number } | null} */
-    let mid = null;
     for (const pts of sections) {
       const d = "M" + pts.map(p => `${p.x},${p.y}`).join("L");
       const line = "M" + shortened(pts).map(p => `${p.x},${p.y}`).join("L");
       ge.appendChild(el("path", { d: line, "stroke-width": 1.2 }));  // every edge one width, whatever its count
       if (pts.length > 1) ge.appendChild(el("polygon", { class: "head", points: head(pts) }));
       ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
-      const a = pts[Math.floor((pts.length - 1) / 2)], b = pts[Math.ceil((pts.length - 1) / 2)]; mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
-    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
-    ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e, null, ge));
-    ge.addEventListener("mouseenter", () => raise(ge));
-    ge.addEventListener("mouseleave", () => hideTip());
-    g.appendChild(ge); edges.push(ge);
+    if (e.verdict && mark) { const vm = verdictMark(e.verdict, mark.x, mark.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
+    // the card goes beside the pointer, off the edge's line and its two ends (lit, see interestOf)
+    ge.addEventListener("mouseenter", ev => focus(ge, e, /** @type {MouseEvent} */ (ev)));
+    ge.addEventListener("mousemove", ev => { if (!lit.has(ge)) focus(ge, e, /** @type {MouseEvent} */ (ev)); });  // back from its mark
+    ge.addEventListener("mouseleave", blur);
+    g.appendChild(ge); edges.push(ge); edgeEl.set(e.key, ge);
     for (const id of [e.src, e.dst]) { const l = edgesAt.get(id); if (l) l.push(ge); else edgesAt.set(id, [ge]); }
   }
   foldLayer.forEach(f => g.appendChild(f));
   raiseEdge = raise;
-  lightOnHover(scene, boxEl, edgesAt, raise);
+  interestOf = interest(scene, boxEl, edgeEl, edgesAt);
+  unlight();  // a redraw starts dark
+  for (const n of scene.nodes) {
+    const box = boxEl.get(n.id);
+    if (!box || ("container" in n && n.container)) continue;  // unfolded boxes don't light on hover
+    box.addEventListener("mouseenter", ev => focus(box, n, /** @type {MouseEvent} */ (ev)));
+    box.addEventListener("mouseleave", blur);
+  }
   return { nodes, edges, firstEdge: edges[0] || foldLayer[0] || null };
 }
 
 /** @type {(ge: Element) => void} the last drawing's way of putting an edge on top of the others */
 let raiseEdge = () => {};
+/** @type {(x: Element) => Element[]} the last drawing's sets of interest */
+let interestOf = x => [x];
 /** @type {ReturnType<typeof setTimeout> | null} */
 let flashTimer = null;
 
 /**
- * Light boxes and edges from outside the drawing: the review list points at an item while
- * its row is hovered, or flashes it after a jump (a few pulses of the hover glow, then
- * nothing stays lit). Same .lit as hovering a box.
- * @param {Element} g the root group @param {string[]} ids box ids @param {string[]} keys edge keys @param {boolean} [flash]
+ * What goes with a drawn box or edge: lit while it is hovered or gone to, and kept clear by
+ * its card (tip.js avoids whatever is lit). An edge: itself and the boxes at its two ends. A
+ * folded box: itself, its edges and the utilities it uses. An unfolded box: itself.
+ * @param {Scene} scene @param {Map<string, Element>} boxEl @param {Map<string, Element>} edgeEl
+ * @param {Map<string, SVGElement[]>} edgesAt @returns {(x: Element) => Element[]}
  */
-export function light(g, ids, keys, flash = false) {
+function interest(scene, boxEl, edgeEl, edgesAt) {
+  const nodeById = new Map(scene.nodes.map(n => [n.id, n])), edgeByKey = new Map(scene.edges.map(e => [e.key, e]));
+  /** @param {string[]} ids */
+  const boxes = ids => ids.map(i => boxEl.get(i)).filter(/** @returns {b is Element} */ b => !!b);
+  return x => {
+    const key = x.getAttribute("data-key");
+    if (key !== null) { const e = edgeByKey.get(key); return [edgeEl.get(key) || x, ...(e ? boxes([e.src, e.dst]) : [])]; }
+    const id = x.getAttribute("data-id") || "", n = nodeById.get(id), box = boxEl.get(id) || x;
+    if (!n || ("container" in n && n.container)) return [box];
+    return [box, ...edgesAt.get(id) || [], ...boxes(n.utilities_used || [])];
+  };
+}
+
+/** Light a box or edge with what goes with it, then show its card beside it (an edge: beside the
+ * pointer if it can). @param {Element} x @param {import("./tip.js").Card} card @param {MouseEvent} ev */
+function focus(x, card, ev) {
+  lightUp(interestOf(x));
+  showTip(ev, card, x);
+}
+
+function blur() { unlight(); hideTip(); }
+
+/** @param {Element[]} els @param {boolean} [flash] */
+function lightUp(els, flash = false) {
   unlight();
-  if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
-  for (const id of ids) g.querySelectorAll(`.node[data-id="${CSS.escape(id)}"]`).forEach(x => lit.add(x));
-  for (const k of keys) g.querySelectorAll(`.edge[data-key="${CSS.escape(k)}"]`).forEach(x => { lit.add(x); raiseEdge(x); });
+  for (const x of els) { lit.add(x); if (x.matches(".edge")) raiseEdge(x); }
   for (const x of lit) { x.classList.add("lit"); if (flash) x.classList.add("flash"); }
-  if (flash) flashTimer = setTimeout(() => { flashTimer = null; unlight(); }, 2400);
 }
 
 /**
- * Hovering a leaf (a folded box, or a module's own-code dot) lights it up (.lit, viewer.css),
- * with its incoming and outgoing edges and the utilities it uses. Unfolded boxes don't light.
- * @param {Scene} scene @param {Map<string, Element>} boxEl @param {Map<string, SVGElement[]>} edgesAt
- * @param {(ge: Element) => void} raise
+ * Light boxes and edges from outside the drawing, each with what goes with it: the review list
+ * points at an item while its row is hovered, or flashes it after a jump (a few pulses of the
+ * hover glow, then nothing stays lit). Same .lit as hovering.
+ * @param {Element} g the root group @param {string[]} ids box ids @param {string[]} keys edge keys @param {boolean} [flash]
  */
-function lightOnHover(scene, boxEl, edgesAt, raise) {
-  unlight();  // a redraw starts dark
-  for (const n of scene.nodes) {
-    const box = boxEl.get(n.id);
-    if (!box || ("container" in n && n.container)) continue;
-    // the hover text appears with the highlight: for leaves only, on the same event
-    box.addEventListener("mouseenter", ev => {
-      showTip(/** @type {MouseEvent} */ (ev), n, box);
-      unlight();
-      lit.add(box);
-      for (const u of n.utilities_used || []) { const b = boxEl.get(u); if (b) lit.add(b); }
-      for (const ge of edgesAt.get(n.id) || []) { lit.add(ge); raise(ge); }
-      for (const x of lit) x.classList.add("lit");
-    });
-    box.addEventListener("mouseleave", () => { unlight(); hideTip(); });
-  }
+export function light(g, ids, keys, flash = false) {
+  if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
+  const els = [...ids.flatMap(id => [...g.querySelectorAll(`.node[data-id="${CSS.escape(id)}"]`)]),
+               ...keys.flatMap(k => [...g.querySelectorAll(`.edge[data-key="${CSS.escape(k)}"]`)])];
+  lightUp([...new Set(els.flatMap(interestOf))], flash);
+  if (flash) flashTimer = setTimeout(() => { flashTimer = null; unlight(); }, 2400);
 }
 
 /** What is lit now: one set for the whole page, so a missed mouseleave can't leave anything lit. @type {Set<Element>} */
