@@ -1,133 +1,132 @@
-"""Mermaid export of a rolled view: the static artefact for READMEs and PRs."""
+"""Mermaid of a scene: the second renderer, for READMEs, PR comments and agents.
+
+It draws the scene the viewer draws (``scene.py``): the same boxes, containers and edges,
+with Mermaid's own layout, top to bottom. Only what plain Mermaid can say, so that the text
+renders anywhere (GitHub included) and stays readable as text: no click handlers, no
+layout engines beyond the default, styles through ``classDef`` and ``linkStyle`` only.
+Where the viewer pins utilities to the bottom, an invisible link (``~~~``) from a box that
+uses one keeps it below that box.
+"""
 
 from __future__ import annotations
 
 import re
 
-from .changes import is_diff, node_diff
-from .labels import is_module, module_stem
-from .rollup import HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, display_path, hidden_by_role, image_aliases, is_init
-from .model import SYMBOL_KINDS, Model
-
-ARROW = {"import": "-->", "ref": "-->", "http": "==>", "env": "-.->", "depends_on": "-->", "url": "-->",
-         "runs_as": "-.->", "copies": "-.->", "entrypoint": "-.->"}
-GROUP_SHORT = {"ext": "pkgs", "env": "env", "deploy": "deploy", "api": "api"}
-
-
-def module_name(e) -> str:
-    """A source file is shown as its module: name without the extension."""
-    if is_module(e):
-        return module_stem(e.name)
-    return e.name
+STYLE_ARROW = {"import": "-->", "http": "==>", "env": "-.->", "deploy": "-.->", "provide": "-.->"}
+KIND_CLASS = {"package": "ext", "service": "deploy", "image": "deploy", "host": "deploy", "group": "group",
+              "class": "symbol", "interface": "symbol", "type": "symbol", "enum": "symbol", "function": "symbol"}
+ICON_WORD = {"C": "class", "I": "interface", "T": "type", "E": "enum", "f": "function", "img": "image"}
+SILENT_ICONS = {"D", "m", "/"}  # a directory ends in "/", a module and a path need no word
+# a fill comes with a text colour: GitHub draws Mermaid dark in dark mode
+CLASS_DEF = {
+    "ext": "stroke-dasharray:5 5",
+    "deploy": "fill:#eef5ff,stroke:#6a8fd8,color:#222",
+    "group": "stroke-dasharray:2 3",
+    "symbol": "fill:#fff8e6,stroke:#c9a227,color:#222",
+    "utility": "stroke-dasharray:1 3",
+    "added": "fill:#e6f6ea,stroke:#2e9b4f,stroke-width:2px,color:#222",
+    "removed": "fill:#fdecec,stroke:#c94040,stroke-width:2px,stroke-dasharray:5 3,color:#a33",
+    "changed": "stroke:#d08a1a,stroke-width:2px",
+    "same": "opacity:0.45",
+}
+STATUS_STROKE = {"added": "#2e9b4f", "removed": "#c94040", "changed": "#d08a1a"}
 
 
 def nid(eid: str) -> str:
     return "n_" + re.sub(r"[^A-Za-z0-9]", "_", eid)
 
 
-def label(m: Model, eid: str, ann: dict[str, int] | None, expanded: set[str] = frozenset(), alloc: list[str] | None = None,
-          show_files: dict[str, int] | None = None) -> str:
-    show_files = show_files or {}
-    if eid.startswith("body:"):
-        base = module_name(m.entities[eid[5:]])  # the module's own code: the module itself
-    else:
-        e = m.entities[eid]
-        if e.kind == "directory":
-            base = (e.name if e.attrs.get("root") else display_path(m, eid, expanded)) + "/"
-        elif e.kind == "file":
-            base = module_name(e)
-        elif e.kind in SYMBOL_KINDS:
-            base = f"{e.kind} {e.name}"
-        elif e.kind == "service":
-            base = f"svc {e.name}"
-        elif e.kind == "image":
-            base = f"image {e.name}"
-        else:
-            base = e.name
-    if ann:
-        parts = []
-        for g, c in sorted(ann.items()):
-            if g.startswith("util:"):
-                t = g[5:]
-                parts.append("→ " + (m.entities[t].name + "/" if m.has(t) and m.entities[t].kind == "directory" else m.entities[t].name if m.has(t) else t))
-            else:
-                parts.append(f"{GROUP_SHORT.get(g, g)} {c}")
-        base += " (" + ", ".join(parts) + ")"
-    if alloc:
-        base += " [" + ", ".join(s.removeprefix("svc:") for s in alloc) + "]"
-    return base.replace('"', "'")
+def text(s: str) -> str:
+    """A label as Mermaid reads it between double quotes."""
+    return s.replace('"', "'").replace("<", "#lt;").replace(">", "#gt;")
 
 
-def render(m: Model, view: dict, rolled: RolledUp) -> str:
+def label(n: dict) -> str:
+    if n["kind"] == "anchor":
+        return "own code"
+    words = [ICON_WORD.get(i, i) for i in n["icons"] if i not in SILENT_ICONS]
+    out = text(" ".join(words + [n["label"] + ("/" if n["kind"] == "directory" else "")]))
+    if n["chips"]:
+        out += text(" [" + ", ".join(c["name"] for c in n["chips"]) + "]")
+    if n["badge"]:
+        out += "<br/>" + text(n["badge"])
+    return out
 
-    diff = is_diff(m)
-    status_of = lambda n: ((node_diff(m, n, rolled.internal_changes.get(n)) or {}).get("status") if diff else None)  # noqa: E731
-    expanded = set(view["expanded"])
-    show_files = dict(view.get("show_files") or {})
-    visible = set(rolled.visible)
-    hidden = hidden_by_role(m, view.get("hidden_roles") or HIDDEN_ROLES_DEFAULT) | set(image_aliases(m))
-    touched = {e.src for e in rolled.edges} | {e.dst for e in rolled.edges}
+
+def ids(sc: dict) -> dict[str, str]:
+    """The Mermaid id of each box ``render`` draws (an unfolded one is a subgraph, ``<id>_g``),
+    to the scene id it stands for: how a client maps a click on the drawing back to the scene."""
+    return {nid(n["id"]) + ("_g" if n.get("container") else ""): n["id"] for n in sc["nodes"]}
+
+
+def render(sc: dict, fade: bool = True) -> str:
+    """The scene as a Mermaid flowchart. ``fade``: in a change's scene, draw what did not
+    change faint (the viewer's "fade unchanged")."""
+    review = "diff" in sc
+    nodes = {n["id"]: n for n in sc["nodes"]}
+    kids: dict[str | None, list[dict]] = {}
+    for n in sc["nodes"]:
+        kids.setdefault(n["parent"], []).append(n)
+    ref = lambda x: nid(x) + "_g" if nodes[x].get("container") else nid(x)  # noqa: E731
+    status = lambda x: (x.get("diff") or {}).get("status")  # noqa: E731
     out = ["flowchart TD"]
-    classed: list[tuple[str, str]] = []  # subgraphs take classes through `class`, not `:::`
+    classes: list[tuple[str, str]] = []  # given after the nodes: subgraphs take them only that way
 
-    def emit(n: str, indent: int) -> None:
+    def emit(n: dict, indent: int) -> None:
         pad = "  " * indent
-        e = m.entities[n]
-        if n in expanded and m.children(n):
-            out.append(f'{pad}subgraph {nid(n)}_g ["{label(m, n, None, expanded)}"]')
-            if status_of(n):
-                classed.append((f"{nid(n)}_g", status_of(n)))
-            if f"body:{n}" in visible:
-                out.append(f'{pad}  {nid("body:" + n)}(("{label(m, "body:" + n, rolled.annotations.get("body:" + n))}"))')
-            for c in m.children(n):
-                if e.kind == "directory" and is_init(m, c):
-                    for cc in m.children(c):  # the package's own classes
-                        if cc in visible:
-                            emit(cc, indent + 1)
-                    continue
-                if e.kind == "directory" and m.entities[c].kind == "directory":
-                    c = chain_end(m, c, hidden)
-                if c in visible or (c in expanded and m.children(c)):
-                    emit(c, indent + 1)
+        st = status(n) or ("same" if review and fade else None)
+        if n.get("container"):
+            out.append(f'{pad}subgraph {ref(n["id"])} ["{label(n)}"]')
+            for c in kids.get(n["id"], []):
+                emit(c, indent + 1)
             out.append(f"{pad}end")
-        elif n in visible:
-            if e.kind == "group" and m.parent(n) is None and n not in touched:
-                return  # folded root groups appear as annotations on the nodes that use them
-            cls = ":::ext" if e.kind == "package" else ":::deploy" if e.kind in ("service", "image", "host") else ":::group" if e.kind == "group" else ":::symbol" if e.kind in SYMBOL_KINDS else ""
-            st = status_of(n)
-            out.append(f'{pad}{nid(n)}["{label(m, n, rolled.annotations.get(n), expanded, rolled.allocations.get(n))}"]{":::" + st if st else cls}')
+            if st:
+                classes.append((ref(n["id"]), st))
+            return
+        cls = st or KIND_CLASS.get(n["kind"])
+        shape = '(("{}"))' if n["kind"] == "anchor" else '["{}"]'
+        out.append(pad + nid(n["id"]) + shape.format(label(n)) + (f":::{cls}" if cls else ""))
+        if n.get("utility"):
+            classes.append((nid(n["id"]), "utility"))
 
-    for r in m.roots():
-        emit(r, 1)
-    out.append("  classDef ext stroke-dasharray:5 5,fill:#fafafa,color:#555")
-    out.append("  classDef deploy fill:#eef5ff,stroke:#6a8fd8")
-    out.append("  classDef files fill:#f4f4f4,stroke:#bbb,color:#666")
-    out.append("  classDef group stroke-dasharray:2 3")
-    out.append("  classDef symbol fill:#fff8e6,stroke:#c9a227")
-    if diff:
-        out.append("  classDef added fill:#e6f6ea,stroke:#2e9b4f,stroke-width:2px")
-        out.append("  classDef removed fill:#fdecec,stroke:#c94040,stroke-width:2px,stroke-dasharray:5 3,color:#a33")
-        out.append("  classDef changed stroke:#d08a1a,stroke-width:2px")
-        for g, st in classed:
-            out.append(f"  class {g} {st}")
-    def ref(n: str) -> str:
-        return nid(n) + "_g" if n in expanded and m.children(n) else nid(n)
+    for n in kids.get(None, []):
+        emit(n, 1)
 
-    styles: list[str] = []
-    for i, e in enumerate(rolled.edges):
-        arrow = "-.->" if e.kind == "provide" else ARROW.get(e.subkind, "-->")
+    styles: dict[str, list[int]] = {}
+    links = 0
+    for e in sc["edges"]:
+        if e["src"] not in nodes or e["dst"] not in nodes:
+            continue
+        d = e.get("diff")
         lab = []
-        st = e.status if diff else None
-        if st:
-            lab.append(f"{st} {e.base}→{e.head}")
-            styles.append(f"  linkStyle {i} stroke:{ {'added': '#2e9b4f', 'removed': '#c94040', 'changed': '#d08a1a'}[st] },stroke-width:2px"
-                          + (",stroke-dasharray:5 3" if st == "removed" else ""))
-        elif e.count > 1:
-            lab.append(str(e.count))
-        if e.kind == "provide":
+        if d:
+            lab.append(f"{d['status']} {d['base']}→{d['head']}")
+        elif e["count"] > 1:
+            lab.append(str(e["count"]))
+        if e["style"] == "provide":
             lab.append("realised by")
-        elif e.subkind not in ("import", "ref"):
-            lab.append("http" if e.subkind == "endpoint" else e.subkind)
-        text = f"|{' '.join(lab)}|" if lab else ""
-        out.append(f"  {ref(e.src)} {arrow}{text} {ref(e.dst)}")
-    return "\n".join(out + styles) + "\n"
+        elif e["subkind"] not in ("import", "ref"):
+            lab.append("http" if e["subkind"] == "endpoint" else e["subkind"])
+        arrow = "-.->" if e["types"] and e["style"] == "import" else STYLE_ARROW.get(e["style"], "-->")
+        out.append(f"  {ref(e['src'])} {arrow}{'|' + ' '.join(lab) + '|' if lab else ''} {ref(e['dst'])}")
+        style = (f"stroke:{STATUS_STROKE[d['status']]},stroke-width:2px" + (",stroke-dasharray:5 3" if d["status"] == "removed" else "") if d
+                 else "stroke-opacity:0.2" if review and fade
+                 else "stroke-opacity:0.35,stroke-width:0.7px" if e["local"] or e["weak"] else None)
+        if style:
+            styles.setdefault(style, []).append(links)
+        links += 1
+    # a utility below a box that uses it: its incoming edges are not drawn, and Mermaid would
+    # put a box without them at the top. One link each, from the first box that uses it.
+    below = set()
+    for n in sc["nodes"]:
+        if not n.get("container"):
+            for u in n.get("utilities_used") or []:
+                if u in nodes and u != n["id"] and u not in below:
+                    out.append(f"  {nid(n['id'])} ~~~ {ref(u)}")
+                    below.add(u)
+
+    used = sorted({c for _, c in classes} | {m.group(1) for line in out if (m := re.search(r":::(\w+)$", line))})
+    out += [f"  classDef {c} {CLASS_DEF[c]}" for c in used]
+    out += [f"  class {x} {c}" for x, c in classes]
+    out += [f"  linkStyle {','.join(map(str, ix))} {style}" for style, ix in styles.items()]
+    return "\n".join(out) + "\n"

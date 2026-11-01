@@ -96,13 +96,13 @@ def test_repository_untouched(repo):
 
 def test_scene_review(repo):
     from nolli.changes import Links, details
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     path, base, head = repo
     git(path, "remote", "add", "origin", "git@github.com:acme/demo.git")
     m, _ = diff(path, base, head, extract)
     m.meta["diff"]["pr"] = 7
-    sc = scene(m, ViewState(expanded=["fs:.", "fs:app", "fs:app/store.py"]))
+    sc = scene(m, SceneState(expanded=["fs:.", "fs:app", "fs:app/store.py"]))
     nodes = {n["id"]: n for n in sc["nodes"]}
     assert nodes["py:app/store.py#Index"]["diff"]["status"] == "added"
     assert nodes["py:app/store.py#Store"]["diff"] == nodes["py:app/store.py#Store"]["diff"] | {"status": "changed", "added": 1, "removed": 1}
@@ -113,11 +113,11 @@ def test_scene_review(repo):
     assert new["status"] == "added" and new["base"] == 0 and new["head"] >= 1 and new["changes"][0]["status"] == "added"
     assert sc["diff"]["link"] == "https://github.com/acme/demo/pull/7"
     # one commit at a time: what is missing on that side is not drawn
-    ids = lambda st: {n["id"] for n in scene(m, ViewState(expanded=["fs:.", "fs:app", "fs:app/store.py"], side=st))["nodes"]}
+    ids = lambda st: {n["id"] for n in scene(m, SceneState(expanded=["fs:.", "fs:app", "fs:app/store.py"], side=st))["nodes"]}
     assert "py:app/store.py#Index" not in ids("base") and "fs:app/old.py" in ids("base")
     assert "py:app/store.py#Index" in ids("head") and "fs:app/old.py" not in ids("head")
     # the default view unfolds towards the change
-    assert "fs:app" in scene(m, ViewState())["state"]["expanded"]
+    assert "fs:app" in scene(m, SceneState())["state"]["expanded"]
     # details: files with hunks and links into the PR's files view
     d = details(m, "fs:app")
     store = next(f for f in d["files"] if f["path"] == "app/store.py")
@@ -132,7 +132,7 @@ def test_items_verdicts_and_export(repo):
 
     from nolli.changes import change_items
     from nolli.review import read_verdicts, resolve_verdicts, review_expanded, review_markdown
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     path, base, head = repo
     m, _ = diff(path, base, head, extract)
@@ -154,7 +154,7 @@ def test_items_verdicts_and_export(repo):
     ]))
     assert [x["id"] for x in v] == ["V1", "V2", "V3", "V4"]
     assert resolve_verdicts(m, v)[3]["ends"] == ["fs:app", "fs:app/store.py"]
-    sc = scene(m, ViewState(expanded=["fs:.", "fs:app"]), v)
+    sc = scene(m, SceneState(expanded=["fs:.", "fs:app"]), v)
     marked = [e for e in sc["edges"] if "V1" in e["verdicts"]]
     assert len(marked) == 1 and marked[0]["verdict"] == "problem" and (marked[0]["src"], marked[0]["dst"]) == ("fs:app/api.py", "fs:app/store.py")
     store = next(n for n in sc["nodes"] if n["id"] == "fs:app/store.py")  # Index is inside the folded store module
@@ -162,7 +162,7 @@ def test_items_verdicts_and_export(repo):
     assert "[question](verdict:question)" in store["review"]
     assert "verdict:" not in store["info"]
     assert not any("V3" in x.get("verdicts", []) for x in sc["nodes"] + sc["edges"])  # an unknown target is not drawn
-    sc = scene(m, ViewState(expanded=["fs:."]), v)  # app folded: the edge falls inside it, so does the verdict
+    sc = scene(m, SceneState(expanded=["fs:."]), v)  # app folded: the edge falls inside it, so does the verdict
     app = next(n for n in sc["nodes"] if n["id"] == "fs:app")
     assert set(app["verdicts"]) == {"V1", "V2", "V4"} and app["verdict"] == "problem"
     with pytest.raises(ValueError):

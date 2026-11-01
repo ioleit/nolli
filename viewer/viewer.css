@@ -137,7 +137,12 @@ svg#g:active { cursor: grabbing; }
 #loading.error { color: #d9534f; }
 body.busy svg#g { cursor: progress; }
 #mmdpane { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 8px; display: none; }
-#mmdpane .req { color: var(--muted); margin-bottom: 6px; }
+#mmdpane .req { color: var(--muted); margin-bottom: 6px; word-break: break-all; }
+#mmdpane .mmd-svg g.unfold { cursor: pointer; }
+#mmdpane .mmd-src pre { font: 11.5px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+#mmdpane pre.error { color: #c33; }
+#presets .seg { margin: 0; }
+#presets .seg button { padding: 2px 8px; }
 #rawpane { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 8px 12px; display: none; font: 11.5px/1.45 ui-monospace, monospace; }
 #rawpane pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
 #rawpane .req { font: 12px system-ui, sans-serif; color: var(--muted); margin-bottom: 6px; word-break: break-all; }

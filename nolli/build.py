@@ -15,7 +15,7 @@ from .extractors import Context, all_extractors, language_names
 from .mermaid import render
 from .model import Model
 from .progress import Progress, Quiet
-from .scene import ALL_ROLES, DEFAULT_ROLES, ViewState, compute, scene
+from .scene import ALL_ROLES, DEFAULT_ROLES, SceneState, compute, scene
 
 
 def tracked_files(repo: Path) -> list[Path]:
@@ -59,7 +59,7 @@ def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int
     """The dataset of a change: the merged model, changes.json, review.mmd and review.md."""
     from .changes import change_items
     from .diff import diff
-    from .review import review_expanded, review_markdown
+    from .review import review_markdown
 
     progress = progress or Quiet()
     out.mkdir(parents=True, exist_ok=True)
@@ -74,9 +74,7 @@ def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int
     report = write_dataset(m, out, budget, {}, {"diff": summary}, progress)
     with progress.step("the review's diagram"):
         (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
-        st = ViewState(budget=budget, expanded=review_expanded(m))
-        expanded, _hidden, visible, rolled, _utilities = compute(m, st)
-        mmd = render(m, {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible)}, rolled)
+        mmd = render(scene(m, SceneState(budget=budget, preset="changes")))
         (out / "review.mmd").write_text(mmd)
         (out / "review.md").write_text(review_markdown(m, mmd, description))
     return m, summary, report
@@ -125,14 +123,15 @@ def write_dataset(m: Model, out: Path, budget: int, notes: dict, extra: dict | N
     with progress.step("writing model.json"):
         m.save(out / "model.json")
     with progress.step("the default cut"):
-        st = ViewState(budget=budget)
+        st = SceneState(budget=budget)
         expanded, _hidden, visible, rolled, _utilities = compute(m, st)
         view = {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible),
                 "hidden_roles": [r for r in ALL_ROLES if r not in DEFAULT_ROLES]}
         (out / "view.json").write_text(json.dumps(view, indent=1))
-        (out / "scene.json").write_text(json.dumps(scene(m, st), indent=1))
+        sc = scene(m, st)
+        (out / "scene.json").write_text(json.dumps(sc, indent=1))
         (out / "rollup.json").unlink(missing_ok=True)  # replaced by scene.json
-        (out / "default.mmd").write_text(render(m, view, rolled))
+        (out / "default.mmd").write_text(render(sc))
     report = {
         "meta": m.meta,
         "summary": m.summary(),

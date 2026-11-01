@@ -1,15 +1,18 @@
 # Viewer
 
 `serve.py` is a small local server (standard library only): static files, the datasets
-under `--data`, and `/api/scene`. This directory is installed as the package `nolli.viewer`
-(see `pyproject.toml`), and `nolli view` starts the server; run as a script from a clone
-(`python viewer/serve.py --data …`), it imports `nolli` from that clone.
+under `--data`, `/api/scene` and `/api/mermaid`. This directory is installed as the package
+`nolli.viewer` (see `pyproject.toml`), and `nolli view` starts the server; run as a script
+from a clone (`python viewer/serve.py --data …`), it imports `nolli` from that clone.
 
-The viewer computes nothing itself: on every click it asks the server for the scene
-(`/api/scene?d=<dataset>&x=<unfolded ids>&…`, the same keys as its location hash, so a
-URL is a view) and lays it out with ELK. Tabs above the canvas switch between the
-drawing ("Diagram"), the response itself ("JSON") and the static Mermaid export of the
-default cut ("Mermaid").
+The viewer computes nothing itself: on every click it asks the server for the scene of a
+scene state (`/api/scene?d=<dataset>&x=<unfolded ids>&…`, or `p=<preset>` instead of `x`;
+the same keys as its location hash, so a URL is a picture). The tabs above the canvas show
+that one scene three ways: "Interactive" lays it out with ELK and draws it, "Mermaid" asks
+`/api/mermaid` for the same scene state and lets Mermaid draw it (the text a README, a PR
+comment or a review agent gets), and "JSON" shows the response itself. "Fade unchanged"
+applies to both drawings. The presets in the sidebar (default, folded, changes, unfolded)
+name a cut; clicking a box leaves them ("custom").
 
 ## Files
 
@@ -19,7 +22,7 @@ default cut ("Mermaid").
   positions and edge routes, with no DOM, one module per engine: ELK.js layered (one
   layout over all levels, or each box separately) or Cytoscape.js fCoSE
   force-directed, chosen in the sidebar. `draw.js` renders SVG, `main.js` wires it
-  together; the rest are state, sidebar, JSON and Mermaid views, pan/zoom, and the
+  together; the rest are state, sidebar, the Mermaid and JSON tabs, pan/zoom, and the
   review column (`review.js`).
 
 ## Animation
