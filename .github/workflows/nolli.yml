@@ -1,8 +1,10 @@
 # nolli reviews nolli: on every push to a pull request, build the change's dataset (from where
 # the PR left main to its head), let a review agent judge it, store the dataset as an artifact
-# and keep one comment on the PR up to date with the verdicts and the command that opens them
-# (nolli view <owner>/<repo>#<n>@<head>, nolli/ci.py). Only the PR's latest result is kept,
-# none once it closes. Never blocks: the comment is for information.
+# and comment on the PR with the verdicts and the command that opens them
+# (nolli view <owner>/<repo>#<n>@<head>, nolli/ci.py). One comment per pushed commit, so the
+# conversation reads commit, review, commit, review; a re-run on the same commit updates its
+# comment. Results are kept per commit for 7 days, none once the PR closes. Never blocks: the
+# comment is for information.
 #
 # The review needs the repository secret ANTHROPIC_API_KEY; without it the comment counts the
 # changes and says how to add the key. Pull requests from forks get no secrets, so no review.
@@ -18,7 +20,7 @@ on:
 permissions:
   contents: read
   pull-requests: write  # the comment
-  actions: write        # deleting the PR's older results
+  actions: write        # deleting the PR's results when it closes
 
 concurrency:
   group: nolli-${{ github.event.pull_request.number }}
@@ -86,6 +88,7 @@ jobs:
           name: nolli-pr${{ env.PR }}-${{ env.HEAD7 }}
           path: ${{ env.DATASET }}
           retention-days: 7
+          overwrite: true  # a re-run on the same commit
 
       - name: the nolli-review app's token
         id: app
@@ -95,14 +98,6 @@ jobs:
           app-id: ${{ vars.NOLLI_APP_ID }}
           private-key: ${{ secrets.NOLLI_APP_PRIVATE_KEY }}
 
-      - name: delete the PR's older results
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
-        run: |
-          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
-            --jq ".artifacts[] | select(.name | startswith(\"nolli-pr$PR-\")) | select(.name != \"nolli-pr$PR-$HEAD7\") | .id" |
-          while read -r id; do gh api -X DELETE "repos/$REPO/actions/artifacts/$id"; done
-
       - name: comment
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
@@ -111,8 +106,10 @@ jobs:
           skipped=()
           if [ "$FORK" = true ]; then skipped=(--skipped fork); elif [ "$HAS_KEY" != true ]; then skipped=(--skipped no-key); fi
           nolli ci comment "$DATASET" "${skipped[@]}" > "$RUNNER_TEMP/comment.md"
+          export KEY="#$PR@$HEAD7"  # in this commit's comment, if an earlier run made one
           id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
-            --jq '.[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- nolli -->"))) | .id' | head -n1)
+            --jq '.[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- nolli -->"))
+                  and (.body | contains(env.KEY))) | .id' | head -n1)
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/$REPO/issues/comments/$id" -F "body=@$RUNNER_TEMP/comment.md" > /dev/null
           else
