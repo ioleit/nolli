@@ -11,7 +11,10 @@ scene as Mermaid (``nolli/mermaid.py``; ``nodim=1``: unchanged not faded; ``form
 ``{mermaid, ids}``, ids mapping each Mermaid node id to its scene id); ``/api/node?d=<name>&id=<entity>``
 returns the details of one box in a diff dataset (``nolli/changes.py``), ``/api/changes?d=``
 its numbered changes and the review's verdicts, and ``POST /api/verdicts?d=`` stores a
-review's verdicts.json next to the dataset. Needs only the standard library. Installed,
+review's verdicts.json next to the dataset. ``/api/review?d=`` says where the verdicts came
+from and whether a review agent can run here; ``POST /api/review?d=`` starts one (it needs
+ANTHROPIC_API_KEY and the change's repository, viewer/reviews.py), ``POST /api/review/cancel?d=``
+stops it. Needs only the standard library, but for the review agent. Installed,
 this is ``nolli.viewer.serve``; run as a script from a checkout, it imports the nolli
 package of that checkout, not an installed copy.
 """
@@ -37,6 +40,11 @@ from nolli.changes import change_items, details  # noqa: E402
 from nolli.review import read_verdicts, resolve_verdicts  # noqa: E402
 from nolli.mermaid import ids as mermaid_ids, render  # noqa: E402
 from nolli.scene import scene, state_from_query  # noqa: E402
+
+try:  # installed: nolli.viewer.reviews; from a checkout, reviews.py beside this file
+    from .reviews import Reviews, provenance, store
+except ImportError:
+    from reviews import Reviews, provenance, store  # type: ignore[no-redef]
 
 _models: dict[str, tuple[float, Model]] = {}
 _loading: dict[str, threading.Lock] = {}  # one per model.json: a request waits for a load under way
@@ -77,6 +85,38 @@ def load_verdicts(ds: Path) -> list[dict]:
 
 class Handler(SimpleHTTPRequestHandler):
     data_root: Path = HERE / "data"
+    repos: dict[str, Path] = {}  # dataset name -> the repository it was built from, for a review agent
+    reviews = Reviews()
+    uploads = True  # POST /api/verdicts stores a review's verdicts.json
+
+    def dataset(self) -> tuple[dict, Path | None]:
+        """The query, and the dataset it names (None if there is no such dataset)."""
+        q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+        ds = self.data_root / q.get("d", "")
+        return q, ds if q.get("d") and "/" not in q["d"] and (ds / "model.json").is_file() else None
+
+    def review_repo(self, ds: Path) -> Path | None:
+        """The git repository a review agent reads the change's code from."""
+        return self.repos.get(ds.name)
+
+    def start_review(self, ds: Path) -> None:
+        repo = self.review_repo(ds)
+        self.reviews.start(ds.name, ds, lambda: repo)
+
+    def review_status(self, ds: Path) -> dict:
+        """What the review panel shows: the verdicts' origin, the run under way or the last one,
+        and whether (and why not) a run can be started here."""
+        from nolli import reviewer
+
+        why = reviewer.available()
+        if why is None and not (ds / "review.mmd").is_file():
+            why = "dataset"
+        if why is None and self.review_repo(ds) is None:
+            why = "repo"
+        job = self.reviews.job(ds.name)
+        return {"verdicts": provenance(ds), "run": job.status() if job else None,
+                "can_run": why is None, "why_not": why, "uploads": self.uploads,
+                "model": reviewer.MODEL, "server": "view"}
 
     def send_json(self, obj, status: int = 200) -> None:
         body = json.dumps(obj).encode()
@@ -168,6 +208,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self.send_json(d)
             return
+        if path == "/api/review":
+            _q, ds = self.dataset()
+            if ds is None:
+                self.send_json({"error": "no such dataset"}, 404)
+                return
+            self.send_json(self.review_status(ds))
+            return
         if path.startswith("/data/"):
             rel = path[len("/data/"):]
             target = (self.data_root / rel).resolve()
@@ -185,12 +232,24 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
-        """POST /api/verdicts?d=<name>: store a review's verdicts.json in the dataset (validated)."""
+        """POST /api/verdicts?d=<name>: store a review's verdicts.json in the dataset (validated);
+        /api/review?d=: start a review agent; /api/review/cancel?d=: stop it."""
         path = unquote(self.path.split("?")[0])
-        q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
-        ds = self.data_root / q.get("d", "")
-        if path != "/api/verdicts" or not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
-            self.send_json({"error": "POST /api/verdicts?d=<dataset> only"}, 404)
+        _q, ds = self.dataset()
+        if path in ("/api/review", "/api/review/cancel") and ds is not None:
+            st = self.review_status(ds)
+            if path == "/api/review/cancel":
+                self.reviews.cancel(ds.name)
+            elif not st["can_run"]:
+                self.send_json({"error": f"no review agent here ({st['why_not']})", **st}, 409)
+                return
+            else:
+                self.start_review(ds)
+            self.send_json(self.review_status(ds))
+            return
+        if path != "/api/verdicts" or ds is None or not self.uploads:
+            self.send_json({"error": "POST /api/verdicts?d=<dataset> only" if self.uploads else "verdicts are not stored here"},
+                           404 if self.uploads else 405)
             return
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
         try:
@@ -198,7 +257,7 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError as exc:
             self.send_json({"error": str(exc)}, 400)
             return
-        (ds / "verdicts.json").write_text(json.dumps([{k: x[k] for k in ("target", "verdict", "reason")} for x in v], indent=1))
+        store(ds, v, {"by": "upload"})
         self.send_json({"saved": len(v)})
 
     def end_headers(self) -> None:
@@ -209,9 +268,11 @@ class Handler(SimpleHTTPRequestHandler):
         pass
 
 
-def make_server(data: Path, host: str = "127.0.0.1", port: int = 8720) -> ThreadingHTTPServer:
-    """A server for the viewer and the datasets under ``data``, not yet serving. Port 0 picks a free one."""
+def make_server(data: Path, host: str = "127.0.0.1", port: int = 8720, repos: dict[str, Path] | None = None) -> ThreadingHTTPServer:
+    """A server for the viewer and the datasets under ``data``, not yet serving. Port 0 picks a free one.
+    ``repos``: the repository of a dataset (by name), which a review agent started here reads."""
     Handler.data_root = Path(data).expanduser().resolve()
+    Handler.repos = dict(repos or {})
     return ThreadingHTTPServer((host, port), partial(Handler, directory=str(HERE)))
 
 

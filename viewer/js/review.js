@@ -1,5 +1,6 @@
 // The review panel, for diff datasets (nolli diff): the change as a whole, a before /
-// changes / after switch, the review agent's verdicts (verdicts.json, or loaded here), and
+// changes / after switch, the review agent's verdicts (verdicts.json; where they came from
+// and running a review: reviewer.js), and
 // the numbered changes. A verdict is on a node or edge of the review diagram; its row shows
 // the reason. A change's row expands in place to show its links into the PR. Hovering a row
 // lights what it is about in the drawing; clicking it (or j / k) goes there: unfold what it
@@ -9,6 +10,7 @@ import { byId } from "./dom.js";
 import { inlineHTML } from "./md.js";
 import { state } from "./state.js";
 import { ORDER, RANK, markHTML } from "./verdicts.js";
+import { draw as drawReview, follow, setDiff } from "./reviewer.js";
 
 /**
  * @typedef {import("../types/nolli").Scene} Scene
@@ -52,6 +54,7 @@ export async function loadItems(name) {
   items = body.items;
   verdicts = [.../** @type {ReviewVerdict[]} */ (body.verdicts)].sort((a, b) => RANK[b.verdict] - RANK[a.verdict] || +a.id.slice(1) - +b.id.slice(1));
   open.clear();
+  if (name) follow(name, () => handlers?.reload());  // not awaited: the panel draws the block when it comes
   return items;
 }
 
@@ -105,10 +108,8 @@ export function renderPanel(scene, h) {
     <div class="rv-title">${esc(d.title || "Change")}</div>
     <div class="rv-sub">${link(d.link, d.pr ? `PR #${d.pr}` : "compare")} · ${esc(d.base_short)} → ${esc(d.head_short)}
       · ${d.files_changed} files <span class="plus">+${d.added}</span> <span class="minus">−${d.removed}</span></div>
-    <div class="rv-verdicts">${verdicts.length
-      ? "verdicts: " + ORDER.filter(v => counts[v]).map(v => `<span class="vd ${v}" title="${v}">${markHTML(v)}</span> ${counts[v]}`).join(" ")
-      : "no verdicts yet"} · <a href="/data/${esc(state.name)}/review.md" target="_blank">review.md</a>
-      · <label class="file">load verdicts…<input type="file" id="rv-file" accept=".json,application/json"></label></div>
+    ${verdicts.length ? `<div class="rv-verdicts">verdicts: ${ORDER.filter(v => counts[v]).map(v => `<span class="vd ${v}" title="${v}">${markHTML(v)}</span> ${counts[v]}`).join(" ")}</div>` : ""}
+    <div id="rv-review" class="rr"></div>
   </div><div class="rv-list">`;
   if (verdicts.length) html += `<div class="rv-group">Review</div>`;
   for (const v of verdicts) {
@@ -133,6 +134,8 @@ export function renderPanel(scene, h) {
   </div>`;
   const keepScroll = panel.querySelector(".rv-list")?.scrollTop;
   panel.innerHTML = html;
+  setDiff(d);
+  drawReview();
   const list = panel.querySelector(".rv-list");
   if (list && keepScroll !== undefined) list.scrollTop = keepScroll;
   panel.querySelectorAll("[data-side]").forEach(b => b.addEventListener("click", () => h.side(/** @type {"both" | "base" | "head"} */ (/** @type {HTMLElement} */ (b).dataset.side))));
@@ -146,18 +149,7 @@ export function renderPanel(scene, h) {
     r.addEventListener("mouseleave", () => h.hover(null));
   });
   byId("rv-dim").addEventListener("click", ev => { h.dim(!state.dim); /** @type {HTMLElement} */ (ev.currentTarget).setAttribute("aria-pressed", String(state.dim)); });
-  /** @type {HTMLInputElement} */ (byId("rv-file")).addEventListener("change", ev => uploadVerdicts(/** @type {HTMLInputElement} */ (ev.target)));
 }
 
 /** Keep the current row in view after a jump. */
 export function scrollToCurrent() { panel.querySelector(".rv-row.current")?.scrollIntoView({ block: "nearest" }); }
-
-/** @param {HTMLInputElement} input */
-async function uploadVerdicts(input) {
-  const f = input.files && input.files[0];
-  if (!f || !state.name) return;
-  const res = await fetch("/api/verdicts?d=" + encodeURIComponent(state.name), { method: "POST", body: await f.text() });
-  const body = await res.json();
-  if (!res.ok) { alert("verdicts not loaded: " + body.error); return; }
-  handlers?.reload();
-}

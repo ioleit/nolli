@@ -4,9 +4,11 @@ artifact is not tested here: it needs GitHub."""
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import subprocess
+import zlib
 from pathlib import Path
 
 import pytest
@@ -121,3 +123,35 @@ def test_not_a_pr(dataset, capsys):
     (dataset / "model.json").write_text(json.dumps(m))
     assert main(["ci", "comment", str(dataset)]) == 2
     assert "not the dataset of a GitHub pull request" in capsys.readouterr().err
+
+
+def bot_comment(text: str, login: str = "nolli-review[bot]", n: int = 1) -> dict:
+    return {"user": {"login": login, "type": "Bot" if login.endswith("[bot]") else "User"}, "body": text,
+            "html_url": f"https://github.com/me/shop/pull/7#issuecomment-{n}", "updated_at": f"2026-11-0{n}T00:00:00Z"}
+
+
+def test_results_from_the_comments(dataset, capsys):
+    from nolli.ci import results
+
+    (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}]))
+    text = comment(dataset, capsys)
+    head = json.loads((dataset / "model.json").read_text())["meta"]["diff"]["head"]
+    forged = bot_comment(text, login="mallory", n=3)  # anyone can paste a comment like the bot's
+    found = results([bot_comment(text, n=1), bot_comment("<!-- nolli -->\nno result", n=2), forged])
+    assert [r["link"] for r in found] == ["https://github.com/me/shop/pull/7#issuecomment-1"]
+    assert found[0]["head"] == head and found[0]["verdicts"][0]["verdict"] == "good"
+    r = read_result(text) | {"head": "f" * 40}
+    packed = base64.b64encode(zlib.compress(json.dumps(r).encode())).decode()
+    later = bot_comment(f"<!-- nolli -->\nlater\n<!-- nolli-result {packed} -->", n=4)
+    assert [r["head"] for r in results([bot_comment(text, n=1), later])] == ["f" * 40, head]  # newest first
+
+
+def test_upgrade_of_old_targets():
+    from nolli.ci import upgrade
+
+    old = [{"target": "n_fs_nolli_mermaid_py --> n_fs_nolli_model_py", "verdict": "fine", "reason": "r"},
+           {"target": "n_py_nolli_scene_py_SceneState", "verdict": "good", "reason": "r"},
+           {"target": "n_body_fs_nolli_scene_py --> n_api_x", "verdict": "fine", "reason": "r"}]
+    assert [v["target"] for v in upgrade(old, "0.3.0")] == [
+        "n_repo_nolli_mermaid_py --> n_repo_nolli_model_py", "n_repo_nolli_scene_py_SceneState", "n_repo_nolli_scene_py_ --> n_api_x"]
+    assert upgrade(old, "0.4.0") == old and upgrade(old, None) == old

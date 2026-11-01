@@ -46,6 +46,27 @@ nolli agent skill --install ~/.claude/skills
 Then tell your agent to "review PR #48 with nolli". It gives you a link to the viewer,
 with its verdicts and reasoning on the structural changes.
 
+Or let the viewer run the review: with an Anthropic API key set, the viewer's "Review
+structural changes" button starts a review agent of its own and shows its verdicts when
+it is done.
+
+```
+pip install 'nolli-review[api]'
+ANTHROPIC_API_KEY=sk-ant-… nolli view '#48'
+```
+
+### Serving it
+
+```
+nolli serve
+```
+
+serves any public GitHub repository, pull request or commit under GitHub's own paths:
+`/<owner>/<repo>/pull/48` shows what `nolli view https://github.com/<owner>/<repo>/pull/48`
+shows. A pull request's page shows the verdicts nolli's CI left for its head commit, if
+there are any. With `ANTHROPIC_API_KEY` set (and the `[api]` extra), anyone who can open
+the server's pages can start a review on it, paid from that key.
+
 ![A pull request in Nolli's viewer: added edges in green, a removed module dashed red, verdict marks from a review agent in chess notation, and the card of the worst one, a new import cycle](https://raw.githubusercontent.com/ioleit/nolli/main/viewer/e2e/__screenshots__/review.spec.js/blunder-on-edge.png)
 
 ## What it reads

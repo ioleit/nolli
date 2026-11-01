@@ -122,6 +122,7 @@ test("hovering a good on a box shows its reason", async ({ page }) => {
 
 test("the review panel lists every verdict, most attention first", async ({ page }) => {
   await open(page);
+  await expect(page.locator("#rv-review .rr-more")).toBeVisible();  // where the verdicts came from: fetched after the panel
   await expect(page.locator("#review")).toHaveScreenshot("verdict-list.png");
 });
 

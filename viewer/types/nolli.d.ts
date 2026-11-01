@@ -176,3 +176,28 @@ export interface Laid {
   nodes: Map<string, Box>;
   edges: { edge: SceneEdge; sections: Point[][] }[];
 }
+
+/** Where a dataset's verdicts came from (review.json, viewer/reviews.py). */
+export interface ReviewOrigin {
+  by: "agent" | "ci" | "upload" | "unknown"; at?: string;
+  model?: string; seconds?: number; turns?: number; cost?: number;  // agent
+  link?: string; nolli?: string; dropped?: number;  // ci
+}
+
+/** A review agent run started from the viewer. */
+export interface ReviewRun {
+  state: "queued" | "running" | "done" | "failed" | "cancelled";
+  step: string; steps: string[]; error: string; seconds: number; waiting: number; turns: number; cost: number;
+}
+
+/** GET /api/review: the review block's state. */
+export interface ReviewStatus {
+  verdicts: ReviewOrigin | null;
+  run: ReviewRun | null;
+  can_run: boolean;
+  why_not: "key" | "package" | "repo" | "dataset" | null;
+  uploads: boolean;
+  model: string;
+  server: "view" | "serve";
+  ci?: { applies: boolean; found: "verdicts" | "no-review" | "earlier" | null; link?: string; at?: string; head?: string; dropped?: number; error?: string };
+}

@@ -266,3 +266,40 @@ body.dim .edge.d-same { opacity: .18; }
 .rv-verdict.v-fine:not(.current):not(:hover) > .rv-item { opacity: .5; }
 .rv-row.off > .rv-item { cursor: default; opacity: .6; }
 .rv-row-btns button { font: inherit; font-size: 12px; padding: 2px 8px; cursor: pointer; }
+/* the review block (js/reviewer.js): where the verdicts came from, running a review agent */
+.rr { display: flex; flex-direction: column; gap: 5px; font-size: 12px; margin-top: 2px; }
+.rr:empty { display: none; }
+.rr a { color: var(--e-http); }
+.rr-origin, .rr-meta, .rr-why, .rr-note { color: var(--muted); }
+.rr-act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rr-start { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-weight: 600; padding: 5px 12px; border-radius: 6px;
+  border: 1px solid var(--ink); background: var(--ink); color: var(--bg); cursor: pointer; }
+.rr-start:hover:not(:disabled) { opacity: .88; }
+.rr-start.quiet { font-weight: 400; padding: 2px 9px; background: transparent; color: var(--ink); border-color: var(--line); }
+.rr-start.quiet:hover:not(:disabled) { background: var(--hover-bg); opacity: 1; }
+.rr-start:disabled { cursor: not-allowed; background: transparent; color: var(--muted); border: 1px dashed var(--line); }
+.ricon { width: 15px; height: 15px; flex: none; }
+.rr-run { border: 1px solid var(--line); border-left: 3px solid var(--e-http); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 3px;
+  background: color-mix(in srgb, var(--e-http) 6%, transparent); }
+.rr-line { display: flex; align-items: center; gap: 7px; }
+.rr-clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+.rr-cancel { margin-left: auto; font: inherit; font-size: 12px; padding: 1px 9px; border-radius: 5px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+.rr-cancel:hover:not(:disabled) { border-color: var(--rem); color: var(--rem); }
+.rr-step { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.rr-run .rr-meta { font-size: 11px; }
+.spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--e-http) 25%, transparent); border-top-color: var(--e-http);
+  animation: rr-spin .8s linear infinite; flex: none; }
+@keyframes rr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+.rr-fail { color: var(--rem); }
+.rr-done { color: var(--add); }
+.rr-more summary { cursor: pointer; color: var(--muted); width: max-content; }
+.rr-more summary:hover { color: var(--ink); }
+.rr-ways { margin: 6px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+.rr-ways li { line-height: 1.4; }
+.rr-ways p { margin: 3px 0; color: var(--muted); }
+.rr-code { display: flex; align-items: center; gap: 6px; margin: 3px 0; border: 1px solid var(--line); border-radius: 5px; padding: 3px 4px 3px 7px; background: var(--hover-bg); }
+.rr-code code { flex: 1; font-size: 11px; overflow-wrap: anywhere; }
+.rr-copy { font: inherit; font-size: 10.5px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); cursor: pointer; }
+.rr-copy:hover { color: var(--ink); }
+.rv-head { flex: none; max-height: 60vh; overflow: auto; }

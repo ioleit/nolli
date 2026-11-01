@@ -18,7 +18,14 @@ request's base is extracted once for all its pushes. With ``--keep 20G`` the cac
 that size: after each build, what was used longest ago is deleted (nolli/retention.py).
 
 The viewer is the local one (``serve.py``), its page pinned to the one dataset; the API is the
-same, without ``/api/list`` and without storing verdicts.
+same, without ``/api/list`` and without storing uploaded verdicts.
+
+Verdicts come from two places. A pull request's page looks for what nolli's CI left in the
+PR's comments for its head commit (nolli/ci.py) and shows those verdicts, asking GitHub at
+most once a minute per dataset. And with ``ANTHROPIC_API_KEY`` set where the server runs,
+the viewer's "Review structural changes" starts a review agent (viewer/reviews.py) whose
+verdicts then are the dataset's; anyone who can open the page can start one, so the key's
+owner pays for every visitor's review (one run per dataset at a time, two runs at once).
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -51,8 +59,10 @@ from nolli.progress import Progress  # noqa: E402
 
 try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file
     from .serve import Handler, preload
+    from .reviews import provenance, store
 except ImportError:
     from serve import Handler, preload  # type: ignore[no-redef]
+    from reviews import provenance, store  # type: ignore[no-redef]
 
 OWNER = r"(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
 REPO = r"(?P<repo>[A-Za-z0-9._-]{1,100})"
@@ -121,6 +131,7 @@ class Site:
         self.lock = threading.Lock()
         self.repo_locks: dict[str, threading.Lock] = {}
         self.answers: dict[str, tuple[float, dict]] = {}
+        self.ci: dict[str, tuple[float, dict]] = {}  # dataset name -> when its PR's comments were read, what they had
 
     def api(self, path: str) -> dict:
         """GitHub's answer for ``path``, asked as nobody, reused for LOOKUP_TTL seconds."""
@@ -174,6 +185,65 @@ class Site:
             build_commit(clone, head, out, self.budget, progress, self.extractions)
 
         return Plan(f"{key}_{head[:7]}", f"{owner}/{repo} at {branch}", remote, build_whole)
+
+    def ci_review(self, ds: Path) -> dict:
+        """What nolli's CI left for a pull request dataset's head commit, read from the PR's comments
+        (at most once per LOOKUP_TTL): ``{"found": "verdicts" | "no-review" | "earlier" | None, ...}``.
+        Verdicts found are stored as the dataset's, unless it has some already."""
+        from nolli.ci import results, upgrade
+        from nolli.model import Model
+        from nolli.review import check_verdicts
+
+        hit = self.ci.get(ds.name)
+        if hit and time.time() - hit[0] < LOOKUP_TTL:
+            return hit[1]
+        try:
+            d = json.loads((ds / "report.json").read_text())["meta"].get("diff") or {}
+        except (OSError, ValueError, KeyError):
+            d = {}
+        m = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
+        if not m or not d.get("pr"):
+            return {"found": None, "applies": False}
+        info: dict = {"found": None, "applies": True}
+        try:
+            comments = github.api(f"repos/{m.group(1)}/{m.group(2)}/issues/{d['pr']}/comments?per_page=100", None)
+        except ChangeError as exc:
+            info["error"] = str(exc)
+            self.ci[ds.name] = (time.time(), info)
+            return info
+        found = results(comments if isinstance(comments, list) else [])
+        mine = [r for r in found if r["head"] == d["head"]]
+        if mine:
+            r = mine[0]
+            info.update(link=r["link"], at=r["at"], nolli=r.get("nolli"))
+            if not r.get("verdicts"):
+                info["found"] = "no-review"
+            else:
+                info["found"] = "verdicts"
+                if provenance(ds) is None:
+                    model = Model.load(ds / "model.json")
+                    given = upgrade(r["verdicts"], r.get("nolli"))
+                    ok, errors = check_verdicts(model, (ds / "review.mmd").read_text(), json.dumps(given))
+                    info["dropped"] = len(errors)
+                    if ok:
+                        store(ds, ok, {"by": "ci", "link": r["link"], "at": r["at"], "nolli": r.get("nolli"),
+                                       "dropped": len(r["verdicts"]) - len(ok)})
+        elif found:
+            info.update(found="earlier", head=found[0]["head"][:7], link=found[0]["link"])
+        self.ci[ds.name] = (time.time(), info)
+        return info
+
+    def review_clone(self, ds: Path) -> Path:
+        """The clone a review agent reads a dataset's change from, with its base and head fetched
+        (retention may have deleted it since the build)."""
+        d = json.loads((ds / "report.json").read_text())["meta"]["diff"]
+        clone = self.clone(d["remote"])
+        with self.repo_lock(clone):
+            missing = [c for c in (d["base"], d["head"]) if subprocess.run(
+                ["git", "-C", str(clone), "cat-file", "-e", f"{c}^{{commit}}"], capture_output=True, check=False).returncode]
+            if missing:
+                git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", *missing)
+        return clone
 
     def repo_lock(self, clone: Path) -> threading.Lock:
         with self.lock:
@@ -258,6 +328,20 @@ def viewer_page(name: str, title: str) -> bytes:
 
 class HostedHandler(Handler):
     site: Site
+    uploads = False  # a visitor's verdicts would be shown to everyone as the review
+
+    def review_repo(self, ds: Path) -> Path | None:
+        try:
+            remote = json.loads((ds / "report.json").read_text())["meta"]["diff"]["remote"]
+        except (OSError, ValueError, KeyError):
+            return None
+        return self.site.clone_path(remote)  # fetched when a run starts (review_clone)
+
+    def start_review(self, ds: Path) -> None:
+        self.reviews.start(ds.name, ds, lambda: self.site.review_clone(ds))
+
+    def review_status(self, ds: Path) -> dict:
+        return {**super().review_status(ds), "ci": self.site.ci_review(ds), "server": "serve"}
 
     def send_page(self, body: bytes, status: int = 200) -> None:
         self.send_response(status)
@@ -311,14 +395,13 @@ class HostedHandler(Handler):
         if fresh(out):
             retention.touch(out)
             preload(out)
+            if m.group("n"):
+                self.site.ci_review(out)  # before the page: a review found opens on its worst verdict
             self.send_page(viewer_page(plan.name, plan.title))
             return
         job = self.site.start(plan)
         self.send_page(page(plan.title, BUILDING.format(title=html.escape(plan.title)), job=plan.name,
                             status=html.escape(json.dumps(job.status()), quote=True)))
-
-    def do_POST(self) -> None:  # noqa: N802
-        self.send_json({"error": "nothing is stored here"}, 405)
 
 
 LANDING = """<h1>nolli</h1>
