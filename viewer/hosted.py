@@ -17,6 +17,11 @@ Each commit's extraction is kept under ``<cache>/extractions`` (nolli/extraction
 request's base is extracted once for all its pushes. With ``--keep 20G`` the cache stays within
 that size: after each build, what was used longest ago is deleted (nolli/retention.py).
 
+Each build runs in a process of its own, ``--builds`` of them at the same time (the rest wait),
+so a server with more CPUs builds more at once. A build running past ``--timeout`` is stopped,
+and a repository GitHub says is larger than ``--max-repo`` is not built at all: anyone can ask
+for any public repository.
+
 The viewer is the local one (``serve.py``), its page pinned to the one dataset; the API is the
 same, without ``/api/list`` and without storing verdicts.
 """
@@ -24,12 +29,16 @@ same, without ``/api/list`` and without storing verdicts.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import html
 import json
+import multiprocessing
 import os
 import re
 import shutil
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -58,17 +67,100 @@ OWNER = r"(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
 REPO = r"(?P<repo>[A-Za-z0-9._-]{1,100})"
 ROUTE = re.compile(rf"^/{OWNER}/{REPO}(?:/(?:(?P<pull>pulls?)/(?P<n>[0-9]{{1,9}})|commit/(?P<sha>[0-9a-fA-F]{{7,40}}))(?:/[a-z]*)?)?/?$")
 LOOKUP_TTL = 60  # s: how long an answer from GitHub's API is reused
-BUILDS = threading.BoundedSemaphore(2)  # builds at the same time; the rest wait their turn
+BUILDS = min(4, os.cpu_count() or 1)  # builds at the same time, each its own process; the rest wait their turn
+TIMEOUT = 600  # s: a build taking longer is stopped
+MAX_REPO = 1 << 30  # bytes: GitHub's size of a repository (all its history) above which it is not built
 KINDS = {"dataset": "data/*", "clone": "repos/*/*", "extraction": "extractions/*.json"}  # what retention may delete
 
 
 @dataclass
 class Plan:
-    """What a path shows: the dataset's name, a title, and how to build it in a clone."""
+    """What a path shows: the dataset's name, a title, and how to build it in a clone. ``build``
+    runs in a process of its own, so it is a module-level function (or a partial of one)."""
     name: str
     title: str
     remote: str
     build: Callable[[Path, Path, Progress], None]
+
+
+class TooLarge(Exception):
+    pass
+
+
+@contextlib.contextmanager
+def clone_lock(clone: Path):
+    """One git command at a time in a clone, across the builds' processes."""
+    with open(clone / "nolli.lock", "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def build_pull(clone: Path, out: Path, progress: Progress, *, remote: str, pull: int, budget: int, extractions: Extractions) -> None:
+    with progress.step("fetching the pull request"), clone_lock(clone):
+        ch, host = github.resolve(clone, f"{remote}/pull/{pull}", None)
+    build_diff(clone, ch.base, ch.head, out, budget, pr=pull, title=ch.title, description=ch.description or None,
+               remote=host["remote"], progress=progress, extractions=extractions)
+    (out / "pr.md").write_text(ch.description)
+
+
+def build_one(clone: Path, out: Path, progress: Progress, *, remote: str, sha: str, parents: list[str], subject: str, body: str,
+              budget: int, extractions: Extractions) -> None:
+    with progress.step("fetching the commit"), clone_lock(clone):
+        git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", sha, *parents[:1])
+    if parents:
+        build_diff(clone, parents[0], sha, out, budget, title=subject, description=body or None, remote=remote, progress=progress,
+                   extractions=extractions)
+        (out / "pr.md").write_text(body)
+    else:
+        build_commit(clone, sha, out, budget, progress, extractions)
+
+
+def build_whole(clone: Path, out: Path, progress: Progress, *, sha: str, budget: int, extractions: Extractions) -> None:
+    with progress.step("fetching the repository"), clone_lock(clone):
+        git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", sha)
+    build_commit(clone, sha, out, budget, progress, extractions)
+
+
+class Pipe:
+    """A Progress stream in a build's process: what Progress writes goes to the server's Board."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def write(self, s: str) -> int:
+        self.conn.send(("out", s))
+        return len(s)
+
+    def flush(self) -> None:
+        pass
+
+    def isatty(self) -> bool:
+        return True
+
+
+def child(build: Callable, clone: Path, out: Path, tmp: Path, conn) -> None:
+    """A build's process: run it, then send how it ended. Temporary files go under ``tmp``,
+    which the server deletes, also when it had to stop the build."""
+    tempfile.tempdir = str(tmp)
+    try:
+        build(clone, out, Progress(Pipe(conn)))  # type: ignore[arg-type]
+        conn.send(("done", ""))
+    except BaseException as exc:  # noqa: BLE001  # reported to the server, which shows it on the page
+        conn.send(("error", f"{type(exc).__name__}: {exc}"))
+    finally:
+        conn.close()
+
+
+def processes() -> multiprocessing.context.BaseContext:
+    """How builds' processes start: from a server process that has nolli loaded already, where there is one."""
+    if "forkserver" in multiprocessing.get_all_start_methods():
+        ctx = multiprocessing.get_context("forkserver")
+        ctx.set_forkserver_preload(["nolli.build"])
+        return ctx
+    return multiprocessing.get_context("spawn")
 
 
 class Board:
@@ -109,8 +201,11 @@ class Job:
 class Site:
     """The datasets and clones under one cache directory, and the builds under way."""
 
-    def __init__(self, cache: Path, budget: int = 34, keep: int | None = None):
+    def __init__(self, cache: Path, budget: int = 34, keep: int | None = None, builds: int = BUILDS, timeout: float = TIMEOUT,
+                 max_repo: int | None = MAX_REPO):
         self.cache, self.budget = cache, budget
+        self.builds, self.timeout, self.max_repo = threading.BoundedSemaphore(builds), timeout, max_repo
+        self.processes = processes()
         self.data, self.repos = cache / "data", cache / "repos"
         self.data.mkdir(parents=True, exist_ok=True)
         self.repos.mkdir(parents=True, exist_ok=True)
@@ -119,7 +214,6 @@ class Site:
         self.tidying = threading.Lock()
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
-        self.repo_locks: dict[str, threading.Lock] = {}
         self.answers: dict[str, tuple[float, dict]] = {}
 
     def api(self, path: str) -> dict:
@@ -137,47 +231,23 @@ class Site:
         info = self.api(f"repos/{owner}/{repo}")
         owner, repo = info["full_name"].split("/")  # GitHub's spelling (paths are case-insensitive)
         remote, key = f"https://github.com/{owner}/{repo}", f"{owner}_{repo}"
+        if self.max_repo is not None and info.get("size", 0) * 1024 > self.max_repo:
+            raise TooLarge(f"{owner}/{repo} is {info['size'] >> 10} MB on GitHub; this host builds repositories up to {self.max_repo >> 20} MB")
+        common = {"budget": self.budget, "extractions": self.extractions}
         if pull is not None:
             pr = self.api(f"repos/{owner}/{repo}/pulls/{pull}")
             head, base = pr["head"]["sha"], pr["base"]["sha"]
-
-            def build_pull(clone: Path, out: Path, progress: Progress) -> None:
-                with progress.step("fetching the pull request"), self.repo_lock(clone):
-                    ch, host = github.resolve(clone, f"{remote}/pull/{pull}", None)
-                build_diff(clone, ch.base, ch.head, out, self.budget, pr=pull, title=ch.title, description=ch.description or None,
-                           remote=host["remote"], progress=progress, extractions=self.extractions)
-                (out / "pr.md").write_text(ch.description)
-
-            return Plan(f"{key}_pr{pull}_{base[:7]}_{head[:7]}", f"{owner}/{repo}#{pull}: {pr.get('title') or ''}", remote, build_pull)
+            return Plan(f"{key}_pr{pull}_{base[:7]}_{head[:7]}", f"{owner}/{repo}#{pull}: {pr.get('title') or ''}", remote,
+                        partial(build_pull, remote=remote, pull=pull, **common))
         if sha is not None:
             c = self.api(f"repos/{owner}/{repo}/commits/{sha}")
             full, parents = c["sha"], [p["sha"] for p in c.get("parents", [])]
             subject, _, body = (c.get("commit", {}).get("message") or "").partition("\n")
-
-            def build_one(clone: Path, out: Path, progress: Progress) -> None:
-                with progress.step("fetching the commit"), self.repo_lock(clone):
-                    git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", full, *parents[:1])
-                if parents:
-                    build_diff(clone, parents[0], full, out, self.budget, title=subject, description=body.strip() or None,
-                               remote=remote, progress=progress, extractions=self.extractions)
-                    (out / "pr.md").write_text(body.strip())
-                else:
-                    build_commit(clone, full, out, self.budget, progress, self.extractions)
-
-            return Plan(f"{key}_c{full[:7]}", f"{owner}/{repo}@{full[:7]}: {subject}", remote, build_one)
+            return Plan(f"{key}_c{full[:7]}", f"{owner}/{repo}@{full[:7]}: {subject}", remote,
+                        partial(build_one, remote=remote, sha=full, parents=parents, subject=subject, body=body.strip(), **common))
         branch = info["default_branch"]
         head = self.api(f"repos/{owner}/{repo}/branches/{quote(branch, safe='')}")["commit"]["sha"]
-
-        def build_whole(clone: Path, out: Path, progress: Progress) -> None:
-            with progress.step("fetching the repository"), self.repo_lock(clone):
-                git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", head)
-            build_commit(clone, head, out, self.budget, progress, self.extractions)
-
-        return Plan(f"{key}_{head[:7]}", f"{owner}/{repo} at {branch}", remote, build_whole)
-
-    def repo_lock(self, clone: Path) -> threading.Lock:
-        with self.lock:
-            return self.repo_locks.setdefault(str(clone), threading.Lock())
+        return Plan(f"{key}_{head[:7]}", f"{owner}/{repo} at {branch}", remote, partial(build_whole, sha=head, **common))
 
     def clone_path(self, remote: str) -> Path:
         owner, repo = remote.rsplit("/", 2)[-2:]
@@ -186,9 +256,9 @@ class Site:
     def clone(self, remote: str) -> Path:
         """The bare clone for ``remote`` (made empty on first use; the builds fetch what they need)."""
         path = self.clone_path(remote)
-        with self.repo_lock(path):
+        path.mkdir(parents=True, exist_ok=True)
+        with clone_lock(path):
             if not (path / "HEAD").is_file():
-                path.mkdir(parents=True, exist_ok=True)
                 git(path, "init", "-q", "--bare")
                 git(path, "remote", "add", "origin", remote)
         retention.touch(path)
@@ -205,22 +275,60 @@ class Site:
         return job
 
     def _run(self, job: Job) -> None:
-        out, tmp = self.data / job.plan.name, self.data / f".{job.plan.name}.building"
-        progress = Progress(job.board)  # type: ignore[arg-type]  # a stream as far as Progress cares
-        with BUILDS:
+        out, building = self.data / job.plan.name, self.data / f".{job.plan.name}.building"
+        tmp = self.cache / ".tmp" / job.plan.name
+        with self.builds:
             job.state, job.t0 = "building", time.time()
             try:
-                shutil.rmtree(tmp, ignore_errors=True)
-                job.plan.build(self.clone(job.plan.remote), tmp, progress)
-                shutil.rmtree(out, ignore_errors=True)
-                tmp.rename(out)  # whole or not at all: fresh() reads report.json, written before the rest
-                job.state = "done"
+                for d in (building, tmp):
+                    shutil.rmtree(d, ignore_errors=True)
+                tmp.mkdir(parents=True)
+                state, error = self.build(job, self.clone(job.plan.remote), building, tmp)
+                if state == "done":
+                    shutil.rmtree(out, ignore_errors=True)
+                    building.rename(out)  # whole or not at all: fresh() reads report.json, written before the rest
+                job.state, job.error = state, error
             except Exception as exc:  # noqa: BLE001  # shown on the page; the server goes on
                 job.state, job.error = "error", f"{type(exc).__name__}: {exc}"
-                shutil.rmtree(tmp, ignore_errors=True)
             finally:
+                if job.state != "done":
+                    shutil.rmtree(building, ignore_errors=True)
+                shutil.rmtree(tmp, ignore_errors=True)
                 job.ended = time.time()
         self.tidy()
+
+    def build(self, job: Job, clone: Path, out: Path, tmp: Path) -> tuple[str, str]:
+        """Run ``job``'s build in a process of its own, its progress on the job's board; how it
+        ended: ("done", "") or ("error", why). A build running past the timeout is stopped."""
+        recv, send = self.processes.Pipe(duplex=False)
+        proc = self.processes.Process(target=child, args=(job.plan.build, clone, out, tmp, send), daemon=True)
+        proc.start()
+        send.close()
+        deadline, ended = time.time() + self.timeout, None
+        try:
+            while ended is None:
+                left = deadline - time.time()
+                if left <= 0:
+                    ended = ("error", f"stopped after {self.timeout:.0f} s: too big a change for this host")
+                elif recv.poll(min(left, 1.0)):
+                    try:
+                        kind, text = recv.recv()
+                    except EOFError:  # the process ended without a word: killed (out of memory?)
+                        proc.join(5)
+                        ended = ("error", f"the build's process ended (exit code {proc.exitcode})")
+                        continue
+                    if kind == "out":
+                        job.board.write(text)
+                    else:
+                        ended = (kind, text)
+        finally:
+            recv.close()
+            if proc.is_alive():
+                proc.join(5 if ended and ended[0] == "done" else 0)
+            if proc.is_alive():
+                proc.kill()
+                proc.join()
+        return ended
 
     def tidy(self) -> list[retention.Entry]:
         """Keep the cache within its size (--keep): delete what was used longest ago, except what
@@ -304,6 +412,9 @@ class HostedHandler(Handler):
             what = f"{owner}/{repo}" + (f" #{m.group('n')}" if m.group("n") else f" @ {m.group('sha')}" if m.group("sha") else "")
             self.send_page(page("Not found, or private", PRIVATE.format(what=html.escape(what))), 404)
             return
+        except TooLarge as exc:
+            self.send_page(page("Too large for this host", f"<h1>Too large for this host</h1><p>{html.escape(str(exc))}.</p>"), 413)
+            return
         except (ChangeError, KeyError) as exc:
             self.send_page(page("GitHub did not answer", f"<p>{html.escape(str(exc))}</p>"), 502)
             return
@@ -346,12 +457,13 @@ NOT_A_PAGE = """<h1>Not a nolli page</h1>
 <code>…/commit/&lt;sha&gt;</code>. <a href="/">Start here</a>.</p>"""
 
 
-def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: int = 34, keep: int | None = None) -> ThreadingHTTPServer:
+def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: int = 34, keep: int | None = None,
+                builds: int = BUILDS, timeout: float = TIMEOUT, max_repo: int | None = MAX_REPO) -> ThreadingHTTPServer:
     """A server for ``cache``, not yet serving. Asks GitHub and git as nobody (module docstring)."""
     # git: no credentials, prompts, or this machine's configuration (an insteadOf could reach private repos by ssh)
     os.environ.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_ASKPASS="true",
                       SSH_ASKPASS="true", GIT_SSH_COMMAND="false")
-    site = Site(Path(cache).expanduser().resolve(), budget, keep)
+    site = Site(Path(cache).expanduser().resolve(), budget, keep, builds, timeout, max_repo)
     threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now
     HostedHandler.site = site
     HostedHandler.data_root = site.data
@@ -366,8 +478,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--budget", type=int, default=34)
     ap.add_argument("--keep", type=retention.parse_size, default=os.environ.get("NOLLI_CACHE_KEEP"),
                     help="the cache's size at most, e.g. 20G: what was used longest ago goes first (default: keep everything)")
+    ap.add_argument("--builds", type=int, default=int(os.environ.get("NOLLI_BUILDS") or BUILDS),
+                    help=f"builds at the same time, each its own process (default: $NOLLI_BUILDS, else {BUILDS}: the CPUs, at most 4)")
+    ap.add_argument("--timeout", type=float, default=float(os.environ.get("NOLLI_BUILD_TIMEOUT") or TIMEOUT),
+                    help=f"seconds a build may take before it is stopped (default: $NOLLI_BUILD_TIMEOUT, else {TIMEOUT})")
+    ap.add_argument("--max-repo", type=retention.parse_size, default=os.environ.get("NOLLI_MAX_REPO") or str(MAX_REPO),
+                    help="the largest repository built, by GitHub's size of it, e.g. 500M; 0 for no limit (default: $NOLLI_MAX_REPO, else 1G)")
     args = ap.parse_args(argv)
-    srv = make_server(Path(args.cache), args.host, args.port, args.budget, args.keep)
+    srv = make_server(Path(args.cache), args.host, args.port, args.budget, args.keep, args.builds, args.timeout, args.max_repo or None)
     print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {HostedHandler.site.cache})", file=sys.stderr, flush=True)
     try:
         srv.serve_forever()
