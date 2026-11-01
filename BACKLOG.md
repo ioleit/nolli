@@ -31,6 +31,11 @@ solution; solutions are for whoever picks it up.
 
 ## Then
 
+- **nolli serve's retention treats all entries alike.** `--keep` deletes whatever was used
+  longest ago, but entries differ in what they cost to get back: a clone a full fetch, an
+  extraction a parse of the whole commit, a dataset only a build from kept extractions. In
+  a trial with a small limit the clone went first because builds touched it before they
+  wrote their datasets.
 - **CI runs a review on every push**, one model call each, also for changes nobody needs
   reviewed (only docs, only assets). Idea (owner, 2026-10-31): repository owners keep one
   or more nolli views or scenes of their repository as files in it; a PR is reviewed only

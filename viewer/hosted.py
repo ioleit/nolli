@@ -1,6 +1,6 @@
 """nolli view as a service: GitHub's paths, with nolli's host.
 
-    nolli serve [--cache DIR] [--host 127.0.0.1] [--port 8730]
+    nolli serve [--cache DIR] [--keep SIZE] [--host 127.0.0.1] [--port 8730]
 
 ``/<owner>/<repo>/pull/<n>`` shows what ``nolli view https://github.com/<owner>/<repo>/pull/<n>``
 shows, ``/<owner>/<repo>/commit/<sha>`` the change that commit makes to its parent, and
@@ -12,6 +12,10 @@ Repositories are kept as bare clones under ``<cache>/repos``. Everything is aske
 nobody: GitHub's API without a token and git with no credentials and none of this machine's
 git configuration, so only public repositories can be shown, whatever this machine's own
 logins could reach. A private repository answers 404 like a missing one.
+
+Each commit's extraction is kept under ``<cache>/extractions`` (nolli/extractions.py), so a pull
+request's base is extracted once for all its pushes. With ``--keep 20G`` the cache stays within
+that size: after each build, what was used longest ago is deleted (nolli/retention.py).
 
 The viewer is the local one (``serve.py``), its page pinned to the one dataset; the API is the
 same, without ``/api/list`` and without storing verdicts.
@@ -39,9 +43,10 @@ HERE = Path(__file__).resolve().parent
 if not __package__:
     sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
-from nolli import github  # noqa: E402
+from nolli import github, retention  # noqa: E402
 from nolli.change import ChangeError, git  # noqa: E402
-from nolli.build import build_commit, build_diff, fresh  # noqa: E402
+from nolli.build import build_commit, build_diff, fresh, version  # noqa: E402
+from nolli.extractions import Extractions  # noqa: E402
 from nolli.progress import Progress  # noqa: E402
 
 try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file
@@ -54,6 +59,7 @@ REPO = r"(?P<repo>[A-Za-z0-9._-]{1,100})"
 ROUTE = re.compile(rf"^/{OWNER}/{REPO}(?:/(?:(?P<pull>pulls?)/(?P<n>[0-9]{{1,9}})|commit/(?P<sha>[0-9a-fA-F]{{7,40}}))(?:/[a-z]*)?)?/?$")
 LOOKUP_TTL = 60  # s: how long an answer from GitHub's API is reused
 BUILDS = threading.BoundedSemaphore(2)  # builds at the same time; the rest wait their turn
+KINDS = {"dataset": "data/*", "clone": "repos/*/*", "extraction": "extractions/*.json"}  # what retention may delete
 
 
 @dataclass
@@ -103,11 +109,14 @@ class Job:
 class Site:
     """The datasets and clones under one cache directory, and the builds under way."""
 
-    def __init__(self, cache: Path, budget: int = 34):
+    def __init__(self, cache: Path, budget: int = 34, keep: int | None = None):
         self.cache, self.budget = cache, budget
         self.data, self.repos = cache / "data", cache / "repos"
         self.data.mkdir(parents=True, exist_ok=True)
         self.repos.mkdir(parents=True, exist_ok=True)
+        self.extractions = Extractions(cache / "extractions", version())
+        self.policy: retention.Policy | None = retention.LeastRecentlyUsed(keep) if keep is not None else None
+        self.tidying = threading.Lock()
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
         self.repo_locks: dict[str, threading.Lock] = {}
@@ -136,7 +145,7 @@ class Site:
                 with progress.step("fetching the pull request"), self.repo_lock(clone):
                     ch, host = github.resolve(clone, f"{remote}/pull/{pull}", None)
                 build_diff(clone, ch.base, ch.head, out, self.budget, pr=pull, title=ch.title, description=ch.description or None,
-                           remote=host["remote"], progress=progress)
+                           remote=host["remote"], progress=progress, extractions=self.extractions)
                 (out / "pr.md").write_text(ch.description)
 
             return Plan(f"{key}_pr{pull}_{base[:7]}_{head[:7]}", f"{owner}/{repo}#{pull}: {pr.get('title') or ''}", remote, build_pull)
@@ -150,10 +159,10 @@ class Site:
                     git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", full, *parents[:1])
                 if parents:
                     build_diff(clone, parents[0], full, out, self.budget, title=subject, description=body.strip() or None,
-                               remote=remote, progress=progress)
+                               remote=remote, progress=progress, extractions=self.extractions)
                     (out / "pr.md").write_text(body.strip())
                 else:
-                    build_commit(clone, full, out, self.budget, progress)
+                    build_commit(clone, full, out, self.budget, progress, self.extractions)
 
             return Plan(f"{key}_c{full[:7]}", f"{owner}/{repo}@{full[:7]}: {subject}", remote, build_one)
         branch = info["default_branch"]
@@ -162,7 +171,7 @@ class Site:
         def build_whole(clone: Path, out: Path, progress: Progress) -> None:
             with progress.step("fetching the repository"), self.repo_lock(clone):
                 git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", head)
-            build_commit(clone, head, out, self.budget, progress)
+            build_commit(clone, head, out, self.budget, progress, self.extractions)
 
         return Plan(f"{key}_{head[:7]}", f"{owner}/{repo} at {branch}", remote, build_whole)
 
@@ -170,15 +179,19 @@ class Site:
         with self.lock:
             return self.repo_locks.setdefault(str(clone), threading.Lock())
 
+    def clone_path(self, remote: str) -> Path:
+        owner, repo = remote.rsplit("/", 2)[-2:]
+        return self.repos / owner.lower() / repo.lower()
+
     def clone(self, remote: str) -> Path:
         """The bare clone for ``remote`` (made empty on first use; the builds fetch what they need)."""
-        owner, repo = remote.rsplit("/", 2)[-2:]
-        path = self.repos / owner.lower() / repo.lower()
+        path = self.clone_path(remote)
         with self.repo_lock(path):
             if not (path / "HEAD").is_file():
                 path.mkdir(parents=True, exist_ok=True)
                 git(path, "init", "-q", "--bare")
                 git(path, "remote", "add", "origin", remote)
+        retention.touch(path)
         return path
 
     def start(self, plan: Plan) -> Job:
@@ -207,6 +220,26 @@ class Site:
                 shutil.rmtree(tmp, ignore_errors=True)
             finally:
                 job.ended = time.time()
+        self.tidy()
+
+    def tidy(self) -> list[retention.Entry]:
+        """Keep the cache within its size (--keep): delete what was used longest ago, except what
+        a build waiting or under way uses. Runs after each build, the only thing that adds to it."""
+        if not self.policy or not self.tidying.acquire(blocking=False):
+            return []
+        try:
+            chosen = self.policy(retention.scan(self.cache, KINDS))
+            deleted = []
+            with self.lock:  # no build starts while its clone or dataset may be going
+                active = [j.plan for j in self.jobs.values() if j.state in ("waiting", "building")]
+                busy = {self.data / p.name for p in active} | {self.clone_path(p.remote) for p in active}
+                deleted = [e for e in chosen if e.path not in busy and retention.delete(self.cache, KINDS, e)]
+            for e in deleted:
+                print(f"nolli serve: deleted {e.kind} {e.path.relative_to(self.cache)} ({e.size >> 20} MB, used {retention.ago(e.used)} ago)",
+                      file=sys.stderr, flush=True)
+            return deleted
+        finally:
+            self.tidying.release()
 
 
 def page(title: str, body: str, *, status: str = "", job: str = "") -> bytes:
@@ -276,6 +309,7 @@ class HostedHandler(Handler):
             return
         out = self.site.data / plan.name
         if fresh(out):
+            retention.touch(out)
             preload(out)
             self.send_page(viewer_page(plan.name, plan.title))
             return
@@ -312,12 +346,13 @@ NOT_A_PAGE = """<h1>Not a nolli page</h1>
 <code>…/commit/&lt;sha&gt;</code>. <a href="/">Start here</a>.</p>"""
 
 
-def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: int = 34) -> ThreadingHTTPServer:
+def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: int = 34, keep: int | None = None) -> ThreadingHTTPServer:
     """A server for ``cache``, not yet serving. Asks GitHub and git as nobody (module docstring)."""
     # git: no credentials, prompts, or this machine's configuration (an insteadOf could reach private repos by ssh)
     os.environ.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_ASKPASS="true",
                       SSH_ASKPASS="true", GIT_SSH_COMMAND="false")
-    site = Site(Path(cache).expanduser().resolve(), budget)
+    site = Site(Path(cache).expanduser().resolve(), budget, keep)
+    threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now
     HostedHandler.site = site
     HostedHandler.data_root = site.data
     return ThreadingHTTPServer((host, port), partial(HostedHandler, directory=str(HERE)))
@@ -329,8 +364,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT") or 8730))
     ap.add_argument("--budget", type=int, default=34)
+    ap.add_argument("--keep", type=retention.parse_size, default=os.environ.get("NOLLI_CACHE_KEEP"),
+                    help="the cache's size at most, e.g. 20G: what was used longest ago goes first (default: keep everything)")
     args = ap.parse_args(argv)
-    srv = make_server(Path(args.cache), args.host, args.port, args.budget)
+    srv = make_server(Path(args.cache), args.host, args.port, args.budget, args.keep)
     print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {HostedHandler.site.cache})", file=sys.stderr, flush=True)
     try:
         srv.serve_forever()

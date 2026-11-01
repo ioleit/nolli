@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from . import match
+from .extractions import Extractions
 from .extractors import Context, all_extractors, language_names
 from .mermaid import render
 from .model import Model
@@ -55,15 +56,16 @@ def extract(repo: Path, config: dict | None = None, progress: Progress | None = 
 
 def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int | None = None, title: str | None = None,
                description: str | None = None, remote: str | None = None,
-               progress: Progress | None = None) -> tuple[Model, dict, dict]:
-    """The dataset of a change: the merged model, changes.json, review.mmd and review.md."""
+               progress: Progress | None = None, extractions: Extractions | None = None) -> tuple[Model, dict, dict]:
+    """The dataset of a change: the merged model, changes.json, review.mmd and review.md. With
+    ``extractions``, sides extracted before are reused (nolli/extractions.py)."""
     from .changes import change_items
     from .diff import diff
     from .review import review_markdown
 
     progress = progress or Quiet()
     out.mkdir(parents=True, exist_ok=True)
-    m, summary = diff(repo, base, head, extract, progress)
+    m, summary = diff(repo, base, head, extract, progress, extractions)
     m.meta["nolli"] = version()
     if remote:
         m.meta["diff"]["remote"] = remote
@@ -80,22 +82,34 @@ def build_diff(repo: Path, base: str, head: str, out: Path, budget: int, pr: int
     return m, summary, report
 
 
-def build_commit(repo: Path, sha: str, out: Path, budget: int, progress: Progress | None = None) -> dict:
-    """The dataset of one commit as a whole, extracted from the commit (not the working tree)."""
+def build_commit(repo: Path, sha: str, out: Path, budget: int, progress: Progress | None = None,
+                 extractions: Extractions | None = None) -> dict:
+    """The dataset of one commit as a whole, extracted from the commit (not the working tree),
+    or read from ``extractions`` if it was extracted before (nolli/extractions.py)."""
     import tempfile
 
     from .diff import materialise
 
     progress = progress or Quiet()
     out.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
-        with progress.step("checking out the commit"):
-            materialise(repo, sha, Path(tmp))
-        m, ctx = extract(Path(tmp), progress=progress)
+    hit = None
+    if extractions and extractions.has(sha):
+        with progress.step("reading an earlier extraction"):
+            hit = extractions.get(sha)
+    if hit:
+        m, notes = hit
+    else:
+        with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
+            with progress.step("checking out the commit"):
+                materialise(repo, sha, Path(tmp))
+            m, ctx = extract(Path(tmp), progress=progress)
+        notes = ctx.notes
+        if extractions:
+            extractions.put(sha, m, notes)
     if m.has("fs:."):  # the root is the temporary directory; name it after the repository
         m.entities["fs:."].name = repo.name
     m.meta.update({"repo": repo.name, "commit": sha[:7], "nolli": version()})
-    return write_dataset(m, out, budget, ctx.notes, progress=progress)
+    return write_dataset(m, out, budget, notes, progress=progress)
 
 
 def version() -> str:
