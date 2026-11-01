@@ -3,7 +3,7 @@
     nolli view [<change> | <dataset dir>] [--whole] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli agent brief [<change>] | agent check <dataset> | agent skill [--install DIR]
     nolli ci comment <dataset> [--skipped no-key|fork]
-    nolli serve [--cache DIR] [--keep SIZE] [--host H] [--port N]
+    nolli serve [--cache DIR] [--keep SIZE] [--builds N] [--timeout S] [--max-repo SIZE] [--host H] [--port N]
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
 
@@ -166,6 +166,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     argv += ["--cache", args.cache] if args.cache else []
     argv += ["--port", str(args.port)] if args.port else []
     argv += ["--keep", args.keep] if args.keep else []
+    for flag, value in (("--builds", args.builds), ("--timeout", args.timeout), ("--max-repo", args.max_repo)):
+        argv += [flag, str(value)] if value is not None else []
     return hosted(argv)
 
 
@@ -315,6 +317,10 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--budget", type=int, default=34)
     sv.add_argument("--keep", help="the cache's size at most, e.g. 20G: what was used longest ago goes first "
                     "(default: $NOLLI_CACHE_KEEP, else keep everything)")
+    sv.add_argument("--builds", type=int, help="builds at the same time, each its own process (default: $NOLLI_BUILDS, else the CPUs, at most 4)")
+    sv.add_argument("--timeout", type=float, help="seconds a build may take before it is stopped (default: $NOLLI_BUILD_TIMEOUT, else 600)")
+    sv.add_argument("--max-repo", help="the largest repository built, by GitHub's size of it, e.g. 500M; 0 for no limit "
+                    "(default: $NOLLI_MAX_REPO, else 1G)")
     sv.set_defaults(fn=cmd_serve)
     ex = sub.add_parser("extract", help="extract the model of a repository")
     ex.add_argument("repo")
