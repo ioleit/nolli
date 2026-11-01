@@ -350,3 +350,17 @@ def test_presets(repo: Path):
     assert {"fs:backend", "fs:backend/api"} <= set(unfolded["state"]["expanded"])
     assert scene(m, SceneState(preset="changes"))["state"]["preset"] == "default"  # not a change's dataset
     assert scene(m, state_from_query({"p": "folded", "x": "fs:.,fs:backend"}))["state"]["preset"] is None
+
+
+def test_mermaid_ids(repo: Path):
+    """The id map sent with the Mermaid text names every box drawn, by the id the text uses."""
+    import re
+
+    from nolli.mermaid import ids, render
+    from nolli.scene import SceneState, scene
+
+    m, _ = extract(repo)
+    sc = scene(m, SceneState(expanded=["fs:.", "fs:backend"]))
+    text = render(sc)
+    drawn = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+)\s*[\[(]", line))}
+    assert ids(sc).keys() == drawn and set(ids(sc).values()) == {n["id"] for n in sc["nodes"]}

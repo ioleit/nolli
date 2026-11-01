@@ -53,6 +53,12 @@ def label(n: dict) -> str:
     return out
 
 
+def ids(sc: dict) -> dict[str, str]:
+    """The Mermaid id of each box ``render`` draws (an unfolded one is a subgraph, ``<id>_g``),
+    to the scene id it stands for: how a client maps a click on the drawing back to the scene."""
+    return {nid(n["id"]) + ("_g" if n.get("container") else ""): n["id"] for n in sc["nodes"]}
+
+
 def render(sc: dict, fade: bool = True) -> str:
     """The scene as a Mermaid flowchart. ``fade``: in a change's scene, draw what did not
     change faint (the viewer's "fade unchanged")."""

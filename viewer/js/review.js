@@ -31,8 +31,6 @@ const TITLES = { component: "Components added or removed", dependency: "Dependen
 let items = [];
 /** @type {ReviewVerdict[]} worst first */
 let verdicts = [];
-/** @type {string[]} the boxes to unfold to see every change in source code (the review diagram) */
-let allChanges = [];
 /** @type {ReviewHandlers | null} */
 let handlers = null;
 /** @type {Set<string>} rows shown expanded */
@@ -42,8 +40,6 @@ const open = new Set();
 
 /** The changes listed: those in the roles shown (Files in the sidebar). */
 const shownItems = () => items.filter(it => (state.roles || ["source"]).includes(it.role));
-/** The boxes to unfold to see every change in source code. */
-export const changedAreas = () => allChanges;
 /** What j / k step through: the verdicts on something in the diagram, then the changes listed. */
 export function visibleItems() { return [...verdicts.filter(v => v.ends.length), ...shownItems()]; }
 /** A change or a verdict. @param {string} id @returns {ReviewItem | ReviewVerdict | null} */
@@ -52,10 +48,9 @@ export const itemById = id => items.find(it => it.id === id) || verdicts.find(v 
 /** Fetch the dataset's changes and verdicts; empty for a plain dataset. @param {string} name */
 export async function loadItems(name) {
   const res = await fetch("/api/changes?d=" + encodeURIComponent(name));
-  const body = res.ok ? await res.json() : { items: [], verdicts: [], all_changes: [] };
+  const body = res.ok ? await res.json() : { items: [], verdicts: [] };
   items = body.items;
   verdicts = [.../** @type {ReviewVerdict[]} */ (body.verdicts)].sort((a, b) => RANK[b.verdict] - RANK[a.verdict] || +a.id.slice(1) - +b.id.slice(1));
-  allChanges = body.all_changes;
   open.clear();
   return items;
 }
