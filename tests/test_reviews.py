@@ -162,3 +162,39 @@ def test_from_ci_without_github(dataset, capsys):  # noqa: F811
     (dataset / "review.json").write_text(json.dumps({"by": "agent"}))  # a review run here since: kept
     from_ci(dataset, [bot_comment(reviewed)])
     assert json.loads((dataset / "review.json").read_text())["by"] == "agent"
+
+
+def test_a_service_brings_its_own_reviewer(tmp_path, dataset, monkeypatch):  # noqa: F811
+    """nolli serve runs the reviewer it is given, and shows its reason not to run as it is."""
+    class Mine(reviewer.Reviewer):
+        def __init__(self):
+            self.why: str | None = "No reviews left for this installation."
+
+        def available(self):
+            return self.why
+
+        def model(self):
+            return "mine-1"
+
+        def review(self, ds, repo, out, on_step=None, cancel=None):
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "Mine."}]))
+            return reviewer.Run(turns=1, model="mine-1")
+
+    mine = Mine()
+    srv = hosted.make_server(dataset.parent.parent, port=0, token=hosted.Token(), reviewer=mine)  # the dataset is in <cache>/data
+    monkeypatch.setattr(hosted.HostedHandler.site, "ci_review", lambda ds: {"found": None, "applies": False})
+    monkeypatch.setattr(hosted.HostedHandler, "review_repo", lambda self, ds: tmp_path)
+    monkeypatch.setattr(hosted.HostedHandler.site, "review_clone", lambda ds: tmp_path)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        st = call(srv, f"/api/review?d={dataset.name}")[1]
+        assert (st["can_run"], st["why_not"], st["model"]) == (False, "No reviews left for this installation.", "mine-1")
+        mine.why = None
+        call(srv, f"/api/review?d={dataset.name}", "POST")
+        until(lambda: call(srv, f"/api/review?d={dataset.name}")[1]["run"]["state"] == "done")
+        st = call(srv, f"/api/review?d={dataset.name}")[1]
+        assert st["verdicts"]["by"] == "agent" and st["verdicts"]["model"] == "mine-1"
+    finally:
+        srv.shutdown()
+        srv.server_close()
