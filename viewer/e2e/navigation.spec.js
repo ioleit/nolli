@@ -1,7 +1,7 @@
 // Unfolding and folding on a made-up change (tests/fixtures/nav_repo.py) with two utilities
 // and a changed edge between them, which ELK refused while utilities were pinned to its last
 // layer, and a verdict on an edge the viewer bundles. A click toggles the box clicked and nothing else, and every step lays out without an
-// error (guard.js).
+// error (guard.js). The Mermaid tab draws the same scene and toggles the same way; presets go into the link.
 
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -69,3 +69,33 @@ test("a verdict on an edge that is bundled sits on the bundle, not on a box", as
   await expect(page.locator("#root g.node.container")).toHaveCount(3);  // tasks, jobs, store: nothing else unfolded
 });
 
+
+const MERMAID = createRequire(import.meta.url).resolve("mermaid/dist/mermaid.esm.min.mjs").replace(/mermaid\.esm\.min\.mjs$/, "");
+
+/** The Mermaid ids drawn in the Mermaid tab: boxes and subgraphs. @param {import("@playwright/test").Page} page */
+const mermaidIds = page => page.evaluate(() => [...document.querySelectorAll("#mmdpane g.node, #mmdpane g.cluster")]
+  .map(g => (/-flowchart-(n_\w+?)-\d+$/.exec(g.id) || /-(n_\w+?)_g$/.exec(g.id) || [])[1]).filter(Boolean).sort());
+
+test("the Mermaid tab draws the scene, and a click there unfolds as in the drawing", async ({ page }) => {
+  await page.route("https://cdn.jsdelivr.net/npm/mermaid@11/dist/**",
+    r => r.fulfill({ body: readFileSync(MERMAID + new URL(r.request().url()).pathname.split("/dist/")[1]), contentType: "application/javascript" }));
+  await open(page, "&p=folded");
+  await page.locator('#views [data-view="mermaid"]').click();
+  await expect(page.locator("#mmdpane .mmd-svg svg")).toBeVisible();
+  const scene = await page.evaluate(async () => (await fetch("/api/scene?" + location.hash.slice(1).replace(/&v=mermaid/, ""))).json());
+  const nid = (/** @type {string} */ id) => "n_" + id.replace(/[^A-Za-z0-9]/g, "_");
+  expect(await mermaidIds(page)).toEqual(scene.nodes.map((/** @type {{ id: string }} */ n) => nid(n.id)).sort());
+  await expect(page.locator("#custom")).toHaveJSProperty("hidden", true);
+  // a folded box unfolds, and the cut is no preset any more
+  await page.locator(`#mmdpane g.node[id*="-flowchart-${nid("repo:tasks")}-"]`).click();
+  await expect.poll(() => unfolded(page)).toContain("repo:tasks");
+  await expect(page.locator(`#mmdpane g.cluster[id$="-${nid("repo:tasks")}_g"]`)).toBeVisible();
+  await expect(page.locator("#custom")).toHaveJSProperty("hidden", false);
+  // a preset goes into the link by name, and both tabs show its cut
+  await page.locator("#navtoggle").click();
+  await page.locator('#presets [data-preset="folded"]').click();
+  await expect.poll(() => page.evaluate(() => location.hash)).toContain("p=folded");
+  await expect(page.locator(`#mmdpane g.cluster[id$="-${nid("repo:tasks")}_g"]`)).toHaveCount(0);
+  await page.locator('#views [data-view="interactive"]').click();
+  await expect(page.locator('#root g.node[data-id="repo:tasks"]:not(.container)')).toBeVisible();
+});

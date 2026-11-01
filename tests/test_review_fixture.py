@@ -11,7 +11,7 @@ from pathlib import Path
 from nolli.cli import main
 from nolli.model import Model
 from nolli.review import read_verdicts, resolve_verdicts
-from nolli.scene import ViewState, scene
+from nolli.scene import SceneState, scene
 
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
 import review_repo  # noqa: E402
@@ -33,7 +33,7 @@ def test_verdict_on_a_bundled_edge(tmp_path):
     m = Model.load(ds / "model.json")
     verdicts = read_verdicts((ds / "verdicts.json").read_text())
     v = next(r for r in resolve_verdicts(m, verdicts) if r["target"].startswith("n_repo_web_src_client_ts ==>"))
-    s = scene(m, ViewState(expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"]), verdicts)
+    s = scene(m, SceneState(expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"]), verdicts)
     edge = next(e for e in s["edges"] if e["src"] == "repo:web/src/client.ts" and e["kind"] == "use" and e["subkind"] == "http")
     assert edge["dst"] == "api:http:ledger/api/app.py:app"
     assert edge["verdict"] == "question"

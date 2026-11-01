@@ -5,10 +5,12 @@
 
 Static files come from this directory; ``/data/<name>/<file>`` serves the
 dataset directories under --data; ``/api/list`` lists them, newest first;
-``/api/scene?d=<name>&...`` returns the scene for a view state (``nolli/scene.py``;
-the parameters are the viewer's location-hash keys); ``/api/node?d=<name>&id=<entity>``
+``/api/scene?d=<name>&...`` returns the scene for a scene state (``nolli/scene.py``;
+the parameters are the viewer's location-hash keys), ``/api/mermaid?d=<name>&...`` the same
+scene as Mermaid (``nolli/mermaid.py``; ``nodim=1``: unchanged not faded; ``format=json``:
+``{mermaid, ids}``, ids mapping each Mermaid node id to its scene id); ``/api/node?d=<name>&id=<entity>``
 returns the details of one box in a diff dataset (``nolli/changes.py``), ``/api/changes?d=``
-its numbered changes, the review's verdicts and what to unfold to see all changes, and ``POST /api/verdicts?d=`` stores a
+its numbered changes and the review's verdicts, and ``POST /api/verdicts?d=`` stores a
 review's verdicts.json next to the dataset. Needs only the standard library. Installed,
 this is ``nolli.viewer.serve``; run as a script from a checkout, it imports the nolli
 package of that checkout, not an installed copy.
@@ -32,7 +34,8 @@ if not __package__:
 
 from nolli.model import Model  # noqa: E402
 from nolli.changes import change_items, details  # noqa: E402
-from nolli.review import read_verdicts, resolve_verdicts, review_expanded  # noqa: E402
+from nolli.review import read_verdicts, resolve_verdicts  # noqa: E402
+from nolli.mermaid import ids as mermaid_ids, render  # noqa: E402
 from nolli.scene import scene, state_from_query  # noqa: E402
 
 _models: dict[str, tuple[float, Model]] = {}
@@ -118,6 +121,28 @@ class Handler(SimpleHTTPRequestHandler):
             out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
             self.send_json(out)
             return
+        if path == "/api/mermaid":
+            q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
+            ds = self.data_root / q.get("d", "")
+            if not q.get("d") or "/" in q["d"] or not (ds / "model.json").is_file():
+                self.send_json({"error": f"no dataset {q.get('d')!r}"}, 404)
+                return
+            try:
+                sc = scene(load_model(ds / "model.json"), state_from_query(q))
+                text = render(sc, fade=q.get("nodim") != "1")
+            except (ValueError, KeyError) as exc:
+                self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
+                return
+            if q.get("format") == "json":
+                self.send_json({"mermaid": text, "ids": mermaid_ids(sc)})
+                return
+            body = text.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/api/changes":
             q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
             ds = self.data_root / q.get("d", "")
@@ -127,8 +152,7 @@ class Handler(SimpleHTTPRequestHandler):
             m = load_model(ds / "model.json")
             diff = bool(m.meta.get("diff"))
             self.send_json({"items": change_items(m) if diff else [],
-                            "verdicts": resolve_verdicts(m, load_verdicts(ds)) if diff else [],
-                            "all_changes": review_expanded(m) if diff else []})
+                            "verdicts": resolve_verdicts(m, load_verdicts(ds)) if diff else []})
             return
         if path == "/api/node":
             q = dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))

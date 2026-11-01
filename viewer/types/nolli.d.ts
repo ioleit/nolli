@@ -144,6 +144,7 @@ export interface SceneEdge {
 
 export interface SceneState {
   expanded: string[];
+  preset: "default" | "folded" | "changes" | "unfolded" | null;  // the preset that gave expanded; null: unfolded by hand
   roles: string[];
   groups: string[];  // root groups drawn as boxes; the others are badges
   budget: number;

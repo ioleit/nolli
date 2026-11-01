@@ -174,7 +174,9 @@ def review_markdown(m: Model, mermaid: str, description: str | None = None) -> s
 
 The diagram below is the change: the repository with every area that changed in source code
 unfolded, everything else folded. Boxes and edges carry the classes `added`, `removed` or
-`changed`; an edge's label says how its number of references changed (`added 0→3`). A
+`changed`; an edge's label says how its number of references changed (`added 0→3`). A box
+marked "used by N" is a utility: the edges into it are left out, and a `~~~` link (drawn
+as nothing) from one box that uses it keeps it low in the picture. A
 reviewer looks at this same picture in a viewer, and your verdicts are shown on it: each
 one as a mark on one box or edge. Clicking the mark shows your reason on its own, not next
 to your other verdicts and not next to the code. Before the diagram, the reviewer has seen

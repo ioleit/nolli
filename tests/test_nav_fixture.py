@@ -12,7 +12,7 @@ import pytest
 from nolli.cli import main
 from nolli.model import Model
 from nolli.review import read_verdicts
-from nolli.scene import ViewState, scene
+from nolli.scene import SceneState, scene
 
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
 import nav_repo  # noqa: E402
@@ -35,6 +35,6 @@ def test_verdicts_pass_the_check(dataset, capsys):
 ])
 def test_a_verdict_follows_its_edge_when_rolled_up(dataset, unfolded, edge):
     m = Model.load(dataset / "model.json")
-    sc = scene(m, ViewState(expanded=["repo:", "repo:tasks", *unfolded]), read_verdicts((dataset / "verdicts.json").read_text()))
+    sc = scene(m, SceneState(expanded=["repo:", "repo:tasks", *unfolded]), read_verdicts((dataset / "verdicts.json").read_text()))
     assert [(e["src"], e["dst"]) for e in sc["edges"] if "V1" in e["verdicts"]] == [edge]
     assert not [n["id"] for n in sc["nodes"] if n["verdicts"]]

@@ -23,12 +23,16 @@
   </section>
 
   <h2>Detail</h2>
-  <div class="row">
-    <label class="opt" data-help="How many boxes the default cut may show. Changing it recomputes the default cut.">budget <input id="budget" type="number" min="4" max="300" value="28" style="width:52px"></label>
-    <button id="reset" data-help="Back to the default cut for this budget.">default cut</button>
-    <button id="collapse" data-help="Fold everything down to the top-level entries.">fold all</button>
-    <button id="unfold" hidden data-help="Unfold every area that changed in source code: the diagram the review agent saw.">unfold changes</button>
+  <div class="row" id="presets">
+    <div class="seg">
+      <button data-preset="default" data-help="The default cut: the most telling boxes within the budget.">default</button>
+      <button data-preset="folded" data-help="Everything folded down to the top-level entries.">folded</button>
+      <button data-preset="changes" hidden data-help="Every area that changed in source code unfolded: the diagram the review agent saw (review.mmd).">changes</button>
+      <button data-preset="unfolded" data-help="Everything unfolded. Slow to lay out for a big repository.">unfolded</button>
+    </div>
+    <span id="custom" class="muted" data-help="Unfolded and folded by hand: no preset. Pick one to start over from it.">custom</span>
   </div>
+  <label class="opt row" data-help="How many boxes the default cut may show. Changing it shows the default cut again.">budget <input id="budget" type="number" min="4" max="300" value="28" style="width:52px;margin-left:auto"></label>
   <label class="opt row" data-help="A box with more than this many incoming edges is a utility: its incoming edges are left out, it says how many boxes use it (&ldquo;used by 7&rdquo;), sits at the bottom and has a dotted border. 0: off.">utilities above <input id="utilities" type="number" min="0" max="99" style="width:52px;margin-left:auto"> edges</label>
   <label class="opt row" data-help="Colours, fonts and box style. Kept in this browser and in the link (th=).">theme <select id="theme"></select></label>
 
@@ -38,9 +42,9 @@
 </aside>
 <main>
   <nav id="views" role="tablist">
-    <button role="tab" data-view="diagram" data-help="The scene laid out (ELK.js, top to bottom) and drawn.">Diagram</button>
-    <button role="tab" data-view="json" data-help="The scene the server sent, as JSON. Click an id to unfold or fold it.">JSON</button>
-    <button role="tab" data-view="mermaid" data-help="The static Mermaid export written by nolli extract (default.mmd): always the default cut, ignores the controls.">Mermaid</button>
+    <button role="tab" data-view="interactive" data-help="The scene laid out with ELK.js and drawn, with hover cards and animation. Click a box to unfold or fold it.">Interactive</button>
+    <button role="tab" data-view="mermaid" data-help="The same scene as Mermaid: text to paste into a README or a PR comment, and what a review agent reads. Laid out by Mermaid itself. Click a box to unfold or fold it.">Mermaid</button>
+    <button role="tab" data-view="json" data-help="The same scene as the JSON the server sends (/api/scene). Click an id to unfold or fold it.">JSON</button>
   </nav>
   <div id="stage">
     <svg id="g"><g id="root"></g></svg>
