@@ -169,12 +169,14 @@ def change_scores(m: Model, hidden: set[str]) -> dict[str, float]:
 MAX_ITEMS = 60
 
 
-def details(m: Model, x: str) -> dict:
-    """Everything a reviewer may want about one box: changed files with hunks and links,
-    classes with changed lines, entities added or removed inside it, and the changed
-    dependencies that start or end inside it."""
-    links = Links(m)
+def details(m: Model, x: str) -> dict | None:
+    """Everything a reviewer may want about one box (a scene's node id): changed files with
+    hunks and links, classes with changed lines, entities added or removed inside it, and the
+    changed dependencies that start or end inside it. None if the model has no such box."""
     target = address.owner(x)
+    if not m.has(target):
+        return None
+    links = Links(m)
     sub = {target} | set(m.descendants(target))
     files, classes, entities = [], [], []
     for eid in sorted(sub):
