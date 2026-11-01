@@ -174,7 +174,8 @@ export interface Laid {
   width: number;
   height: number;
   nodes: Map<string, Box>;
-  edges: { edge: SceneEdge; sections: Point[][] }[];
+  /** mark: the centre of the edge's verdict mark, where ELK placed it as the edge's label */
+  edges: { edge: SceneEdge; sections: Point[][]; mark?: Point | null }[];
 }
 
 /** Where a dataset's verdicts came from (review.json, viewer/reviews.py). */

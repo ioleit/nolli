@@ -48,10 +48,10 @@ async function hoverMark(page, row, mark) {
   await expect(tip(page)).toContainText(row);
 }
 
-test("every verdict but fine is marked in the diagram, with its chess annotation", async ({ page }) => {
+test("every verdict is marked in the diagram, with its chess annotation", async ({ page }) => {
   await open(page);
   const marks = page.locator("#root g.verdict");
-  await expect(marks).toHaveCount(7);
+  await expect(marks).toHaveCount(8);
   await expect(page.locator("#root g.edge g.verdict.blunder text")).toHaveText("??");
   await expect(page.locator("#root g.edge g.verdict.problem text")).toHaveText("?");
   await expect(page.locator("#root g.edge g.verdict.question text")).toHaveText(["?!", "?!"]);
@@ -60,7 +60,7 @@ test("every verdict but fine is marked in the diagram, with its chess annotation
   await expect(boxMark(page, "repo:ledger/services/legacy_export.py").locator("path")).toHaveCount(1);
   // the good one is on views/alerts, inside web/src/, which is folded at first and shows it
   await expect(boxMark(page, "repo:web/src").locator("path")).toHaveCount(1);  // a thumbs up, not a glyph
-  await expect(page.locator("#root g.verdict.fine")).toHaveCount(0);
+  await expect(boxMark(page, "repo:ledger/api").locator("text")).toHaveText("✓");  // fine, on api/routes.py
   // the glyph stays white on a changed or added edge, whose labels take the change's colour
   for (const t of await marks.locator("text, path").all()) await expect(t).toHaveCSS("fill", "rgb(255, 255, 255)");
 
@@ -126,13 +126,13 @@ test("the review panel lists every verdict, most attention first", async ({ page
   await expect(page.locator("#review")).toHaveScreenshot("verdict-list.png");
 });
 
-test("a fine verdict goes to its box from the panel, without a mark on it", async ({ page }) => {
+test("a fine verdict goes to its box from the panel, with a grey mark on it", async ({ page }) => {
   await open(page);
   await page.locator("#review .rv-verdict", { hasText: "the one box that assembles" }).click();
   await expect(page).toHaveURL(/item=V8/);
   const id = "repo:ledger/api/routes.py";
   await expect(node(page, id)).toHaveClass(/\blit\b/);
-  await expect(boxMark(page, id)).toHaveCount(0);
+  await expect(boxMark(page, id).locator("text")).toHaveText("✓");
   await expect(tip(page)).toContainText("the one box that assembles");
   await expect(page).toHaveScreenshot("fine-on-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
 });

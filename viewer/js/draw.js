@@ -163,10 +163,10 @@ function buildBox(n, p, h) {
   /** @param {number} w */
   const badgeX = w => isC ? w - 28 : stats ? w - 6 : (w + n.chips.length * 11) / 2;
   if (fitted(p.w)) { badge = el("text", { class: "badge", x: badgeX(p.w), y: isC ? 18 : 33, "text-anchor": isC || stats ? "end" : "middle" }); badge.textContent = fitted(p.w); if (isC) badge.appendChild(el("title")).textContent = n.badge; grp.appendChild(badge); }
-  // the review's verdict on what this box contains, on its top-right corner; "fine" only in the panel
+  // the review's verdict on what this box contains, on its top-right corner
   /** @type {SVGElement | null} */
   let mark = null;
-  if (n.verdict && n.verdict !== "fine") { mark = verdictMark(n.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
+  if (n.verdict) { mark = verdictMark(n.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
   n.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
   // an unfolded box lists the utilities its children use, one per line, bottom right
   /** @type {SVGElement[]} */
@@ -237,19 +237,16 @@ export function draw(g, scene, laid, handlers) {
     const after = foldLayer[0] && foldLayer[0].parentNode === g ? foldLayer[0] : null;
     if (ge.nextSibling !== after) g.insertBefore(ge, after);
   };
-  for (const { edge: e, sections } of laid.edges) {
+  for (const { edge: e, sections, mark } of laid.edges) {
     const ge = el("g", { class: edgeClass(e, review), "data-key": e.key });
-    /** @type {{ x: number, y: number } | null} */
-    let mid = null;
     for (const pts of sections) {
       const d = "M" + pts.map(p => `${p.x},${p.y}`).join("L");
       const line = "M" + shortened(pts).map(p => `${p.x},${p.y}`).join("L");
       ge.appendChild(el("path", { d: line, "stroke-width": 1.2 }));  // every edge one width, whatever its count
       if (pts.length > 1) ge.appendChild(el("polygon", { class: "head", points: head(pts) }));
       ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
-      const a = pts[Math.floor((pts.length - 1) / 2)], b = pts[Math.ceil((pts.length - 1) / 2)]; mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
-    if (e.verdict && e.verdict !== "fine" && mid) { const vm = verdictMark(e.verdict, mid.x - 9, mid.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
+    if (e.verdict && mark) { const vm = verdictMark(e.verdict, mark.x, mark.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
     ge.addEventListener("mousemove", ev => showTip(/** @type {MouseEvent} */ (ev), e, null, ge));
     ge.addEventListener("mouseenter", () => raise(ge));
     ge.addEventListener("mouseleave", () => hideTip());

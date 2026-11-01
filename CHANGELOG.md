@@ -2,6 +2,15 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## Unreleased
+
+### Changed
+
+- **A verdict on an edge sits on the edge.** ELK lays its mark out as the edge's label, so
+  the edge runs through the middle of the mark, and room is made for it, instead of the
+  viewer guessing a spot near the route's middle bend.
+- **"fine" verdicts are marked in the diagram too**, with their grey ✓.
+
 ## 0.6.0
 
 ### Changed

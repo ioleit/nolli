@@ -78,6 +78,9 @@ const GRAPH_OPTIONS = {
   "elk.layered.thoroughness": "10", "elk.layered.cycleBreaking.strategy": "GREEDY",
 };
 
+/** A verdict mark's size: the disc draw.js draws, r = 7, and a pixel around it. */
+const MARK = 16;
+
 /** @param {Scene} scene @returns {ElkNode} */
 function elkGraph(scene) {
   const kidsOf = childrenOf(scene);
@@ -106,8 +109,12 @@ function elkGraph(scene) {
     else if (last.has(n.id)) opts["elk.layered.layering.layerConstraint"] = "LAST";  // utilities sit at the bottom
     return node;
   };
+  // an edge's verdict mark is its label, inline: ELK makes room for it halfway along and routes
+  // the edge through its middle (a label without text is left unplaced, so the verdict is its text)
+  const mark = /** @param {SceneEdge} e @param {number} i */ (e, i) => e.verdict
+    ? [{ id: "m" + i, text: e.verdict, width: MARK, height: MARK, layoutOptions: { "elk.edgeLabels.inline": "true" } }] : [];
   /** @type {ElkEdge[]} */
-  const edges = scene.edges.map((e, i) => ({ id: "e" + i, sources: [e.src], targets: [e.dst], _e: e }));
+  const edges = scene.edges.map((e, i) => ({ id: "e" + i, sources: [e.src], targets: [e.dst], labels: mark(e, i), _e: e }));
   return { id: "ROOT", layoutOptions: GRAPH_OPTIONS, children: (kidsOf.get("ROOT") || []).map(build), edges };
 }
 
@@ -129,7 +136,9 @@ export async function layout(scene) {
     const c = le.container && le.container !== "ROOT" ? nodes.get(le.container) : null;
     const x0 = c ? c.x : 0, y0 = c ? c.y : 0;
     const sections = (le.sections || []).map(s => [s.startPoint, ...(s.bendPoints || []), s.endPoint].map(p => ({ x: p.x + x0, y: p.y + y0 })));
-    return { edge: le._e, sections };
+    const m = (le.labels || [])[0];
+    const mark = m && m.x !== undefined && m.y !== undefined ? { x: m.x + x0 + (m.width || 0) / 2, y: m.y + y0 + (m.height || 0) / 2 } : null;
+    return { edge: le._e, sections, mark };
   });
   return { width: laid.width || 0, height: laid.height || 0, nodes, edges };
 }
