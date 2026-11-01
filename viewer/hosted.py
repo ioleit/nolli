@@ -8,10 +8,11 @@ shows, ``/<owner>/<repo>/commit/<sha>`` the change that commit makes to its pare
 visit builds the dataset in the background (a page says how far it got); later visits find
 it under ``<cache>/data``, named after the commits, so a new push is a new dataset.
 
-Repositories are kept as bare clones under ``<cache>/repos``. Everything is asked for as
-nobody: GitHub's API without a token and git with no credentials and none of this machine's
-git configuration, so only public repositories can be shown, whatever this machine's own
-logins could reach. A private repository answers 404 like a missing one.
+Repositories are kept as bare clones under ``<cache>/repos``. git runs with no credentials
+and none of this machine's git configuration. GitHub's API is asked with the token of
+nolli/github_app.py if one is configured (a GitHub App's, for 5,000 requests an hour instead
+of 60), else as nobody; either way only public repositories are shown: one GitHub says is
+private answers 404 like a missing one, whatever the token or this machine's logins reach.
 
 Each commit's extraction is kept under ``<cache>/extractions`` (nolli/extractions.py), so a pull
 request's base is extracted once for all its pushes. With ``--keep 20G`` the cache stays within
@@ -23,7 +24,14 @@ and a repository GitHub says is larger than ``--max-repo`` is not built at all: 
 for any public repository.
 
 The viewer is the local one (``serve.py``), its page pinned to the one dataset; the API is the
-same, without ``/api/list`` and without storing verdicts.
+same, without ``/api/list`` and without storing uploaded verdicts.
+
+Verdicts come from two places. A pull request's page looks for what nolli's CI left in the
+PR's comments for its head commit (nolli/ci.py) and shows those verdicts, asking GitHub at
+most once a minute per dataset. And with ``ANTHROPIC_API_KEY`` set where the server runs,
+the viewer's "Review structural changes" starts a review agent (viewer/reviews.py) whose
+verdicts then are the dataset's; anyone who can open the page can start one, so the key's
+owner pays for every visitor's review (one run per dataset at a time, two runs at once).
 """
 
 from __future__ import annotations
@@ -37,6 +45,7 @@ import multiprocessing
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -52,7 +61,7 @@ HERE = Path(__file__).resolve().parent
 if not __package__:
     sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
-from nolli import github, retention  # noqa: E402
+from nolli import github, github_app, retention  # noqa: E402
 from nolli.change import ChangeError, git  # noqa: E402
 from nolli.build import build_commit, build_diff, fresh, version  # noqa: E402
 from nolli.extractions import Extractions  # noqa: E402
@@ -60,8 +69,10 @@ from nolli.progress import Progress  # noqa: E402
 
 try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file
     from .serve import Handler, preload
+    from .reviews import ci_pull, from_ci
 except ImportError:
     from serve import Handler, preload  # type: ignore[no-redef]
+    from reviews import ci_pull, from_ci  # type: ignore[no-redef]
 
 OWNER = r"(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
 REPO = r"(?P<repo>[A-Za-z0-9._-]{1,100})"
@@ -98,9 +109,13 @@ def clone_lock(clone: Path):
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def build_pull(clone: Path, out: Path, progress: Progress, *, remote: str, pull: int, budget: int, extractions: Extractions) -> None:
+def build_pull(clone: Path, out: Path, progress: Progress, *, remote: str, pull: int, pr: dict, budget: int,
+               extractions: Extractions) -> None:
+    """``pr``: GitHub's answer for the PR, as the server asked it (with its token), so that the
+    build asks GitHub nothing."""
+    owner, name = remote.rsplit("/", 2)[-2:]
     with progress.step("fetching the pull request"), clone_lock(clone):
-        ch, host = github.resolve(clone, f"{remote}/pull/{pull}", None)
+        ch, host = github.fetch_pull(clone, owner, name, pull, pr)
     build_diff(clone, ch.base, ch.head, out, budget, pr=pull, title=ch.title, description=ch.description or None,
                remote=host["remote"], progress=progress, extractions=extractions)
     (out / "pr.md").write_text(ch.description)
@@ -202,7 +217,7 @@ class Site:
     """The datasets and clones under one cache directory, and the builds under way."""
 
     def __init__(self, cache: Path, budget: int = 34, keep: int | None = None, builds: int = BUILDS, timeout: float = TIMEOUT,
-                 max_repo: int | None = MAX_REPO):
+                 max_repo: int | None = MAX_REPO, token: github_app.Token | None = None):
         self.cache, self.budget = cache, budget
         self.builds, self.timeout, self.max_repo = threading.BoundedSemaphore(builds), timeout, max_repo
         self.processes = processes()
@@ -215,20 +230,43 @@ class Site:
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
         self.answers: dict[str, tuple[float, dict]] = {}
+        self.ci: dict[str, tuple[float, dict]] = {}  # dataset name -> when its PR's comments were read, what they had
+        self.github = token or github_app.Token()
+        self.token_failed = ""  # why the token could not be had, said once
 
     def api(self, path: str) -> dict:
         """GitHub's answer for ``path``, asked as nobody, reused for LOOKUP_TTL seconds."""
         hit = self.answers.get(path)
         if hit and time.time() - hit[0] < LOOKUP_TTL:
             return hit[1]
-        out = github.api(path, None)
+        out = self.ask(path)
         self.answers[path] = (time.time(), out)
         return out
+
+    def ask(self, path: str) -> dict:
+        """GitHub's answer for ``path``, with the server's token if it has one. An installation
+        token may not see a public repository the app is not installed on: a 404 with it is asked
+        again as nobody. A token that cannot be had (a wrong key) is said once, then nobody asks."""
+        try:
+            tok = self.github.token()
+        except (ChangeError, ValueError, ImportError) as exc:
+            if str(exc) != self.token_failed:
+                self.token_failed = str(exc)
+                print(f"nolli serve: no GitHub token, asking as nobody: {exc}", file=sys.stderr, flush=True)
+            tok = None
+        try:
+            return github.api(path, tok)
+        except github.NotFound:
+            if not tok:
+                raise
+            return github.api(path, None)
 
     def plan(self, owner: str, repo: str, pull: int | None = None, sha: str | None = None) -> Plan:
         """What ``/<owner>/<repo>[/pull/<n> | /commit/<sha>]`` shows. Raises github.NotFound for a
         missing or private repository, ChangeError if GitHub cannot be asked."""
         info = self.api(f"repos/{owner}/{repo}")
+        if info.get("private") is not False:  # what a token sees beyond public repositories stays unseen
+            raise github.NotFound(f"GitHub: repos/{owner}/{repo}: private")
         owner, repo = info["full_name"].split("/")  # GitHub's spelling (paths are case-insensitive)
         remote, key = f"https://github.com/{owner}/{repo}", f"{owner}_{repo}"
         if self.max_repo is not None and info.get("size", 0) * 1024 > self.max_repo:
@@ -238,7 +276,8 @@ class Site:
             pr = self.api(f"repos/{owner}/{repo}/pulls/{pull}")
             head, base = pr["head"]["sha"], pr["base"]["sha"]
             return Plan(f"{key}_pr{pull}_{base[:7]}_{head[:7]}", f"{owner}/{repo}#{pull}: {pr.get('title') or ''}", remote,
-                        partial(build_pull, remote=remote, pull=pull, **common))
+                        partial(build_pull, remote=remote, pull=pull, **common,
+                                pr={k: pr.get(k) for k in ("head", "base", "title", "body")}))
         if sha is not None:
             c = self.api(f"repos/{owner}/{repo}/commits/{sha}")
             full, parents = c["sha"], [p["sha"] for p in c.get("parents", [])]
@@ -248,6 +287,35 @@ class Site:
         branch = info["default_branch"]
         head = self.api(f"repos/{owner}/{repo}/branches/{quote(branch, safe='')}")["commit"]["sha"]
         return Plan(f"{key}_{head[:7]}", f"{owner}/{repo} at {branch}", remote, partial(build_whole, sha=head, **common))
+
+    def ci_review(self, ds: Path) -> dict:
+        """What nolli's CI left for a pull request dataset's head commit (reviews.from_ci), from the
+        PR's comments, read at most once per LOOKUP_TTL."""
+        hit = self.ci.get(ds.name)
+        if hit and time.time() - hit[0] < LOOKUP_TTL:
+            return hit[1]
+        pull = ci_pull(ds)
+        if pull is None:
+            return {"found": None, "applies": False}
+        owner, repo, n = pull
+        try:
+            info = from_ci(ds, self.ask(f"repos/{owner}/{repo}/issues/{n}/comments?per_page=100"))
+        except ChangeError as exc:
+            info = {"found": None, "applies": True, "error": str(exc)}
+        self.ci[ds.name] = (time.time(), info)
+        return info
+
+    def review_clone(self, ds: Path) -> Path:
+        """The clone a review agent reads a dataset's change from, with its base and head fetched
+        (retention may have deleted it since the build)."""
+        d = json.loads((ds / "report.json").read_text())["meta"]["diff"]
+        clone = self.clone(d["remote"])
+        with clone_lock(clone):
+            missing = [c for c in (d["base"], d["head"]) if subprocess.run(
+                ["git", "-C", str(clone), "cat-file", "-e", f"{c}^{{commit}}"], capture_output=True, check=False).returncode]
+            if missing:
+                git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", *missing)
+        return clone
 
     def clone_path(self, remote: str) -> Path:
         owner, repo = remote.rsplit("/", 2)[-2:]
@@ -366,6 +434,20 @@ def viewer_page(name: str, title: str) -> bytes:
 
 class HostedHandler(Handler):
     site: Site
+    uploads = False  # a visitor's verdicts would be shown to everyone as the review
+
+    def review_repo(self, ds: Path) -> Path | None:
+        try:
+            remote = json.loads((ds / "report.json").read_text())["meta"]["diff"]["remote"]
+        except (OSError, ValueError, KeyError):
+            return None
+        return self.site.clone_path(remote)  # fetched when a run starts (review_clone)
+
+    def start_review(self, ds: Path) -> None:
+        self.reviews.start(ds.name, ds, lambda: self.site.review_clone(ds))
+
+    def review_status(self, ds: Path) -> dict:
+        return {**super().review_status(ds), "ci": self.site.ci_review(ds), "server": "serve"}
 
     def send_page(self, body: bytes, status: int = 200) -> None:
         self.send_response(status)
@@ -422,14 +504,13 @@ class HostedHandler(Handler):
         if fresh(out):
             retention.touch(out)
             preload(out)
+            if m.group("n"):
+                self.site.ci_review(out)  # before the page: a review found opens on its worst verdict
             self.send_page(viewer_page(plan.name, plan.title))
             return
         job = self.site.start(plan)
         self.send_page(page(plan.title, BUILDING.format(title=html.escape(plan.title)), job=plan.name,
                             status=html.escape(json.dumps(job.status()), quote=True)))
-
-    def do_POST(self) -> None:  # noqa: N802
-        self.send_json({"error": "nothing is stored here"}, 405)
 
 
 LANDING = """<h1>nolli</h1>
@@ -463,7 +544,7 @@ def make_server(cache: Path, host: str = "127.0.0.1", port: int = 8730, budget: 
     # git: no credentials, prompts, or this machine's configuration (an insteadOf could reach private repos by ssh)
     os.environ.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_ASKPASS="true",
                       SSH_ASKPASS="true", GIT_SSH_COMMAND="false")
-    site = Site(Path(cache).expanduser().resolve(), budget, keep, builds, timeout, max_repo)
+    site = Site(Path(cache).expanduser().resolve(), budget, keep, builds, timeout, max_repo, github_app.from_env())
     threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now
     HostedHandler.site = site
     HostedHandler.data_root = site.data
@@ -486,7 +567,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="the largest repository built, by GitHub's size of it, e.g. 500M; 0 for no limit (default: $NOLLI_MAX_REPO, else 1G)")
     args = ap.parse_args(argv)
     srv = make_server(Path(args.cache), args.host, args.port, args.budget, args.keep, args.builds, args.timeout, args.max_repo or None)
-    print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {HostedHandler.site.cache})", file=sys.stderr, flush=True)
+    print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {HostedHandler.site.cache}; "
+          f"{HostedHandler.site.github.describe()})", file=sys.stderr, flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

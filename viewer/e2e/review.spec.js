@@ -67,8 +67,8 @@ test("every verdict but fine is marked in the diagram, with its chess annotation
   const rows = page.locator("#review .rv-verdict");
   // most attention first: doubts, then praise, then fine; in file order within a kind
   await expect(rows.locator(".vd")).toHaveClass(["blunder", "problem", "question", "question", "question", "good", "good", "fine"].map(v => "vd " + v));
-  await expect(page.locator("#review .rv-verdicts")).toContainText("?? 1 ? 1 ?! 3 2 ✓ 1");  // good's mark is an icon
-  await expect(page.locator("#review .rv-verdicts .vd.good svg")).toHaveCount(1);
+  await expect(page.locator("#review .rr-tally")).toContainText("??1 ?1 ?!3 2 ✓1");  // good's mark is an icon
+  await expect(page.locator("#review .rr-tally .vd.good svg")).toHaveCount(1);
   // fine is greyed out in the list
   await expect(rows.filter({ has: page.locator(".vd.fine") }).locator(".rv-item")).toHaveCSS("opacity", "0.5");
 });
@@ -122,6 +122,7 @@ test("hovering a good on a box shows its reason", async ({ page }) => {
 
 test("the review panel lists every verdict, most attention first", async ({ page }) => {
   await open(page);
+  await expect(page.locator("#rr-head .rr-link")).toBeVisible();  // the review heading: fetched after the panel
   await expect(page.locator("#review")).toHaveScreenshot("verdict-list.png");
 });
 

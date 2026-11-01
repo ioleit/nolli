@@ -10,7 +10,8 @@ viewer's own GitHub login, so the repository's access decides who may see it. Ar
 expire after 7 days; the PR's are deleted when it closes.
 
 The comment also carries the verdicts and what they were made on (base, head, nolli's
-version), hidden, so they outlive the artifact.
+version), hidden, so they outlive the artifact: ``nolli serve`` reads them from there
+(results()), without a login, for a public repository's pull request.
 """
 
 from __future__ import annotations
@@ -145,6 +146,45 @@ def read_result(body: str) -> dict | None:
     """What a nolli comment carries hidden (see comment()), or None."""
     m = RESULT.search(body)
     return json.loads(zlib.decompress(base64.b64decode(m.group(1)))) if m else None
+
+
+BOTS = ("nolli-review[bot]", "github-actions[bot]")  # who posts nolli's comments (.github/workflows/nolli.yml)
+
+
+def results(comments: list[dict]) -> list[dict]:
+    """The results nolli's CI left in a PR's comments (GitHub's issue comments, oldest first),
+    newest first: what read_result() reads, with the comment's ``link`` and ``at``. Only from
+    the bots that post them, so that nobody else's comment passes for a review."""
+    out = []
+    for c in comments:
+        user = c.get("user") or {}
+        body = c.get("body") or ""
+        if user.get("type") != "Bot" or user.get("login") not in BOTS or not body.startswith(MARKER):
+            continue
+        try:
+            r = read_result(body)
+        except (ValueError, zlib.error):
+            continue
+        if r and r.get("head"):
+            out.append({**r, "link": c.get("html_url"), "at": c.get("updated_at") or c.get("created_at")})
+    return out[::-1]
+
+
+def upgrade(verdicts: list[dict], made_by: str | None) -> list[dict]:
+    """Verdicts made by an earlier nolli, with their targets in today's node ids: before 0.4,
+    files and folders were ``fs:`` and Python symbols ``py:`` (node ids ``n_fs_…``, ``n_py_…``),
+    a module's own code ``n_body_fs_…``; since, all are ``repo:`` addresses (``n_repo_…``, own
+    code ``n_repo_<file>_``). Others are left as they are."""
+    try:
+        old = tuple(int(x) for x in (made_by or "").split(".")[:2]) < (0, 4)
+    except ValueError:
+        old = False
+    if not old:
+        return verdicts
+    def new(target: str) -> str:
+        target = re.sub(r"\bn_body_fs_(\w+)", r"n_repo_\1_", target)
+        return re.sub(r"\bn_(?:fs|py)_", "n_repo_", target)
+    return [{**v, "target": new(v.get("target") or "")} for v in verdicts]
 
 
 def fetch(key: str, data: Path) -> Path:

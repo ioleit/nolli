@@ -156,7 +156,7 @@ def cmd_view(args: argparse.Namespace) -> int:
     if args.build_only:
         print(b.out)
         return 0
-    return serve(b.data, b.name, args.host, args.port, not args.no_open)
+    return serve(b.data, b.name, args.host, args.port, not args.no_open, b.repo)
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -244,16 +244,16 @@ def cmd_skill(args: argparse.Namespace) -> int:
     return 0
 
 
-def serve(data: Path, name: str, host: str, port: int, open_browser: bool) -> int:
+def serve(data: Path, name: str, host: str, port: int, open_browser: bool, repo: Path | None = None) -> int:
     import webbrowser
     from urllib.parse import quote
 
     from .viewer.serve import make_server, preload
 
     try:
-        srv = make_server(data, host, port)
+        srv = make_server(data, host, port, {name: repo} if repo else None)
     except OSError:  # the port is taken (another viewer, perhaps): any free one
-        srv = make_server(data, host, 0)
+        srv = make_server(data, host, 0, {name: repo} if repo else None)
     url = f"http://{host}:{srv.server_address[1]}/#d={quote(name)}"
     preload(data / name)  # while the browser starts: a big model takes seconds to read
     print(f"viewer: {url}  (Ctrl-C to stop)", file=sys.stderr, flush=True)
