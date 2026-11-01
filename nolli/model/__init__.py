@@ -176,7 +176,10 @@ class Model:
 
     @classmethod
     def load(cls, path: Path) -> "Model":
-        d = json.loads(path.read_text())
+        return cls.from_dict(json.loads(path.read_text()))
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Model":
         m = cls()
         m.meta = d.get("meta", {})
         for e in d["entities"]:

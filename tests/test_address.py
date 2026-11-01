@@ -18,7 +18,7 @@ def test_no_module_spells_a_scheme():
     """A scheme in a string literal outside address.py means an id built or taken apart by
     hand: use address.py's functions, so the namespaces stay the one place that defines them."""
     found = []
-    for p in sorted((ROOT / "nolli").rglob("*.py")):
+    for p in sorted([*(ROOT / "nolli").rglob("*.py"), *(ROOT / "viewer").glob("*.py")]):
         if p.name == "address.py":
             continue
         for i, line in enumerate(p.read_text().splitlines(), 1):

@@ -32,7 +32,7 @@ HERE = Path(__file__).resolve().parent
 if not __package__:
     sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
-from nolli.model import Model  # noqa: E402
+from nolli.model import Model, address  # noqa: E402
 from nolli.changes import change_items, details  # noqa: E402
 from nolli.review import read_verdicts, resolve_verdicts  # noqa: E402
 from nolli.mermaid import ids as mermaid_ids, render  # noqa: E402
@@ -162,7 +162,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             m = load_model(ds / "model.json")
             x = q.get("id", "")
-            if not m.has(x[5:] if x.startswith("body:") else x):
+            if not m.has(address.owner(x)):
                 self.send_json({"error": f"no entity {x!r}"}, 404)
                 return
             self.send_json(details(m, x))

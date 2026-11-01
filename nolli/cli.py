@@ -3,7 +3,7 @@
     nolli view [<change> | <dataset dir>] [--whole] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli agent brief [<change>] | agent check <dataset> | agent skill [--install DIR]
     nolli ci comment <dataset> [--skipped no-key|fork]
-    nolli serve [--cache DIR] [--host H] [--port N]
+    nolli serve [--cache DIR] [--keep SIZE] [--host H] [--port N]
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
 
@@ -165,6 +165,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     argv = ["--host", args.host, "--budget", str(args.budget)]
     argv += ["--cache", args.cache] if args.cache else []
     argv += ["--port", str(args.port)] if args.port else []
+    argv += ["--keep", args.keep] if args.keep else []
     return hosted(argv)
 
 
@@ -312,6 +313,8 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, help="default: $PORT, else 8730")
     sv.add_argument("--budget", type=int, default=34)
+    sv.add_argument("--keep", help="the cache's size at most, e.g. 20G: what was used longest ago goes first "
+                    "(default: $NOLLI_CACHE_KEEP, else keep everything)")
     sv.set_defaults(fn=cmd_serve)
     ex = sub.add_parser("extract", help="extract the model of a repository")
     ex.add_argument("repo")
