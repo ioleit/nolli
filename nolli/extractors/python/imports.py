@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import ast
 
-from ... import address
-from ...model import USE, Entity, Provenance, Relation
+from ...model import USE, Entity, Provenance, Relation, address
 from .. import Context
 
 

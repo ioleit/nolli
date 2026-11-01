@@ -7,8 +7,7 @@ from __future__ import annotations
 
 import re
 
-from .. import address
-from ..model import CONTAIN, Entity, Provenance, Relation
+from ..model import CONTAIN, Entity, Provenance, Relation, address
 from . import Context
 
 

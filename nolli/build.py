@@ -10,10 +10,10 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import address, match
+from . import match
 from .extractors import Context, all_extractors, language_names
 from .mermaid import render
-from .model import Model
+from .model import Model, address
 from .progress import Progress, Quiet
 from .scene import ALL_ROLES, DEFAULT_ROLES, ViewState, compute, scene
 

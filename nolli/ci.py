@@ -25,9 +25,8 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from . import address
 from .change import ChangeError
-from .model import Model
+from .model import Model, address
 
 KEY = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)@([0-9a-f]{7,40})$")
 MARKER = "<!-- nolli -->"

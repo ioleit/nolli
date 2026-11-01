@@ -13,8 +13,7 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 
-from . import address
-from .model import CONTAIN, SYMBOL_KINDS, Model
+from .model import CONTAIN, SYMBOL_KINDS, Model, address
 from .rollup import fact_key
 
 

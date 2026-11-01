@@ -23,8 +23,7 @@ from __future__ import annotations
 import ast
 from collections import Counter
 
-from ... import address
-from ...model import USE, Entity, Provenance, Relation
+from ...model import USE, Entity, Provenance, Relation, address
 from .. import Context
 
 FUNC_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)

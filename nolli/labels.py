@@ -8,7 +8,7 @@ Text that has no icons (hover descriptions, residue) uses ``label_of``."""
 
 from __future__ import annotations
 
-from . import address
+from .model import address
 from .model import Model
 from .rollup import display_path, is_init
 

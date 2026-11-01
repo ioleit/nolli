@@ -10,7 +10,7 @@ the same for every protocol, and ``resolve`` (run by ``nolli.match``) binds call
 operations with the protocol's matcher (``MATCHERS``). Only the matcher and the way a
 path splits into segments are protocol knowledge; the rest is shared.
 
-The structure (entity kind, id; ``nolli/address.py`` makes the ids):
+The structure (entity kind, id; ``nolli/model/address.py`` makes the ids):
 
     group     api:                                 "APIs": the root group the filter shows or hides
     api       api:<protocol>:<key>                 one served API: an app, a server, a service definition
@@ -36,8 +36,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from .. import address
-from ..model import CONTAIN, PROVIDE, USE, Entity, Provenance, Relation
+from ..model import CONTAIN, PROVIDE, USE, Entity, Provenance, Relation, address
 from . import Context
 
 

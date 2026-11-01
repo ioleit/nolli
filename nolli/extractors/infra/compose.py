@@ -19,8 +19,7 @@ from pathlib import PurePosixPath
 
 import yaml
 
-from ... import address
-from ...model import ALLOCATE, CONTAIN, PROVIDE, USE, Entity, Provenance, Relation
+from ...model import ALLOCATE, CONTAIN, PROVIDE, USE, Entity, Provenance, Relation, address
 from .. import Context
 from ..interfaces import ensure_env
 

@@ -31,8 +31,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from ... import address
-from ...model import USE, Entity, Provenance, Relation
+from ...model import USE, Entity, Provenance, Relation, address
 from .. import Context
 from .imports import read
 

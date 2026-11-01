@@ -11,7 +11,7 @@ Nothing is a settled design.
   packages; relations `contain` (one ownership tree), `use`, `provide` (realization),
   `allocate` (software element → environment element). Chosen because it exists and
   covers the cases; not derived from requirements.
-- A fixed set of namespaces (`nolli/address.py`): `repo:` (directories, files, parts of
+- A fixed set of namespaces (`nolli/model/address.py`): `repo:` (directories, files, parts of
   files after `#`), `api:`, `pkg:` (artifacts, as package URLs), `runtime:`, `config:`;
   `unresolved:` holds references not bound yet and is not structure. nolli is opinionated
   about structure and extractors fill it in; a new domain (data stores, queues) is a new

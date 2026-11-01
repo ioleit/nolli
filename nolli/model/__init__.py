@@ -109,7 +109,7 @@ class Model:
         return r
 
     def ensure_root(self, scheme: str, extractor: str) -> str:
-        """The root group of a namespace (``nolli/address.py``), added if missing."""
+        """The root group of a namespace (``address.py``), added if missing."""
         rid = address.root(scheme)
         if rid not in self.entities:
             self.add_entity(Entity(rid, "group", address.NAMESPACES[scheme].title, {"synthetic": True}, Provenance(extractor)))

@@ -13,8 +13,7 @@ from dataclasses import dataclass, field
 
 from tree_sitter_language_pack import get_parser
 
-from ... import address
-from ...model import USE, Entity, Provenance, Relation
+from ...model import USE, Entity, Provenance, Relation, address
 from .. import Context
 
 GRAMMAR = {".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",

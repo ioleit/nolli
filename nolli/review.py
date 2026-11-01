@@ -11,10 +11,9 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from . import address
 from .changes import Links, ancestors_to_unfold, change_items, short
 from .mermaid import nid
-from .model import Model
+from .model import Model, address
 from .prose import code, count, listing, mark, one_line, paragraphs, say
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer

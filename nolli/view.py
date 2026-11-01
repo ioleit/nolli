@@ -10,7 +10,7 @@ no internal structure (externals, env, endpoints) never unfold by themselves.
 
 from __future__ import annotations
 
-from . import address
+from .model import address
 from .changes import change_scores, diff_index, is_diff
 from .rollup import hidden_by_role, image_aliases, init_anchor_dirs, is_init, reveal_scores, visible_from_expanded
 from .model import Model

@@ -9,7 +9,7 @@
  *   item: the review item last gone to ("C3"); dim: fade what did not change (diff datasets)
  */
 
-/** The repository's root directory, the canvas (nolli/address.py REPO_ROOT). */
+/** The repository's root directory, the canvas (nolli/model/address.py REPO_ROOT). */
 export const REPO_ROOT = "repo:";
 
 // expanded / roles / groups / budget / utilities null: let the server choose (default cut, roles, groups, threshold)

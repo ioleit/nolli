@@ -10,7 +10,7 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   comment but adds one for each pushed commit, so the PR's conversation reads commit,
   review, commit, review. Each commit's result stays downloadable (`nolli view`) until
   its artifact expires; a re-run on the same commit updates that commit's comment.
-- **Entity ids are addresses in a fixed set of namespaces** (`nolli/address.py`):
+- **Entity ids are addresses in a fixed set of namespaces** (`nolli/model/address.py`):
   `repo:` for directories, files and the classes and types in them
   (`repo:app/store.py#Store`), `api:` for operations (`api:http:<app>/items/{}#GET`, path
   parameters normalised), `pkg:` for packages and images (package URLs:

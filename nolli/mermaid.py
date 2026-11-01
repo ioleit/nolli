@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from . import address
+from .model import address
 from .changes import is_diff, node_diff
 from .labels import is_module, module_stem
 from .rollup import HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, display_path, hidden_by_role, image_aliases, is_init

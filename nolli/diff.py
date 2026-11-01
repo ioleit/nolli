@@ -31,8 +31,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import address
-from .model import CONTAIN, SYMBOL_KINDS, Entity, Model, Relation
+from .model import CONTAIN, SYMBOL_KINDS, Entity, Model, Relation, address
 
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 

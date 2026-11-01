@@ -26,8 +26,7 @@ from functools import cache
 from pathlib import Path
 from typing import Callable, Iterator
 
-from .. import address
-from ..model import Model
+from ..model import Model, address
 from ..progress import Progress, Quiet
 
 

@@ -5,7 +5,7 @@ import { ALL_ROLES, state } from "./state.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene */
 
-/** @type {Record<string, string>} what showing a group means, by its namespace (nolli/address.py); the server names the groups */
+/** @type {Record<string, string>} what showing a group means, by its namespace (nolli/model/address.py); the server names the groups */
 const GROUP_HELP = {
   api: "What this repo serves for others to call: one box per app, unfolding along its paths to the operations. Calls go into it, and from it to the handlers that realise them. Hidden: the callers' hover text counts their calls.",
   config: "Settings the code reads at runtime (environment variables), as one box you can unfold. Readers point into it, and from it to the services that set them. Hidden: the readers' hover text counts what they read.",

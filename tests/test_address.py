@@ -1,12 +1,11 @@
-"""The model's namespaces (nolli/address.py): addresses are made and read only there."""
+"""The model's namespaces (nolli/model/address.py): addresses are made and read only there."""
 
 import re
 from pathlib import Path
 
 import pytest
 
-from nolli import address
-from nolli.model import CONTAIN, ENTITY_KINDS, USE, Entity, Model, Relation
+from nolli.model import CONTAIN, ENTITY_KINDS, USE, Entity, Model, Relation, address
 
 ROOT = Path(__file__).resolve().parent.parent
 OLD = ("fs", "py", "ts", "svc", "img", "host", "env", "ext", "body")  # the prefixes before the namespaces

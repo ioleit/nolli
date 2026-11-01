@@ -8,8 +8,7 @@ import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ... import address
-from ...model import USE, Relation
+from ...model import USE, Relation, address
 from .. import Context
 from ..interfaces import ensure_ext
 

@@ -28,8 +28,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from . import address
-from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, Model
+from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, Model, address
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "data", "asset", "other")

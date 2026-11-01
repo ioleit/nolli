@@ -17,9 +17,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from . import address
 from .labels import is_module
-from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE
+from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, address
 from .prose import Ctx, by_use, count, listing, paragraphs, quote, say
 from .rollup import is_init
 
