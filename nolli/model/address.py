@@ -1,9 +1,8 @@
-"""Where structural entities live: the model's namespaces and the addresses in them.
+"""How an entity's id is spelled: its address in its namespace (``metamodel.py``).
 
-nolli is opinionated about structure: the model has a fixed set of namespaces, and an
-extractor's job is to put what it finds into them. An entity's id is its address. Addresses
-are made and read only here: every other module uses these functions, never string
-operations on ids (``tests/test_address.py`` fails when another module spells a scheme).
+An entity's id is its address. Addresses are made and read only here: every other module
+uses these functions, never string operations on ids (``tests/test_address.py`` fails when
+another module spells a scheme).
 
 An address names a thing within one snapshot. Base and head of a change produce the same
 address for the same thing on their own, which is what lets a diff be one merged model
@@ -12,94 +11,44 @@ extractors say about a thing (a folder that becomes a package keeps its address)
 (on edges), commits, provenance. Addresses are relative to the repository unless the thing
 has a name of its own outside it (a package on a registry).
 
-The namespaces, by scheme:
+An address is the namespace's name as its scheme, then:
 
 ``repo:``
-    A directory, a file or a part of a file in the repository, by its path relative to the
-    repository root (``repo:nolli/scene.py``; the root itself is ``repo:``). A part of a
-    file follows ``#``: segments joined by ``.``, which the file's extractor defines
-    (``repo:nolli/scene.py#ViewState``, a nested class would be ``#Outer.Inner``).
+    The path relative to the repository root (``repo:nolli/scene.py``; the root itself is
+    ``repo:``). A part of a file follows ``#``: segments joined by ``.``, which the file's
+    extractor defines (``repo:nolli/scene.py#ViewState``, a nested class would be
+    ``#Outer.Inner``).
 ``api:``
-    An operation that code in scope serves or calls, and its groupings: the app serving it
-    (``api:http:server/main.py:app``), a step of its path below the app, parameters written
-    ``{}`` (``api:http:server/main.py:app/items/{}``), and the operation, its method after
-    ``#`` (``api:http:server/main.py:app/items/{}#GET``).
+    The protocol and the app (``api:http:server/main.py:app``), a step of the path below the
+    app, parameters written ``{}`` (``api:http:server/main.py:app/items/{}``), and for an
+    operation its method after ``#`` (``api:http:server/main.py:app/items/{}#GET``).
 ``pkg:``
-    An artifact: a built unit that is immutable and versioned, as a package URL
-    (https://github.com/package-url/purl-spec): ``pkg:npm/elkjs``, ``pkg:npm/%40scope/name``.
-    A Python import names a module, not the distribution on PyPI that provides it, so it is
-    ``pkg:python/yaml``, not ``pkg:pypi/...``. An artifact built in the repository that no registry
-    names is ``pkg:build/`` and the repository path of the recipe it is built from
-    (``pkg:build/web/Dockerfile``); ``build`` is nolli's own type, not a registered one.
+    A package URL (https://github.com/package-url/purl-spec): ``pkg:npm/elkjs``,
+    ``pkg:npm/%40scope/name``. A Python import names a module, not the distribution on PyPI
+    that provides it, so it is ``pkg:python/yaml``, not ``pkg:pypi/...``. An artifact built
+    in the repository that no registry names is ``pkg:build/`` and the repository path of
+    the recipe it is built from (``pkg:build/web/Dockerfile``); ``build`` is nolli's own
+    type, not a registered one.
 ``runtime:``
-    Something that executes and is reachable at runtime, by its host name: a compose
-    service (``runtime:db``, which the other services reach as host ``db``), a host outside
-    (``runtime:api.stripe.com``).
+    The host name it is reached at: ``runtime:db`` for a compose service (the other services
+    reach it as host ``db``), ``runtime:api.stripe.com``.
 ``config:``
-    A name the code reads at runtime to steer its behaviour, wherever its value comes from
-    (``config:DATABASE_URL``).
+    The name (``config:DATABASE_URL``).
+``unresolved:``
+    What the reference names, after the sort of reference (``unresolved:py:requests.adapters``).
 
-The root of each namespace (``api:``, ``pkg:``, ``runtime:``, ``config:``) is a group holding
-its top-level entities; the root of ``repo:`` is the repository's directory. ``contain``
-never crosses namespaces; which namespaces the other relations connect is ``RELATIONS``.
-
-``unresolved:`` is not a namespace of the model's structure: it holds references an
-extractor saw but could not bind to an address yet (``unresolved:py:requests.adapters``).
-The matchers bind them (``nolli/match.py``); those left are gathered under its root.
+A namespace's root is its scheme alone (``api:``, ``repo:``).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from urllib.parse import quote, unquote
 
-REPO, API, PKG, RUNTIME, CONFIG, UNRESOLVED = "repo", "api", "pkg", "runtime", "config", "unresolved"
-
-
-@dataclass(frozen=True)
-class Namespace:
-    scheme: str
-    title: str  # the name of its root group
-    kinds: tuple[str, ...]  # what its entities may be (its root aside)
-    structural: bool = True
-
-
-NAMESPACES: dict[str, Namespace] = {ns.scheme: ns for ns in (
-    Namespace(REPO, "Repository", ("directory", "file", "class", "interface", "type", "enum", "function")),  # model.SYMBOL_KINDS
-    Namespace(API, "APIs", ("api", "resource", "endpoint")),
-    Namespace(PKG, "Artifacts", ("package", "image")),
-    Namespace(RUNTIME, "Runtime", ("service", "host")),
-    Namespace(CONFIG, "Configuration", ("env",)),
-    Namespace(UNRESOLVED, "Unresolved references", ("unresolved",), structural=False),
-)}
-
-
-# The other relations, by the namespaces of their ends (Model.add_relation checks them). A
-# reference may end unresolved wherever it would end in the namespace it will be bound into.
-RELATIONS: dict[str, set[tuple[str, str]]] = {
-    "use": {(REPO, REPO), (REPO, API), (REPO, PKG), (REPO, CONFIG), (REPO, RUNTIME),  # imports, calls, reads, URLs
-            (PKG, REPO),  # an image's entrypoint
-            (RUNTIME, RUNTIME),  # a service depends on another or reaches it by URL
-            (REPO, UNRESOLVED)},
-    "provide": {(REPO, API),  # code serves an operation
-                (RUNTIME, CONFIG)},  # a service sets a variable
-    "allocate": {(REPO, PKG),  # files copied into an image
-                 (PKG, RUNTIME)},  # an image run as a service
-}
-
-
-def check_relation(kind: str, src: str, dst: str) -> None:
-    """Raises unless a ``kind`` relation may connect these two addresses."""
-    ends = (scheme_of(src), scheme_of(dst))
-    if kind == "contain":
-        if ends[0] != ends[1]:
-            raise ValueError(f"contain crosses namespaces: {src} -> {dst}")
-    elif ends not in RELATIONS.get(kind, set()):
-        raise ValueError(f"no {kind} from {ends[0]}: to {ends[1]}: ({src} -> {dst})")
+from .metamodel import API, CONFIG, NAMESPACES, PKG, REPO, RUNTIME, UNRESOLVED  # noqa: F401 (spelled through address)
 
 
 def scheme_of(eid: str) -> str:
-    """The namespace an address is in (``repo``)."""
+    """The namespace an address is in (``repo``), by its scheme."""
     scheme, sep, _ = eid.partition(":")
     if not sep or scheme not in NAMESPACES:
         raise ValueError(f"not an address in a known namespace: {eid!r}")
@@ -118,16 +67,6 @@ REPO_ROOT = REPO + ":"  # the repository's root directory
 
 def is_root(eid: str) -> bool:
     return eid.endswith(":") and eid[:-1] in NAMESPACES
-
-
-def check(eid: str, kind: str) -> None:
-    """Raises unless ``eid`` is an address whose namespace may hold an entity of ``kind``."""
-    ns = NAMESPACES[scheme_of(eid)]
-    if is_root(eid):
-        if kind != ("directory" if ns.scheme == REPO else "group"):
-            raise ValueError(f"the root of {ns.scheme}: cannot be a {kind}")
-    elif kind not in ns.kinds:
-        raise ValueError(f"{eid!r}: a {kind} has no place in {ns.scheme}: (holds {', '.join(ns.kinds)})")
 
 
 # ---------- repo: ----------

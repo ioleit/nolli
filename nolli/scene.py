@@ -14,8 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 
-from .model import address
-from .model import USE, Model
+from .model import USE, Model, address, metamodel
 from .rollup import (
     HIDDEN_ROLES_DEFAULT, fact_key, hidden_by_role, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
     representative, rollup, utility_badges, visible_from_expanded,
@@ -227,7 +226,7 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
         residue.append("utilities: " + ", ".join(label_of(m, u, expanded) for u in sorted(utilities)))
 
     groups = [{"id": r, "namespace": address.scheme_of(r), "name": m.entities[r].name, "size": len(m.children(r)), "shown": r in shown_groups}
-              for r in m.roots() if m.entities[r].kind == "group" and address.NAMESPACES[address.scheme_of(r)].structural and m.children(r)]
+              for r in m.roots() if m.entities[r].kind == "group" and metamodel.NAMESPACES[address.scheme_of(r)].structural and m.children(r)]
     # files and directories per role, for the Show filter ("mixed" is a directory role only)
     by_role: dict[str, dict[str, int]] = {r: {"files": 0, "dirs": 0} for r in ALL_ROLES}
     for e in m.entities.values():

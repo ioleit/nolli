@@ -19,8 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .model import address
-from .model import Model
+from .model import Model, address
 from .rollup import RolledUp, chain_end, is_init
 from .labels import label_of
 

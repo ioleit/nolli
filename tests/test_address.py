@@ -1,15 +1,16 @@
-"""The model's namespaces (nolli/model/address.py): addresses are made and read only there."""
+"""The metamodel's namespaces (nolli/model/metamodel.py) and the addresses in them
+(nolli/model/address.py): addresses are made and read only there."""
 
 import re
 from pathlib import Path
 
 import pytest
 
-from nolli.model import CONTAIN, ENTITY_KINDS, USE, Entity, Model, Relation, address
+from nolli.model import CONTAIN, ENTITY_KINDS, USE, Entity, Model, Relation, address, metamodel
 
 ROOT = Path(__file__).resolve().parent.parent
 OLD = ("fs", "py", "ts", "svc", "img", "host", "env", "ext", "body")  # the prefixes before the namespaces
-SCHEMES = "|".join((*address.NAMESPACES, *OLD))
+SCHEMES = "|".join((*metamodel.NAMESPACES, *OLD))
 SPELLED = re.compile(rf"""(?<![\w.])[fr]?["'](?:{SCHEMES}):""")
 
 
@@ -30,9 +31,9 @@ def test_no_module_spells_a_scheme():
     assert not found, "\n".join(found)
 
 
-def test_kinds_are_the_models():
-    kinds = {k for ns in address.NAMESPACES.values() for k in ns.kinds}
-    assert kinds | {"group"} == set(ENTITY_KINDS)
+def test_every_kind_has_a_namespace():
+    kinds = {k for ns in metamodel.NAMESPACES.values() for k in (*ns.kinds, ns.root_kind)}
+    assert kinds == set(ENTITY_KINDS)
 
 
 def test_repo_addresses():
@@ -86,5 +87,5 @@ def test_the_model_keeps_to_the_namespaces():
     m.add_relation(Relation(CONTAIN, root, db))
     with pytest.raises(ValueError, match="crosses"):
         m.add_relation(Relation(CONTAIN, "repo:", db))
-    with pytest.raises(ValueError, match="no use from runtime: to repo:"):
+    with pytest.raises(ValueError, match="no use from runtime to repo"):
         m.add_relation(Relation(USE, db, "repo:a.py"))
