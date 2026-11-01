@@ -3,7 +3,8 @@
 //
 // It goes where it hides the least of the picture: of a few spots around the box (or
 // around the pointer, for an edge), the one covering the fewest other boxes and edges,
-// never the box itself. It glows like what it describes.
+// never the box itself, and above all not what is lit: what it describes glows with what
+// goes with it (draw.js, interestOf), and the card keeps clear of all of that.
 //
 // A card can also be kept open (pinTip): clicking a verdict mark, or going to a review item.
 // It stays when the pointer leaves, until Esc, a click on the canvas, a pan or zoom, or
@@ -32,30 +33,46 @@ function render(card) {
   return cols;
 }
 
-/**
- * What the text should not cover, in page coordinates: every folded box, and points
- * along every edge (one per 16 px).
- * @param {Element | null} self the hovered box (not an obstacle to itself)
- * @returns {{ boxes: DOMRect[], points: { x: number, y: number }[] }}
- */
-function obstacles(self) {
-  const boxes = [...document.querySelectorAll("#root g.node.folded > rect, #root g.node.folded > circle")]
-    .filter(r => !self || !self.contains(r)).map(r => r.getBoundingClientRect());
-  /** @type {{ x: number, y: number }[]} */
-  const points = [];
-  for (const p of /** @type {NodeListOf<SVGPathElement>} */ (document.querySelectorAll("#root g.edge > path:first-of-type"))) {
-    const m = p.getScreenCTM();
-    if (!m) continue;
-    const len = p.getTotalLength();
-    for (let d = 0; d <= len; d += 16 / Math.max(m.a, 0.2)) {
-      const q = p.getPointAtLength(d);
-      points.push({ x: q.x * m.a + q.y * m.c + m.e, y: q.x * m.b + q.y * m.d + m.f });
-    }
+/** What lies under some of the picture: box areas, and points along edges. @typedef {{ boxes: DOMRect[], points: { x: number, y: number }[] }} Shapes */
+
+/** Points along an edge's line, in page coordinates, every `step` px on screen. @param {SVGPathElement} path @param {number} step */
+function along(path, step) {
+  const m = path.getScreenCTM();
+  if (!m) return [];
+  const len = path.getTotalLength(), out = [];
+  for (let d = 0; d <= len; d += step / Math.max(m.a, 0.05)) {
+    const q = path.getPointAtLength(d);
+    out.push({ x: q.x * m.a + q.y * m.c + m.e, y: q.x * m.b + q.y * m.d + m.f });
   }
-  return { boxes, points };
+  return out;
 }
 
-/** @param {{ x: number, y: number, w: number, h: number }} t @param {ReturnType<typeof obstacles>} o */
+const HEADER = 26;  // an unfolded box's header, its title line
+
+/**
+ * What the text should not cover, in page coordinates: every folded box, the header of every
+ * unfolded one (its title and changed lines; a card can't stay off all of it), and points along
+ * every edge (one per 16 px); `lit`, what is lit, kept apart.
+ * @param {Element | null} self the hovered box (not an obstacle to itself)
+ * @returns {{ other: Shapes, lit: Shapes }}
+ */
+function obstacles(self) {
+  /** @type {{ other: Shapes, lit: Shapes }} */
+  const o = { other: { boxes: [], points: [] }, lit: { boxes: [], points: [] } };
+  for (const g of document.querySelectorAll("#root g.node")) {
+    if (self && self === g) continue;
+    const shape = g.querySelector(":scope > rect, :scope > circle");
+    if (!shape) continue;
+    const r = shape.getBoundingClientRect(), on = g.classList.contains("lit") ? o.lit : o.other;
+    if (g.classList.contains("folded")) on.boxes.push(r);
+    else { const k = /** @type {SVGGraphicsElement} */ (shape).getScreenCTM()?.a || 1; on.boxes.push(new DOMRect(r.x, r.y, r.width, Math.min(r.height, HEADER * k))); }
+  }
+  for (const p of /** @type {NodeListOf<SVGPathElement>} */ (document.querySelectorAll("#root g.edge > path:first-of-type")))
+    (p.parentElement?.classList.contains("lit") ? o.lit : o.other).points.push(...along(p, 16));
+  return o;
+}
+
+/** @param {{ x: number, y: number, w: number, h: number }} t @param {Shapes} o */
 function covered(t, o) {
   let area = 0;
   for (const b of o.boxes) {
@@ -69,20 +86,17 @@ function covered(t, o) {
 
 /**
  * Where to put a w × h text next to one of `arounds` (page coordinates, in order of
- * preference), inside `bounds`, covering as little as possible and, above all, not what it
- * describes: the box, or the points along the edge (`own`).
+ * preference), inside `bounds`, covering as little as possible, much less of what is lit,
+ * and never the place it is beside.
  * @param {{ left: number, top: number, right: number, bottom: number }[]} arounds
  * @param {number} w @param {number} h @param {DOMRect} bounds @param {ReturnType<typeof obstacles>} o
- * @param {{ x: number, y: number }[]} own
  */
-function place(arounds, w, h, bounds, o, own) {
+function place(arounds, w, h, bounds, o) {
   let best = null, bestScore = Infinity;
   arounds.forEach((around, i) => {
     for (const [j, t] of spotsAround(around, w, h, bounds).entries()) {
-      let hit = 0;
-      for (const p of own) if (p.x > t.x && p.x < t.x + t.w && p.y > t.y && p.y < t.y + t.h) hit++;
       const overSelf = Math.min(t.x + w, around.right) - Math.max(t.x, around.left) > 0 && Math.min(t.y + h, around.bottom) - Math.max(t.y, around.top) > 0;
-      const score = covered(t, o) + hit * 1e5 + (overSelf ? 1e9 : 0) + i * 400 + j;
+      const score = covered(t, o.other) + covered(t, o.lit) * 1000 + (overSelf ? 1e9 : 0) + i * 400 + j;
       if (score < bestScore) { best = t; bestScore = score; }
     }
   });
@@ -105,23 +119,18 @@ function spotsAround(around, w, h, bounds) {
     { x: cx - w / 2, y: around.bottom + GAP },                // below, centred
     { x: around.right + GAP, y: around.bottom - h },          // right, bottom-aligned
     { x: around.left - GAP - w, y: cy - h / 2 },              // left, centred
+    { x: around.left - GAP - w, y: around.bottom - h },       // left, bottom-aligned
+    { x: around.right - w, y: around.top - GAP - h },         // above, right-aligned
   ];
   // keep inside the canvas; a spot pushed back over what it describes scores badly in place()
   return spots.map(s => ({ x: Math.min(Math.max(s.x, bounds.left + 8), bounds.right - w - 8),
                           y: Math.min(Math.max(s.y, bounds.top + 8), bounds.bottom - h - 8), w, h }));
 }
 
-/** Points along an edge's line, in page coordinates, every 12 px on screen. @param {Element} ge */
+/** Points along a drawn edge's line, every 12 px on screen. @param {Element} ge */
 function edgePoints(ge) {
   const path = /** @type {SVGPathElement | null} */ (ge.querySelector(":scope > path"));
-  const m = path && path.getScreenCTM();
-  if (!path || !m) return [];
-  const len = path.getTotalLength(), out = [];
-  for (let d = 0; d <= len; d += 12 / Math.max(m.a, 0.05)) {
-    const q = path.getPointAtLength(d);
-    out.push({ x: q.x * m.a + q.y * m.c + m.e, y: q.x * m.b + q.y * m.d + m.f });
-  }
-  return out;
+  return path ? along(path, 12) : [];
 }
 
 /** @type {Card | null} the card on show, so moving within one box does not move it */
@@ -133,14 +142,13 @@ let pinned = false;
 /**
  * Show a card beside one of `arounds` (page coordinates, preferred first).
  * @param {Card} card @param {Around[]} arounds @param {Element | null} self the box it describes
- * @param {{ x: number, y: number }[]} [own] points along the edge it describes
  */
-function put(card, arounds, self, own = []) {
+function put(card, arounds, self) {
   tipEl.replaceChildren(render(card)); shown = card;
   tipEl.classList.toggle("two", !!card.review);
   tipEl.style.display = "block";
   const canvas = svg.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
-  const t = place(arounds, w, h, canvas, obstacles(self), own);
+  const t = place(arounds, w, h, canvas, obstacles(self));
   tipEl.style.left = (t.x - canvas.left) + "px"; tipEl.style.top = (t.y - canvas.top) + "px";
 }
 
@@ -149,31 +157,36 @@ const near = p => ({ left: p.x - 6, right: p.x + 6, top: p.y - 6, bottom: p.y + 
 
 /**
  * Where a card about a drawn thing may go beside: a box's shape; for an edge, places along
- * its line from the middle outwards (the card then stays off the whole line).
- * @param {Element} x @returns {{ arounds: Around[], own: { x: number, y: number }[], self: Element | null }}
+ * its line from the middle outwards (the line is lit, so the card stays off it).
+ * @param {Element} x @returns {{ arounds: Around[], self: Element | null }}
  */
 function aroundOf(x) {
   if (!x.matches("g.edge")) {
     const shape = x.querySelector(":scope > rect, :scope > circle");
-    return { arounds: [(shape || x).getBoundingClientRect()], own: [], self: x };
+    return { arounds: [(shape || x).getBoundingClientRect()], self: x };
   }
   const own = edgePoints(x);
-  if (!own.length) return { arounds: [x.getBoundingClientRect()], own, self: null };
+  if (!own.length) return { arounds: [x.getBoundingClientRect()], self: null };
   const at = (/** @type {number} */ f) => near(own[Math.min(own.length - 1, Math.round(f * (own.length - 1)))]);
-  return { arounds: [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map(at), own, self: null };
+  return { arounds: [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map(at), self: null };
 }
 
 /**
  * @param {MouseEvent} ev
  * @param {Card} card a scene node or edge, or a card made for the occasion
- * @param {Element | null} [box] the hovered box or edge: the text goes beside it; without, beside the pointer
- * @param {Element | null} [edge] an edge hovered at the pointer: the text goes beside the pointer, off the edge's line
+ * @param {Element | null} [box] the hovered box, the text goes beside it; or the hovered edge, the
+ *   text goes beside the pointer or else elsewhere along the line; without, beside the pointer
+ * Whatever is lit when it is called, the card keeps clear of.
  */
-export function showTip(ev, card, box = null, edge = null) {
+export function showTip(ev, card, box = null) {
   if (card === shown) return;
   pinned = false;
-  if (box) { const a = aroundOf(box); put(card, a.arounds, a.self, a.own); return; }
-  put(card, [near({ x: ev.clientX, y: ev.clientY })], null, edge ? edgePoints(edge) : []);
+  const pointer = near({ x: ev.clientX, y: ev.clientY });
+  if (box && !box.matches("g.edge")) { const a = aroundOf(box); put(card, a.arounds, a.self); return; }
+  // an edge: beside the pointer if it can, else beside some other part of the line, else beside
+  // the boxes lit with it (its two ends)
+  const ends = [...document.querySelectorAll("#root g.node.folded.lit > rect")].map(r => r.getBoundingClientRect());
+  put(card, [pointer, ...box ? aroundOf(box).arounds : [], ...ends], null);
 }
 
 /**
@@ -182,7 +195,7 @@ export function showTip(ev, card, box = null, edge = null) {
  */
 export function pinTip(card, target) {
   const a = aroundOf(target);
-  put(card, a.arounds, a.self, a.own);
+  put(card, a.arounds, a.self);
   pinned = true;
 }
 

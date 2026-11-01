@@ -10,6 +10,9 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   the edge runs through the middle of the mark, and room is made for it, instead of the
   viewer guessing a spot near the route's middle bend.
 - **"fine" verdicts are marked in the diagram too**, with their grey ✓.
+- **Hovering an edge lights the boxes at its two ends**, as hovering a box lights its
+  edges. Every hover, verdict mark and review item lights the same set for the same box or
+  edge, and its card keeps clear of whatever is lit (and of the titles of unfolded boxes).
 
 ## 0.6.0
 
