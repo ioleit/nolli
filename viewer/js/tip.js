@@ -47,11 +47,10 @@ function along(path, step) {
   return out;
 }
 
-const HEADER = 26;  // an unfolded box's header, its title line
-
 /**
- * What the text should not cover, in page coordinates: every folded box, the header of every
- * unfolded one (its title and changed lines; a card can't stay off all of it), and points along
+ * What the text should not cover, in page coordinates: every folded box, what's written in the
+ * header of every unfolded one (its icons, title, changed lines and badges; a card can't stay
+ * off all of the box), and points along
  * every edge (one per 16 px); `lit`, what is lit, kept apart.
  * @param {Element | null} self the hovered box (not an obstacle to itself)
  * @returns {{ other: Shapes, lit: Shapes }}
@@ -65,7 +64,8 @@ function obstacles(self) {
     if (!shape) continue;
     const r = shape.getBoundingClientRect(), on = g.classList.contains("lit") ? o.lit : o.other;
     if (g.classList.contains("folded")) on.boxes.push(r);
-    else { const k = /** @type {SVGGraphicsElement} */ (shape).getScreenCTM()?.a || 1; on.boxes.push(new DOMRect(r.x, r.y, r.width, Math.min(r.height, HEADER * k))); }
+    // what's written in its header, each piece on its own: the strip between them is free
+    else for (const x of g.querySelectorAll(":scope > text:not(.uses), :scope > g")) on.boxes.push(x.getBoundingClientRect());
   }
   for (const p of /** @type {NodeListOf<SVGPathElement>} */ (document.querySelectorAll("#root g.edge > path:first-of-type")))
     (p.parentElement?.classList.contains("lit") ? o.lit : o.other).points.push(...along(p, 16));
