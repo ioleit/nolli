@@ -124,10 +124,10 @@ def test_default_cut_lifts_frontend_to_backend(repo: Path):
 def test_scene_of_default_cut(repo: Path):
     """The scene the viewer draws: stable ids, every node's parent drawn before it, edges
     between drawn nodes, and a state the client can send back unchanged."""
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     m, _ = extract(repo)
-    sc = scene(m, ViewState(budget=12))
+    sc = scene(m, SceneState(budget=12))
     ids = [n["id"] for n in sc["nodes"]]
     assert len(ids) == len(set(ids))
     seen: set[str] = set()
@@ -137,27 +137,27 @@ def test_scene_of_default_cut(repo: Path):
     assert all(e["src"] in seen and e["dst"] in seen for e in sc["edges"])
     assert len({e["key"] for e in sc["edges"]}) == len(sc["edges"])
     assert any(e["style"] == "http" for e in sc["edges"])
-    again = scene(m, ViewState(expanded=sc["state"]["expanded"], budget=12))
+    again = scene(m, SceneState(expanded=sc["state"]["expanded"], budget=12))
     assert again["nodes"] == sc["nodes"] and again["edges"] == sc["edges"]
 
 
 def test_folding_drops_what_was_unfolded_inside(repo: Path):
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     m, _ = extract(repo)
-    inner = ViewState(expanded=["fs:.", "fs:backend", "fs:backend/store.py"])
+    inner = SceneState(expanded=["fs:.", "fs:backend", "fs:backend/store.py"])
     assert "fs:backend/store.py" in scene(m, inner)["state"]["expanded"]
-    folded = scene(m, ViewState(expanded=["fs:.", "fs:backend/store.py"]))
+    folded = scene(m, SceneState(expanded=["fs:.", "fs:backend/store.py"]))
     assert folded["state"]["expanded"] == ["fs:."]
 
 
 def test_hover_descriptions(repo: Path):
     """Every drawn box and edge describes itself in plain sentences, with the data set apart."""
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     m, _ = extract(repo)
     text = lambda line: line.replace("`", "")  # noqa: E731
-    sc = scene(m, ViewState(budget=12))
+    sc = scene(m, SceneState(budget=12))
     for item in sc["nodes"] + sc["edges"]:
         assert item["info"], item.get("id") or item.get("key")
         assert isinstance(item["info"], str)
@@ -165,7 +165,7 @@ def test_hover_descriptions(repo: Path):
     http = next(e for e in sc["edges"] if e["style"] == "http")
     assert "to endpoints served by" in text(http["info"])
     # with the APIs group hidden, calls are in the caller's hover text, not edges
-    folded = scene(m, ViewState(budget=12, groups=[]))
+    folded = scene(m, SceneState(budget=12, groups=[]))
     assert not any(e["style"] == "http" for e in folded["edges"])
     app = next(n for n in folded["nodes"] if n["id"] == "fs:frontend/src/App.tsx")
     assert "Calls 1 HTTP endpoint" in text(app["info"]).split("\n\n")
@@ -177,19 +177,19 @@ def test_hover_descriptions(repo: Path):
 def test_groups_are_a_filter(repo: Path):
     """A shown group is a box like any other (edges attach to it, it unfolds); a group the
     filter hides is not drawn, its edges are badges, and it can't be unfolded."""
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     m, _ = extract(repo)
-    shown = scene(m, ViewState(budget=12, groups=["api"]))
+    shown = scene(m, SceneState(budget=12, groups=["api"]))
     apis = next(n for n in shown["nodes"] if n["id"] == "api")
     assert apis["foldable"] and not apis["container"]
     assert any("api" in (e["src"], e["dst"]) for e in shown["edges"])
     assert {g["id"]: g["shown"] for g in shown["groups"]}["api"] is True
 
-    opened = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["api"], groups=["api"]))
+    opened = scene(m, SceneState(expanded=shown["state"]["expanded"] + ["api"], groups=["api"]))
     assert any(n["parent"] == "api" for n in opened["nodes"])
 
-    hidden = scene(m, ViewState(expanded=shown["state"]["expanded"] + ["api"], groups=[]))
+    hidden = scene(m, SceneState(expanded=shown["state"]["expanded"] + ["api"], groups=[]))
     assert "api" not in hidden["state"]["expanded"]
     assert all(n["id"] != "api" and n["parent"] != "api" for n in hidden["nodes"])
     assert not any(n["id"] in ("env", "deploy") for n in hidden["nodes"])  # env set by deployment: both hidden, no edge
@@ -200,10 +200,10 @@ def test_utilities_by_incoming_edges(repo: Path):
     become badges on their sources. Boxes in groups never are."""
     from nolli.model import USE
     from nolli.rollup import utility_badges
-    from nolli.scene import ViewState, compute
+    from nolli.scene import SceneState, compute
 
     m, _ = extract(repo)
-    _x, _h, _v, rolled, _u = compute(m, ViewState(utilities=0))
+    _x, _h, _v, rolled, _u = compute(m, SceneState(utilities=0))
     before = list(rolled.edges)
     utilities = utility_badges(m, rolled, min_in=0)  # every used box outside a group
     targets = {e.dst for e in before if e.kind == USE}
@@ -211,7 +211,7 @@ def test_utilities_by_incoming_edges(repo: Path):
     assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
     src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
     assert any(k.startswith("util:") for k in rolled.annotations[src])
-    _x, _h, _v, rolled, _u = compute(m, ViewState(utilities=0))
+    _x, _h, _v, rolled, _u = compute(m, SceneState(utilities=0))
     assert utility_badges(m, rolled, min_in=1) == set()  # nothing has more than one
 
 
@@ -219,16 +219,16 @@ def test_folder_text_matches_unfolding(repo: Path):
     """A folder's sentence counts exactly the boxes that unfolding then draws, and modules
     report their lines (from the Python front-end's describe module)."""
     import re
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     m, _ = extract(repo)
     text = lambda line: line.replace("`", "")  # noqa: E731
-    before = scene(m, ViewState(expanded=["fs:."]))
+    before = scene(m, SceneState(expanded=["fs:."]))
     backend = next(n for n in before["nodes"] if n["id"] == "fs:backend")
     said = text(backend["info"].split("\n\n")[0])
     assert said.startswith("backend/ is a Python package with "), said
     promised = sum(int(n) for n in re.findall(r"(\d+) ", said))
-    after = scene(m, ViewState(expanded=["fs:.", "fs:backend"]))
+    after = scene(m, SceneState(expanded=["fs:.", "fs:backend"]))
     drawn = [n for n in after["nodes"] if n["parent"] == "fs:backend" and n["kind"] != "anchor"]
     assert promised == len(drawn), (said, [n["id"] for n in drawn])
     store = next(n for n in after["nodes"] if n["id"] == "fs:backend/store.py")
@@ -239,7 +239,7 @@ def test_folder_text_matches_unfolding(repo: Path):
 def test_docstrings(tmp_path: Path):
     """Module, class and package docstrings are read from the syntax tree, not imported,
     and shown as their own line."""
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg/__init__.py").write_text('"""Tools for frobbing.\n\nLong details nobody reads."""\n')
@@ -248,7 +248,7 @@ def test_docstrings(tmp_path: Path):
     m, _ = extract(tmp_path)
     assert m.entities["fs:pkg/core.py"].attrs["doc"] == "The core frobber."
     assert m.entities["py:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
-    sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
+    sc = scene(m, SceneState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
     docs = {n["id"]: [p[2:].replace("\\", "") for p in n["info"].split("\n\n") if p.startswith("> ")] for n in sc["nodes"]}
     assert docs["fs:pkg"] == ["Tools for frobbing."]  # first paragraph only
     assert docs["py:pkg/core.py#Frob"] == ["Frobs one thing at a time."]
@@ -257,7 +257,7 @@ def test_docstrings(tmp_path: Path):
 def test_own_code_dot(tmp_path: Path):
     """A module's own-code dot names its functions (most referenced first) and constants;
     a package's names what its __init__.py defines and re-exports."""
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg/__init__.py").write_text("from .core import Frob, frob\n\ndef setup():\n    return Frob()\n")
@@ -268,7 +268,7 @@ def test_own_code_dot(tmp_path: Path):
     core = m.entities["fs:pkg/core.py"].attrs
     assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
     assert m.entities["fs:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
-    sc = scene(m, ViewState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
+    sc = scene(m, SceneState(expanded=["fs:.", "fs:pkg", "fs:pkg/core.py"]))
     text = lambda line: line.replace("`", "")  # noqa: E731
     info = {n["id"]: text(n["info"]).split("\n\n") for n in sc["nodes"]}
     assert info["body:fs:pkg/core.py"][0] == "core defines frob and helper"  # frob is referenced, helper not
@@ -292,12 +292,12 @@ def test_directory_with_source_inside_stays_shown():
 
 def test_box_names_are_icons_then_a_name(repo: Path):
     """Every box: small icons saying what it is, then a readable name."""
-    from nolli.scene import ViewState, scene
+    from nolli.scene import SceneState, scene
 
     m, _ = extract(repo)
     app = "api:http:backend/main.py:app"
     worlds = app + "/api/worlds"
-    sc = scene(m, ViewState(expanded=["fs:.", "fs:backend", "api", app, worlds], groups=["api"]))
+    sc = scene(m, SceneState(expanded=["fs:.", "fs:backend", "api", app, worlds], groups=["api"]))
     names = {n["id"]: (n["icons"], n["label"]) for n in sc["nodes"] if "icons" in n}
     assert names["fs:backend/store.py"] == (["m"], "store")
     assert names[app] == (["API"], "backend")
@@ -316,3 +316,37 @@ def test_markdown_from_repository_text():
     assert quote("The core\n  frobber.") == "> The core frobber."
     # a docstring's own code spans stay, backslashes and all; the rest is text
     assert quote("Used by ``nolli/cli.py`` and `a_b`, not *this* or ` alone") == r"> Used by ``nolli/cli.py`` and `a_b`, not \*this\* or \` alone"
+
+
+def test_mermaid_draws_the_scene(repo: Path):
+    """The Mermaid renderer draws the scene it is given, for any scene state: every box (an
+    unfolded one as a subgraph), every edge, and nothing else; the repository root is the
+    canvas, not a subgraph."""
+    import re
+
+    from nolli.mermaid import nid, render
+    from nolli.scene import SceneState, scene
+
+    m, _ = extract(repo)
+    for st in (SceneState(budget=12), SceneState(preset="folded"), SceneState(preset="unfolded"),
+               SceneState(expanded=["fs:.", "fs:backend"])):
+        sc = scene(m, st)
+        text = render(sc)
+        boxes = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+?)(?:_g)? ?[\[(]", line))}
+        assert boxes == {nid(n["id"]) for n in sc["nodes"]}
+        edges = [line for line in text.splitlines() if re.match(r"\s*n_\w+ (?:-->|-\.->|==>)", line)]
+        assert len(edges) == len(sc["edges"])
+        assert nid("fs:.") not in text
+
+
+def test_presets(repo: Path):
+    """A preset names a cut; the scene says which one gave it, and none once boxes are given."""
+    from nolli.scene import SceneState, scene, state_from_query
+
+    m, _ = extract(repo)
+    folded = scene(m, state_from_query({"p": "folded"}))
+    assert folded["state"]["expanded"] == ["fs:."] and folded["state"]["preset"] == "folded"
+    unfolded = scene(m, SceneState(preset="unfolded"))
+    assert {"fs:backend", "fs:backend/api"} <= set(unfolded["state"]["expanded"])
+    assert scene(m, SceneState(preset="changes"))["state"]["preset"] == "default"  # not a change's dataset
+    assert scene(m, state_from_query({"p": "folded", "x": "fs:.,fs:backend"}))["state"]["preset"] is None

@@ -1,18 +1,18 @@
 // The viewer only lays out and draws. Which boxes exist, which edges connect them, and
 // every label, badge and emphasis flag come from the server: /api/scene (nolli/scene.py).
 //
-//   state.js    view state, URL hash, scene query
+//   state.js    scene state and viewer settings, URL hash, scene query
 //   layout.js   scene -> positions and edge routes (ELK), no DOM
 //   draw.js     scene + layout -> SVG, with a handle per node to move and fade it
 //   transition.js, animate.js: the step between two pictures (plan, then play)
-//   raw.js      scene -> JSON view;  mermaid.js: the static export as a view
+//   raw.js      scene -> the JSON tab;  mermaid.js: scene -> the Mermaid tab (nolli/mermaid.py)
 //   review.js   diff datasets: the review panel, items, details, verdicts
 //   sidebar.js, help.js (explanations on hover), panzoom.js, tip.js, dom.js
 //   stability.js, bench.js (bench.html): how well layouts keep the picture across a step
 // Types: types/nolli.d.ts, checked with `npm run check`.
 
 import { byId, input, select } from "./dom.js";
-import { DEFAULTS, VIEWS, query, readHash, state, writeHash } from "./state.js";
+import { DEFAULTS, PRESETS, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { layout } from "./layout.js";
 import { draw, drawGhosts, light } from "./draw.js";
 import { hideTip, pinTip } from "./tip.js";
@@ -21,11 +21,11 @@ import { DURATION, finish, play } from "./animate.js";
 import { hideRaw, onRawToggle, showRaw } from "./raw.js";
 import { sidebar, syncControls } from "./sidebar.js";
 import { fit, focusOn } from "./panzoom.js";
-import { hideMermaid, showMermaid } from "./mermaid.js";
+import { hideMermaid, onMermaidToggle, showMermaid } from "./mermaid.js";
 import "./help.js";
 import "./nav.js";
 import { applyTheme, chooseTheme, initialTheme, themeOptions } from "./theme.js";
-import { changedAreas, itemById, loadItems, renderPanel, scrollToCurrent, showPanel, visibleItems } from "./review.js";
+import { itemById, loadItems, renderPanel, scrollToCurrent, showPanel, visibleItems } from "./review.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
 
@@ -82,13 +82,13 @@ async function refresh(keepZoom = false) {
   /** @type {Scene} */
   const sc = body; sc.url = url; scene = sc;
   // adopt the server's normalised state (default cut resolved, folded descendants dropped)
-  state.expanded = sc.state.expanded; state.roles = sc.state.roles; state.groups = sc.state.groups; state.budget = sc.state.budget; state.utilities = sc.state.utilities;
+  adopt(sc);
+  /** @type {HTMLElement} */ (document.querySelector('#presets [data-preset="changes"]')).hidden = !sc.diff;
   syncControls(); sidebar(sc, () => refresh(true));
   if (sc.diff) {
     if (itemsFor !== state.name) { await loadItems(state.name || ""); itemsFor = state.name; }
     renderPanel(sc, reviewHandlers);
   } else showPanel(false);
-  byId("unfold").hidden = !sc.diff;
   document.body.classList.toggle("dim", !!sc.diff && state.dim);
   try {
     await show(keepZoom && !focusNext);
@@ -97,8 +97,7 @@ async function refresh(keepZoom = false) {
     // or the next click would toggle boxes in a state nobody sees
     if (shown && my === seq) {
       scene = shown.scene;
-      const s = shown.scene.state;
-      state.expanded = s.expanded; state.roles = s.roles; state.groups = s.groups; state.budget = s.budget; state.utilities = s.utilities;
+      adopt(shown.scene);
       syncControls(); sidebar(shown.scene, () => refresh(true));
       if (shown.scene.diff) renderPanel(shown.scene, reviewHandlers);
       writeHash();
@@ -109,14 +108,27 @@ async function refresh(keepZoom = false) {
   writeHash();
 }
 
-/** Bring the current view up to date: the diagram, the scene as JSON, or the Mermaid export. */
+/**
+ * Take over the server's normalised scene state: a preset's cut resolved, folded descendants
+ * dropped. A preset stays named, so the link keeps saying "the default cut" and not its boxes.
+ * @param {Scene} sc
+ */
+function adopt(sc) {
+  const s = sc.state;
+  state.expanded = s.expanded; state.preset = s.preset; state.roles = s.roles; state.groups = s.groups; state.budget = s.budget; state.utilities = s.utilities;
+}
+
+/** Bring the tab shown up to date: the scene drawn, as Mermaid, or as JSON. */
 async function show(keepZoom = false) {
-  if (state.view !== "diagram") loading(null);  // the other views cover the canvas
+  if (state.view !== "interactive") loading(null);  // the other tabs cover the canvas
   if (state.view !== "mermaid") hideMermaid();
   if (state.view === "json") showRawPane();
-  else if (state.view === "mermaid") { hideRaw(); byId("status").textContent = ""; if (state.name) await showMermaid(state.name); }
+  else if (state.view === "mermaid") { hideRaw(); byId("status").textContent = ""; if (scene) await showMermaid(scene, mermaidURL()); }
   else await render(keepZoom);
 }
+
+/** /api/mermaid for the scene state shown, faded as the drawing is. */
+const mermaidURL = () => "/api/mermaid?" + query() + (scene?.diff && !state.dim ? "&nodim=1" : "");
 
 // ---------- review: going to an item ----------
 
@@ -125,7 +137,7 @@ const reviewHandlers = {
   jump: id => jump(id),
   hover: id => { if (!scene || !shown) return; const t = id ? targets(id) : { ids: [], keys: [] }; light(byId("root"), t.ids, t.keys); },
   side: s => { state.side = s; refresh(true); },
-  dim: on => { state.dim = on; document.body.classList.toggle("dim", on); writeHash(); },
+  dim: on => { state.dim = on; document.body.classList.toggle("dim", on); writeHash(); if (state.view === "mermaid") show(); },
   reload: () => { itemsFor = null; refresh(true); },
 };
 
@@ -145,7 +157,7 @@ function jump(id) {
   const have = new Set(state.expanded || []);
   const missing = it.reveal.filter(x => !have.has(x));
   focusNext = true;
-  if (missing.length) { state.expanded = [...have, ...missing]; refresh(true); return; }
+  if (missing.length) { state.expanded = [...have, ...missing]; state.preset = null; refresh(true); return; }
   if (scene) renderPanel(scene, reviewHandlers);
   pointAtItem();
   writeHash();
@@ -224,7 +236,7 @@ window.addEventListener("keydown", ev => {
 function toggle(id) {
   const x = new Set(state.expanded);
   x.has(id) ? x.delete(id) : x.add(id);  // the server drops whatever was unfolded inside a folded box
-  state.expanded = [...x]; clicked = id; refresh(true);
+  state.expanded = [...x]; state.preset = null; clicked = id; refresh(true);
 }
 
 async function render(keepZoom = false) {
@@ -254,11 +266,17 @@ async function render(keepZoom = false) {
 function showRawPane() { if (scene) showRaw(scene); byId("status").textContent = ""; }
 
 onRawToggle(toggle);
+onMermaidToggle(toggle);
 input("utilities").addEventListener("change", () => { state.utilities = Math.max(0, Math.round(+input("utilities").value || 0)); refresh(true); });
-input("budget").addEventListener("change", () => { state.budget = +input("budget").value; state.expanded = null; refresh(); });
-byId("reset").addEventListener("click", () => { state.expanded = null; refresh(); });
-byId("collapse").addEventListener("click", () => { state.expanded = ["fs:."]; refresh(); });
-byId("unfold").addEventListener("click", () => { state.expanded = [...new Set([...(state.expanded || []), ...changedAreas()])]; refresh(true); });
+input("budget").addEventListener("change", () => { state.budget = +input("budget").value; choosePreset("default"); });
+for (const b of document.querySelectorAll("#presets [data-preset]")) b.addEventListener("click", () => {
+  const p = /** @type {import("./state.js").Preset} */ (/** @type {HTMLElement} */ (b).dataset.preset);
+  if (PRESETS.includes(p)) choosePreset(p);
+});
+
+/** Show a preset's cut: the one place a cut is chosen as a whole (the sidebar, the review panel, opening a review).
+ * @param {import("./state.js").Preset} p */
+function choosePreset(p) { state.preset = p; state.expanded = null; refresh(); }
 select("theme").addEventListener("change", () => { state.theme = select("theme").value; chooseTheme(state.theme); writeHash(); });
 themeOptions();
 select("dataset").addEventListener("change", async () => {
@@ -275,9 +293,9 @@ select("dataset").addEventListener("change", async () => {
  */
 async function enter(item = null) {
   loadingDataset();
-  const res = state.expanded === null && !item ? await fetch("/api/changes?d=" + encodeURIComponent(state.name || "")) : null;
+  const res = state.expanded === null && state.preset === "default" && !item ? await fetch("/api/changes?d=" + encodeURIComponent(state.name || "")) : null;
   const first = res && res.ok ? (await res.json()).verdicts.length > 0 : false;
-  if (first) state.expanded = ["fs:."];
+  if (first) state.preset = "folded";
   await refresh();
   const loaded = /** @type {Scene | null} */ (scene);  // set by refresh(); TypeScript cannot see that through the await
   if (!loaded?.diff) return;

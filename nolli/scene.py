@@ -1,10 +1,14 @@
-"""The scene: everything the viewer draws for one view state, computed in one place.
+"""The scene: everything a renderer draws for one scene state, computed in one place.
 
-A view state is the set of unfolded containers plus the display options. ``scene``
+A scene state is the set of unfolded containers (or a preset that names one) plus the
+filters and options. ``scene`` turns it into a graph: the entities filtered by the state,
+contracted onto the cut through the containment tree that the unfolded containers make,
+and simplified by the roll-up rules (``rollup.md``). Each node and edge stands for the
+entities and relations under it. ``scene``
 turns it into a flat list of nodes (in drawing order, each naming its drawn parent) and
 a list of edges, with labels, badges, emphasis flags and hover descriptions (info.py) already decided. The
-viewer only lays this out (ELK) and draws it; ``nolli extract`` writes the scene of the
-default cut. Ids are stable across states (entity ids, ``body:<id>`` for a module's own
+viewer lays this out (ELK) and draws it, ``mermaid.py`` writes it as Mermaid; ``nolli
+extract`` writes the scene of the default cut. Ids are stable across states (entity ids, ``body:<id>`` for a module's own
 code, ``kind|src|dst|subkind`` for edges), so a client can diff two scenes to animate
 the step between them.
 """
@@ -20,7 +24,7 @@ from .rollup import (
     representative, rollup, utility_badges, visible_from_expanded,
 )
 from .changes import Links, change_items, diff_index, fact_change, is_diff, node_diff
-from .review import VERDICT_RANK, edge_review_info, node_review_info, resolve_verdicts
+from .review import VERDICT_RANK, edge_review_info, node_review_info, resolve_verdicts, review_expanded
 from .view import default_view
 from .labels import icons_of, is_body, label_of, leaf_count, name_of
 from .info import Dependencies, edge_info, node_info
@@ -33,10 +37,16 @@ DEFAULT_UTILITY_IN = 4  # more incoming edges than this: a utility, drawn as bad
 DEFAULT_GROUPS = ("api",)  # root groups drawn as boxes; the others are badges on their users
 
 
+PRESETS = ("default", "folded", "changes", "unfolded")
+
+
 @dataclass
-class ViewState:
-    """What the viewer asks for. ``expanded=None`` means: the default cut for ``budget``."""
+class SceneState:
+    """What a renderer asks for. ``expanded=None`` means: the preset's cut, ``default`` the
+    default cut for ``budget``, ``folded`` the top level, ``changes`` (a change's dataset)
+    every area that changed in source code unfolded, ``unfolded`` everything."""
     expanded: list[str] | None = None
+    preset: str = "default"
     roles: list[str] = field(default_factory=lambda: list(DEFAULT_ROLES))  # shown roles
     budget: int = DEFAULT_BUDGET
     groups: list[str] = field(default_factory=lambda: list(DEFAULT_GROUPS))  # shown root groups
@@ -59,14 +69,25 @@ def is_root_group(m: Model, x: str) -> bool:
     return m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None
 
 
-def compute(m: Model, st: ViewState) -> tuple[set[str], set[str], set[str], RolledUp, set[str]]:
+def preset_expanded(m: Model, st: SceneState, hidden: set[str]) -> set[str]:
+    """The containers a preset unfolds (a change's preset on a plain dataset: the default cut)."""
+    if st.preset == "folded":
+        return {"fs:."}
+    if st.preset == "changes" and is_diff(m):
+        return set(review_expanded(m))
+    if st.preset == "unfolded":
+        return {x for x in m.entities if x not in hidden and m.children(x)}
+    hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
+    return set(default_view(m, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
+
+
+def compute(m: Model, st: SceneState) -> tuple[set[str], set[str], set[str], RolledUp, set[str]]:
     """(expanded, hidden, visible, rolled, utilities) for a state; expanded is normalised to
     the containers actually reached, so folding a box also folds everything inside it."""
     hidden = hidden_for(m, st.roles, st.side)
     shown_groups = set(st.groups)
     if st.expanded is None:
-        hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
-        expanded = set(default_view(m, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
+        expanded = preset_expanded(m, st, hidden)
     else:
         expanded = {x for x in st.expanded if m.has(x)}
     expanded = {x for x in expanded if not (is_root_group(m, x) and x not in shown_groups)}  # filtered out: stays folded
@@ -105,7 +126,7 @@ def edge_style(e) -> str:
 
 # ---------- the scene ----------
 
-def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
+def scene(m: Model, st: SceneState, verdicts: list[dict] | None = None) -> dict:
     """``verdicts``: a review's verdicts (review.read_verdicts), shown on the drawn box or
     edge that stands for each one's target."""
     expanded, hidden, visible, rolled, utilities = compute(m, st)
@@ -234,7 +255,7 @@ def scene(m: Model, st: ViewState, verdicts: list[dict] | None = None) -> dict:
         if r in by_role and e.kind in ("file", "directory") and not e.attrs.get("root"):
             by_role[r]["files" if e.kind == "file" else "dirs"] += 1
     roles = [{"id": r, **n} for r, n in by_role.items()]
-    state = asdict(st) | {"expanded": sorted(expanded)}
+    state = asdict(st) | {"expanded": sorted(expanded), "preset": None if st.expanded is not None else "default" if st.preset == "changes" and not diff else st.preset}
     out = {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "roles": roles, "residue": residue,
            "stats": {"nodes": len(drawn), "edges": len(edge_out)}}
     if diff:
@@ -337,11 +358,13 @@ def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[st
         e["review"] = edge_review_info(m, e.get("diff"), *split(vs, [e["src"], e["dst"]]), len(e["items"]))
 
 
-def state_from_query(q: dict[str, str]) -> ViewState:
+def state_from_query(q: dict[str, str]) -> SceneState:
     """Parse the viewer's URL parameters (the same keys as its location hash)."""
-    st = ViewState()
+    st = SceneState()
     if q.get("x"):
         st.expanded = [x for x in q["x"].split(",") if x]
+    elif q.get("p") in PRESETS:
+        st.preset = q["p"]
     if q.get("r") is not None:
         st.roles = [r for r in q["r"].split(",") if r]
     if q.get("b"):
