@@ -108,7 +108,7 @@ def run(ctx: Context) -> None:
     aliases_by_file: dict[str, dict[str, tuple[str, str]]] = {}
     pending: Counter[tuple[str, tuple]] = Counter()  # (src entity, binding) -> count
     for rel in ctx.sources("python"):
-        fid = ctx.repo_id(rel)
+        fid = address.repo(rel)
         tree = ctx.tree(rel)
         if tree is None:
             continue

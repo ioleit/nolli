@@ -76,7 +76,7 @@ def call(ctx: Context, c: Call) -> None:
     if not m.has(uid):
         m.add_entity(Entity(uid, "unresolved", f"{c.verb} {c.pattern}",
                             {"protocol": c.protocol, "method": c.verb, "pattern": c.pattern}, Provenance(c.extractor)))
-    m.add_relation(Relation(USE, ctx.repo_id(c.file), uid, c.protocol, confidence="heuristic",
+    m.add_relation(Relation(USE, address.repo(c.file), uid, c.protocol, confidence="heuristic",
                             provenance=Provenance(c.extractor, c.file, c.line), attrs={"via": c.via}))
 
 
@@ -158,7 +158,7 @@ def build(ctx: Context) -> None:
                                     {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "name": name},
                                     Provenance(op.extractor, op.file, op.line)))
                 m.add_relation(Relation(CONTAIN, parent, eid, provenance=prov))
-            m.add_relation(Relation(PROVIDE, ctx.repo_id(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
+            m.add_relation(Relation(PROVIDE, address.repo(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
                                     provenance=Provenance(op.extractor, op.file, op.line), attrs={"handler": op.handler}))
 
         def emit(s: _Step, parent: str, path: list[str], label: list[str]) -> None:

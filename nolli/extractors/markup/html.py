@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from html.parser import HTMLParser
 
+from ...model import address
 from .. import Context
 from . import css
 from .refs import link
@@ -55,7 +56,7 @@ class Page(HTMLParser):
 def run(ctx: Context) -> None:
     for f in ctx.progress.each(ctx.files):
         rel = ctx.rel(f)
-        if rel.lower().endswith(EXTENSIONS) and ctx.model.has(ctx.repo_id(rel)):
+        if rel.lower().endswith(EXTENSIONS) and ctx.model.has(address.repo(rel)):
             page = Page(ctx, rel)
             page.feed(ctx.read(rel).decode("utf-8", "replace"))
             page.close()

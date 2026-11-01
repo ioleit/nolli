@@ -192,7 +192,7 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = ctx.repo_id(rel)
+        fid = address.repo(rel)
         lang = m.entities[fid].attrs.get("language", "typescript")
         root = tree.root_node
         doc = file_doc(root)

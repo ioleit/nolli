@@ -166,7 +166,7 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = ctx.repo_id(rel)
+        fid = address.repo(rel)
         for imp in read(tree):
             attrs = {"type_only": True} if imp.type_only else {"dynamic": True} if imp.dynamic else {}
             pending.append((fid, imp.spec, imp.line, attrs))

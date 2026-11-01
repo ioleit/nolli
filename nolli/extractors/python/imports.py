@@ -28,7 +28,7 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = ctx.repo_id(rel)
+        fid = address.repo(rel)
         pkg_parts = rel.split("/")[:-1] if not rel.endswith("__init__.py") else rel.split("/")[:-1]
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

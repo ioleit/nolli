@@ -71,7 +71,7 @@ def run(ctx: Context) -> None:
                     full = (ctx_dir / p) if str(p) not in (".", "") else ctx_dir
                     full_s = str(full) if str(full) not in ("", ".") else "."
                     full_s = full_s[2:] if full_s.startswith("./") else full_s
-                    fid = ctx.repo_id(full_s)
+                    fid = address.repo(full_s)
                     if m.has(fid):
                         m.add_relation(Relation(ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))
                     else:
@@ -87,11 +87,11 @@ def run(ctx: Context) -> None:
                         pass
                 for mod in PY_MODULE.findall(cmd):
                     cand = mod.replace(".", "/")
-                    for fid in (ctx.repo_id(f"{cand}.py"), ctx.repo_id(f"{cand}/__init__.py"), ctx.repo_id(f"{cand}/__main__.py")):
+                    for fid in (address.repo(f"{cand}.py"), address.repo(f"{cand}/__init__.py"), address.repo(f"{cand}/__main__.py")):
                         if m.has(fid):
                             m.add_relation(Relation(USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
                             break
                 for script in SCRIPT.findall(cmd):
-                    fid = ctx.repo_id(str(ctx_dir / script).removeprefix("./"))
+                    fid = address.repo(str(ctx_dir / script).removeprefix("./"))
                     if m.has(fid):
                         m.add_relation(Relation(USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))

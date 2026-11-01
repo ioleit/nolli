@@ -43,9 +43,6 @@ class Context:
     def rel(self, p: Path) -> str:
         return p.as_posix()
 
-    def repo_id(self, rel: str) -> str:
-        return address.repo(rel)
-
     def read(self, rel: str) -> bytes:
         return (self.repo / rel).read_bytes()
 
@@ -55,7 +52,7 @@ class Context:
         exts = language_named(language).extensions
         for f in self.progress.each(self.files):
             rel = self.rel(f)
-            e = self.model.entities.get(self.repo_id(rel))
+            e = self.model.entities.get(address.repo(rel))
             if e is None or e.kind != "file" or ext_of(rel) not in exts:
                 continue
             if tests or e.attrs.get("role") != "test":

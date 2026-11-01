@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 
-from ...model import USE, Provenance, Relation
+from ...model import USE, Provenance, Relation, address
 from .. import Context
 from ..interfaces import ensure_env
 
@@ -15,7 +15,7 @@ from ..interfaces import ensure_env
 def run(ctx: Context) -> None:
     m = ctx.model
     for rel in ctx.sources("python", tests=False):
-        fid = ctx.repo_id(rel)
+        fid = address.repo(rel)
         tree = ctx.tree(rel)
         if tree is None:
             continue

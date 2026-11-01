@@ -214,7 +214,7 @@ def resolve_imports(ctx: Context) -> None:
             if not m.has(dst):
                 m.add_entity(Entity(dst, "unresolved", spec, {"language": "javascript"}, Provenance("match")))
         else:
-            dst = ctx.repo_id(target) if how == "file" else ensure_host(m, target, "match") if is_url(spec) else ensure_ext(m, "js", target)
+            dst = address.repo(target) if how == "file" else ensure_host(m, target, "match") if is_url(spec) else ensure_ext(m, "js", target)
         if dst != r.src:
             new_relations.append(Relation(USE, r.src, dst, "import", 1, "exact", r.provenance, attrs))
     m.relations = new_relations
@@ -229,7 +229,7 @@ def resolve_refs(ctx: Context) -> None:
     def symbol_in(file: str, name: str, depth: int = 0) -> str | None:
         """The entity ``name`` stands for in ``file``: its symbol, the symbol or file a
         re-export leads to, or the file itself if it defines the name (a function)."""
-        sid = address.part(ctx.repo_id(file), name)
+        sid = address.part(address.repo(file), name)
         if m.has(sid):
             return sid
         ex = exports.get(file)
@@ -243,9 +243,9 @@ def resolve_refs(ctx: Context) -> None:
                 f = res.file(spec, file)
                 if f is None:
                     return None
-                return (symbol_in(f, orig, depth + 1) if orig else None) or ctx.repo_id(f)
+                return (symbol_in(f, orig, depth + 1) if orig else None) or address.repo(f)
         if name in ex["names"]:
-            return ctx.repo_id(file)
+            return address.repo(file)
         for exported, spec, _ in ex["reexports"]:
             if exported == "*":
                 f = res.file(spec, file)
@@ -265,7 +265,7 @@ def resolve_refs(ctx: Context) -> None:
         if f is None:
             stats["external"] += r.count
             continue
-        dst = (symbol_in(f, ph["name"]) if ph["name"] else None) or ctx.repo_id(f)
+        dst = (symbol_in(f, ph["name"]) if ph["name"] else None) or address.repo(f)
         if dst == r.src:
             stats["self"] += r.count
             continue
