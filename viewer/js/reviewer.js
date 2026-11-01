@@ -95,7 +95,7 @@ function origin() {
     const dropped = v.dropped ? ` · ${v.dropped} did not fit this drawing` : "";
     return `by nolli CI on this commit, ${esc(ago(v.at))} · <a href="${esc(v.link)}" target="_blank" rel="noopener">the PR comment ↗</a>${dropped}`;
   }
-  if (v.by === "agent") return `by a review agent (${esc(v.model)}) run here, ${esc(ago(v.at))} · ${clock(v.seconds || 0)}${v.cost ? ` · $${v.cost.toFixed(2)}` : ""}`;
+  if (v.by === "agent") return `by a review agent (${esc(v.model)}) run here, ${esc(ago(v.at))} · ${clock(v.seconds || 0)}`;
   if (v.by === "upload") return `loaded from a file, ${esc(ago(v.at))}`;
   return "from verdicts.json in the dataset";
 }
@@ -129,7 +129,7 @@ function waysHTML() {
     ? `<p>This nolli has no API client: install it with the extra, then start it again with the key set.</p>${code("pip install 'nolli-review[api]'")}`
     : "";
   const keyStep = why === "key" || why === "package"
-    ? `<li><b>Add an API key</b> where nolli runs and start it again. A review then costs about $0.05–$0.70 on that key's account.
+    ? `<li><b>Add an API key</b> where nolli runs and start it again.
         ${key}${code(st?.server === "view" ? "ANTHROPIC_API_KEY=sk-ant-… nolli view …" : "ANTHROPIC_API_KEY=sk-ant-… nolli serve")}</li>`
     : why === "repo"
       ? `<li><b>Here, with the repository:</b> this viewer was opened on a dataset, without the repository the agent reads the code from. Open the change itself instead, e.g. <code>nolli view ${esc(diff?.pr ? "'#" + diff.pr + "'" : (diff?.base_short || "") + ".." + (diff?.head_short || ""))}</code>.</li>`
@@ -164,7 +164,7 @@ export function draw() {
         <span class="rr-clock">${clock(waiting ? run.waiting : run.seconds)}</span>
         <button class="rr-cancel" id="rr-cancel"${busy ? " disabled" : ""}>Cancel</button></div>
       ${waiting ? "" : `<div class="rr-step">${inlineHTML(run.step || "starting")}</div>
-      <div class="rr-meta">turn ${run.turns || 1}${run.cost ? ` · $${run.cost.toFixed(2)} so far` : ""} · usually 2–6 minutes · you can keep looking around${st?.verdicts ? "; the verdicts shown stay until the new ones are ready" : ""}</div>`}
+      <div class="rr-meta">turn ${run.turns || 1} · usually 2–6 minutes · you can keep looking around${st?.verdicts ? "; the verdicts shown stay until the new ones are ready" : ""}</div>`}
     </div>`;
   } else {
     if (run?.state === "failed") html += `<div class="rr-fail">The review failed: ${esc(run.error)}</div>`;
