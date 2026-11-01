@@ -109,9 +109,13 @@ def clone_lock(clone: Path):
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def build_pull(clone: Path, out: Path, progress: Progress, *, remote: str, pull: int, budget: int, extractions: Extractions) -> None:
+def build_pull(clone: Path, out: Path, progress: Progress, *, remote: str, pull: int, pr: dict, budget: int,
+               extractions: Extractions) -> None:
+    """``pr``: GitHub's answer for the PR, as the server asked it (with its token), so that the
+    build asks GitHub nothing."""
+    owner, name = remote.rsplit("/", 2)[-2:]
     with progress.step("fetching the pull request"), clone_lock(clone):
-        ch, host = github.resolve(clone, f"{remote}/pull/{pull}", None)
+        ch, host = github.fetch_pull(clone, owner, name, pull, pr)
     build_diff(clone, ch.base, ch.head, out, budget, pr=pull, title=ch.title, description=ch.description or None,
                remote=host["remote"], progress=progress, extractions=extractions)
     (out / "pr.md").write_text(ch.description)
@@ -272,7 +276,8 @@ class Site:
             pr = self.api(f"repos/{owner}/{repo}/pulls/{pull}")
             head, base = pr["head"]["sha"], pr["base"]["sha"]
             return Plan(f"{key}_pr{pull}_{base[:7]}_{head[:7]}", f"{owner}/{repo}#{pull}: {pr.get('title') or ''}", remote,
-                        partial(build_pull, remote=remote, pull=pull, **common))
+                        partial(build_pull, remote=remote, pull=pull, **common,
+                                pr={k: pr.get(k) for k in ("head", "base", "title", "body")}))
         if sha is not None:
             c = self.api(f"repos/{owner}/{repo}/commits/{sha}")
             full, parents = c["sha"], [p["sha"] for p in c.get("parents", [])]

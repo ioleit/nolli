@@ -58,7 +58,13 @@ def resolve(repo: Path, spec: str, tok: str | None | object = AMBIENT) -> tuple[
         if pick is None:
             raise ChangeError(f"{repo} has no GitHub remote; give the PR's URL, or its commits: nolli view <base>..<head>")
         owner, name = gh[pick]
-    pr = api(f"repos/{owner}/{name}/pulls/{number}", tok)
+    return fetch_pull(repo, owner, name, number, api(f"repos/{owner}/{name}/pulls/{number}", tok))
+
+
+def fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tuple[Change, dict]:
+    """resolve() for a PR whose answer from GitHub's API (``pr``: its head, base, title, body) is
+    at hand: fetch its commits into ``repo``, asking GitHub nothing more."""
+    gh = remotes(repo)
     # fetch from the clone's own remote for that repository if it has one (its credentials), else by URL
     remote = next((r for r, (o, n) in gh.items() if (o.lower(), n.lower()) == (owner.lower(), name.lower())),
                   f"https://github.com/{owner}/{name}")

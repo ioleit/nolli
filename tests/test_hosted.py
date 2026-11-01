@@ -127,3 +127,28 @@ def test_a_repository_too_large_is_not_built(site, monkeypatch):
     monkeypatch.setattr(site, "api", lambda path: {"full_name": "o/big", "private": False, "size": 600 << 10, "default_branch": "main"})
     with pytest.raises(TooLarge, match="600 MB"):
         site.plan("o", "big")
+
+
+def test_a_pull_request_build_asks_github_nothing(tmp_path, monkeypatch):
+    """The server asked for the PR (with its token): the build in its own process gets that answer."""
+    from nolli import github
+    from nolli.change import Change
+    from nolli.viewer import hosted
+
+    def no_api(*args, **kwargs):
+        raise AssertionError("the build asked GitHub's API")
+
+    got = {}
+
+    def fetch_pull(repo, owner, name, number, pr):
+        got.update(owner=owner, name=name, number=number, pr=pr)
+        return Change(head="h" * 40, base="b" * 40, title=pr["title"], description=pr["body"]), {"pr": number, "remote": "x"}
+
+    monkeypatch.setattr(github, "api", no_api)
+    monkeypatch.setattr(github, "fetch_pull", fetch_pull)
+    monkeypatch.setattr(hosted, "build_diff", lambda *a, **k: None)
+    (tmp_path / "out").mkdir()
+    pr = {"head": {"sha": "h" * 40}, "base": {"sha": "b" * 40, "ref": "main"}, "title": "t", "body": "the description"}
+    hosted.build_pull(tmp_path, tmp_path / "out", Progress(), remote="https://github.com/o/r", pull=7, pr=pr, budget=34, extractions=None)
+    assert got == {"owner": "o", "name": "r", "number": 7, "pr": pr}
+    assert (tmp_path / "out" / "pr.md").read_text() == "the description"
