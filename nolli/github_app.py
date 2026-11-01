@@ -5,7 +5,8 @@ From the environment (from_env()):
 
 - ``NOLLI_GITHUB_APP_ID`` and ``NOLLI_GITHUB_APP_PRIVATE_KEY`` (the PEM itself) or
   ``NOLLI_GITHUB_APP_PRIVATE_KEY_FILE``, and optionally ``NOLLI_GITHUB_APP_INSTALLATION_ID``
-  (default: the app's only installation): an installation token, made when needed (a JWT
+  (default: the installation on the account that owns the app, however many others there
+  are; each has its own token and its own budget of requests): an installation token, made when needed (a JWT
   signed with the key, exchanged at ``/app/installations/<id>/access_tokens``) and renewed
   before it expires after an hour. Needs ``cryptography`` (``pip install 'nolli-review[serve]'``).
 - ``NOLLI_GITHUB_TOKEN``: used as it is.
@@ -96,16 +97,27 @@ class Installation(Token):
                 return self.value
             app = jwt(self.app_id, self.pem)
             if not self.installation:
-                found = call("GET", "app/installations", app)
-                if len(found) != 1:
-                    raise ChangeError(f"GitHub App {self.app_id} has {len(found)} installations: "
-                                      "set NOLLI_GITHUB_APP_INSTALLATION_ID to the one to use")
-                self.installation = str(found[0]["id"])  # type: ignore[index]
+                self.installation = self.own_installation(app)
             out = call("POST", f"app/installations/{self.installation}/access_tokens", app)
             assert isinstance(out, dict)
             self.value = out["token"]
             self.expires = calendar.timegm(time.strptime(out["expires_at"], "%Y-%m-%dT%H:%M:%SZ"))
             return self.value
+
+    def own_installation(self, app: str) -> str:
+        """The installation on the account that owns the app: the server spends its budget, not
+        that of whoever else installed the app (each installation has its own)."""
+        owner = call("GET", "app", app)["owner"]["login"]  # type: ignore[index, call-overload]
+        page = 1
+        while True:
+            found = call("GET", f"app/installations?per_page=100&page={page}", app)
+            mine = [i for i in found if i["account"]["login"].lower() == owner.lower()]  # type: ignore[index, union-attr]
+            if mine:
+                return str(mine[0]["id"])
+            if len(found) < 100:
+                raise ChangeError(f"GitHub App {self.app_id} is not installed on its owner's account ({owner}): "
+                                  "install it there, or set NOLLI_GITHUB_APP_INSTALLATION_ID")
+            page += 1
 
     def describe(self) -> str:
         return f"GitHub App {self.app_id}" + (f", installation {self.installation}" if self.installation else "")

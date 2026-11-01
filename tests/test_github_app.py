@@ -32,27 +32,35 @@ def test_jwt_is_signed_by_the_key():
     KEY.public_key().verify(unb64(sig), f"{head}.{body}".encode(), padding.PKCS1v15(), hashes.SHA256())
 
 
+def installations(n: int) -> list[dict]:
+    """The app's installations: n of other people's, then the owner's."""
+    return [{"id": i, "account": {"login": f"user{i}"}} for i in range(n)] + [{"id": 42, "account": {"login": "IOleit"}}]
+
+
 def test_installation_token_made_once_and_renewed(monkeypatch):
     calls = []
     expires = [time.time() + 3600]
 
     def call(method, path, bearer):
         calls.append((method, path))
-        if path == "app/installations":
-            return [{"id": 42}]
+        if path == "app":
+            return {"owner": {"login": "ioleit"}}
+        if path.startswith("app/installations?"):
+            page = int(path.rsplit("=", 1)[1])
+            return installations(150)[(page - 1) * 100:page * 100]
         return {"token": f"t{len(calls)}", "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires[0]))}
 
     monkeypatch.setattr(github_app, "call", call)
     t = github_app.Installation("123", PEM)
-    assert t.token() == "t2" and t.token() == "t2"
-    assert calls == [("GET", "app/installations"), ("POST", "app/installations/42/access_tokens")]
+    assert t.token() == "t4" and t.token() == "t4"  # the owner's installation, on the second page
+    assert calls[-1] == ("POST", "app/installations/42/access_tokens") and len(calls) == 4
     t.expires = time.time() + 60  # within RENEW of its end
-    assert t.token() == "t3" and calls[-1] == ("POST", "app/installations/42/access_tokens")
+    assert t.token() == "t5" and calls[-1] == ("POST", "app/installations/42/access_tokens")
 
 
-def test_more_than_one_installation_needs_its_id(monkeypatch):
-    monkeypatch.setattr(github_app, "call", lambda m, p, b: [{"id": 1}, {"id": 2}])
-    with pytest.raises(github.ChangeError, match="NOLLI_GITHUB_APP_INSTALLATION_ID"):
+def test_not_installed_on_its_owner(monkeypatch):
+    monkeypatch.setattr(github_app, "call", lambda m, p, b: {"owner": {"login": "someone"}} if p == "app" else installations(3))
+    with pytest.raises(github.ChangeError, match="not installed on its owner's account"):
         github_app.Installation("123", PEM).token()
 
 

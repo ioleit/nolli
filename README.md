@@ -70,7 +70,7 @@ start a review on it.
 Without a token the server asks GitHub as nobody, which allows 60 requests an hour. A
 GitHub App's token raises that to 5,000: set `NOLLI_GITHUB_APP_ID` and
 `NOLLI_GITHUB_APP_PRIVATE_KEY` (or `NOLLI_GITHUB_APP_PRIVATE_KEY_FILE`), and
-`NOLLI_GITHUB_APP_INSTALLATION_ID` if the app has more than one installation; or give any
+the app installed on its owner's account (its token is used, whoever else installed it); or give any
 token as `NOLLI_GITHUB_TOKEN`. Private repositories are never shown, whatever the token
 can see.
 
