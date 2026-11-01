@@ -12,7 +12,7 @@ Two conventions keep the picture readable:
   ``files:<dir>`` inside it rather than one box per file (a directory's own
   files are its "body"; its subdirectories are its parts). Groups (externals,
   interfaces, deployment) unfold to individual children.
-- Groups (External packages, Environment, Deployment, APIs) are a filter:
+- Groups (the namespaces' roots: Artifacts, Configuration, Runtime, APIs) are a filter:
   a group the viewer shows is a box like any other, folded or unfolded; edges to
   a group it doesn't show are not drawn and become annotations on the other node
   ("uses 42 external packages"). Cross-cutting things are omnipresent; drawn,

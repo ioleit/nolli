@@ -35,7 +35,8 @@ function ancestry(scene) {
 /** @param {Laid} before @param {Laid} after @param {Scene} sceneBefore @param {Scene} sceneAfter @returns {Stability} */
 export function compare(before, after, sceneBefore, sceneAfter) {
   const anc0 = ancestry(sceneBefore), anc1 = ancestry(sceneAfter);
-  const ids = [...before.nodes.keys()].filter(id => after.nodes.has(id) && !id.endsWith("#")  /* a module's own code (nolli/address.py own_code) */);
+  const anchors = new Set(sceneBefore.nodes.filter(n => n.kind === "anchor").map(n => n.id));  // a module's own code
+  const ids = [...before.nodes.keys()].filter(id => after.nodes.has(id) && !anchors.has(id));
   const n = ids.length;
   if (n < 2) return { n, order: 1, knn: 1, residual: 0 };
   const A = ids.map(id => /** @type {Box} */ (before.nodes.get(id))), B = ids.map(id => /** @type {Box} */ (after.nodes.get(id)));
