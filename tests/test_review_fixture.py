@@ -32,9 +32,9 @@ def test_verdict_on_a_bundled_edge(tmp_path):
     ds = review_repo.build(tmp_path)
     m = Model.load(ds / "model.json")
     verdicts = read_verdicts((ds / "verdicts.json").read_text())
-    v = next(r for r in resolve_verdicts(m, verdicts) if r["target"].startswith("n_fs_web_src_client_ts ==>"))
-    s = scene(m, SceneState(expanded=v["reveal"] + ["fs:.", "fs:web/src"], groups=["api"]), verdicts)
-    edge = next(e for e in s["edges"] if e["src"] == "fs:web/src/client.ts" and e["kind"] == "use" and e["subkind"] == "http")
+    v = next(r for r in resolve_verdicts(m, verdicts) if r["target"].startswith("n_repo_web_src_client_ts ==>"))
+    s = scene(m, SceneState(expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"]), verdicts)
+    edge = next(e for e in s["edges"] if e["src"] == "repo:web/src/client.ts" and e["kind"] == "use" and e["subkind"] == "http")
     assert edge["dst"] == "api:http:ledger/api/app.py:app"
     assert edge["verdict"] == "question"
-    assert next(n for n in s["nodes"] if n["id"] == "fs:web/src/client.ts")["verdict"] is None
+    assert next(n for n in s["nodes"] if n["id"] == "repo:web/src/client.ts")["verdict"] is None

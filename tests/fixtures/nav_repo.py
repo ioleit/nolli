@@ -53,7 +53,7 @@ HEAD = {
 }
 
 VERDICTS = [
-    {"target": "n_fs_tasks_jobs_worker_py --> n_fs_tasks_store_users_repo_py", "verdict": "question",
+    {"target": "n_repo_tasks_jobs_worker_py --> n_repo_tasks_store_users_repo_py", "verdict": "question",
      "reason": "Reaches past its area: `jobs/worker` now reads `store/users`, which only `api/auth` used before."},
 ]
 

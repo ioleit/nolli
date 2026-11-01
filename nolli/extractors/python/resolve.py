@@ -8,7 +8,7 @@ import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import USE, Relation
+from ...model import USE, Relation, address
 from .. import Context
 from ..interfaces import ensure_ext
 
@@ -69,11 +69,11 @@ def resolve_imports(ctx: Context) -> None:
     stdlib = set(sys.stdlib_module_names)
     rewrites: list[tuple[Relation, str | None, str]] = []  # (relation, new dst or None, status)
     for r in m.relations:
-        if r.kind != USE or not r.dst.startswith("unresolved:py:"):
+        mod = address.unresolved_key(r.dst, "py") if r.kind == USE else None
+        if mod is None:
             continue
-        mod = r.dst[len("unresolved:py:"):]
         parts = mod.split(".")
-        target = resolve_module(mod, r.src[3:], modmap)
+        target = resolve_module(mod, address.path_of(r.src), modmap)
         if target:
             rewrites.append((r, target, "file"))
         elif parts[0] in stdlib or parts[0] in ("__future__",):
@@ -91,14 +91,14 @@ def resolve_imports(ctx: Context) -> None:
         files = [it for it in items if it[2] == "file"]
         if len(files) > 1:
             # prefer targets that are not __init__/directories when a sibling resolved deeper
-            deep = [it for it in files if not (it[1].endswith("/__init__.py") or m.entities[it[1]].kind == "directory")]
+            deep = [it for it in files if not (address.path_of(it[1]).endswith("/__init__.py") or m.entities[it[1]].kind == "directory")]
             if deep:
                 for it in files:
                     if it not in deep:
                         drop.add(id(it[0]))
     new_relations: list[Relation] = []
     for r in m.relations:
-        if r.kind == USE and r.dst.startswith("unresolved:py:"):
+        if r.kind == USE and address.unresolved_key(r.dst, "py") is not None:
             continue
         new_relations.append(r)
     seen: set[tuple] = set()
@@ -132,14 +132,14 @@ def resolve_refs(ctx: Context) -> None:
     symbols = {e.id for e in m.entities.values() if e.kind == "class"}
 
     def symbol_in(file_rel: str, name: str, depth: int = 0) -> str | None:
-        sid = f"py:{file_rel}#{name}"
+        sid = address.repo(file_rel, name)
         if sid in symbols:
             return sid
         al = aliases.get(file_rel, {}).get(name)
         if al and depth < 4:
             f = exact_module(al[0], file_rel, modmap) or resolve_module(al[0], file_rel, modmap)
             if f and m.entities[f].kind == "file":
-                return symbol_in(f[3:], al[1], depth + 1) or exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
+                return symbol_in(address.path_of(f), al[1], depth + 1) or exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
             if f:
                 return exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
         return None
@@ -151,7 +151,7 @@ def resolve_refs(ctx: Context) -> None:
             if not f:
                 return None
             if m.entities[f].kind == "file":
-                return symbol_in(f[3:], name) or exact_module(f"{mod}.{name}", src_rel, modmap) or f
+                return symbol_in(address.path_of(f), name) or exact_module(f"{mod}.{name}", src_rel, modmap) or f
             return exact_module(f"{mod}.{name}", src_rel, modmap) or f
         parts = mod.split(".")
         for i in range(len(parts), 0, -1):
@@ -159,18 +159,18 @@ def resolve_refs(ctx: Context) -> None:
             if f:
                 rest = parts[i:]
                 if rest and m.entities[f].kind == "file":
-                    return symbol_in(f[3:], rest[0]) or f
+                    return symbol_in(address.path_of(f), rest[0]) or f
                 return f
         return None
 
     stats = defaultdict(int)
     new_relations: list[Relation] = []
     for r in m.relations:
-        if not (r.kind == USE and r.dst.startswith("unresolved:pyref:")):
+        key = address.unresolved_key(r.dst, "pyref") if r.kind == USE else None
+        if key is None:
             new_relations.append(r)
             continue
-        src_rel = r.src.split("#")[0][3:] if r.src.startswith("py:") else r.src[3:]
-        dst = resolve(r.dst[len("unresolved:pyref:"):], src_rel)
+        dst = resolve(key, address.path_of(r.src))
         if dst is None:
             stats["external"] += r.count
         elif dst == r.src:
@@ -181,9 +181,9 @@ def resolve_refs(ctx: Context) -> None:
     m.relations = new_relations
 
     def file_of(eid: str) -> str | None:
-        if eid.startswith("py:"):
-            return "fs:" + eid.split("#")[0][3:]
-        return eid if eid.startswith("fs:") and m.entities[eid].kind == "file" else None
+        if address.is_part(eid):
+            return address.file_of(eid)
+        return eid if address.is_repo(eid) and m.entities[eid].kind == "file" else None
 
     covered = set()
     for r in m.relations:

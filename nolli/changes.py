@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 
-from .model import CONTAIN, SYMBOL_KINDS, Model
+from .model import CONTAIN, SYMBOL_KINDS, Model, address
 from .rollup import fact_key
 
 
@@ -93,7 +93,7 @@ def diff_index(m: Model) -> dict[str, dict]:
 
 def node_diff(m: Model, x: str, internal_changes: dict[str, str] | None = None) -> dict | None:
     """What the viewer shows on a drawn box: its status and the totals inside it."""
-    if x.startswith("body:"):
+    if address.is_own_code(x):
         return None
     e = m.entities[x]
     own = e.attrs.get("diff") or {}
@@ -169,12 +169,14 @@ def change_scores(m: Model, hidden: set[str]) -> dict[str, float]:
 MAX_ITEMS = 60
 
 
-def details(m: Model, x: str) -> dict:
-    """Everything a reviewer may want about one box: changed files with hunks and links,
-    classes with changed lines, entities added or removed inside it, and the changed
-    dependencies that start or end inside it."""
+def details(m: Model, x: str) -> dict | None:
+    """Everything a reviewer may want about one box (a scene's node id): changed files with
+    hunks and links, classes with changed lines, entities added or removed inside it, and the
+    changed dependencies that start or end inside it. None if the model has no such box."""
+    target = address.owner(x)
+    if not m.has(target):
+        return None
     links = Links(m)
-    target = x[5:] if x.startswith("body:") else x
     sub = {target} | set(m.descendants(target))
     files, classes, entities = [], [], []
     for eid in sorted(sub):
@@ -183,7 +185,7 @@ def details(m: Model, x: str) -> dict:
         if not d:
             continue
         if e.kind == "file" and "git" in d:
-            path = e.attrs.get("path", eid[3:])
+            path = e.attrs.get("path", address.path_of(eid))
             hunks = [{"new": h["new"], "old": h["old"], "added": len(h["added"]), "removed": len(h["removed"]),
                       "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0],
                                          "head" if h["added"] else "base")} for h in d.get("hunks", [])]

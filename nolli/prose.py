@@ -19,9 +19,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .model import Model
+from .model import Model, address
 from .rollup import RolledUp, chain_end, is_init
-from .labels import is_body, label_of
+from .labels import label_of
 
 
 def code(value) -> str:
@@ -110,8 +110,8 @@ class Ctx:
     def name(self, x: str) -> str:
         """A box as the picture names it: directories end in "/", a module's own code says so."""
         m = self.m
-        if is_body(x):
-            return f"{self.name(x[5:])} (own code)"
+        if address.is_own_code(x):
+            return f"{self.name(address.owner(x))} (own code)"
         e = m.entities[x]
         if e.kind in ("service", "image"):
             return e.name.removesuffix("/Dockerfile")  # no "svc " / "img " prefix in prose

@@ -8,7 +8,7 @@ Text that has no icons (hover descriptions, residue) uses ``label_of``."""
 
 from __future__ import annotations
 
-from .model import Model
+from .model import Model, address
 from .rollup import display_path, is_init
 
 
@@ -26,15 +26,11 @@ def module_stem(file_name: str) -> str:
     return stem[:-2] if stem.endswith(".d") and file_name.endswith(("ts", "mts", "cts")) else stem
 
 
-def is_body(x: str) -> bool:
-    return x.startswith("body:")
-
-
 VERB_ICON = {"WEBSOCKET": "WS", "DELETE": "DEL", "OPTIONS": "OPT"}
 
 
 def icons_of(m: Model, x: str) -> list[str]:
-    if is_body(x):
+    if address.is_own_code(x):
         return []
     e = m.entities[x]
     if e.kind == "directory":
@@ -58,7 +54,7 @@ def icons_of(m: Model, x: str) -> list[str]:
 
 def name_of(m: Model, x: str, expanded: set[str]) -> str:
     """The readable name drawn after the icons."""
-    if is_body(x):
+    if address.is_own_code(x):
         return ""
     e = m.entities[x]
     if e.kind == "directory":

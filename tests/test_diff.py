@@ -65,23 +65,23 @@ def test_structure_and_content(repo):
     path, base, head = repo
     m, summary = diff(path, base, head, extract)
     # entities
-    assert status(m, "py:app/store.py#Index") == "added"
-    assert status(m, "fs:app/old.py") == "removed"
-    assert status(m, "fs:app/thing.py") == "added"
-    assert status(m, "fs:app/legacy_name.py") == "removed"
-    assert m.entities["fs:app/legacy_name.py"].attrs["diff"]["renamed_to"] == "app/thing.py"
-    assert m.entities["fs:app/thing.py"].attrs["diff"]["old_path"] == "app/legacy_name.py"
-    assert "diff" not in m.entities["py:app/store.py#Cache"].attrs, "untouched class has no record"
+    assert status(m, "repo:app/store.py#Index") == "added"
+    assert status(m, "repo:app/old.py") == "removed"
+    assert status(m, "repo:app/thing.py") == "added"
+    assert status(m, "repo:app/legacy_name.py") == "removed"
+    assert m.entities["repo:app/legacy_name.py"].attrs["diff"]["renamed_to"] == "app/thing.py"
+    assert m.entities["repo:app/thing.py"].attrs["diff"]["old_path"] == "app/legacy_name.py"
+    assert "diff" not in m.entities["repo:app/store.py#Cache"].attrs, "untouched class has no record"
     # content of a file and of the classes inside it
-    store = m.entities["fs:app/store.py"].attrs["diff"]
+    store = m.entities["repo:app/store.py"].attrs["diff"]
     assert store["status"] == "same" and store["git"] == "M"
     assert store["added"] >= 4 and store["removed"] == 1
     assert store["hunks"] and {"old", "new", "added", "removed"} <= set(store["hunks"][0])
-    s = m.entities["py:app/store.py#Store"].attrs["diff"]
+    s = m.entities["repo:app/store.py#Store"].attrs["diff"]
     assert s["status"] == "same" and s["added"] == 1 and s["removed"] == 1 and s["added_lines"] == [3]
     # relations: a new reference api -> Index, the old file's edges gone
     added = {(r.src, r.dst) for r in m.relations if (r.attrs.get("diff") or {}).get("status") == "added"}
-    assert ("fs:app/api.py", "py:app/store.py#Index") in added
+    assert ("repo:app/api.py", "repo:app/store.py#Index") in added
     # links need both commits and the change count
     meta = m.meta["diff"]
     assert meta["base"] == base and meta["head"] == head and meta["files_changed"] == summary["files_changed"] == 4
@@ -102,29 +102,29 @@ def test_scene_review(repo):
     git(path, "remote", "add", "origin", "git@github.com:acme/demo.git")
     m, _ = diff(path, base, head, extract)
     m.meta["diff"]["pr"] = 7
-    sc = scene(m, SceneState(expanded=["fs:.", "fs:app", "fs:app/store.py"]))
+    sc = scene(m, SceneState(expanded=["repo:", "repo:app", "repo:app/store.py"]))
     nodes = {n["id"]: n for n in sc["nodes"]}
-    assert nodes["py:app/store.py#Index"]["diff"]["status"] == "added"
-    assert nodes["py:app/store.py#Store"]["diff"] == nodes["py:app/store.py#Store"]["diff"] | {"status": "changed", "added": 1, "removed": 1}
-    assert nodes["fs:app/old.py"]["diff"]["status"] == "removed"
-    assert nodes["py:app/store.py#Cache"]["diff"] is None
+    assert nodes["repo:app/store.py#Index"]["diff"]["status"] == "added"
+    assert nodes["repo:app/store.py#Store"]["diff"] == nodes["repo:app/store.py#Store"]["diff"] | {"status": "changed", "added": 1, "removed": 1}
+    assert nodes["repo:app/old.py"]["diff"]["status"] == "removed"
+    assert nodes["repo:app/store.py#Cache"]["diff"] is None
     edges = {(e["src"], e["dst"]): e for e in sc["edges"]}
-    new = edges[("fs:app/api.py", "py:app/store.py#Index")]["diff"]
+    new = edges[("repo:app/api.py", "repo:app/store.py#Index")]["diff"]
     assert new["status"] == "added" and new["base"] == 0 and new["head"] >= 1 and new["changes"][0]["status"] == "added"
     assert sc["diff"]["link"] == "https://github.com/acme/demo/pull/7"
     # one commit at a time: what is missing on that side is not drawn
-    ids = lambda st: {n["id"] for n in scene(m, SceneState(expanded=["fs:.", "fs:app", "fs:app/store.py"], side=st))["nodes"]}
-    assert "py:app/store.py#Index" not in ids("base") and "fs:app/old.py" in ids("base")
-    assert "py:app/store.py#Index" in ids("head") and "fs:app/old.py" not in ids("head")
+    ids = lambda st: {n["id"] for n in scene(m, SceneState(expanded=["repo:", "repo:app", "repo:app/store.py"], side=st))["nodes"]}
+    assert "repo:app/store.py#Index" not in ids("base") and "repo:app/old.py" in ids("base")
+    assert "repo:app/store.py#Index" in ids("head") and "repo:app/old.py" not in ids("head")
     # the default view unfolds towards the change
-    assert "fs:app" in scene(m, SceneState())["state"]["expanded"]
+    assert "repo:app" in scene(m, SceneState())["state"]["expanded"]
     # details: files with hunks and links into the PR's files view
-    d = details(m, "fs:app")
+    d = details(m, "repo:app")
     store = next(f for f in d["files"] if f["path"] == "app/store.py")
     assert store["link"] == f"https://github.com/acme/demo/pull/7/files#{Links.anchor('app/store.py')}"
     assert store["hunks"] and store["hunks"][0]["link"].startswith(store["link"] + "R")
     assert any(c["name"] == "Store" for c in d["classes"])
-    assert any(e["id"] == "py:app/store.py#Index" and e["status"] == "added" for e in d["entities"])
+    assert any(e["id"] == "repo:app/store.py#Index" and e["status"] == "added" for e in d["entities"])
 
 
 def test_items_verdicts_and_export(repo):
@@ -136,37 +136,37 @@ def test_items_verdicts_and_export(repo):
 
     path, base, head = repo
     m, _ = diff(path, base, head, extract)
-    assert m.entities["fs:."].name == path.name
+    assert m.entities["repo:"].name == path.name
     items = change_items(m)
     by_title = {it["title"]: it for it in items}
     assert [it["id"] for it in items] == [f"C{i}" for i in range(1, len(items) + 1)]
     assert "new class app/store.py#Index" in by_title
     dep = by_title["app/api.py → app/store.py: dependency changed"]
-    assert any(f.endswith("py:app/store.py#Index|ref") for f in dep["facts"]) and dep["reveal"] == ["fs:.", "fs:app"]
+    assert any(f.endswith("repo:app/store.py#Index|ref") for f in dep["facts"]) and dep["reveal"] == ["repo:", "repo:app"]
     assert any(it["category"] == "content" and it["title"].startswith("edited app/store.py") for it in items)
-    assert "fs:app" in review_expanded(m)
+    assert "repo:app" in review_expanded(m)
     # verdicts name the diagram's nodes and edges; each lands on what stands for it in the view
     v = read_verdicts(json.dumps([
-        {"target": "n_fs_app_api_py --> n_fs_app_store_py", "verdict": "problem", "reason": "x"},
-        {"target": "n_py_app_store_py_Index", "verdict": "question", "reason": "y"},
-        {"target": "n_fs_nowhere_py", "verdict": "fine", "reason": "z"},
-        {"target": "n_fs_app_g --> n_fs_app_store_py", "verdict": "fine", "reason": "an unfolded box is a subgraph"},
+        {"target": "n_repo_app_api_py --> n_repo_app_store_py", "verdict": "problem", "reason": "x"},
+        {"target": "n_repo_app_store_py_Index", "verdict": "question", "reason": "y"},
+        {"target": "n_repo_nowhere_py", "verdict": "fine", "reason": "z"},
+        {"target": "n_repo_app_g --> n_repo_app_store_py", "verdict": "fine", "reason": "an unfolded box is a subgraph"},
     ]))
     assert [x["id"] for x in v] == ["V1", "V2", "V3", "V4"]
-    assert resolve_verdicts(m, v)[3]["ends"] == ["fs:app", "fs:app/store.py"]
-    sc = scene(m, SceneState(expanded=["fs:.", "fs:app"]), v)
+    assert resolve_verdicts(m, v)[3]["ends"] == ["repo:app", "repo:app/store.py"]
+    sc = scene(m, SceneState(expanded=["repo:", "repo:app"]), v)
     marked = [e for e in sc["edges"] if "V1" in e["verdicts"]]
-    assert len(marked) == 1 and marked[0]["verdict"] == "problem" and (marked[0]["src"], marked[0]["dst"]) == ("fs:app/api.py", "fs:app/store.py")
-    store = next(n for n in sc["nodes"] if n["id"] == "fs:app/store.py")  # Index is inside the folded store module
+    assert len(marked) == 1 and marked[0]["verdict"] == "problem" and (marked[0]["src"], marked[0]["dst"]) == ("repo:app/api.py", "repo:app/store.py")
+    store = next(n for n in sc["nodes"] if n["id"] == "repo:app/store.py")  # Index is inside the folded store module
     assert store["verdicts"] == ["V2"] and store["verdict"] == "question"
     assert "[question](verdict:question)" in store["review"]
     assert "verdict:" not in store["info"]
     assert not any("V3" in x.get("verdicts", []) for x in sc["nodes"] + sc["edges"])  # an unknown target is not drawn
-    sc = scene(m, SceneState(expanded=["fs:."]), v)  # app folded: the edge falls inside it, so does the verdict
-    app = next(n for n in sc["nodes"] if n["id"] == "fs:app")
+    sc = scene(m, SceneState(expanded=["repo:"]), v)  # app folded: the edge falls inside it, so does the verdict
+    app = next(n for n in sc["nodes"] if n["id"] == "repo:app")
     assert set(app["verdicts"]) == {"V1", "V2", "V4"} and app["verdict"] == "problem"
     with pytest.raises(ValueError):
-        read_verdicts('[{"target": "n_fs_app_api_py", "verdict": "maybe"}]')
+        read_verdicts('[{"target": "n_repo_app_api_py", "verdict": "maybe"}]')
     with pytest.raises(ValueError):
         read_verdicts('[{"id": "C1", "verdict": "fine"}]')
     md = review_markdown(m, "flowchart TD\n", "Why: speed.")

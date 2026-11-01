@@ -1,6 +1,6 @@
 """Python: classes as entities inside modules, and the references between them.
 
-Each top-level ``class`` becomes an entity ``py:<file>#<Name>`` contained in
+Each top-level ``class`` becomes an entity ``repo:<file>#<Name>`` contained in
 its module (a class is in exactly one file, so ``contain`` stays a tree).
 Functions are not entities: a module's functions and its module-level code
 are the module's own body, so their references are attributed to the module
@@ -23,7 +23,7 @@ from __future__ import annotations
 import ast
 from collections import Counter
 
-from ...model import USE, Entity, Provenance, Relation
+from ...model import USE, Entity, Provenance, Relation, address
 from .. import Context
 
 FUNC_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
@@ -108,7 +108,7 @@ def run(ctx: Context) -> None:
     aliases_by_file: dict[str, dict[str, tuple[str, str]]] = {}
     pending: Counter[tuple[str, tuple]] = Counter()  # (src entity, binding) -> count
     for rel in ctx.sources("python"):
-        fid = ctx.fs_id(rel)
+        fid = address.repo(rel)
         tree = ctx.tree(rel)
         if tree is None:
             continue
@@ -143,7 +143,7 @@ def run(ctx: Context) -> None:
         classes: dict[str, str] = {}
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
-                sid = f"py:{rel}#{node.name}"
+                sid = address.part(fid, node.name)
                 attrs = {"path": rel, "line": node.lineno, "end_line": node.end_lineno, "language": "python"}
                 if doc_summary(node):
                     attrs["doc"] = doc_summary(node)
@@ -169,11 +169,11 @@ def run(ctx: Context) -> None:
     for (src, b), n in pending.items():
         name = {"local": lambda: b[2], "from": lambda: b[2], "module": lambda: b[1], "chain": lambda: b[1].rsplit(".", 1)[-1]}[b[0]]()
         if b[0] == "local":
-            m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", src.split("#")[0][3:] if src.startswith("py:") else src[3:]),
+            m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", address.path_of(src)),
                                     {"name": name}))
             continue
         key = f"{b[1]}:{b[2]}" if b[0] == "from" else f"{b[1]}:"
-        uid = f"unresolved:pyref:{key}"
+        uid = address.unresolved("pyref", key)
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", key, {"language": "python", "ref": True}, Provenance("python-symbols")))
         m.add_relation(Relation(USE, src, uid, "ref", n, "exact", Provenance("python-symbols"), {"name": name}))

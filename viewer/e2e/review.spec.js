@@ -56,10 +56,10 @@ test("every verdict but fine is marked in the diagram, with its chess annotation
   await expect(page.locator("#root g.edge g.verdict.problem text")).toHaveText("?");
   await expect(page.locator("#root g.edge g.verdict.question text")).toHaveText(["?!", "?!"]);
   await expect(page.locator("#root g.edge.http g.verdict.question")).toHaveCount(1);
-  await expect(boxMark(page, "fs:ledger/storage/cache.py").locator("text")).toHaveText("?!");
-  await expect(boxMark(page, "fs:ledger/services/legacy_export.py").locator("path")).toHaveCount(1);
+  await expect(boxMark(page, "repo:ledger/storage/cache.py").locator("text")).toHaveText("?!");
+  await expect(boxMark(page, "repo:ledger/services/legacy_export.py").locator("path")).toHaveCount(1);
   // the good one is on views/alerts, inside web/src/, which is folded at first and shows it
-  await expect(boxMark(page, "fs:web/src").locator("path")).toHaveCount(1);  // a thumbs up, not a glyph
+  await expect(boxMark(page, "repo:web/src").locator("path")).toHaveCount(1);  // a thumbs up, not a glyph
   await expect(page.locator("#root g.verdict.fine")).toHaveCount(0);
   // the glyph stays white on a changed or added edge, whose labels take the change's colour
   for (const t of await marks.locator("text, path").all()) await expect(t).toHaveCSS("fill", "rgb(255, 255, 255)");
@@ -92,10 +92,10 @@ test("hovering a problem on an edge shows its reason", async ({ page }) => {
 
 test("hovering a question on a box shows its reason", async ({ page }) => {
   await open(page);
-  const mark = boxMark(page, "fs:ledger/storage/cache.py");
+  const mark = boxMark(page, "repo:ledger/storage/cache.py");
   await hoverMark(page, "A layer inside storage/", mark);
   await expect(tip(page)).toContainText("between services/ and storage/");
-  await expect(page).toHaveScreenshot("question-on-box.png", { clip: await around(page, [node(page, "fs:ledger/storage/cache.py"), tip(page)]) });
+  await expect(page).toHaveScreenshot("question-on-box.png", { clip: await around(page, [node(page, "repo:ledger/storage/cache.py"), tip(page)]) });
 });
 
 test("hovering a question on an HTTP edge shows its reason", async ({ page }) => {
@@ -107,14 +107,14 @@ test("hovering a question on an HTTP edge shows its reason", async ({ page }) =>
 
 test("hovering a good on a removed box shows its reason", async ({ page }) => {
   await open(page);
-  const id = "fs:ledger/services/legacy_export.py";
+  const id = "repo:ledger/services/legacy_export.py";
   await hoverMark(page, "Orphan removed", boxMark(page, id));
   await expect(page).toHaveScreenshot("good-on-removed-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
 });
 
 test("hovering a good on a box shows its reason", async ({ page }) => {
   await open(page);
-  const id = "fs:web/src/views/alerts.ts";
+  const id = "repo:web/src/views/alerts.ts";
   await hoverMark(page, "Follows the pattern", boxMark(page, id));
   await expect(boxMark(page, id).locator("path")).toHaveCount(1);
   await expect(page).toHaveScreenshot("good-on-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
@@ -129,7 +129,7 @@ test("a fine verdict goes to its box from the panel, without a mark on it", asyn
   await open(page);
   await page.locator("#review .rv-verdict", { hasText: "the one box that assembles" }).click();
   await expect(page).toHaveURL(/item=V8/);
-  const id = "fs:ledger/api/routes.py";
+  const id = "repo:ledger/api/routes.py";
   await expect(node(page, id)).toHaveClass(/\blit\b/);
   await expect(boxMark(page, id)).toHaveCount(0);
   await expect(tip(page)).toContainText("the one box that assembles");

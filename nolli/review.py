@@ -12,9 +12,8 @@ import re
 from collections import Counter
 
 from .changes import Links, ancestors_to_unfold, change_items, short
-from .labels import is_body
 from .mermaid import nid
-from .model import Model
+from .model import Model, address
 from .prose import code, count, listing, mark, one_line, paragraphs, say
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
@@ -49,12 +48,12 @@ def read_verdicts(text: str) -> list[dict]:
 
 def diagram_ids(m: Model) -> dict[str, str]:
     """The review diagram's node ids back to what they stand for: entities (an unfolded one is a
-    subgraph, ``<id>_g``), and a module's own code (body:<file>) or a directory's."""
+    subgraph, ``<id>_g``), and a module's own code (``<file>#``) or a directory's."""
     out = {}
     for x, e in m.entities.items():
         out[nid(x)] = out[nid(x) + "_g"] = x
         if e.kind in ("file", "directory"):
-            out[nid(f"body:{x}")] = f"body:{x}"
+            out[nid(address.own_code(x))] = address.own_code(x)
     return out
 
 
@@ -67,11 +66,10 @@ def resolve_verdicts(m: Model, verdicts: list[dict]) -> list[dict]:
     for v in verdicts:
         g = TARGET.match(v["target"])
         ends = [ids[t] for t in g.groups() if t] if g and all(t in ids for t in g.groups() if t) else []
-        plain = lambda x: x[5:] if is_body(x) else x  # noqa: E731
-        name = lambda x: short(m, plain(x)) + (" (own code)" if is_body(x) else "")  # noqa: E731
+        name = lambda x: short(m, address.owner(x)) + (" (own code)" if address.is_own_code(x) else "")  # noqa: E731
         reveal: list[str] = []
         for x in ends:
-            for a in ancestors_to_unfold(m, plain(x)) + ([plain(x)] if is_body(x) else []):
+            for a in ancestors_to_unfold(m, address.owner(x)) + ([address.owner(x)] if address.is_own_code(x) else []):
                 if a not in reveal:
                     reveal.append(a)
         out.append(v | {"ends": ends, "edge": len(ends) == 2, "reveal": reveal,
@@ -154,7 +152,7 @@ def check_verdicts(m: Model, mermaid: str, text: str) -> tuple[list[dict], list[
 def review_expanded(m: Model) -> list[str]:
     """The boxes to unfold so that every change in source code is drawn: what going to each
     of them unfolds, together. The review diagram and the viewer's "all changes" use it."""
-    out = {"fs:."}
+    out = {address.REPO_ROOT}
     for it in change_items(m):
         if it["role"] == "source":
             out.update(it["reveal"])

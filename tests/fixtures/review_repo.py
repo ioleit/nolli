@@ -128,32 +128,32 @@ alerts after every write. The CSV export was unused and is gone.
 # a headline, how expected the change is given the title, what it does to the structure.
 # Targets are ids in review.mmd.
 VERDICTS = [
-    {"target": "n_fs_ledger_storage_db_py --> n_fs_ledger_services_alerts_py", "verdict": "blunder",
+    {"target": "n_repo_ledger_storage_db_py --> n_repo_ledger_services_alerts_py", "verdict": "blunder",
      "reason": "New cycle: `storage/db` now imports `services/alerts`, which imports `storage/db`. The lowest "
                "box of the backend depends on a service, so every store sits in the cycle too; nothing in "
                "the title asks the database to know about alerts."},
-    {"target": "n_fs_ledger_services_alerts_py --> n_fs_ledger_storage_db_py", "verdict": "problem",
+    {"target": "n_repo_ledger_services_alerts_py --> n_repo_ledger_storage_db_py", "verdict": "problem",
      "reason": "Skips the store layer: `services/alerts` reads `storage/db` directly, while `billing` reaches "
                "it only through `invoices` and `customers`. The title asks for alerts, not for a second way "
                "into `db`, which now has callers in two layers."},
-    {"target": "n_fs_ledger_storage_cache_py", "verdict": "question",
+    {"target": "n_repo_ledger_storage_cache_py", "verdict": "question",
      "reason": "A layer inside storage/: the cache is what the title promises, but `cache` sits beside the "
                "store it wraps and depends on `invoices`, so `storage/` now has a level of its own. "
                "Should it live between `services/` and `storage/` instead?"},
-    {"target": "n_fs_ledger_services_billing_py --> n_fs_ledger_storage_g", "verdict": "question",
+    {"target": "n_repo_ledger_services_billing_py --> n_repo_ledger_storage_g", "verdict": "question",
      "reason": "Tied to the wrapper: expected that `billing` reads through the cache, but it now imports "
                "`cache` by name, so the service depends on two levels of `storage/` at once."},
-    {"target": "n_fs_web_src_client_ts ==> n_api_http_ledger_api_app_py_app_GET__alerts_overdue", "verdict": "question",
+    {"target": "n_repo_web_src_client_ts ==> n_api_http_ledger_api_app_py_app_alerts_overdue_GET", "verdict": "question",
      "reason": "Client becomes a hub: expected from the title, but `client` now serves both "
                "`/customers` and `/alerts`, and every view goes through it. Split it per area as more arrive?"},
-    {"target": "n_fs_ledger_services_legacy_export_py", "verdict": "good",
+    {"target": "n_repo_ledger_services_legacy_export_py", "verdict": "good",
      "reason": "Orphan removed: not in the title, but `legacy_export` and its endpoint had no caller in "
                "`web/src/`. Removing them takes a box, two endpoints and an edge into `storage/invoices` out of "
                "the graph, and `api/routes` loses a dependency."},
-    {"target": "n_fs_web_src_views_alerts_ts", "verdict": "good",
+    {"target": "n_repo_web_src_views_alerts_ts", "verdict": "good",
      "reason": "Follows the pattern: the new `views/alerts` reaches the backend only through `client`, like "
                "`views/account`; no view calls an endpoint of its own."},
-    {"target": "n_fs_ledger_api_routes_py", "verdict": "fine",
+    {"target": "n_repo_ledger_api_routes_py", "verdict": "fine",
      "reason": "As intended: `api/routes` wires in `alerts` and the cache and drops the export; it stays "
                "the one box that assembles services and stores."},
 ]

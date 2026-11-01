@@ -1,13 +1,12 @@
-"""The fact model: entities and typed relations, with provenance.
+"""nolli's data model: the facts about one codebase, and what such facts may be.
 
-The vocabulary is the UML 2 component/deployment subset:
+Three levels, a module each:
 
-- entities are artifacts (directory, file), components (service, image),
-  interfaces (endpoint, env, host) or external packages;
-- relations are ``contain`` (ownership, a tree), ``use`` (Parnas's uses),
-  ``provide`` (interface realization) and ``allocate`` (software element to
-  environment element: a directory copied into an image, an image run as a
-  service).
+- a *model* is the graph of one codebase: entities and typed relations with provenance,
+  held by ``Model`` (here) and saved as a dataset's ``model.json``;
+- the *metamodel* says what any model may contain: kinds, namespaces, which relations
+  connect which namespaces (``metamodel.py``); ``Model`` checks every fact against it;
+- an *address* is how an entity's id is spelled in its namespace (``address.py``).
 
 Relations are stored at the finest level an extractor could resolve. Coarser
 edges are derived by rolling up through ``contain`` (see ``rollup.py``), never
@@ -24,18 +23,20 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator
 
-CONTAIN, USE, PROVIDE, ALLOCATE = "contain", "use", "provide", "allocate"
-RELATION_KINDS = (CONTAIN, USE, PROVIDE, ALLOCATE)
-
-# Entity kinds by UML metaclass. ``group`` is a synthetic container the tool
-# adds so that interfaces, externals and deployment elements have a place in
-# the containment forest; it has no counterpart in the repository.
-ARTIFACT_KINDS = ("directory", "file")
-SYMBOL_KINDS = ("class", "interface", "type", "enum", "function")  # module-viewtype elements inside a file
-COMPONENT_KINDS = ("service", "image")
-INTERFACE_KINDS = ("api", "resource", "endpoint", "env", "host")  # api > resource > endpoint: extractors/api.py
-OTHER_KINDS = ("package", "group", "unresolved")
-ENTITY_KINDS = ARTIFACT_KINDS + SYMBOL_KINDS + COMPONENT_KINDS + INTERFACE_KINDS + OTHER_KINDS
+from . import address, metamodel
+from .metamodel import (  # noqa: F401 (the vocabulary, as callers import it)
+    ALLOCATE,
+    ARTIFACT_KINDS,
+    COMPONENT_KINDS,
+    CONTAIN,
+    ENTITY_KINDS,
+    INTERFACE_KINDS,
+    OTHER_KINDS,
+    PROVIDE,
+    RELATION_KINDS,
+    SYMBOL_KINDS,
+    USE,
+)
 
 
 @dataclass
@@ -81,10 +82,11 @@ class Model:
     # -- building ---------------------------------------------------------
 
     def add_entity(self, e: Entity) -> Entity:
-        if e.kind not in ENTITY_KINDS:
-            raise ValueError(f"unknown entity kind {e.kind!r}")
+        metamodel.check_entity(e.id, address.scheme_of(e.id), address.is_root(e.id), e.kind)
         existing = self.entities.get(e.id)
         if existing:
+            if existing.kind != e.kind:
+                raise ValueError(f"{e.id} is a {existing.kind}, not a {e.kind}")
             existing.attrs.update({k: v for k, v in e.attrs.items() if k not in existing.attrs})
             return existing
         self.entities[e.id] = e
@@ -92,15 +94,21 @@ class Model:
         return e
 
     def add_relation(self, r: Relation) -> Relation:
-        if r.kind not in RELATION_KINDS:
-            raise ValueError(f"unknown relation kind {r.kind!r}")
         if r.src not in self.entities or r.dst not in self.entities:
             missing = r.src if r.src not in self.entities else r.dst
             raise KeyError(f"relation {r.kind} {r.src} -> {r.dst}: unknown entity {missing}")
+        metamodel.check_relation(r.kind, r.src, r.dst, address.scheme_of(r.src), address.scheme_of(r.dst))
         if r.kind == CONTAIN:
             self._parent = self._children = None
         self.relations.append(r)
         return r
+
+    def ensure_root(self, scheme: str, extractor: str) -> str:
+        """The root of a namespace (``metamodel.py``), added if missing."""
+        rid, ns = address.root(scheme), metamodel.NAMESPACES[scheme]
+        if rid not in self.entities:
+            self.add_entity(Entity(rid, ns.root_kind, ns.title, {"synthetic": True}, Provenance(extractor)))
+        return rid
 
     def contain(self, parent: str, child: str, extractor: str) -> None:
         self.add_relation(Relation(CONTAIN, parent, child, provenance=Provenance(extractor)))

@@ -69,37 +69,37 @@ def loads(m) -> dict[tuple[str, str], tuple[str, str]]:
 
 def test_what_a_page_loads(model):
     m, _ = model
-    page = {dst: how for (src, dst), how in loads(m).items() if src == "fs:site/index.html"}
+    page = {dst: how for (src, dst), how in loads(m).items() if src == "repo:site/index.html"}
     assert page == {
-        "fs:site/css/site.css": ("stylesheet", "exact"),
-        "fs:site/public/favicon.ico": ("link", "heuristic"),  # from the server root: public/
-        "fs:site/js/app.js": ("script", "exact"),
-        "ext:js:elkjs": ("script", "exact"),
-        "fs:site/img/bg.png": ("url", "exact"),  # from the page's <style>
-        "fs:site/img/logo.svg": ("image", "exact"),
+        "repo:site/css/site.css": ("stylesheet", "exact"),
+        "repo:site/public/favicon.ico": ("link", "heuristic"),  # from the server root: public/
+        "repo:site/js/app.js": ("script", "exact"),
+        "pkg:npm/elkjs": ("script", "exact"),
+        "repo:site/img/bg.png": ("url", "exact"),  # from the page's <style>
+        "repo:site/img/logo.svg": ("image", "exact"),
     }, "links between pages, other sites and template expressions are no dependencies"
-    js = [r for r in m.relations if (r.src, r.dst) == ("fs:site/index.html", "fs:site/js/app.js")]
+    js = [r for r in m.relations if (r.src, r.dst) == ("repo:site/index.html", "repo:site/js/app.js")]
     assert sorted(r.attrs["via"] for r in js) == ["preload", "script"]
-    assert [r.provenance.line for r in m.relations if r.kind == "use" and r.dst == "fs:site/img/bg.png"] == [9]
+    assert [r.provenance.line for r in m.relations if r.kind == "use" and r.dst == "repo:site/img/bg.png"] == [9]
 
 
 def test_what_a_stylesheet_loads(model):
     m, ctx = model
-    sheet = {dst: how for (src, dst), how in loads(m).items() if src == "fs:site/css/site.css"}
+    sheet = {dst: how for (src, dst), how in loads(m).items() if src == "repo:site/css/site.css"}
     assert sheet == {
-        "fs:site/css/base.css": ("import", "exact"),
-        "fs:site/css/theme.css": ("import", "exact"),
-        "ext:js:tailwindcss": ("import", "heuristic"),
-        "fs:site/fonts/a.woff2": ("url", "exact"),
+        "repo:site/css/base.css": ("import", "exact"),
+        "repo:site/css/theme.css": ("import", "exact"),
+        "pkg:npm/tailwindcss": ("import", "heuristic"),
+        "repo:site/fonts/a.woff2": ("url", "exact"),
     }, "comments and data: URLs are skipped"
     assert ("site/index.html", "img/missing.png") in ctx.notes["markup-unmatched"]
 
 
 def test_a_root_path_from_the_pages_directory(model):
     m, _ = model
-    assert loads(m)[("fs:app/index.html", "fs:app/src/main.ts")] == ("script", "heuristic")
+    assert loads(m)[("repo:app/index.html", "repo:app/src/main.ts")] == ("script", "heuristic")
 
 
 def test_pages_are_shown_by_default(model):
     m, _ = model
-    assert "fs:site/index.html" not in hidden_by_role(m), "a page's edges would be dropped with it"
+    assert "repo:site/index.html" not in hidden_by_role(m), "a page's edges would be dropped with it"

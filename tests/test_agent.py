@@ -48,14 +48,14 @@ def test_brief(change):
 def test_check(change, capsys):
     mmd = (Path(change["dataset"]) / "review.mmd").read_text()
     edge = next(g for line in mmd.splitlines() if (g := re.match(r"\s*(n_\w+) -->\S* (n_\w+)$", line)))
-    good = [{"target": "n_fs_shop_cache_py", "verdict": "fine", "reason": "a cache module"},
+    good = [{"target": "n_repo_shop_cache_py", "verdict": "fine", "reason": "a cache module"},
             {"target": f"{edge[1]} --> {edge[2]}", "verdict": "question", "reason": "why?"}]
     Path(change["verdicts"]).write_text(json.dumps(good))
     assert main(["agent", "check", change["dataset"]]) == 0
     assert json.loads(capsys.readouterr().out) == {"ok": True, "verdicts": 2, "blunder": 0, "problem": 0, "question": 1,
                                                     "brilliant": 0, "good": 0, "fine": 1, "errors": 0}
     bad = [{"target": f"{edge[2]} --> {edge[1]}", "verdict": "fine", "reason": "x"},
-           {"target": "n_fs_shop_nope_py", "verdict": "bad", "reason": ""}]
+           {"target": "n_repo_shop_nope_py", "verdict": "bad", "reason": ""}]
     Path(change["verdicts"]).write_text(json.dumps(bad))
     assert main(["agent", "check", change["verdicts"]]) == 1
     err = capsys.readouterr().err

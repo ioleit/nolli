@@ -14,6 +14,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
+from ...model import address
 from .. import Context, api
 from .resolve import module_candidates
 from .imports import module_name_of
@@ -50,11 +51,11 @@ def run(ctx: Context) -> None:
     module_to_file: dict[str, str] = {}
     for f in ctx.files:
         rel = ctx.rel(f)
-        if rel.endswith(".py") and m.has(ctx.fs_id(rel)):
+        if rel.endswith(".py") and m.has(address.repo(rel)):
             module_to_file[module_name_of(rel)] = rel
 
     for rel in ctx.progress.each(module_to_file.values()):
-        if m.entities[ctx.fs_id(rel)].attrs.get("role") == "test":
+        if m.entities[address.repo(rel)].attrs.get("role") == "test":
             continue
         tree = ctx.tree(rel)
         if tree is None:

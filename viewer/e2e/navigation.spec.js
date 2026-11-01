@@ -36,16 +36,16 @@ async function click(page, id) {
 }
 
 test("two utilities with an edge between them lay out", async ({ page }) => {
-  await open(page, "&x=fs:.,fs:tasks,fs:tasks/core");
-  await expect(page.locator('#root g.node.utility[data-id="fs:tasks/core/log.py"]')).toBeVisible();
-  await expect(page.locator('#root g.node.utility[data-id="fs:tasks/core/clock.py"]')).toBeVisible();
+  await open(page, "&x=repo:,repo:tasks,repo:tasks/core");
+  await expect(page.locator('#root g.node.utility[data-id="repo:tasks/core/log.py"]')).toBeVisible();
+  await expect(page.locator('#root g.node.utility[data-id="repo:tasks/core/clock.py"]')).toBeVisible();
   await expect(page.locator("#root g.edge.d-added")).toHaveCount(1);
 });
 
 test("each click unfolds or folds the box clicked, and only that one", async ({ page }) => {
-  await open(page, "&x=fs:.,fs:tasks");
+  await open(page, "&x=repo:,repo:tasks");
   // folded, core is the utility; unfolded, log and clock are, with the new edge between them
-  for (const id of ["fs:tasks/api", "fs:tasks/core", "fs:tasks/api", "fs:tasks/jobs", "fs:tasks/core"]) {
+  for (const id of ["repo:tasks/api", "repo:tasks/core", "repo:tasks/api", "repo:tasks/jobs", "repo:tasks/core"]) {
     const before = await unfolded(page);
     await click(page, id);
     const after = await unfolded(page);
@@ -59,7 +59,7 @@ test("each click unfolds or folds the box clicked, and only that one", async ({ 
 test("a verdict on an edge that is bundled sits on the bundle, not on a box", async ({ page }) => {
   // the review diagram draws worker → store/users/repo; with store's packages folded, the viewer
   // draws worker's three edges into store as one
-  await open(page, "&x=fs:.,fs:tasks,fs:tasks/jobs,fs:tasks/store");
+  await open(page, "&x=repo:,repo:tasks,repo:tasks/jobs,repo:tasks/store");
   const mark = page.locator("#root g.edge g.verdict.question");
   await expect(mark).toHaveCount(1);
   await expect(page.locator("#root g.verdict[data-id]")).toHaveCount(0);  // no box carries it
@@ -87,15 +87,15 @@ test("the Mermaid tab draws the scene, and a click there unfolds as in the drawi
   expect(await mermaidIds(page)).toEqual(scene.nodes.map((/** @type {{ id: string }} */ n) => nid(n.id)).sort());
   await expect(page.locator("#custom")).toHaveJSProperty("hidden", true);
   // a folded box unfolds, and the cut is no preset any more
-  await page.locator(`#mmdpane g.node[id*="-flowchart-${nid("fs:tasks")}-"]`).click();
-  await expect.poll(() => unfolded(page)).toContain("fs:tasks");
-  await expect(page.locator(`#mmdpane g.cluster[id$="-${nid("fs:tasks")}_g"]`)).toBeVisible();
+  await page.locator(`#mmdpane g.node[id*="-flowchart-${nid("repo:tasks")}-"]`).click();
+  await expect.poll(() => unfolded(page)).toContain("repo:tasks");
+  await expect(page.locator(`#mmdpane g.cluster[id$="-${nid("repo:tasks")}_g"]`)).toBeVisible();
   await expect(page.locator("#custom")).toHaveJSProperty("hidden", false);
   // a preset goes into the link by name, and both tabs show its cut
   await page.locator("#navtoggle").click();
   await page.locator('#presets [data-preset="folded"]').click();
   await expect.poll(() => page.evaluate(() => location.hash)).toContain("p=folded");
-  await expect(page.locator(`#mmdpane g.cluster[id$="-${nid("fs:tasks")}_g"]`)).toHaveCount(0);
+  await expect(page.locator(`#mmdpane g.cluster[id$="-${nid("repo:tasks")}_g"]`)).toHaveCount(0);
   await page.locator('#views [data-view="interactive"]').click();
-  await expect(page.locator('#root g.node[data-id="fs:tasks"]:not(.container)')).toBeVisible();
+  await expect(page.locator('#root g.node[data-id="repo:tasks"]:not(.container)')).toBeVisible();
 });

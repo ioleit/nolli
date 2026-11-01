@@ -29,12 +29,12 @@ def test_verdicts_pass_the_check(dataset, capsys):
 
 
 @pytest.mark.parametrize("unfolded, edge", [
-    ([], ("fs:tasks/jobs", "fs:tasks/store")),  # both folders folded
-    (["fs:tasks/jobs", "fs:tasks/store"], ("fs:tasks/jobs/worker.py", "fs:tasks/store")),  # bundled into store
-    (["fs:tasks/jobs", "fs:tasks/store", "fs:tasks/store/users"], ("fs:tasks/jobs/worker.py", "fs:tasks/store/users/repo.py")),
+    ([], ("repo:tasks/jobs", "repo:tasks/store")),  # both folders folded
+    (["repo:tasks/jobs", "repo:tasks/store"], ("repo:tasks/jobs/worker.py", "repo:tasks/store")),  # bundled into store
+    (["repo:tasks/jobs", "repo:tasks/store", "repo:tasks/store/users"], ("repo:tasks/jobs/worker.py", "repo:tasks/store/users/repo.py")),
 ])
 def test_a_verdict_follows_its_edge_when_rolled_up(dataset, unfolded, edge):
     m = Model.load(dataset / "model.json")
-    sc = scene(m, SceneState(expanded=["fs:.", "fs:tasks", *unfolded]), read_verdicts((dataset / "verdicts.json").read_text()))
+    sc = scene(m, SceneState(expanded=["repo:", "repo:tasks", *unfolded]), read_verdicts((dataset / "verdicts.json").read_text()))
     assert [(e["src"], e["dst"]) for e in sc["edges"] if "V1" in e["verdicts"]] == [edge]
     assert not [n["id"] for n in sc["nodes"] if n["verdicts"]]

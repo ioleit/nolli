@@ -15,9 +15,8 @@ import re
 import shlex
 from pathlib import PurePosixPath
 
-from ...model import ALLOCATE, CONTAIN, USE, Entity, Provenance, Relation
+from ...model import ALLOCATE, CONTAIN, USE, Entity, Provenance, Relation, address
 from .. import Context
-from .compose import ensure_group
 
 PY_MODULE = re.compile(r"(?:python[\d.]*\s+-m\s+|uvicorn\s+|gunicorn\s+)([A-Za-z_][\w.]*)(?::\w+)?")
 SCRIPT = re.compile(r"(?:^|\s)((?:[\w./-]+/)?[\w-]+\.(?:py|sh|js|mjs|ts))(?=\s|$)")
@@ -48,8 +47,8 @@ def run(ctx: Context) -> None:
         name = PurePosixPath(rel).name
         if not (name == "Dockerfile" or name.startswith("Dockerfile.") or name.endswith(".Dockerfile")):
             continue
-        group = ensure_group(ctx)
-        iid = f"img:{rel}"
+        group = m.ensure_root(address.PKG, "dockerfile")
+        iid = address.built(rel)  # the image, by its Dockerfile
         if not m.has(iid):
             m.add_entity(Entity(iid, "image", rel, {"dockerfile": rel, "context": str(PurePosixPath(rel).parent)}, Provenance("dockerfile", rel)))
             m.add_relation(Relation(CONTAIN, group, iid, provenance=Provenance("dockerfile", rel)))
@@ -72,7 +71,7 @@ def run(ctx: Context) -> None:
                     full = (ctx_dir / p) if str(p) not in (".", "") else ctx_dir
                     full_s = str(full) if str(full) not in ("", ".") else "."
                     full_s = full_s[2:] if full_s.startswith("./") else full_s
-                    fid = "fs:" + full_s
+                    fid = address.repo(full_s)
                     if m.has(fid):
                         m.add_relation(Relation(ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))
                     else:
@@ -88,11 +87,11 @@ def run(ctx: Context) -> None:
                         pass
                 for mod in PY_MODULE.findall(cmd):
                     cand = mod.replace(".", "/")
-                    for fid in (f"fs:{cand}.py", f"fs:{cand}/__init__.py", f"fs:{cand}/__main__.py"):
+                    for fid in (address.repo(f"{cand}.py"), address.repo(f"{cand}/__init__.py"), address.repo(f"{cand}/__main__.py")):
                         if m.has(fid):
                             m.add_relation(Relation(USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
                             break
                 for script in SCRIPT.findall(cmd):
-                    fid = "fs:" + str(ctx_dir / script).removeprefix("./")
+                    fid = address.repo(str(ctx_dir / script).removeprefix("./"))
                     if m.has(fid):
                         m.add_relation(Relation(USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))

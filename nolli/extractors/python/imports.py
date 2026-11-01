@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import ast
 
-from ...model import USE, Entity, Provenance, Relation
+from ...model import USE, Entity, Provenance, Relation, address
 from .. import Context
 
 
@@ -28,7 +28,7 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = ctx.fs_id(rel)
+        fid = address.repo(rel)
         pkg_parts = rel.split("/")[:-1] if not rel.endswith("__init__.py") else rel.split("/")[:-1]
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -51,9 +51,9 @@ def run(ctx: Context) -> None:
     ctx.notes["py-imports"] = pending
     # Placeholders are created here so the model is complete even before matching.
     for fid, mod, line in pending:
-        uid = f"unresolved:py:{mod}"
+        uid = address.unresolved("py", mod)
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", mod, {"language": "python"}, Provenance("python-imports")))
         m.add_relation(
-            Relation(USE, fid, uid, "import", confidence="exact", provenance=Provenance("python-imports", fid[3:], line))
+            Relation(USE, fid, uid, "import", confidence="exact", provenance=Provenance("python-imports", address.path_of(fid), line))
         )

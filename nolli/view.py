@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from .changes import change_scores, diff_index, is_diff
 from .rollup import hidden_by_role, image_aliases, init_anchor_dirs, is_init, reveal_scores, visible_from_expanded
-from .model import Model
+from .model import Model, address
 
 
 def unfold_cost(m: Model, v: str, hidden: set[str], anchors: set[str] = frozenset()) -> int:
@@ -30,7 +30,7 @@ def unfold_cost(m: Model, v: str, hidden: set[str], anchors: set[str] = frozense
     return n + (1 if v in anchors else 0) - 1
 
 
-def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("fs:.",), hidden: set[str] | None = None) -> dict:
+def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=(address.REPO_ROOT,), hidden: set[str] | None = None) -> dict:
     """In a diff model the budget goes to the changes first (``changes.change_scores``),
     then whatever is left to structure as usual."""
 
@@ -44,7 +44,7 @@ def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("
     phases = [change_scores(m, hidden), lca] if diff else [lca]
     # in a review, boxes where nothing changed are faded and cost half a box of attention
     changed = diff_index(m) if diff else {}
-    weight = (lambda x: 1.0 if x in changed or x.startswith("body:") else 0.5) if diff else (lambda x: 1.0)  # noqa: E731
+    weight = (lambda x: 1.0 if x in changed or address.is_own_code(x) else 0.5) if diff else (lambda x: 1.0)  # noqa: E731
 
     def cost_of_unfolding(v: str) -> float:
         if not diff:
@@ -58,7 +58,7 @@ def default_view(m: Model, budget: int = 34, hidden_roles=None, always_expand=("
             room = budget - sum(weight(x) for x in visible)
             best, best_key = None, (0.0, 0.0)
             for v in visible:
-                if v.startswith("body:") or m.entities[v].kind not in ("directory", "group", "file") or not m.children(v):
+                if address.is_own_code(v) or m.entities[v].kind not in ("directory", "group", "file") or not m.children(v):
                     continue
                 if scores.get(v, 0) <= 0:
                     continue

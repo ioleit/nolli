@@ -11,6 +11,15 @@ Nothing is a settled design.
   packages; relations `contain` (one ownership tree), `use`, `provide` (realization),
   `allocate` (software element → environment element). Chosen because it exists and
   covers the cases; not derived from requirements.
+- A fixed set of namespaces (`nolli/model/address.py`): `repo:` (directories, files, parts of
+  files after `#`), `api:`, `pkg:` (artifacts, as package URLs), `runtime:`, `config:`;
+  `unresolved:` holds references not bound yet and is not structure. nolli is opinionated
+  about structure and extractors fill it in; a new domain (data stores, queues) is a new
+  namespace there first. An id is an address within one snapshot: kind, facets, version
+  and commit stay out of it, so base and head meet on it in the merged diff model, and
+  continuity across a move is to be a relation between two addresses, not one id.
+  Addresses are relative to the repository unless the thing has a name outside it (a
+  package on a registry), which leaves room for several repositories later.
 - Facts at the finest resolved level, never pre-aggregated. Coarser edges come from the
   roll-up at view time (`nolli/rollup.md`). This is what makes the depth adjustable.
 - Classes are the finest atom; functions and module-level code are the module's own body.
@@ -81,7 +90,7 @@ Nothing is a settled design.
   images and media, `<style>`, CSS `@import` and `url()` are `use` file -> file, drawn as
   imports (attrs `via` says which). Paths from the server root (`/src/main.tsx`) are tried
   from the page's directory upwards and in `public/`, marked heuristic. A CDN script and
-  a CSS `@import` of a bare name are the npm package (`ext:js:`), as in TypeScript.
+  a CSS `@import` of a bare name are the npm package (`pkg:npm/`), as in TypeScript.
   Links between pages (`<a href>`) are navigation, not drawn.
 
 - APIs are one structure for every framework and protocol (`extractors/api.py`): adapters

@@ -14,7 +14,7 @@ from . import match
 from .extractions import Extractions
 from .extractors import Context, all_extractors, language_names
 from .mermaid import render
-from .model import Model
+from .model import Model, address
 from .progress import Progress, Quiet
 from .scene import ALL_ROLES, DEFAULT_ROLES, SceneState, compute, scene
 
@@ -106,8 +106,8 @@ def build_commit(repo: Path, sha: str, out: Path, budget: int, progress: Progres
         notes = ctx.notes
         if extractions:
             extractions.put(sha, m, notes)
-    if m.has("fs:."):  # the root is the temporary directory; name it after the repository
-        m.entities["fs:."].name = repo.name
+    if m.has(address.REPO_ROOT):  # the root is the temporary directory; name it after the repository
+        m.entities[address.REPO_ROOT].name = repo.name
     m.meta.update({"repo": repo.name, "commit": sha[:7], "nolli": version()})
     return write_dataset(m, out, budget, notes, progress=progress)
 

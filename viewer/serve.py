@@ -162,10 +162,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             m = load_model(ds / "model.json")
             x = q.get("id", "")
-            if not m.has(x[5:] if x.startswith("body:") else x):
+            d = details(m, x)
+            if d is None:
                 self.send_json({"error": f"no entity {x!r}"}, 404)
                 return
-            self.send_json(details(m, x))
+            self.send_json(d)
             return
         if path.startswith("/data/"):
             rel = path[len("/data/"):]

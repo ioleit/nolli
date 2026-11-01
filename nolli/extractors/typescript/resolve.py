@@ -27,9 +27,9 @@ import re
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import USE, Entity, Provenance, Relation
+from ...model import USE, Entity, Provenance, Relation, address
 from .. import Context
-from ..interfaces import ensure_ext, package_name
+from ..interfaces import ensure_ext, ensure_host, is_url, package_name
 
 NODE_BUILTINS = {
     "assert", "buffer", "child_process", "cluster", "crypto", "dgram", "dns", "events", "fs", "http", "http2", "https",
@@ -198,22 +198,23 @@ def resolve_imports(ctx: Context) -> None:
     stats: dict[str, int] = defaultdict(int)
     new_relations: list[Relation] = []
     for r in m.relations:
-        if not (r.kind == USE and r.dst.startswith("unresolved:js:")):
+        key = address.unresolved_key(r.dst, "js") if r.kind == USE else None
+        if key is None:
             new_relations.append(r)
             continue
-        src_rel = r.src[3:]
-        spec = r.dst[len("unresolved:js:"):].removesuffix("@" + src_rel)
+        src_rel = address.path_of(r.src)
+        spec = key.removesuffix("@" + src_rel)
         how, target = res.resolve(spec, src_rel)
         stats[how] += 1
         attrs = dict(r.attrs, language="javascript")
         if how == "stdlib":
             continue
         if how == "unresolved":
-            dst = f"unresolved:js:{spec}"
+            dst = address.unresolved("js", spec)
             if not m.has(dst):
                 m.add_entity(Entity(dst, "unresolved", spec, {"language": "javascript"}, Provenance("match")))
         else:
-            dst = f"fs:{target}" if how == "file" else ensure_ext(m, "js", target)
+            dst = address.repo(target) if how == "file" else ensure_host(m, target, "match") if is_url(spec) else ensure_ext(m, "js", target)
         if dst != r.src:
             new_relations.append(Relation(USE, r.src, dst, "import", 1, "exact", r.provenance, attrs))
     m.relations = new_relations
@@ -228,7 +229,7 @@ def resolve_refs(ctx: Context) -> None:
     def symbol_in(file: str, name: str, depth: int = 0) -> str | None:
         """The entity ``name`` stands for in ``file``: its symbol, the symbol or file a
         re-export leads to, or the file itself if it defines the name (a function)."""
-        sid = f"ts:{file}#{name}"
+        sid = address.part(address.repo(file), name)
         if m.has(sid):
             return sid
         ex = exports.get(file)
@@ -242,9 +243,9 @@ def resolve_refs(ctx: Context) -> None:
                 f = res.file(spec, file)
                 if f is None:
                     return None
-                return (symbol_in(f, orig, depth + 1) if orig else None) or f"fs:{f}"
+                return (symbol_in(f, orig, depth + 1) if orig else None) or address.repo(f)
         if name in ex["names"]:
-            return f"fs:{file}"
+            return address.repo(file)
         for exported, spec, _ in ex["reexports"]:
             if exported == "*":
                 f = res.file(spec, file)
@@ -256,7 +257,7 @@ def resolve_refs(ctx: Context) -> None:
     stats: dict[str, int] = defaultdict(int)
     new_relations: list[Relation] = []
     for r in m.relations:
-        if not (r.kind == USE and r.dst.startswith("unresolved:tsref:")):
+        if not (r.kind == USE and address.unresolved_key(r.dst, "tsref") is not None):
             new_relations.append(r)
             continue
         ph = m.entities[r.dst].attrs
@@ -264,22 +265,22 @@ def resolve_refs(ctx: Context) -> None:
         if f is None:
             stats["external"] += r.count
             continue
-        dst = (symbol_in(f, ph["name"]) if ph["name"] else None) or f"fs:{f}"
+        dst = (symbol_in(f, ph["name"]) if ph["name"] else None) or address.repo(f)
         if dst == r.src:
             stats["self"] += r.count
             continue
-        stats["symbol" if dst.startswith("ts:") else "file"] += r.count
+        stats["symbol" if address.is_part(dst) else "file"] += r.count
         new_relations.append(Relation(USE, r.src, dst, "ref", r.count, "exact", r.provenance, dict(r.attrs)))
     m.relations = new_relations
 
     def file_of(eid: str) -> str | None:
-        if eid.startswith("ts:"):
-            return "fs:" + eid.split("#")[0][3:]
-        return eid if eid.startswith("fs:") and m.entities[eid].kind == "file" else None
+        if address.is_part(eid):
+            return address.file_of(eid)
+        return eid if address.is_repo(eid) and m.entities[eid].kind == "file" else None
 
     covered = set()
     for r in m.relations:
-        if r.kind == USE and r.subkind == "ref" and (r.src.startswith("ts:") or r.dst.startswith("ts:") or r.attrs.get("language") == "javascript"):
+        if r.kind == USE and r.subkind == "ref" and (address.is_part(r.src) or address.is_part(r.dst) or r.attrs.get("language") == "javascript"):
             a, b = file_of(r.src), file_of(r.dst)
             if a and b:
                 covered.add((a, b))
