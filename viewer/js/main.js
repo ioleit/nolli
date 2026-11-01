@@ -12,7 +12,6 @@
 // Types: types/nolli.d.ts, checked with `npm run check`.
 
 import { byId, input, select } from "./dom.js";
-import { code, mark, oneLine, paragraphsOf } from "./md.js";
 import { DEFAULTS, VIEWS, query, readHash, state, writeHash } from "./state.js";
 import { layout } from "./layout.js";
 import { draw, drawGhosts, light } from "./draw.js";
@@ -183,8 +182,7 @@ let pinTimer = null;
 
 /**
  * Keep open the card of what shows a change or carries a verdict (an edge for a dependency
- * or a verdict on an edge, else a box). A verdict's card leads with it; a change's with its
- * title.
+ * or a verdict on an edge, else a box), as it is: the card says the same wherever you come from.
  * @param {string} id
  */
 function pinItem(id) {
@@ -196,13 +194,7 @@ function pinItem(id) {
   const useEdge = edge && ("edge" in it ? it.edge : it.category === "dependency") || !node;
   const target = useEdge ? edge && root.querySelector(`.edge[data-key="${CSS.escape(edge.key)}"]`) : root.querySelector(`.node[data-id="${CSS.escape(node.id)}"]`);
   const shown = useEdge ? edge : node;
-  if (!target || !shown) return;
-  const review = paragraphsOf(shown.review || "");
-  if ("verdict" in it) {
-    // the card already has this verdict's line (as nolli/review.py writes it); move it to the top
-    const line = mark(it.verdict) + " " + oneLine(it.reason);
-    pinTip({ info: shown.info, review: [line, ...review.filter(l => l !== line)].join("\n\n") }, target);
-  } else pinTip({ info: shown.info, review: [code(it.title), ...review].join("\n\n") }, target);
+  if (target && shown) pinTip(shown, target);
 }
 
 /** @param {number} step +1 next, -1 previous */

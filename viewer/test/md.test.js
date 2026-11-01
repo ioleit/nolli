@@ -2,18 +2,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { code, inline, paragraphsOf } from "../js/md.js";
+import { inline, paragraphsOf } from "../js/md.js";
 
 test("values are code spans, escapes are text, verdicts are marks", () => {
   assert.deepEqual(inline("`api/` references `Store` in `store` [problem](verdict:problem)"), [
     { code: "api/" }, { text: " references " }, { code: "Store" }, { text: " in " }, { code: "store" }, { text: " " }, { verdict: "problem" }]);
   assert.deepEqual(inline("`pkg`'s \\_\\_init\\_\\_.py defines"), [{ code: "pkg" }, { text: "'s __init__.py defines" }]);
   assert.deepEqual(inline("a [link](https://x) and a lone ` tick"), [{ text: "a [link](https://x) and a lone ` tick" }]);
-});
-
-test("a value holding backticks round-trips through code()", () => {
-  for (const v of ["a`b", "`edge`", "x``y", "plain"]) assert.deepEqual(inline(code(v)), [{ code: v }]);
-  assert.equal(code("a`b"), "``a`b``");
 });
 
 test("paragraphs are split at blank lines and kept on one line", () => {

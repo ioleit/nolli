@@ -20,18 +20,6 @@ export function paragraphsOf(md) {
   return md ? md.split(/\n\s*\n/).map(p => p.trim().replace(/\s+/g, " ")).filter(Boolean) : [];
 }
 
-/** A value as a code span, fenced with more backticks than it holds (as prose.code). @param {string} value */
-export function code(value) {
-  const s = String(value).trim().replace(/\s+/g, " ");
-  if (!s) return "";
-  const fence = "`".repeat(Math.max(0, ...(s.match(/`+/g) || []).map(r => r.length)) + 1);
-  const pad = s[0] === "`" || s.at(-1) === "`" ? " " : "";
-  return fence + pad + s + pad + fence;
-}
-
-/** A verdict's mark (as prose.mark). @param {string} verdict */
-export const mark = verdict => `[${verdict}](verdict:${verdict})`;
-
 /** Markdown on one line, as one paragraph (as prose.one_line). @param {string} text */
 export const oneLine = text => text.trim().replace(/\s+/g, " ");
 
