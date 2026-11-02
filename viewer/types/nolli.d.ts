@@ -150,6 +150,7 @@ export interface SceneState {
   budget: number;
   utilities: number;  // more incoming edges than this: a utility; 0: off
   side: "both" | "base" | "head";
+  bundle: boolean;  // EXPERIMENT (not for merging): fan bundling on
 }
 
 export interface Scene {

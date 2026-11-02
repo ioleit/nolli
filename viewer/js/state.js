@@ -5,7 +5,7 @@
  * @typedef {"interactive" | "mermaid" | "json"} View  the tab: the scene drawn (ELK), as Mermaid, as JSON
  * @typedef {"default" | "folded" | "changes" | "unfolded"} Preset
  * @typedef {{ expanded: string[] | null, preset: Preset | null, roles: string[] | null, groups: string[] | null, budget: number | null,
- *             utilities: number | null, side: "both" | "base" | "head" }} SceneQuery
+ *             utilities: number | null, side: "both" | "base" | "head", bundle: boolean }} SceneQuery
  *   preset: the cut is the preset's (expanded is then what the server resolved it to); null: expanded as clicked
  * @typedef {SceneQuery & { name: string | null, theme: string, view: View, item: string | null, dim: boolean }} ViewState
  *   item: the review item last gone to ("C3"); dim: fade what did not change (diff datasets)
@@ -13,7 +13,7 @@
 
 // roles / groups / budget / utilities null: let the server choose (roles, groups, threshold)
 /** @type {SceneQuery} */
-export const DEFAULTS = { expanded: null, preset: "default", roles: null, groups: null, budget: null, utilities: null, side: "both" };
+export const DEFAULTS = { expanded: null, preset: "default", roles: null, groups: null, budget: null, utilities: null, side: "both", bundle: true };
 export const DEFAULT_THEME = "textbook";
 /** @type {ViewState} */
 export const state = { name: null, ...DEFAULTS, theme: DEFAULT_THEME, view: "interactive", item: null, dim: true };
@@ -34,6 +34,7 @@ export function query() {
   if (state.budget) p.set("b", String(state.budget));
   if (state.utilities !== null) p.set("ut", String(state.utilities));
   if (state.side !== "both") p.set("s", state.side);
+  if (!state.bundle) p.set("nb", "1");  // EXPERIMENT: fan bundling off
   return p;
 }
 
@@ -58,6 +59,7 @@ export function readHash(h) {
   if (b) st.budget = +b;
   st.utilities = p.get("nu") === "1" ? 0 : p.get("ut") ? +(p.get("ut") || 0) : null;
   const side = p.get("s"); st.side = side === "base" || side === "head" ? side : "both";
+  st.bundle = p.get("nb") !== "1";
   // older links: raw=1, mmd=1
   const v = p.get("v") || (p.get("raw") === "1" ? "json" : p.get("mmd") === "1" ? "mermaid" : "interactive");
   return { name: p.get("d"), st, theme: p.get("th"),

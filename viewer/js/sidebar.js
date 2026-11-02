@@ -90,6 +90,7 @@ function quick(parent, items) {
 export function syncControls() {
   input("budget").value = String(state.budget);
   input("utilities").value = String(state.utilities ?? "");
+  input("bundle").checked = state.bundle;
   select("theme").value = state.theme;
   for (const b of document.querySelectorAll("#presets [data-preset]")) b.classList.toggle("on", /** @type {HTMLElement} */ (b).dataset.preset === state.preset);
   byId("custom").hidden = state.preset !== null;

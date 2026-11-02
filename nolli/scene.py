@@ -52,6 +52,7 @@ class SceneState:
     groups: list[str] = field(default_factory=lambda: list(DEFAULT_GROUPS))  # shown root groups
     utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
     side: str = "both"  # diff models: "base" or "head" draws one commit, "both" the merged picture
+    bundle: bool = True  # EXPERIMENT (not for merging): False skips fan bundling, edges end at the nearest visible box
 
 
 def hidden_for(m: Model, roles, side: str = "both") -> set[str]:
@@ -95,7 +96,8 @@ def compute(m: Model, st: SceneState) -> tuple[set[str], set[str], set[str], Rol
     visible = visible_from_expanded(m, expanded, hidden, walked=walked)
     expanded = walked
     rolled = rollup(m, visible, hidden, shown_groups=shown_groups, side=st.side)
-    rolled.edges = bundle(m, rolled.edges, expanded)  # fan-out edges to a container's boundary
+    if st.bundle:
+        rolled.edges = bundle(m, rolled.edges, expanded)  # fan-out edges to a container's boundary
     utilities = utility_badges(m, rolled, st.utilities) if st.utilities > 0 else set()
     return expanded, hidden, visible, rolled, utilities
 
@@ -374,4 +376,6 @@ def state_from_query(q: dict[str, str]) -> SceneState:
     st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
     if q.get("s") in ("base", "head"):
         st.side = q["s"]
+    if q.get("nb") == "1":
+        st.bundle = False
     return st

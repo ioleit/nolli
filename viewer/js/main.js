@@ -115,7 +115,7 @@ async function refresh(keepZoom = false) {
  */
 function adopt(sc) {
   const s = sc.state;
-  state.expanded = s.expanded; state.preset = s.preset; state.roles = s.roles; state.groups = s.groups; state.budget = s.budget; state.utilities = s.utilities;
+  state.expanded = s.expanded; state.preset = s.preset; state.roles = s.roles; state.groups = s.groups; state.budget = s.budget; state.utilities = s.utilities; state.bundle = s.bundle;
 }
 
 /** Bring the tab shown up to date: the scene drawn, as Mermaid, or as JSON. */
@@ -268,6 +268,7 @@ function showRawPane() { if (scene) showRaw(scene); byId("status").textContent =
 onRawToggle(toggle);
 onMermaidToggle(toggle);
 input("utilities").addEventListener("change", () => { state.utilities = Math.max(0, Math.round(+input("utilities").value || 0)); refresh(true); });
+input("bundle").addEventListener("change", () => { state.bundle = input("bundle").checked; refresh(true); });
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; choosePreset("default"); });
 for (const b of document.querySelectorAll("#presets [data-preset]")) b.addEventListener("click", () => {
   const p = /** @type {import("./state.js").Preset} */ (/** @type {HTMLElement} */ (b).dataset.preset);
