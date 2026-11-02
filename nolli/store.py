@@ -182,6 +182,7 @@ class DirectoryStore:
         self.lock = threading.Lock()
         self.index: dict[ModelKey, Path] = {}  # key -> its directory
         self.names: dict[str, ModelKey] = {}  # directory name -> key
+        self.standard: dict[str, ModelKey] = {}  # key.format_name() -> key, for a model in a directory of another name
         self.scanned = 0  # root's mtime (ns) when it was last read
         self.models: dict[Path, tuple[tuple[int, int], Model]] = {}  # model.json -> which file (inode, mtime), the model parsed
         self.loading: dict[Path, threading.Lock] = {}
@@ -201,7 +202,7 @@ class DirectoryStore:
             if mtime == self.scanned:
                 return
             self.scanned = mtime
-            index, names = {}, {}
+            index, names, standard = {}, {}, {}
             for d in self.root.iterdir():
                 if d.name.startswith(".") or not (d / "model.json").is_file():
                     continue
@@ -209,16 +210,19 @@ class DirectoryStore:
                 if key is not None:
                     index.setdefault(key, d)
                     names[d.name] = key
-            self.index, self.names = index, names
+                    standard[key.format_name()] = key
+            self.index, self.names, self.standard = index, names, standard
 
     def find_key(self, name: str) -> ModelKey | None:
+        """By the directory's name, or by the key's own name (``key.format_name()``) for a model
+        kept in a directory named otherwise (by nolli diff -o, or by nolli before 0.7)."""
         if not name or "/" in name or name.startswith("."):
             return None
         self.scan()
         if name not in self.names and (self.root / name / "model.json").is_file():
             self.scanned = 0  # written since: read again
             self.scan()
-        return self.names.get(name)
+        return self.names.get(name) or self.standard.get(name)
 
     def list_names(self) -> list[str]:
         self.scan()
@@ -270,7 +274,7 @@ class DirectoryStore:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         with self.lock:
-            self.index[key], self.names[out.name] = out, key
+            self.index[key], self.names[out.name], self.standard[key.format_name()] = out, key, key
 
     def load_review(self, key: ModelKey) -> Review | None:
         d = self.locate(key)

@@ -107,6 +107,10 @@ def test_a_directory_written_elsewhere_is_found_by_its_name(tmp_path):
     store = DirectoryStore(tmp_path / "data")
     assert store.find_key("ledger-review") == key and store.load_model(key) is not None
     assert store.locate(key) == d
+    assert store.find_key(key.format_name()) == key  # also by the key's own name, as a server's page names it
+    store.save_model(key, Model())  # kept where it is
+    assert store.locate(key) == d and store.find_key(key.format_name()) == key
+    assert store.list_names() == ["ledger-review"]  # listed once, by its directory
 
 
 def test_local_repository_has_its_commits(src):

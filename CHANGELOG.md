@@ -2,6 +2,16 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## 0.7.1
+
+### Fixed
+
+- **A model kept by an older nolli is found by its key's name.** `DirectoryStore` keeps
+  using a directory written by nolli before 0.7 (or by `nolli diff -o`) for the same key,
+  but `nolli serve`'s page names the model by its key (`owner_repo-<base7>-<head7>`), so
+  the viewer's requests for a page visited before upgrading answered 404. `find_key()` now
+  also answers to the key's own name.
+
 ## 0.7.0
 
 ### Changed
