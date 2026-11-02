@@ -73,7 +73,10 @@ const elk = new ELK();
 // EXPERIMENT (not for merging): ELK's hierarchy handling, set from the sidebar (main.js).
 // INCLUDE_CHILDREN lays the whole hierarchy out at once (edges across levels take part);
 // SEPARATE_CHILDREN lays each unfolded box out on its own, then places the boxes.
-export const LAYOUT = { hierarchy: "INCLUDE_CHILDREN", ports: true };
+// pin: entry nodes pinned to the box's first layer (exit nodes to its last); pull: how much ELK's
+// layering keeps a hidden edge short (elk.layered.priority.shortness, network simplex), 0 for
+// nothing; debug: the hidden edges and entry nodes come back from layout() to be drawn.
+export const LAYOUT = { hierarchy: "INCLUDE_CHILDREN", ports: true, pin: false, pull: 10, debug: false };
 // ports: a lifted line (scene edge with `ends`, rollup.lift) ends at an entry node inside the
 // box it was lifted to, a tiny invisible node in the box's first layer (an exit node in its
 // last layer for lines leaving), and hidden edges run from there to the drawn nodes the line
@@ -147,20 +150,22 @@ function elkGraph(scene) {
     const id = `${c}.${dir}${i}`;
     // not pinned to the first or last layer: its edges put it just above (below) what it leads to,
     // where pinning would add a layer of its own at the top (bottom) of the box
-    (n.children = n.children || []).push({ id, width: ENTRY, height: ENTRY, layoutOptions: {} });
+    (n.children = n.children || []).push({ id, width: ENTRY, height: ENTRY, layoutOptions: LAYOUT.pin ? { "elk.layered.layering.layerConstraint": dir === "in" ? "FIRST" : "LAST" } : {} });
     return id;
   };
+  /** @type {Record<string, string>} */
+  const hiddenOpts = LAYOUT.pull > 0 ? { "elk.layered.priority.shortness": String(LAYOUT.pull) } : {};
   scene.edges.forEach((e, i) => {
     let src = e.src, dst = e.dst;
     if (LAYOUT.ports && e.ends) {
       if (containers.has(e.src) && e.ends.src.some(x => x !== e.src)) {
         src = port(e.src, "out", i);
         // not from a box pinned to the last layer: the port's dummy node sits there too, and ELK refuses that
-        for (const x of new Set(e.ends.src)) if (built.has(x) && x !== e.src && !last.has(x)) edges.push({ id: `h${i}s${edges.length}`, sources: [x], targets: [src], _e: null });
+        for (const x of new Set(e.ends.src)) if (built.has(x) && x !== e.src && !last.has(x)) edges.push({ id: `h${i}s${edges.length}`, sources: [x], targets: [src], layoutOptions: hiddenOpts, _e: null });
       }
       if (containers.has(e.dst) && e.ends.dst.some(x => x !== e.dst)) {
         dst = port(e.dst, "in", i);
-        for (const x of new Set(e.ends.dst)) if (built.has(x) && x !== e.dst && !first.has(x)) edges.push({ id: `h${i}d${edges.length}`, sources: [dst], targets: [x], _e: null });  // own-code dots are first already
+        for (const x of new Set(e.ends.dst)) if (built.has(x) && x !== e.dst && !first.has(x)) edges.push({ id: `h${i}d${edges.length}`, sources: [dst], targets: [x], layoutOptions: hiddenOpts, _e: null });  // own-code dots are first already
       }
     }
     edges.push({ id: "e" + i, sources: [src], targets: [dst], labels: mark(e, i), _e: e });
@@ -182,7 +187,8 @@ export async function layout(scene) {
   (laid.children || []).forEach(c => place(c, 0, 0));
   // edges are declared at the root; ELK gives their coordinates relative to the container
   // it reports as `container`, and keeps the scene's edge order
-  const edges = /** @type {ElkEdge[]} */ (laid.edges || []).filter(le => le._e).map(le => {
+  const all = /** @type {ElkEdge[]} */ (laid.edges || []);
+  const edges = all.filter(le => le._e).map(le => {
     const c = le.container && le.container !== "ROOT" ? nodes.get(le.container) : null;
     const x0 = c ? c.x : 0, y0 = c ? c.y : 0;
     const sections = (le.sections || []).map(s => [s.startPoint, ...(s.bendPoints || []), s.endPoint].map(p => ({ x: p.x + x0, y: p.y + y0 })));
@@ -190,5 +196,14 @@ export async function layout(scene) {
     const mark = m && m.x !== undefined && m.y !== undefined ? { x: m.x + x0 + (m.width || 0) / 2, y: m.y + y0 + (m.height || 0) / 2 } : null;
     return { edge: /** @type {SceneEdge} */ (le._e), sections, mark };
   });
-  return { width: laid.width || 0, height: laid.height || 0, nodes, edges };
+  /** @type {Laid["debug"]} what is normally invisible: entry nodes and hidden edges */
+  const debug = LAYOUT.debug ? {
+    nodes: [...nodes.entries()].filter(([id]) => /\.(in|out)\d+$/.test(id)).map(([, b]) => b),
+    edges: all.filter(le => !le._e).map(le => {
+      const c = le.container && le.container !== "ROOT" ? nodes.get(le.container) : null;
+      const x0 = c ? c.x : 0, y0 = c ? c.y : 0;
+      return (le.sections || []).map(s => [s.startPoint, ...(s.bendPoints || []), s.endPoint].map(p => ({ x: p.x + x0, y: p.y + y0 })));
+    }),
+  } : null;
+  return { width: laid.width || 0, height: laid.height || 0, nodes, edges, debug };
 }

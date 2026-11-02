@@ -93,6 +93,7 @@ export function syncControls() {
   input("lift").checked = state.lift;
   input("maxlines").value = String(state.maxLines ?? "");
   input("ports").checked = state.ports;
+  input("pin").checked = state.pin; input("pull").value = String(state.pull); input("debug").checked = state.debug;
   input("hierarchy").checked = state.hierarchy;
   select("theme").value = state.theme;
   for (const b of document.querySelectorAll("#presets [data-preset]")) b.classList.toggle("on", /** @type {HTMLElement} */ (b).dataset.preset === state.preset);
