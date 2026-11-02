@@ -1,7 +1,6 @@
-"""Building models: extracting a commit, merging two commits' models into the model of the
-change between them, and what is derived from a model (the review's diagram and brief, the
-files a model's directory holds). Models are kept in a ModelStore and built from a Sources
-(nolli/store.py). Used by the command line (``nolli/cli.py``) and the service
+"""Building models: extracting a commit, and merging two commits' models into the model of the
+change between them. Models are kept in a ModelStore and built from a Sources
+(nolli/store.py); what is made from a model is in nolli/derived.py. Used by the command line (``nolli/cli.py``) and the service
 (``nolli/viewer/hosted.py``).
 
 The steps that take time (extract_commit(), diff_commits()) take paths and models and return a
@@ -11,7 +10,6 @@ own); the store and the sources are used only where fetch_change_model() is call
 
 from __future__ import annotations
 
-import json
 import subprocess
 import tempfile
 import time
@@ -21,13 +19,11 @@ from typing import Any
 
 from . import match
 from .extractors import Context, all_extractors, language_names
-from .mermaid import render
 from .model import Model, address
 from .progress import Progress, Quiet
-from .scene import SceneState, compute, scene
-from .store import Change, Commit, ModelKey, ModelStore, Sources
+from .scene import DEFAULT_BUDGET
+from .store import Change, Commit, ModelStore, Sources
 
-BUDGET = 34  # boxes in a view, unless a model says otherwise (meta["budget"])
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
 Run = Callable[..., Any]  # run(fn, *args, progress=…): fn(*args, progress=…), here or elsewhere
@@ -147,7 +143,7 @@ def fetch_whole_model(store: ModelStore, sources: Sources, commit: Commit, *, bu
     """The model of a repository at one commit, as the viewer shows a repository as a whole."""
     progress = progress or Quiet()
     m = None if rebuild else store.load_model(commit)
-    if m is not None and is_fresh(m) and (budget is None or m.meta.get("budget", BUDGET) == budget):
+    if m is not None and is_fresh(m) and (budget is None or m.meta.get("budget", DEFAULT_BUDGET) == budget):
         return m
     with sources.open_commits(commit.repo, commit.sha) as clone:
         name = commit.repo.url.rstrip("/").split("/")[-1]
@@ -166,62 +162,3 @@ def version() -> str:
         return pkg_version("nolli-review")
     except PackageNotFoundError:
         return "unknown"
-
-
-# -- derived from a model ------------------------------------------------------
-
-
-def make_review_diagram(m: Model) -> str:
-    """The diagram a review judges (Mermaid): every area that changed unfolded. The same for
-    the same model and version of nolli, so verdicts on its ids stay valid."""
-    return render(scene(m, SceneState(budget=m.meta.get("budget", BUDGET), preset="changes")))
-
-
-def make_review_brief(m: Model, diagram: str | None = None) -> str:
-    """What a review agent gets (Markdown): the diagram, how to answer, the change's description."""
-    from .review import review_markdown
-
-    return review_markdown(m, diagram if diagram is not None else make_review_diagram(m), (m.meta.get("diff") or {}).get("description"))
-
-
-def make_report(m: Model) -> dict:
-    """What a model is, in numbers: its meta, counts, the default view's size, unresolved references."""
-    st = SceneState(budget=m.meta.get("budget", BUDGET))
-    _expanded, _hidden, visible, rolled, _utilities = compute(m, st)
-    report = {
-        "meta": m.meta,
-        "summary": m.summary(),
-        "view": {"visible": len(visible), "edges": len(rolled.edges), "internal": rolled.internal,
-                 "hidden_relations": rolled.hidden_relations, "unresolved": rolled.unresolved},
-        "unresolved": sorted(e.id for e in m.entities.values() if e.kind == "unresolved"),
-        "notes": m.meta.get("notes", {}),
-    }
-    if (m.meta.get("diff") or {}).get("counts"):
-        report["diff"] = m.meta["diff"]["counts"]
-    return report
-
-
-def write_dataset(key: ModelKey | None, m: Model, out: Path, progress: Progress | None = None) -> dict:
-    """A model's directory: model.json and report.json, and for a change what a review agent
-    reads, changes.json, review.mmd and review.md. Returns the report.
-    TODO: only model.json; the rest is derived and can be made when asked for."""
-    from .changes import change_items
-
-    from .store import format_key
-
-    progress = progress or Quiet()
-    out.mkdir(parents=True, exist_ok=True)
-    if key is not None:
-        m.meta["key"] = format_key(key)
-    with progress.step("writing model.json"):
-        m.save(out / "model.json")
-    with progress.step("the default cut"):
-        report = make_report(m)
-    (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
-    if m.meta.get("diff"):
-        with progress.step("the review's diagram"):
-            (out / "changes.json").write_text(json.dumps(change_items(m), indent=1))
-            mmd = make_review_diagram(m)
-            (out / "review.mmd").write_text(mmd)
-            (out / "review.md").write_text(make_review_brief(m, mmd))
-    return report

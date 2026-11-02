@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from .derived import write_dataset
 from .model import Model
 
 # -- keys ------------------------------------------------------------------
@@ -165,13 +166,13 @@ class Sources(Protocol):
 class DirectoryStore:
     """Models as directories under ``root``, one per model, named after its key
     (``<root>/<name>/model.json``), with the files the viewer and a review agent read next to it
-    (nolli/build.py, write_dataset()) and the review as ``verdicts.json`` + ``review.json``.
+    (nolli/derived.py, write_dataset()) and the review as ``verdicts.json`` + ``review.json``.
     Every directory under ``root`` with a model.json is a model, also one written by
     ``nolli diff -o`` under a name of its own; its key comes from its report.json.
     TODO: fewer files: the model, and the review until it is annotations on the model."""
 
-    def __init__(self, root: Path, write: Callable[[ModelKey, Model, Path], None] | None = None):
-        """``write``: what to write for a model (default: nolli.build.write_dataset)."""
+    def __init__(self, root: Path, write: Callable[[Model, Path], object] = write_dataset):
+        """``write``: what to write for a model (default: nolli.derived.write_dataset)."""
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.write = write
@@ -254,10 +255,7 @@ class DirectoryStore:
         shutil.rmtree(tmp, ignore_errors=True)
         tmp.mkdir(parents=True)
         try:
-            write = self.write
-            if write is None:
-                from .build import write_dataset as write
-            write(key, model, tmp)
+            self.write(model, tmp)
             for f in ("verdicts.json", "review.json"):  # the review stays with the model it answers
                 if (out / f).is_file():
                     shutil.copy2(out / f, tmp / f)

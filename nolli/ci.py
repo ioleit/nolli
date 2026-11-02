@@ -64,7 +64,7 @@ def comment(store: ModelStore, model_key: ModelKey, skipped: str | None = None) 
     each kind, the worst ones (not fine) with their reasons, and how to open the result.
     ``skipped`` says why no review agent ran: "no-key" (the repository has no API key for
     one) or "fork" (a PR from a fork, which gets no secrets)."""
-    from .build import make_review_diagram
+    from .derived import make_review_diagram
     from .changes import change_items
     from .review import check_verdicts, diagram_changes, resolve_verdicts
 

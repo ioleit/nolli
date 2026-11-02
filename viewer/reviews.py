@@ -59,7 +59,7 @@ def from_ci(store: ModelStore, key: ModelKey, m: Model, comments: list | dict) -
     commit: ``{"found": "verdicts" | "no-review" | "earlier" | None, "applies": True, ...}``. Its
     verdicts, translated from an earlier nolli's ids and checked against this model's
     diagram, become the model's, unless it has some already."""
-    from nolli.build import make_review_diagram
+    from nolli.derived import make_review_diagram
     from nolli.ci import results, upgrade
     from nolli.review import check_verdicts
 
@@ -143,7 +143,7 @@ class Reviews:
 
     def _run(self, job: Job, name: str, store: ModelStore, key: Change, sources: Sources) -> None:
         from nolli import reviewer
-        from nolli.build import make_review_brief, make_review_diagram
+        from nolli.derived import make_review_brief, make_review_diagram
 
         def on_step(s: str, run: reviewer.Run) -> None:
             if s != job.step:

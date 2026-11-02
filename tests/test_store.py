@@ -81,7 +81,7 @@ def test_directory_store_keeps_models_and_reviews(tmp_path):
 
 
 def test_a_model_is_stored_whole_or_not_at_all(tmp_path):
-    def broken(key, m, out):
+    def broken(m, out):
         (out / "model.json").write_text("{}")
         raise RuntimeError("half way")
 

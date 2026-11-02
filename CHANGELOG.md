@@ -36,9 +36,10 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **Building** (`nolli/build.py`): `fetch_change_model(store, sources, change)` and
   `fetch_whole_model(...)` load a model, or build and keep it; the slow steps
   (`extract_commit`, `diff_commits`) take paths and models and return a model, so the server
-  runs them in processes of their own while the store stays where the request is. The
-  review's diagram and brief are made from the model (`make_review_diagram`,
-  `make_review_brief`); a model records its key, its budget and the change's description.
+  runs them in processes of their own while the store stays where the request is. What is
+  made from a model is in `nolli/derived.py`: the review's diagram and brief
+  (`make_review_diagram`, `make_review_brief`), the report and a model directory's files. A
+  model records its key, its budget and the change's description.
 - **Fewer files per model**: `view.json`, `scene.json` and `default.mmd` were read by nothing
   and are no longer written. The viewer's "review.md" link is `/api/brief?d=<name>`; the
   raw `/data/<name>/<file>` route is gone.

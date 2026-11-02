@@ -41,7 +41,7 @@ HERE = Path(__file__).resolve().parent
 if not __package__:
     sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
-from nolli.build import make_review_brief  # noqa: E402
+from nolli.derived import make_review_brief  # noqa: E402
 from nolli.changes import change_items, details  # noqa: E402
 from nolli.mermaid import ids as mermaid_ids, render  # noqa: E402
 from nolli.model import Model  # noqa: E402

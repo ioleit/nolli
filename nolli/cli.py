@@ -44,10 +44,11 @@ import sys
 import time
 from pathlib import Path
 
-from .build import extract, write_dataset
+from .build import extract
+from .derived import write_dataset
 from .model import Model
 from .progress import Progress
-from .store import DirectoryStore, ModelKey, Repo
+from .store import DirectoryStore, ModelKey, Repo, format_key
 
 
 def find_repo(repo: Path) -> Repo:
@@ -65,7 +66,8 @@ def cmd_extract(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     m, _ctx = extract(repo)
     m.meta["budget"] = args.budget
-    report = write_dataset(find_repo(repo).make_commit(git_head(repo) or "worktree"), m, Path(args.out))
+    m.meta["key"] = format_key(find_repo(repo).make_commit(git_head(repo) or "worktree"))
+    report = write_dataset(m, Path(args.out))
     print(json.dumps({"entities": report["summary"]["entities"], "relations": report["summary"]["relations"],
                       "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]},
                       "unresolved": len(report["unresolved"])}, indent=1))
@@ -83,8 +85,8 @@ def cmd_diff(args: argparse.Namespace) -> int:
     m.meta["nolli"] = version()
     m.meta["diff"].update({k: v for k, v in {"pr": args.pr, "title": args.title,
                                               "description": desc.read_text() if desc.is_file() else None}.items() if v})
-    key = find_repo(repo).make_change(m.meta["diff"]["base"], m.meta["diff"]["head"])
-    report = write_dataset(key, m, out)
+    m.meta["key"] = format_key(find_repo(repo).make_change(m.meta["diff"]["base"], m.meta["diff"]["head"]))
+    report = write_dataset(m, out)
     print(json.dumps({"diff": {k: v for k, v in m.meta["diff"].items() if k != "counts"} | {"base": m.meta["diff"]["base_short"], "head": m.meta["diff"]["head_short"]},
                       "changes": counts, "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]}}, indent=1))
     return 0
@@ -223,7 +225,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     """nolli agent check: verdicts.json against the diagram it answers; problems on stderr."""
     from .review import VERDICTS, check_verdicts
 
-    from .build import make_review_diagram
+    from .derived import make_review_diagram
 
     target = Path(args.dataset).expanduser()
     ds = target.parent if target.is_file() else target
