@@ -71,8 +71,8 @@ function obstacles(self) {
 /** How much of `o` a text at t covers: px² of boxes, 120 per edge point. @param {{ x: number, y: number, w: number, h: number }} t @param {Shapes} o */
 function covered(t, o) {
   let area = 0;
-  for (const b of o.boxes) {
-    const w = Math.min(t.x + t.w, b.right) - Math.max(t.x, b.left), h = Math.min(t.y + t.h, b.bottom) - Math.max(t.y, b.top);
+  for (const b of o.boxes) {  // a pixel around each box: touching counts as covering
+    const w = Math.min(t.x + t.w, b.right + 1) - Math.max(t.x, b.left - 1), h = Math.min(t.y + t.h, b.bottom + 1) - Math.max(t.y, b.top - 1);
     if (w > 0 && h > 0) area += w * h;
   }
   let pts = 0;
