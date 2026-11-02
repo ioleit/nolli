@@ -51,6 +51,7 @@ const isContainer = n => !isAnchor(n) && n.container;
 
 // room around a container's children: the header with title, badges and − sits on top
 const CONTAINER_PAD = { top: 30, left: 10, bottom: 10, right: 10 };
+export const HEADER_H = 26;  // the header's hover area (draw.js), above where children start
 export const USES_LINE = 13;  // one line per utility used, bottom right
 
 /** A container's padding: CONTAINER_PAD, plus room at the bottom for its uses list. @param {SceneNode} n */

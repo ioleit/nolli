@@ -2,7 +2,7 @@
 // back a handle per drawn node so an animation can move it (update) and fade it.
 
 import { showTip, hideTip, pinTip } from "./tip.js";
-import { ICON_GAP, ICON_H, USES_LINE, iconW, iconsW, isAnchor, statsText } from "./layout.js";
+import { HEADER_H, ICON_GAP, ICON_H, USES_LINE, iconW, iconsW, isAnchor, statsText } from "./layout.js";
 import { wasDrag } from "./panzoom.js";
 import { ICON, glyph } from "./verdicts.js";
 
@@ -127,8 +127,9 @@ function buildBox(n, p, h) {
   const titleW = n.label.length * 7.2 + 8 + iconsW(icons);
   /** @param {number} w */
   const foldX = w => (isC && w < titleW + 40) ? titleW + 10 : w - 14;
+  const stats = statsText(n), statsW = stats ? stats.length * 6 + 8 : 0;  // changed lines, "+12 −3"
   /** @type {SVGElement | null} */
-  let top = null, foldRect = null, foldText = null;
+  let top = null, foldRect = null, foldText = null, header = null;
   if (isC) {
     // only the − folds a container; clicks elsewhere on it must not interfere with navigation
     // a group with a transparent hit area: node text has pointer-events off, and the glyph alone is a tiny target
@@ -142,14 +143,17 @@ function buildBox(n, p, h) {
       f.addEventListener("click", ev => { ev.stopPropagation(); onToggle(n.id); });
     }
     // drawn above the edges (an edge's hover strip would otherwise swallow the click)
-    top = el("g", { class: "node", transform: at(p), "data-fold": n.id }); top.appendChild(f);
+    top = el("g", { class: "node", transform: at(p), "data-fold": n.id });
+    // the title (icons, name, changed lines) is the container's hover target: its card and its
+    // edges light from there, not from the whole area, which belongs to what is inside
+    header = el("g", { class: "header", "data-id": n.id }); header.appendChild(el("rect", { x: 0, y: 0, width: titleW + statsW, height: HEADER_H }));
+    top.appendChild(header); top.appendChild(f);
   }
   if (n.utility) grp.classList.add("utility");
   /** @type {SVGElement | null} */
   let leaves = null, badge = null;
   if (!isC && n.leaves) { leaves = el("text", { class: "badge", x: p.w - 5, y: 10, "text-anchor": "end" }); leaves.textContent = "+" + n.leaves; grp.appendChild(leaves); }
   // changed lines: after the title in a container's header, on the second line of a folded box
-  const stats = statsText(n), statsW = stats ? stats.length * 6 + 8 : 0;
   /** @type {SVGElement | null} */
   let statsEl = null;
   if (stats && n.diff) {
@@ -262,9 +266,12 @@ export function draw(g, scene, laid, handlers) {
   unlight();  // a redraw starts dark
   for (const n of scene.nodes) {
     const box = boxEl.get(n.id);
-    if (!box || ("container" in n && n.container)) continue;  // unfolded boxes don't light on hover
-    box.addEventListener("mouseenter", ev => focus(box, n, /** @type {MouseEvent} */ (ev)));
-    box.addEventListener("mouseleave", blur);
+    if (!box) continue;
+    // an unfolded box: from its header only (the area inside belongs to its children)
+    const from = ("container" in n && n.container) ? g.querySelector(`g.header[data-id="${CSS.escape(n.id)}"]`) : box;
+    if (!from) continue;
+    from.addEventListener("mouseenter", ev => focus(from, n, /** @type {MouseEvent} */ (ev)));
+    from.addEventListener("mouseleave", blur);
   }
   return { nodes, edges, firstEdge: edges[0] || foldLayer[0] || null };
 }
@@ -279,7 +286,8 @@ let flashTimer = null;
 /**
  * What goes with a drawn box or edge: lit while it is hovered or gone to, and kept clear by
  * its card (tip.js avoids whatever is lit). An edge: itself and the boxes at its two ends. A
- * folded box: itself, its edges and the utilities it uses. An unfolded box: itself.
+ * folded box: itself, its edges and the utilities it uses. An unfolded box: itself and the
+ * edges at its boundary.
  * @param {Scene} scene @param {Map<string, Element>} boxEl @param {Map<string, Element>} edgeEl
  * @param {Map<string, SVGElement[]>} edgesAt @returns {(x: Element) => Element[]}
  */
@@ -291,7 +299,8 @@ function interest(scene, boxEl, edgeEl, edgesAt) {
     const key = x.getAttribute("data-key");
     if (key !== null) { const e = edgeByKey.get(key); return [edgeEl.get(key) || x, ...(e ? boxes([e.src, e.dst]) : [])]; }
     const id = x.getAttribute("data-id") || "", n = nodeById.get(id), box = boxEl.get(id) || x;
-    if (!n || ("container" in n && n.container)) return [box];
+    if (!n) return [box];
+    if ("container" in n && n.container) return [box, ...edgesAt.get(id) || []];  // its own edges: the bundles at its boundary
     return [box, ...edgesAt.get(id) || [], ...boxes(n.utilities_used || [])];
   };
 }
