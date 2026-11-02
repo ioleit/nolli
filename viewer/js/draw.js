@@ -263,7 +263,7 @@ export function draw(g, scene, laid, handlers) {
   foldLayer.forEach(f => g.appendChild(f));
   if (laid.debug) {  // EXPERIMENT: what is normally invisible, in a debug colour
     const dg = el("g", { class: "debug" });
-    for (const secs of laid.debug.edges) for (const pts of secs) dg.appendChild(el("path", { d: "M" + pts.map(p => `${p.x},${p.y}`).join("L") }));
+    for (const { kind, sections } of laid.debug.edges) for (const pts of sections) dg.appendChild(el("path", { class: kind, d: "M" + pts.map(p => `${p.x},${p.y}`).join("L") }));
     for (const b of laid.debug.nodes) dg.appendChild(el("rect", { x: b.x - 3, y: b.y - 3, width: b.w + 6, height: b.h + 6 }));
     g.appendChild(dg);
   }

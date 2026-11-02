@@ -181,7 +181,7 @@ export interface Laid {
   /** mark: the centre of the edge's verdict mark, where ELK placed it as the edge's label */
   edges: { edge: SceneEdge; sections: Point[][]; mark?: Point | null }[];
   /** EXPERIMENT: entry nodes and hidden edges, when LAYOUT.debug asks for them */
-  debug?: { nodes: Box[]; edges: Point[][][] } | null;
+  debug?: { nodes: Box[]; edges: { kind: "pull" | "anchor"; sections: Point[][] }[] } | null;
 }
 
 /** Where a dataset's verdicts came from (review.json, viewer/reviews.py). */

@@ -99,7 +99,8 @@ svg#g:active { cursor: grabbing; }
 .node circle.chip { stroke: var(--bg); }
 .node circle.anchor { fill: var(--anchor); stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .node g.header rect { fill: transparent; stroke: none; pointer-events: all; }  /* a container's hover target */
-g.debug path { fill: none; stroke: #e020c0; stroke-width: 1; stroke-dasharray: 3 2; pointer-events: none; }  /* EXPERIMENT: hidden edges */
+g.debug path { fill: none; stroke: #e020c0; stroke-width: 1; stroke-dasharray: 3 2; pointer-events: none; }  /* EXPERIMENT: hidden pull edges */
+g.debug path.anchor { stroke: #e020c0; stroke-opacity: .25; stroke-dasharray: 1 3; }  /* anchor edges: entry node to every child, every child to exit node */
 g.debug rect { fill: #e020c0; stroke: none; pointer-events: none; }  /* EXPERIMENT: entry and exit nodes */
 .node g.fold { cursor: pointer; pointer-events: all; }
 .node g.fold rect { fill: transparent; stroke: none; }

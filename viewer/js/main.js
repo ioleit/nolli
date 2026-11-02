@@ -272,8 +272,9 @@ input("lift").addEventListener("change", () => { state.lift = input("lift").chec
 input("maxlines").addEventListener("change", () => { state.maxLines = Math.max(1, Math.round(+input("maxlines").value || 1)); refresh(true); });
 input("ports").addEventListener("change", () => { state.ports = input("ports").checked; LAYOUT.ports = state.ports; refresh(true); });
 input("pin").addEventListener("change", () => { state.pin = input("pin").checked; LAYOUT.pin = state.pin; refresh(true); });
-input("pull").addEventListener("change", () => { state.pull = Math.max(0, Math.round(+input("pull").value || 0)); LAYOUT.pull = state.pull; refresh(true); });
+input("pull").addEventListener("change", () => { state.pull = Math.max(1, Math.min(20, Math.round(+input("pull").value || 1))); LAYOUT.pull = state.pull; refresh(true); });
 input("debug").addEventListener("change", () => { state.debug = input("debug").checked; LAYOUT.debug = state.debug; refresh(true); });
+input("twopass").addEventListener("change", () => { state.twoPass = input("twopass").checked; LAYOUT.twoPass = state.twoPass; refresh(true); });
 input("hierarchy").addEventListener("change", () => { state.hierarchy = input("hierarchy").checked; LAYOUT.hierarchy = state.hierarchy ? "INCLUDE_CHILDREN" : "SEPARATE_CHILDREN"; refresh(true); });
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; choosePreset("default"); });
 for (const b of document.querySelectorAll("#presets [data-preset]")) b.addEventListener("click", () => {
@@ -329,7 +330,7 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   sel.value = name;
   Object.assign(state, h.st, { name, theme: initialTheme(h.theme), view: h.view, item: h.item, dim: h.dim });
   LAYOUT.hierarchy = state.hierarchy ? "INCLUDE_CHILDREN" : "SEPARATE_CHILDREN"; LAYOUT.ports = state.ports;  // EXPERIMENT
-  LAYOUT.pin = state.pin; LAYOUT.pull = state.pull; LAYOUT.debug = state.debug;
+  LAYOUT.pin = state.pin; LAYOUT.pull = state.pull; LAYOUT.debug = state.debug; LAYOUT.twoPass = state.twoPass;
   applyTheme(state.theme);
   // a link to an item unfolds what it needs (the hash may come from a different view state)
   await enter(h.item);
