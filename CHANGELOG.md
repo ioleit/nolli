@@ -2,7 +2,7 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
-## Unreleased
+## 0.7.0
 
 ### Changed
 
@@ -16,10 +16,6 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **A hover card goes as near as it can without covering what is lit or a verdict mark.**
   Each spot beside a box or edge moves away from it step by step, out to the edge of the
   canvas, until it is clear of those; the rest of the picture may lie under it.
-
-## Unreleased
-
-### Changed
 
 - **Models are kept in a store, by what they are the model of** (`nolli/store.py`). A key
   is a repository at one commit (`Commit`) or the change between two commits of one
