@@ -27,9 +27,10 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   cannot be mixed in one. Everything that reads or writes models goes through a
   `ModelStore` (`find_key`, `list_names`, `load_model`, `save_model`, `load_review`,
   `save_review`), and every build gets its commits from a `Sources` (`open_commits`).
-  nolli's own are `DirectoryStore` (a directory per model, as before), `LocalRepository`
-  (`nolli view`) and `CloneCache` (`nolli serve`). A store may refuse a read (`NotAllowed`):
-  the viewer's server then answers 404.
+  nolli's own are `DirectoryStore` (a directory per model: `model.json`, `key.json` and the
+  review), `LocalRepository` (`nolli view`) and `CloneCache` (`nolli serve`). A store may
+  refuse a read (`NotAllowed`): the viewer's server then answers 404. The store depends on
+  the data model only; what is made from a model is made by whoever needs it.
 - **A commit's model is kept like any other**, so a change whose commit was built before
   (a pull request's base, on its next push) extracts only the other one, also in `nolli view`.
   The separate extraction cache (`<cache>/extractions`) is gone; `nolli serve` deletes it.
@@ -40,9 +41,15 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   made from a model is in `nolli/derived.py`: the review's diagram and brief
   (`make_review_diagram`, `make_review_brief`), the report and a model directory's files. A
   model records its key, its budget and the change's description.
-- **Fewer files per model**: `view.json`, `scene.json` and `default.mmd` were read by nothing
-  and are no longer written. The viewer's "review.md" link is `/api/brief?d=<name>`; the
-  raw `/data/<name>/<file>` route is gone.
+- **Fewer files per model**: a stored model is `model.json` and `key.json`, with its review
+  (`verdicts.json`, `review.json`). `nolli diff -o` and `nolli extract -o` still write
+  `report.json`, and for a change `changes.json`, `review.mmd` and `review.md`;
+  `view.json`, `scene.json` and `default.mmd` were read by nothing and are gone. The
+  viewer's "review.md" link is `/api/brief?d=<name>`; the raw `/data/<name>/<file>` route is
+  gone.
+- **`nolli agent brief`** writes the brief, and the agent its verdicts, in a directory of the
+  agent's own (`<data>/.agent/<name>/`, printed as before); **`nolli agent check`** makes
+  verdicts that pass the dataset's review (`"by": "agent"`).
 - **`nolli serve` fetches with its GitHub token** (`NOLLI_GITHUB_TOKEN`) as well as asking the
   API with it; the token goes to git in its environment, never into a clone's configuration.
 - **For code built on the viewer's server**: what a server works with is a `Services` object

@@ -11,9 +11,8 @@ from pathlib import Path
 import pytest
 
 from nolli.build import extract_commit, fetch_change_model, run_here
-from nolli.change import ChangeError
 from nolli.model import Model
-from nolli.store import CloneCache, DirectoryStore, LocalRepository, Repo, Review, read_key
+from nolli.store import CloneCache, DirectoryStore, FetchError, LocalRepository, Repo, Review, read_key
 
 
 def git(repo: Path, *args: str) -> str:
@@ -80,16 +79,19 @@ def test_directory_store_keeps_models_and_reviews(tmp_path):
     assert not [p for p in store.root.iterdir() if p.name.startswith(".")]  # no work left over
 
 
-def test_a_model_is_stored_whole_or_not_at_all(tmp_path):
-    def broken(m, out):
-        (out / "model.json").write_text("{}")
+def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
+    def broken(self, path):
+        path.write_text("{")
         raise RuntimeError("half way")
 
-    store = DirectoryStore(tmp_path / "data", write=broken)
+    store = DirectoryStore(tmp_path / "data")
     key = Repo("github.com/o/r").make_commit("1" * 40)
+    store.save_model(key, model("before"))
+    monkeypatch.setattr(Model, "save", broken)
     with pytest.raises(RuntimeError):
         store.save_model(key, model("x"))
-    assert list(store.root.iterdir()) == []
+    assert [p.name for p in store.root.iterdir()] == [key.format_name()]  # the model kept before, no work left over
+    assert store.load_model(key).meta["repo"] == "before"
 
 
 def test_a_directory_written_elsewhere_is_found_by_its_name(tmp_path):
@@ -111,7 +113,7 @@ def test_local_repository_has_its_commits(src):
     path, shas = src
     with LocalRepository(path).open_commits(Repo(str(path)), *shas) as repo:
         assert repo == path
-    with pytest.raises(ChangeError, match="has no commit"):
+    with pytest.raises(FetchError, match="has no commit"):
         with LocalRepository(path).open_commits(Repo(str(path)), "f" * 40):
             pass
 
@@ -151,7 +153,7 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     assert calls == ["extract_commit", "extract_commit", "diff_commits"]
     assert m.meta["diff"]["title"] == "a cache" and m.meta["budget"] == 12 and m.meta["key"]["base"] == shas[0]
     assert m.has("repo:shop/cache.py") and m.entities["repo:shop/cache.py"].attrs["diff"]["status"] == "added"
-    assert (store.locate(first) / "review.md").is_file()  # what an agent run from the command line reads
+    assert sorted(f.name for f in store.locate(first).iterdir()) == ["key.json", "model.json"]  # the model, nothing made from it
 
     calls.clear()
     assert fetch_change_model(store, sources, first, run=counting(calls)).meta["diff"]["title"] == "a cache"

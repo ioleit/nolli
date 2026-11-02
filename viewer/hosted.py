@@ -75,7 +75,7 @@ from nolli.change import ChangeError, merge_base  # noqa: E402
 from nolli.model import Model  # noqa: E402
 from nolli.progress import Progress  # noqa: E402
 from nolli.store import (  # noqa: E402
-    Change, CloneCache, Commit, DirectoryStore, ModelKey, ModelStore, NotAllowed, Repo, Sources,
+    Change, CloneCache, Commit, DirectoryStore, FetchError, ModelKey, ModelStore, NotAllowed, Repo, Sources,
 )
 
 try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file
@@ -362,7 +362,7 @@ class Site:
                     self.built[plan.name] = key
                 job.state = "done"
             except Exception as exc:  # noqa: BLE001  # shown on the page; the server goes on
-                job.state, job.error = "error", str(exc) if isinstance(exc, ChangeError) else f"{type(exc).__name__}: {exc}"
+                job.state, job.error = "error", str(exc) if isinstance(exc, (ChangeError, FetchError)) else f"{type(exc).__name__}: {exc}"
             finally:
                 job.ended = time.time()
         self.tidy()

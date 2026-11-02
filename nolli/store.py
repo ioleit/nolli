@@ -11,6 +11,9 @@ interfaces stand between the code that builds and shows models and where they ar
 
 A service built on nolli can bring its own of either, for example one that keeps models
 elsewhere or decides per request who may read what (and raises ``NotAllowed`` for the rest).
+
+This module depends on the data model only. What is made from a model (a review's diagram
+and brief, a report) is nolli/derived.py; whoever needs it loads the model and makes it.
 """
 
 from __future__ import annotations
@@ -29,7 +32,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from .derived import write_dataset
 from .model import Model
 
 # -- keys ------------------------------------------------------------------
@@ -126,6 +128,10 @@ class NotAllowed(Exception):
     that does not exist."""
 
 
+class FetchError(Exception):
+    """The commits a build needs could not be had (not in the repository, or not fetched)."""
+
+
 class ModelStore(Protocol):
     """Models and their reviews, by key."""
 
@@ -164,18 +170,15 @@ class Sources(Protocol):
 
 
 class DirectoryStore:
-    """Models as directories under ``root``, one per model, named after its key
-    (``<root>/<name>/model.json``), with the files the viewer and a review agent read next to it
-    (nolli/derived.py, write_dataset()) and the review as ``verdicts.json`` + ``review.json``.
-    Every directory under ``root`` with a model.json is a model, also one written by
-    ``nolli diff -o`` under a name of its own; its key comes from its report.json.
-    TODO: fewer files: the model, and the review until it is annotations on the model."""
+    """Models as directories under ``root``, one per model, named after its key: the model
+    (``model.json``), its key (``key.json``, read without parsing the model) and its review
+    (``verdicts.json`` + ``review.json``). Every directory under ``root`` with a model.json is a
+    model, also one written elsewhere under a name of its own (``nolli diff -o``, a CI run's
+    artifact); its key comes from its files (read_key())."""
 
-    def __init__(self, root: Path, write: Callable[[Model, Path], object] = write_dataset):
-        """``write``: what to write for a model (default: nolli.derived.write_dataset)."""
+    def __init__(self, root: Path):
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
-        self.write = write
         self.lock = threading.Lock()
         self.index: dict[ModelKey, Path] = {}  # key -> its directory
         self.names: dict[str, ModelKey] = {}  # directory name -> key
@@ -184,8 +187,7 @@ class DirectoryStore:
         self.loading: dict[Path, threading.Lock] = {}
 
     def locate(self, key: ModelKey) -> Path:
-        """The model's directory (existing or not): for code that works with files, as a review
-        agent run from the command line does."""
+        """The model's directory (existing or not), for code that works with its files."""
         self.scan()
         return self.index.get(key) or self.root / key.format_name()
 
@@ -248,18 +250,19 @@ class DirectoryStore:
             return m
 
     def save_model(self, key: ModelKey, model: Model) -> None:
-        """Written next to the final directory, then swapped in whole."""
+        """Written next to the final directory, then swapped in whole; a review kept before stays."""
         model.meta["key"] = format_key(key)
         out = self.locate(key)
-        tmp = self.root / f".{out.name}.{os.getpid()}.{threading.get_ident()}"
+        tag = f"{os.getpid()}.{threading.get_ident()}"
+        tmp, old = self.root / f".{out.name}.{tag}", self.root / f".{out.name}.old.{tag}"
         shutil.rmtree(tmp, ignore_errors=True)
         tmp.mkdir(parents=True)
         try:
-            self.write(model, tmp)
+            model.save(tmp / "model.json")
+            (tmp / "key.json").write_text(json.dumps(format_key(key)))
             for f in ("verdicts.json", "review.json"):  # the review stays with the model it answers
                 if (out / f).is_file():
                     shutil.copy2(out / f, tmp / f)
-            old = self.root / f".{out.name}.old.{os.getpid()}.{threading.get_ident()}"
             if out.exists():
                 out.rename(old)
             tmp.rename(out)
@@ -288,11 +291,21 @@ class DirectoryStore:
 
 
 def read_key(d: Path) -> ModelKey | None:
-    """The key a model directory records (report.json's meta, smaller than model.json); for one
-    written before keys were recorded, what its meta says about the commits."""
+    """The key of a model directory: its key.json; else what its meta records (report.json's, as
+    nolli diff -o and nolli before 0.7 wrote it, smaller than model.json; else model.json's),
+    for a model from before keys were recorded what the meta says about its commits."""
     try:
-        meta = json.loads((d / "report.json").read_text()).get("meta", {})
-    except (OSError, ValueError):
+        return parse_key(json.loads((d / "key.json").read_text()))
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    meta = None
+    for f in ("report.json", "model.json"):
+        try:
+            meta = json.loads((d / f).read_text()).get("meta", {})
+            break
+        except (OSError, ValueError):
+            continue
+    if meta is None:
         return None
     if isinstance(meta.get("key"), dict):
         try:
@@ -309,6 +322,13 @@ def read_key(d: Path) -> ModelKey | None:
 # -- nolli's own: local repositories -----------------------------------------
 
 
+def run_git(repo: Path, *args: str, env: dict | None = None) -> str:
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, env=env, check=False)
+    if r.returncode:
+        raise FetchError(r.stderr.strip() or f"git {args[0]} failed")
+    return r.stdout
+
+
 def has_commit(repo: Path, sha: str) -> bool:
     return subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{sha}^{{commit}}"],
                           capture_output=True, check=False).returncode == 0
@@ -322,11 +342,9 @@ class LocalRepository:
 
     @contextlib.contextmanager
     def open_commits(self, repo: Repo, *shas: str) -> Iterator[Path]:
-        from .change import ChangeError
-
         missing = [s for s in shas if not has_commit(self.path, s)]
         if missing:
-            raise ChangeError(f"{self.path} has no commit {', '.join(s[:7] for s in missing)}")
+            raise FetchError(f"{self.path} has no commit {', '.join(s[:7] for s in missing)}")
         yield self.path
 
 
@@ -363,8 +381,6 @@ class CloneCache:
 
     @contextlib.contextmanager
     def open_commits(self, repo: Repo, *shas: str) -> Iterator[Path]:
-        from .change import git
-
         remote = repo.format_remote()
         if remote is None:
             raise ValueError(f"no remote to fetch {repo.url} from")
@@ -375,8 +391,8 @@ class CloneCache:
             path.mkdir(parents=True, exist_ok=True)
             with lock_clone(path):
                 if not (path / "HEAD").is_file():
-                    git(path, "init", "-q", "--bare")
-                    git(path, "remote", "add", "origin", remote)
+                    run_git(path, "init", "-q", "--bare")
+                    run_git(path, "remote", "add", "origin", remote)
                 os.utime(path)  # used now (retention)
                 missing = [s for s in shas if not has_commit(path, s)]
                 if missing:
@@ -393,8 +409,6 @@ class CloneCache:
         processes can read)."""
         import base64
 
-        from .change import ChangeError
-
         owner, name = repo.url.rstrip("/").split("/")[-2:]
         tok = self.token(owner, name) if self.token else None
         env = dict(os.environ)
@@ -402,7 +416,7 @@ class CloneCache:
             basic = base64.b64encode(f"x-access-token:{tok}".encode()).decode()
             env.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.extraHeader",
                        GIT_CONFIG_VALUE_0=f"Authorization: Basic {basic}")
-        r = subprocess.run(["git", "-C", str(clone), "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", *shas],
-                           capture_output=True, text=True, env=env, check=False)
-        if r.returncode:
-            raise ChangeError(f"could not fetch {', '.join(s[:7] for s in shas)} from {repo.url}: {r.stderr.strip()}")
+        try:
+            run_git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", *shas, env=env)
+        except FetchError as exc:
+            raise FetchError(f"could not fetch {', '.join(s[:7] for s in shas)} from {repo.url}: {exc}") from None

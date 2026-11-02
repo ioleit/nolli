@@ -18,8 +18,9 @@ $XDG_DATA_HOME/nolli or ~/.local/share/nolli), reusing one built before, then se
 viewer on it and opens it in the browser.
 
 agent is for a review agent (the skill, nolli agent skill): brief builds the dataset and
-prints where review.md (what to do) is and where verdicts.json goes; check validates the
-verdicts against the diagram they answer.
+prints where review.md (what to do) is and where verdicts.json goes (both in a directory of
+the agent's own, <data>/.agent/<name>); check validates the verdicts against the diagram they
+answer and, when they pass, makes them the dataset's review.
 
 ci is for nolli's CI workflow: comment prints the pull request comment for a run's dataset.
 
@@ -28,12 +29,14 @@ host shows that PR (nolli/viewer/hosted.py).
 
 extract and diff write a dataset to a directory of your choice.
 
-A dataset is a directory (nolli/store.py, DirectoryStore): model.json (all facts) and
-report.json (counts, unresolved references, extractor notes); for a change also
-changes.json (the numbered changes), review.mmd (Mermaid with every change in source code
-unfolded) and review.md (what a review agent gets: that diagram, how to answer, and the
-change's description, for diff from --description or pr.md in the output directory). Its
-answer goes into verdicts.json next to them, which the viewer shows.
+Under --data (nolli view, agent), a dataset is a directory of the store (nolli/store.py,
+DirectoryStore): model.json (all facts), key.json (what it is the model of) and its review
+(verdicts.json, review.json), which the viewer shows. extract and diff -o write what is made
+from a model too (nolli/derived.py): report.json (counts, unresolved references, extractor
+notes); for a change also changes.json (the numbered changes), review.mmd (Mermaid with
+every change in source code unfolded) and review.md (what a review agent gets: that diagram,
+how to answer, and the change's description, from --description or pr.md in the output
+directory).
 """
 
 from __future__ import annotations
@@ -117,7 +120,7 @@ def build(args: argparse.Namespace, cmd: str) -> Built | None:
     from . import github
     from .build import fetch_change_model, fetch_whole_model, is_fresh
     from .change import ChangeError, resolve, toplevel, whole
-    from .store import LocalRepository
+    from .store import FetchError, LocalRepository
 
     host: dict = {}
     try:
@@ -147,7 +150,7 @@ def build(args: argparse.Namespace, cmd: str) -> Built | None:
                     "pr": host.get("pr"), "title": ch.title, "description": ch.description, "budget": args.budget})
             else:
                 m = fetch_whole_model(store, sources, key, budget=args.budget, rebuild=args.rebuild, progress=Progress())
-        except ChangeError as exc:
+        except (ChangeError, FetchError) as exc:
             print(f"nolli {cmd}: {exc}", file=sys.stderr)
             return None
         print(f"built in {time.time() - t0:.1f} s: {counts(m)}", file=sys.stderr)
@@ -199,9 +202,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return hosted(argv)
 
 
+def agent_dir(store: DirectoryStore, name: str) -> Path:
+    """Where a review agent run from the command line works on the model ``name``: the brief it
+    reads, the verdicts it writes (beside the store, not in it)."""
+    return store.root / ".agent" / name
+
+
 def cmd_brief(args: argparse.Namespace) -> int:
-    """nolli agent brief: build the change's dataset and say, as JSON on stdout, where the
-    brief is, where the verdicts go and how to check them."""
+    """nolli agent brief: build the change's model and say, as JSON on stdout, where the brief
+    is, where the verdicts go and how to check them."""
+    from .derived import make_review_brief
+
     b = build(args, "agent brief")
     if b is None:
         return 2
@@ -210,10 +221,15 @@ def cmd_brief(args: argparse.Namespace) -> int:
         print("nolli agent brief: no change to review (nothing between the default branch and HEAD); "
               "name one: a branch, <base>..<head> or a PR", file=sys.stderr)
         return 2
-    verdicts = b.out / "verdicts.json"
+    work = agent_dir(b.store, b.name)
+    work.mkdir(parents=True, exist_ok=True)
+    m = b.store.load_model(b.key)
+    (work / "review.md").write_text(make_review_brief(m))
+    verdicts = work / "verdicts.json"
     print(json.dumps({
         "repository": str(b.repo), "base": ch.base, "head": ch.head, "title": ch.title, "dataset": str(b.out),
-        "brief": str(b.out / "review.md"), "verdicts": str(verdicts), "has_verdicts": verdicts.is_file(),
+        "brief": str(work / "review.md"), "verdicts": str(verdicts),
+        "has_verdicts": verdicts.is_file() or b.store.load_review(b.key) is not None,
         "inspect": f"git -C {b.repo} diff {ch.base[:12]} {ch.head[:12]}",
         "check": f"nolli agent check {b.out}",
         "view": f"nolli view {b.out}",
@@ -222,22 +238,28 @@ def cmd_brief(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    """nolli agent check: verdicts.json against the diagram it answers; problems on stderr."""
-    from .review import VERDICTS, check_verdicts
-
+    """nolli agent check: the verdicts against the diagram they answer; problems on stderr. Verdicts
+    that pass become the model's review."""
     from .derived import make_review_diagram
+    from .review import VERDICTS, check_verdicts
+    from .store import Review
 
-    target = Path(args.dataset).expanduser()
-    ds = target.parent if target.is_file() else target
-    if not (ds / "model.json").is_file():
-        ds = data_dir(args.data) / args.dataset
+    target = Path(args.dataset).expanduser().resolve()
+    vf: Path | None = None
+    if target.is_file():  # a verdicts file: the agent's (.agent/<name>/verdicts.json), or one in the model's directory
+        vf = target
+        target = target.parent.parent.parent / target.parent.name if target.parent.parent.name == ".agent" else target.parent
+    ds = target if (target / "model.json").is_file() else data_dir(args.data) / args.dataset
     store = DirectoryStore(ds.parent)
     key = store.find_key(ds.name)
     m = store.load_model(key) if key else None
-    if m is None or not m.meta.get("diff"):
+    if key is None or m is None or not m.meta.get("diff"):
         print(f"nolli agent check: {args.dataset} is not a change's dataset", file=sys.stderr)
         return 2
-    vf = target if target.is_file() else ds / "verdicts.json"
+    if vf is None:
+        vf = agent_dir(store, ds.name) / "verdicts.json"
+        if not vf.is_file() and (ds / "verdicts.json").is_file():  # written into the model's directory by hand
+            vf = ds / "verdicts.json"
     if not vf.is_file():
         print(f"nolli agent check: no {vf}", file=sys.stderr)
         return 1
@@ -246,7 +268,10 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(e, file=sys.stderr)
     counts = {v: sum(x["verdict"] == v for x in verdicts) for v in reversed(VERDICTS)}
     print(json.dumps({"ok": not errors, "verdicts": len(verdicts), **counts, "errors": len(errors)}))
-    return 1 if errors else 0
+    if errors:
+        return 1
+    store.save_review(key, Review(verdicts, {"by": "agent", "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
+    return 0
 
 
 def cmd_ci_comment(args: argparse.Namespace) -> int:
