@@ -12,6 +12,7 @@
  * @typedef {import("../types/nolli").SceneEdge} SceneEdge
  * @typedef {import("../types/nolli").Laid} Laid
  * @typedef {import("../types/nolli").Box} Box
+ * @typedef {import("../types/nolli").Point} Point
  * @typedef {import("elkjs/lib/elk-api").ElkNode} ElkNode
  * @typedef {import("elkjs/lib/elk-api").ElkExtendedEdge & { _e: SceneEdge | null, _hidden?: "pull" | "anchor", container?: string }} ElkEdge
  */
@@ -102,8 +103,11 @@ const GRAPH_OPTIONS = {
 const MARK = 16;
 
 /** @param {Scene} scene @param {Map<string, {x: number, y: number}> | null} [positions] from a first pass:
- * the second pass keeps its layers (interactive layering) and adds no hidden edges @returns {ElkNode} */
+ * the second pass keeps its layers (interactive layering) and adds no hidden edges
+ * @returns {{ graph: ElkNode, hidden: { kind: "pull" | "anchor", from: string, to: string }[] }} */
 function elkGraph(scene, positions = null) {
+  /** @type {{ kind: "pull" | "anchor", from: string, to: string }[]} every hidden edge once, for the debug view */
+  const hidden = [];
   const kidsOf = childrenOf(scene);
   // anchors go to the first layer and utilities to the last, but ELK refuses an edge between
   // two boxes pinned to the same end (a review keeps a changed edge between utilities): those
@@ -165,20 +169,28 @@ function elkGraph(scene, positions = null) {
     if (gates.has(id)) return id;
     const n = built.get(c);
     if (!n) return c;
-    (n.children = n.children || []).push({ id, width: ENTRY, height: ENTRY, layoutOptions: {} });
+    const at = positions && positions.get(id);
+    (n.children = n.children || []).push({ id, width: ENTRY, height: ENTRY, layoutOptions: {}, ...(at ? { x: at.x, y: at.y } : {}) });
     gates.set(id, c);
     if (LAYOUT.pin) for (const kid of kidsOf.get(c) || []) {
-      if (dir === "in" && !first.has(kid.id)) edges.push({ id: `a${edges.length}`, sources: [id], targets: [kid.id], _e: null, _hidden: "anchor" });
-      if (dir === "out" && !last.has(kid.id)) edges.push({ id: `a${edges.length}`, sources: [kid.id], targets: [id], _e: null, _hidden: "anchor" });
+      if (dir === "in" && !first.has(kid.id)) hiddenEdge("anchor", id, kid.id);
+      if (dir === "out" && !last.has(kid.id)) hiddenEdge("anchor", kid.id, id);
     }
     return id;
   };
   const copies = Math.max(1, Math.min(20, Math.round(LAYOUT.pull)));
+  /** a hidden edge: in a second pass only remembered, the layers already have it
+   * @param {"pull" | "anchor"} kind @param {string} from @param {string} to */
+  const hiddenEdge = (kind, from, to) => {
+    hidden.push({ kind, from, to });
+    if (positions) return;
+    for (let k = 0; k < (kind === "pull" ? copies : 1); k++) edges.push({ id: `h${edges.length}`, sources: [from], targets: [to], _e: null, _hidden: kind });
+  };
   /** @param {string} from @param {string} to */
-  const pull = (from, to) => { for (let k = 0; k < copies; k++) edges.push({ id: `h${edges.length}`, sources: [from], targets: [to], _e: null, _hidden: "pull" }); };
+  const pull = (from, to) => hiddenEdge("pull", from, to);
   scene.edges.forEach((e, i) => {
     let src = e.src, dst = e.dst;
-    if (LAYOUT.ports && e.ends && !positions) {
+    if (LAYOUT.ports && e.ends) {
       if (containers.has(e.src) && e.ends.src.some(x => x !== e.src)) {
         src = gate(e.src, "out");
         // not from a box pinned to the last layer (a utility): it is taken out of the layering anyway
@@ -196,19 +208,21 @@ function elkGraph(scene, positions = null) {
   const merge = LAYOUT.ports && copies > 1 && !positions ? { "elk.layered.mergeEdges": "true" } : {};
   /** @type {Record<string, string>} interactive crossing minimisation is not hierarchy-aware, so only the layering keeps */
   const keep = positions ? { "elk.layered.layering.strategy": "INTERACTIVE", "elk.interactive": "true" } : {};
-  return { id: "ROOT", layoutOptions: { ...GRAPH_OPTIONS, "elk.hierarchyHandling": LAYOUT.hierarchy, ...merge, ...keep }, children, edges };
+  return { graph: { id: "ROOT", layoutOptions: { ...GRAPH_OPTIONS, "elk.hierarchyHandling": LAYOUT.hierarchy, ...merge, ...keep }, children, edges }, hidden };
 }
 
 /** @param {Scene} scene @returns {Promise<Laid>} */
 export async function layout(scene) {
-  let laid = await elk.layout(elkGraph(scene));
+  let { graph, hidden } = elkGraph(scene);
+  let laid = await elk.layout(graph);
   if (LAYOUT.ports && LAYOUT.twoPass) {
     // the first pass's positions (relative to the parent, as ELK's interactive layering reads them)
     /** @type {Map<string, {x: number, y: number}>} */
     const positions = new Map();
     const walk = /** @param {ElkNode} n */ n => { for (const c of n.children || []) { positions.set(c.id, { x: c.x || 0, y: c.y || 0 }); walk(c); } };
     walk(laid);
-    laid = await elk.layout(elkGraph(scene, positions));
+    ({ graph, hidden } = elkGraph(scene, positions));
+    laid = await elk.layout(graph);
   }
   /** @type {Map<string, Box>} */
   const nodes = new Map();
@@ -230,14 +244,18 @@ export async function layout(scene) {
     const mark = m && m.x !== undefined && m.y !== undefined ? { x: m.x + x0 + (m.width || 0) / 2, y: m.y + y0 + (m.height || 0) / 2 } : null;
     return { edge: /** @type {SceneEdge} */ (le._e), sections, mark };
   });
-  /** @type {Laid["debug"]} what is normally invisible: entry nodes and hidden edges */
+  /** @type {Laid["debug"]} what is normally invisible: entry nodes and hidden edges (as ELK routed
+   * them, or, after a second pass that had none, straight between the boxes they connect) */
+  /** @param {string} id @returns {Point | null} */
+  function centre(id) { const b = nodes.get(id); return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : null; }
+  const routed = all.filter(le => !le._e);
   const debug = LAYOUT.debug ? {
     nodes: [...nodes.entries()].filter(([id]) => /\.(in|out)$/.test(id)).map(([, b]) => b),
-    edges: all.filter(le => !le._e).map(le => {
+    edges: routed.length ? routed.map(le => {
       const c = le.container && le.container !== "ROOT" ? nodes.get(le.container) : null;
       const x0 = c ? c.x : 0, y0 = c ? c.y : 0;
       return { kind: le._hidden || "pull", sections: (le.sections || []).map(s => [s.startPoint, ...(s.bendPoints || []), s.endPoint].map(p => ({ x: p.x + x0, y: p.y + y0 }))) };
-    }),
+    }) : hidden.map(h => { const a = centre(h.from), b = centre(h.to); return { kind: h.kind, sections: a && b ? [[a, b]] : [] }; }),
   } : null;
   return { width: laid.width || 0, height: laid.height || 0, nodes, edges, debug };
 }
