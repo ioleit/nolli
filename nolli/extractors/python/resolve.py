@@ -8,7 +8,7 @@ import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import USE, Relation, address
+from ...model import SYMBOL_KINDS, USE, Relation, address
 from .. import Context
 from ..interfaces import ensure_ext
 
@@ -129,7 +129,7 @@ def resolve_refs(ctx: Context) -> None:
     m = ctx.model
     modmap = python_module_map(m)
     aliases = ctx.notes.get("py-aliases", {})
-    symbols = {e.id for e in m.entities.values() if e.kind == "class"}
+    symbols = {e.id for e in m.entities.values() if e.kind in SYMBOL_KINDS}
 
     def symbol_in(file_rel: str, name: str, depth: int = 0) -> str | None:
         sid = address.repo(file_rel, name)
@@ -144,24 +144,32 @@ def resolve_refs(ctx: Context) -> None:
                 return exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
         return None
 
-    def resolve(key: str, src_rel: str) -> str | None:
+    def resolve(key: str, src_rel: str) -> tuple[str | None, str | None]:
+        """The entity ``key`` (``mod:name``, ``mod:name.attr`` or ``mod:``) refers to, and the name
+        the reference is recorded under: ``attr`` when ``name`` turned out to be a module and the
+        reference landed in it, else None for the name as recorded."""
         mod, _, name = key.partition(":")
         if name:
+            name, _, attr = name.partition(".")
             f = exact_module(mod, src_rel, modmap) or resolve_module(mod, src_rel, modmap)
             if not f:
-                return None
-            if m.entities[f].kind == "file":
-                return symbol_in(address.path_of(f), name) or exact_module(f"{mod}.{name}", src_rel, modmap) or f
-            return exact_module(f"{mod}.{name}", src_rel, modmap) or f
+                return None, None
+            sym = symbol_in(address.path_of(f), name) if m.entities[f].kind == "file" else None
+            target = sym or exact_module(f"{mod}.{name}", src_rel, modmap) or f
+            if not attr:
+                return target, None
+            if target != f and m.entities[target].kind == "file":  # name is a module: attr in it
+                return symbol_in(address.path_of(target), attr) or target, attr
+            return target, name
         parts = mod.split(".")
         for i in range(len(parts), 0, -1):
             f = exact_module(".".join(parts[:i]), src_rel, modmap)
             if f:
                 rest = parts[i:]
                 if rest and m.entities[f].kind == "file":
-                    return symbol_in(address.path_of(f), rest[0]) or f
-                return f
-        return None
+                    return symbol_in(address.path_of(f), rest[0]) or f, None
+                return f, None
+        return None, None
 
     stats = defaultdict(int)
     new_relations: list[Relation] = []
@@ -170,14 +178,17 @@ def resolve_refs(ctx: Context) -> None:
         if key is None:
             new_relations.append(r)
             continue
-        dst = resolve(key, address.path_of(r.src))
+        dst, name = resolve(key, address.path_of(r.src))
         if dst is None:
             stats["external"] += r.count
         elif dst == r.src:
             stats["self"] += r.count
         else:
             stats["symbol" if dst in symbols else "file"] += r.count
-            new_relations.append(Relation(USE, r.src, dst, "ref", r.count, "exact", r.provenance, dict(r.attrs)))
+            attrs = dict(r.attrs)
+            if name:
+                attrs["name"] = name
+            new_relations.append(Relation(USE, r.src, dst, "ref", r.count, "exact", r.provenance, attrs))
     m.relations = new_relations
 
     def file_of(eid: str) -> str | None:

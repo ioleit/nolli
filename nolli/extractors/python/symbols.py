@@ -72,6 +72,58 @@ def doc_summary(node) -> str | None:
     return para if len(para) <= DOC_MAX else para[: DOC_MAX - 1].rsplit(" ", 1)[0] + "…"
 
 
+# Module-level assignments that define a type rather than a value, drawn as symbols like
+# classes (kinds from model.SYMBOL_KINDS). Explicit forms are taken as they are: a ``type``
+# statement, ``X: TypeAlias = ...``, and the factories below. A plain ``X = A | B`` or
+# ``X = dict[str, int]`` counts only when X is CapWords, so ``FLAGS = READ | WRITE`` stays
+# a constant and ``rows = table["x"]`` a value.
+TYPE_FACTORIES = {"NewType": "type", "TypeVar": "type", "ParamSpec": "type", "TypeVarTuple": "type",
+                  "NamedTuple": "class", "TypedDict": "class",
+                  "Enum": "enum", "IntEnum": "enum", "StrEnum": "enum", "Flag": "enum", "IntFlag": "enum"}
+TYPE_GENERICS = {"Union", "Optional", "Callable", "Literal", "Annotated", "Type", "TypeGuard", "TypeIs", "ClassVar",
+                 "Final", "Required", "NotRequired", "dict", "list", "tuple", "set", "frozenset", "type",
+                 "Mapping", "MutableMapping", "Sequence", "MutableSequence", "Iterable", "Iterator", "Generator",
+                 "Collection", "Container", "Awaitable", "Coroutine", "AsyncIterator", "AsyncIterable"}
+
+
+def last_name(e: ast.expr) -> str | None:
+    """``Name`` or the last part of an attribute chain, else None."""
+    return e.id if isinstance(e, ast.Name) else e.attr if isinstance(e, ast.Attribute) else None
+
+
+def is_type_expr(e: ast.expr) -> bool:
+    """A union written with ``|`` or a subscripted generic (``dict[str, int]``, ``Optional[X]``)."""
+    if isinstance(e, ast.BinOp) and isinstance(e.op, ast.BitOr):
+        return is_type_operand(e.left) and is_type_operand(e.right)
+    return isinstance(e, ast.Subscript) and last_name(e.value) in TYPE_GENERICS
+
+
+def is_type_operand(e: ast.expr) -> bool:
+    return isinstance(e, (ast.Name, ast.Attribute)) or (isinstance(e, ast.Constant) and (e.value is None or isinstance(e.value, str))) \
+        or is_type_expr(e)
+
+
+def is_capwords(name: str) -> bool:
+    return name[:1].isupper() and not name.isupper()
+
+
+def type_definition(node: ast.stmt) -> tuple[str, str] | None:
+    """(name, kind) when a module-level statement defines a type, else None."""
+    type_stmt = getattr(ast, "TypeAlias", None)  # Python 3.12+
+    if type_stmt is not None and isinstance(node, type_stmt) and isinstance(node.name, ast.Name):
+        return node.name.id, "type"
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None \
+            and last_name(node.annotation) == "TypeAlias":
+        return node.target.id, "type"
+    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        name, v = node.targets[0].id, node.value
+        if isinstance(v, ast.Call) and last_name(v.func) in TYPE_FACTORIES:
+            return name, TYPE_FACTORIES[last_name(v.func)]  # type: ignore[index]
+        if is_capwords(name) and is_type_expr(v):
+            return name, "type"
+    return None
+
+
 class Refs(ast.NodeVisitor):
     """Collect (binding key, count) for names and module-attribute chains in a subtree."""
 
@@ -87,6 +139,12 @@ class Refs(ast.NodeVisitor):
             cur = cur.value
         if isinstance(cur, ast.Name) and cur.id in self.bindings and self.bindings[cur.id][0] == "module":
             self.found[("chain", self.bindings[cur.id][1] + "." + ".".join(reversed(chain)))] += 1
+            return
+        if isinstance(cur, ast.Name) and cur.id in self.bindings and self.bindings[cur.id][0] == "from":
+            # ``from pkg import mod`` then ``mod.thing``: the attribute is kept so that, if the name
+            # turns out to be a module (resolve.py decides), the reference lands on ``thing`` in it
+            _, mod, name = self.bindings[cur.id]
+            self.found[("from", mod, name, chain[-1])] += 1
             return
         self.generic_visit(node)
 
@@ -140,25 +198,28 @@ def run(ctx: Context) -> None:
                     if node in tree.body:
                         aliases[a.asname or a.name] = (mod, a.name)
         aliases_by_file[rel] = aliases
-        classes: dict[str, str] = {}
+        symbols: dict[str, str] = {}  # classes and type definitions: the file's symbol entities
         for node in tree.body:
-            if isinstance(node, ast.ClassDef):
-                sid = address.part(fid, node.name)
+            defined = (node.name, "class") if isinstance(node, ast.ClassDef) else type_definition(node)
+            if defined:
+                name, kind = defined
+                sid = address.part(fid, name)
                 attrs = {"path": rel, "line": node.lineno, "end_line": node.end_lineno, "language": "python"}
-                if doc_summary(node):
+                if kind == "class" and doc_summary(node):
                     attrs["doc"] = doc_summary(node)
-                m.add_entity(Entity(sid, "class", node.name, attrs, Provenance("python-symbols", rel, node.lineno)))
+                m.add_entity(Entity(sid, kind, name, attrs, Provenance("python-symbols", rel, node.lineno)))
                 m.contain(fid, sid, "python-symbols")
-                classes[node.name] = sid
+                symbols[name] = sid
             elif isinstance(node, FUNC_DEFS):
                 bindings[node.name] = ("local", fid, node.name)  # a module's functions are the module's own body
-        for name, sid in classes.items():
+        for name, sid in symbols.items():
             bindings[name] = ("local", sid, name)
         m.entities[fid].attrs.update(own_code(tree, rel, pkg_parts, aliases, m.entities[fid].attrs.get("lines")))
         for node in tree.body:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
-            src = classes[node.name] if isinstance(node, ast.ClassDef) else fid
+            defined = (node.name, "class") if isinstance(node, ast.ClassDef) else type_definition(node)
+            src = symbols[defined[0]] if defined else fid
             v = Refs(bindings)
             v.visit(node)
             for b, n in v.found.items():
@@ -168,11 +229,13 @@ def run(ctx: Context) -> None:
     ctx.notes["py-aliases"] = aliases_by_file
     for (src, b), n in pending.items():
         name = {"local": lambda: b[2], "from": lambda: b[2], "module": lambda: b[1], "chain": lambda: b[1].rsplit(".", 1)[-1]}[b[0]]()
+        if b[0] == "from" and len(b) == 4:  # ``name.attr``: resolve.py takes ``attr`` when name is a module
+            name = f"{b[2]}.{b[3]}"
         if b[0] == "local":
             m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", address.path_of(src)),
                                     {"name": name}))
             continue
-        key = f"{b[1]}:{b[2]}" if b[0] == "from" else f"{b[1]}:"
+        key = f"{b[1]}:{name}" if b[0] == "from" else f"{b[1]}:"
         uid = address.unresolved("pyref", key)
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", key, {"language": "python", "ref": True}, Provenance("python-symbols")))
