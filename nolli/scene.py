@@ -20,7 +20,7 @@ from dataclasses import asdict, dataclass, field
 
 from .model import USE, Model, address, metamodel
 from .rollup import (
-    HIDDEN_ROLES_DEFAULT, fact_key, hidden_by_role, RolledUp, bundle, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
+    HIDDEN_ROLES_DEFAULT, fact_key, hidden_by_role, RolledUp, lift, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
     representative, rollup, utility_badges, visible_from_expanded,
 )
 from .changes import Links, change_items, diff_index, fact_change, is_diff, node_diff
@@ -34,6 +34,7 @@ ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "ass
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
 DEFAULT_UTILITY_IN = 4  # more incoming edges than this: a utility, drawn as badges
+DEFAULT_MAX_LINES = 4  # lines between two drawn boxes at most; more are lifted to a box they are inside (rollup.lift)
 DEFAULT_GROUPS = (address.root(address.API),)  # root groups drawn as boxes; the others are badges on their users
 
 
@@ -52,7 +53,8 @@ class SceneState:
     groups: list[str] = field(default_factory=lambda: list(DEFAULT_GROUPS))  # shown root groups
     utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
     side: str = "both"  # diff models: "base" or "head" draws one commit, "both" the merged picture
-    bundle: bool = True  # EXPERIMENT (not for merging): False skips fan bundling, edges end at the nearest visible box
+    lift: bool = True  # EXPERIMENT control: False skips edge lifting, every edge ends at the nearest visible box
+    max_lines: int = DEFAULT_MAX_LINES  # lines drawn between two boxes at most (rollup.lift)
 
 
 def hidden_for(m: Model, roles, side: str = "both") -> set[str]:
@@ -96,8 +98,8 @@ def compute(m: Model, st: SceneState) -> tuple[set[str], set[str], set[str], Rol
     visible = visible_from_expanded(m, expanded, hidden, walked=walked)
     expanded = walked
     rolled = rollup(m, visible, hidden, shown_groups=shown_groups, side=st.side)
-    if st.bundle:
-        rolled.edges = bundle(m, rolled.edges, expanded)  # fan-out edges to a container's boundary
+    if st.lift:
+        rolled.edges = lift(m, rolled.edges, expanded, st.max_lines)  # at most max_lines lines between two boxes
     utilities = utility_badges(m, rolled, st.utilities) if st.utilities > 0 else set()
     return expanded, hidden, visible, rolled, utilities
 
@@ -235,6 +237,9 @@ def scene(m: Model, st: SceneState, verdicts: list[dict] | None = None) -> dict:
             "heuristic": e.confidence == "heuristic",
             "types": e.count > 0 and e.types == e.count,  # references only to types (``type_only``): no run-time dependency
             "info": edge_info(ctx, e),
+            # a lifted line: the drawn nodes it stands for at each end (the viewer's ports lead there)
+            "ends": ({"src": sorted(e.ends["src"]), "dst": sorted(e.ends["dst"])}
+                     if e.ends["src"] - {e.src} or e.ends["dst"] - {e.dst} else None),
             "diff": ({"status": e.status, "base": e.base, "head": e.head, "facts": sorted(e.changed),
                       "changes": [fact_change(m, by_fact[f], links) for f in sorted(e.changed)[:40] if f in by_fact],
                       "more": max(0, len(e.changed) - 40)} if diff and e.status else None),
@@ -376,6 +381,8 @@ def state_from_query(q: dict[str, str]) -> SceneState:
     st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
     if q.get("s") in ("base", "head"):
         st.side = q["s"]
-    if q.get("nb") == "1":
-        st.bundle = False
+    if q.get("nl") == "1":
+        st.lift = False
+    if q.get("ml"):
+        st.max_lines = int(q["ml"])
     return st

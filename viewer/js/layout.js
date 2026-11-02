@@ -13,7 +13,7 @@
  * @typedef {import("../types/nolli").Laid} Laid
  * @typedef {import("../types/nolli").Box} Box
  * @typedef {import("elkjs/lib/elk-api").ElkNode} ElkNode
- * @typedef {import("elkjs/lib/elk-api").ElkExtendedEdge & { _e: SceneEdge, container?: string }} ElkEdge
+ * @typedef {import("elkjs/lib/elk-api").ElkExtendedEdge & { _e: SceneEdge | null, container?: string }} ElkEdge
  */
 
 /** @param {SceneNode} n @returns {n is import("../types/nolli").AnchorNode} */
@@ -73,7 +73,15 @@ const elk = new ELK();
 // EXPERIMENT (not for merging): ELK's hierarchy handling, set from the sidebar (main.js).
 // INCLUDE_CHILDREN lays the whole hierarchy out at once (edges across levels take part);
 // SEPARATE_CHILDREN lays each unfolded box out on its own, then places the boxes.
-export const LAYOUT = { hierarchy: "INCLUDE_CHILDREN" };
+export const LAYOUT = { hierarchy: "INCLUDE_CHILDREN", ports: true };
+// ports: a lifted line (scene edge with `ends`, rollup.lift) ends at an entry node inside the
+// box it was lifted to, a tiny invisible node in the box's first layer (an exit node in its
+// last layer for lines leaving), and hidden edges run from there to the drawn nodes the line
+// stands for, so ELK still pulls what outside code depends on to the top of the box (and
+// what depends on the outside to the bottom) although only the one line is drawn. ELK's own
+// ports on a compound node do the same but crash elkjs 0.9.3 on nested boxes with edges
+// across levels (checked 2026-11-02), hence nodes.
+export const ENTRY = 2;  // an entry or exit node's size
 
 /** @type {Record<string, string>} */
 const GRAPH_OPTIONS = {
@@ -123,9 +131,41 @@ function elkGraph(scene) {
   // the edge through its middle (a label without text is left unplaced, so the verdict is its text)
   const mark = /** @param {SceneEdge} e @param {number} i */ (e, i) => e.verdict
     ? [{ id: "m" + i, text: e.verdict, width: MARK, height: MARK, layoutOptions: { "elk.edgeLabels.inline": "true" } }] : [];
+  const children = (kidsOf.get("ROOT") || []).map(build);
+  /** @type {Map<string, ElkNode>} every built node by id */
+  const built = new Map();
+  const index = /** @param {ElkNode} n */ n => { built.set(n.id, n); (n.children || []).forEach(index); };
+  children.forEach(index);
+  const containers = new Set(scene.nodes.filter(isContainer).map(n => n.id));
   /** @type {ElkEdge[]} */
-  const edges = scene.edges.map((e, i) => ({ id: "e" + i, sources: [e.src], targets: [e.dst], labels: mark(e, i), _e: e }));
-  return { id: "ROOT", layoutOptions: { ...GRAPH_OPTIONS, "elk.hierarchyHandling": LAYOUT.hierarchy }, children: (kidsOf.get("ROOT") || []).map(build), edges };
+  const edges = [];
+  /** an entry (in) or exit (out) node inside container c for edge i
+   * @param {string} c @param {"in" | "out"} dir @param {number} i */
+  const port = (c, dir, i) => {
+    const n = built.get(c);
+    if (!n) return c;
+    const id = `${c}.${dir}${i}`;
+    // not pinned to the first or last layer: its edges put it just above (below) what it leads to,
+    // where pinning would add a layer of its own at the top (bottom) of the box
+    (n.children = n.children || []).push({ id, width: ENTRY, height: ENTRY, layoutOptions: {} });
+    return id;
+  };
+  scene.edges.forEach((e, i) => {
+    let src = e.src, dst = e.dst;
+    if (LAYOUT.ports && e.ends) {
+      if (containers.has(e.src) && e.ends.src.some(x => x !== e.src)) {
+        src = port(e.src, "out", i);
+        // not from a box pinned to the last layer: the port's dummy node sits there too, and ELK refuses that
+        for (const x of new Set(e.ends.src)) if (built.has(x) && x !== e.src && !last.has(x)) edges.push({ id: `h${i}s${edges.length}`, sources: [x], targets: [src], _e: null });
+      }
+      if (containers.has(e.dst) && e.ends.dst.some(x => x !== e.dst)) {
+        dst = port(e.dst, "in", i);
+        for (const x of new Set(e.ends.dst)) if (built.has(x) && x !== e.dst && !first.has(x)) edges.push({ id: `h${i}d${edges.length}`, sources: [dst], targets: [x], _e: null });  // own-code dots are first already
+      }
+    }
+    edges.push({ id: "e" + i, sources: [src], targets: [dst], labels: mark(e, i), _e: e });
+  });
+  return { id: "ROOT", layoutOptions: { ...GRAPH_OPTIONS, "elk.hierarchyHandling": LAYOUT.hierarchy }, children, edges };
 }
 
 /** @param {Scene} scene @returns {Promise<Laid>} */
@@ -142,13 +182,13 @@ export async function layout(scene) {
   (laid.children || []).forEach(c => place(c, 0, 0));
   // edges are declared at the root; ELK gives their coordinates relative to the container
   // it reports as `container`, and keeps the scene's edge order
-  const edges = /** @type {ElkEdge[]} */ (laid.edges || []).map(le => {
+  const edges = /** @type {ElkEdge[]} */ (laid.edges || []).filter(le => le._e).map(le => {
     const c = le.container && le.container !== "ROOT" ? nodes.get(le.container) : null;
     const x0 = c ? c.x : 0, y0 = c ? c.y : 0;
     const sections = (le.sections || []).map(s => [s.startPoint, ...(s.bendPoints || []), s.endPoint].map(p => ({ x: p.x + x0, y: p.y + y0 })));
     const m = (le.labels || [])[0];
     const mark = m && m.x !== undefined && m.y !== undefined ? { x: m.x + x0 + (m.width || 0) / 2, y: m.y + y0 + (m.height || 0) / 2 } : null;
-    return { edge: le._e, sections, mark };
+    return { edge: /** @type {SceneEdge} */ (le._e), sections, mark };
   });
   return { width: laid.width || 0, height: laid.height || 0, nodes, edges };
 }

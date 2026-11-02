@@ -5,7 +5,8 @@
  * @typedef {"interactive" | "mermaid" | "json"} View  the tab: the scene drawn (ELK), as Mermaid, as JSON
  * @typedef {"default" | "folded" | "changes" | "unfolded"} Preset
  * @typedef {{ expanded: string[] | null, preset: Preset | null, roles: string[] | null, groups: string[] | null, budget: number | null,
- *             utilities: number | null, side: "both" | "base" | "head", bundle: boolean, hierarchy: boolean }} SceneQuery
+ *             utilities: number | null, side: "both" | "base" | "head", lift: boolean, maxLines: number | null,
+ *             hierarchy: boolean, ports: boolean }} SceneQuery
  *   preset: the cut is the preset's (expanded is then what the server resolved it to); null: expanded as clicked
  * @typedef {SceneQuery & { name: string | null, theme: string, view: View, item: string | null, dim: boolean }} ViewState
  *   item: the review item last gone to ("C3"); dim: fade what did not change (diff datasets)
@@ -13,8 +14,10 @@
 
 // roles / groups / budget / utilities null: let the server choose (roles, groups, threshold)
 /** @type {SceneQuery} */
-export const DEFAULTS = { expanded: null, preset: "default", roles: null, groups: null, budget: null, utilities: null, side: "both", bundle: true,
-                          hierarchy: true };  // EXPERIMENT: ELK lays the whole hierarchy out at once (false: each box on its own)
+export const DEFAULTS = { expanded: null, preset: "default", roles: null, groups: null, budget: null, utilities: null, side: "both",
+                          // EXPERIMENT controls: edge lifting on, its line limit (null: the server's default), ELK lays the
+                          // whole hierarchy out at once (false: each box on its own), lifted lines end at ports
+                          lift: true, maxLines: null, hierarchy: true, ports: true };
 export const DEFAULT_THEME = "textbook";
 /** @type {ViewState} */
 export const state = { name: null, ...DEFAULTS, theme: DEFAULT_THEME, view: "interactive", item: null, dim: true };
@@ -35,7 +38,8 @@ export function query() {
   if (state.budget) p.set("b", String(state.budget));
   if (state.utilities !== null) p.set("ut", String(state.utilities));
   if (state.side !== "both") p.set("s", state.side);
-  if (!state.bundle) p.set("nb", "1");  // EXPERIMENT: fan bundling off
+  if (!state.lift) p.set("nl", "1");  // EXPERIMENT: edge lifting off
+  if (state.maxLines !== null) p.set("ml", String(state.maxLines));
   return p;
 }
 
@@ -44,6 +48,7 @@ export function writeHash() {
   if (state.theme !== DEFAULT_THEME) p.set("th", state.theme); if (state.view !== "interactive") p.set("v", state.view);
   if (state.item) p.set("item", state.item); if (!state.dim) p.set("nodim", "1");
   if (!state.hierarchy) p.set("sep", "1");  // EXPERIMENT: separate layout per box
+  if (!state.ports) p.set("np", "1");  // EXPERIMENT: no ports
   // the path too: under nolli serve the page has <base href="/">, against which a bare "#…" means "/#…"
   history.replaceState(null, "", location.pathname + location.search + "#" + p.toString());
 }
@@ -61,8 +66,10 @@ export function readHash(h) {
   if (b) st.budget = +b;
   st.utilities = p.get("nu") === "1" ? 0 : p.get("ut") ? +(p.get("ut") || 0) : null;
   const side = p.get("s"); st.side = side === "base" || side === "head" ? side : "both";
-  st.bundle = p.get("nb") !== "1";
+  st.lift = p.get("nl") !== "1";
+  st.maxLines = p.get("ml") ? +(p.get("ml") || 0) : null;
   st.hierarchy = p.get("sep") !== "1";
+  st.ports = p.get("np") !== "1";
   // older links: raw=1, mmd=1
   const v = p.get("v") || (p.get("raw") === "1" ? "json" : p.get("mmd") === "1" ? "mermaid" : "interactive");
   return { name: p.get("d"), st, theme: p.get("th"),

@@ -90,7 +90,9 @@ function quick(parent, items) {
 export function syncControls() {
   input("budget").value = String(state.budget);
   input("utilities").value = String(state.utilities ?? "");
-  input("bundle").checked = state.bundle;
+  input("lift").checked = state.lift;
+  input("maxlines").value = String(state.maxLines ?? "");
+  input("ports").checked = state.ports;
   input("hierarchy").checked = state.hierarchy;
   select("theme").value = state.theme;
   for (const b of document.querySelectorAll("#presets [data-preset]")) b.classList.toggle("on", /** @type {HTMLElement} */ (b).dataset.preset === state.preset);

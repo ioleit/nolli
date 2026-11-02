@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from nolli.build import extract
-from nolli.rollup import bundle, hidden_by_role, image_aliases, rollup
+from nolli.rollup import hidden_by_role, image_aliases, lift, rollup
 from nolli.view import default_view
 
 FILES = {
@@ -109,7 +109,7 @@ def test_default_cut_lifts_frontend_to_backend(repo: Path):
     view = default_view(m, budget=12)
     hidden = hidden_by_role(m) | set(image_aliases(m))
     rolled = rollup(m, set(view["visible"]), hidden, shown_groups={"api:"})
-    rolled.edges = bundle(m, rolled.edges, set(view["expanded"]))
+    rolled.edges = lift(m, rolled.edges, set(view["expanded"]))
     calls = [e for e in rolled.edges if e.subkind == "http"]
     assert calls, "frontend -> APIs edge"
     assert all(e.src.startswith("repo:frontend") and e.dst == "api:" for e in calls)

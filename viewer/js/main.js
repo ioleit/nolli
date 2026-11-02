@@ -115,7 +115,7 @@ async function refresh(keepZoom = false) {
  */
 function adopt(sc) {
   const s = sc.state;
-  state.expanded = s.expanded; state.preset = s.preset; state.roles = s.roles; state.groups = s.groups; state.budget = s.budget; state.utilities = s.utilities; state.bundle = s.bundle;
+  state.expanded = s.expanded; state.preset = s.preset; state.roles = s.roles; state.groups = s.groups; state.budget = s.budget; state.utilities = s.utilities; state.lift = s.lift; state.maxLines = s.max_lines;
 }
 
 /** Bring the tab shown up to date: the scene drawn, as Mermaid, or as JSON. */
@@ -268,7 +268,9 @@ function showRawPane() { if (scene) showRaw(scene); byId("status").textContent =
 onRawToggle(toggle);
 onMermaidToggle(toggle);
 input("utilities").addEventListener("change", () => { state.utilities = Math.max(0, Math.round(+input("utilities").value || 0)); refresh(true); });
-input("bundle").addEventListener("change", () => { state.bundle = input("bundle").checked; refresh(true); });
+input("lift").addEventListener("change", () => { state.lift = input("lift").checked; refresh(true); });
+input("maxlines").addEventListener("change", () => { state.maxLines = Math.max(1, Math.round(+input("maxlines").value || 1)); refresh(true); });
+input("ports").addEventListener("change", () => { state.ports = input("ports").checked; LAYOUT.ports = state.ports; refresh(true); });
 input("hierarchy").addEventListener("change", () => { state.hierarchy = input("hierarchy").checked; LAYOUT.hierarchy = state.hierarchy ? "INCLUDE_CHILDREN" : "SEPARATE_CHILDREN"; refresh(true); });
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; choosePreset("default"); });
 for (const b of document.querySelectorAll("#presets [data-preset]")) b.addEventListener("click", () => {
@@ -323,7 +325,7 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   if (!name) { loading("no datasets"); return; }
   sel.value = name;
   Object.assign(state, h.st, { name, theme: initialTheme(h.theme), view: h.view, item: h.item, dim: h.dim });
-  LAYOUT.hierarchy = state.hierarchy ? "INCLUDE_CHILDREN" : "SEPARATE_CHILDREN";  // EXPERIMENT
+  LAYOUT.hierarchy = state.hierarchy ? "INCLUDE_CHILDREN" : "SEPARATE_CHILDREN"; LAYOUT.ports = state.ports;  // EXPERIMENT
   applyTheme(state.theme);
   // a link to an item unfolds what it needs (the hash may come from a different view state)
   await enter(h.item);
