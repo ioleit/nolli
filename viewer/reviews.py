@@ -1,26 +1,30 @@
-"""Reviews of a server's datasets: where a dataset's verdicts came from, and review agent runs
+"""Reviews of a server's models: where a model's verdicts came from, and review agent runs
 started from the viewer ("Review structural changes").
 
-A dataset's verdicts are its ``verdicts.json``; ``review.json`` next to it says who made them
-(store(), provenance()). A pull request's dataset can take its verdicts from nolli's CI
-(from_ci(), given the PR's comments; the server asks GitHub for them). ``review.json``:
+A model's review (nolli/store.py, Review) is its verdicts and who made them:
 ``{"by": "agent" | "ci" | "upload", "at": <ISO time>, ...}``, with the model, time and cost
-of an agent run here, or the link to the CI comment they were read from. A run
-(nolli/reviewer.py) works in ``<dataset>/.review`` (its transcript stays there) and replaces the verdicts only when its own
-pass nolli's check, so the ones shown stay until then. Runs live in memory: a server that
-restarts forgets runs under way, not verdicts.
+of an agent run here, or the link to the CI comment they were read from. A pull request's
+model can take its verdicts from nolli's CI (from_ci(), given the PR's comments; the server
+asks GitHub for them). A run (nolli/reviewer.py) works in a directory of its own under the
+server's work directory (its transcript stays there until the next run) and replaces the
+verdicts only when its own pass nolli's check, so the ones shown stay until then. Runs live
+in memory: a server that restarts forgets runs under way, not verdicts.
 """
 
 from __future__ import annotations
 
+import contextvars
 import json
 import re
 import shutil
+import tempfile
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from nolli.model import Model
+from nolli.store import Change, ModelKey, ModelStore, Review, Sources
 
 RUNS = threading.BoundedSemaphore(2)  # agent runs at the same time; the rest wait their turn
 STEPS_KEPT = 6  # the latest steps a page shows under the one under way
@@ -30,42 +34,36 @@ def now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def provenance(ds: Path) -> dict | None:
-    """review.json, or {"by": "unknown"} for verdicts from before it existed; None without verdicts."""
-    if not (ds / "verdicts.json").is_file():
-        return None
-    try:
-        return json.loads((ds / "review.json").read_text())
-    except (OSError, ValueError):
-        return {"by": "unknown"}
+def provenance(store: ModelStore, key: ModelKey) -> dict | None:
+    """Who made the model's verdicts (``{"by": "unknown"}`` for verdicts from before that was
+    kept); None without verdicts."""
+    review = store.load_review(key)
+    return review.by if review else None
 
 
-def store(ds: Path, verdicts: list[dict], by: dict) -> None:
-    """Make ``verdicts`` (checked) the dataset's, with where they came from."""
-    (ds / "verdicts.json").write_text(json.dumps([{k: v[k] for k in ("target", "verdict", "reason")} for v in verdicts], indent=1))
-    (ds / "review.json").write_text(json.dumps({**by, "at": by.get("at") or now()}, indent=1))
+def save_verdicts(store: ModelStore, key: ModelKey, verdicts: list[dict], by: dict) -> None:
+    """Make ``verdicts`` (checked) the model's, with where they came from."""
+    store.save_review(key, Review([{k: v[k] for k in ("target", "verdict", "reason")} for v in verdicts],
+                                  {**by, "at": by.get("at") or now()}))
 
 
-def ci_pull(ds: Path) -> tuple[str, str, int] | None:
-    """The GitHub pull request a dataset was built from: (owner, repo, number), or None."""
-    try:
-        d = json.loads((ds / "report.json").read_text())["meta"].get("diff") or {}
-    except (OSError, ValueError, KeyError):
-        return None
-    m = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
-    return (m.group(1), m.group(2), int(d["pr"])) if m and d.get("pr") else None
+def ci_pull(m: Model) -> tuple[str, str, int] | None:
+    """The GitHub pull request a model was built from: (owner, repo, number), or None."""
+    d = m.meta.get("diff") or {}
+    match = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
+    return (match.group(1), match.group(2), int(d["pr"])) if match and d.get("pr") else None
 
 
-def from_ci(ds: Path, comments: list | dict) -> dict:
-    """What nolli's CI left in a pull request's comments (GitHub's answer) for the dataset's head
+def from_ci(store: ModelStore, key: ModelKey, m: Model, comments: list | dict) -> dict:
+    """What nolli's CI left in a pull request's comments (GitHub's answer) for the model's head
     commit: ``{"found": "verdicts" | "no-review" | "earlier" | None, "applies": True, ...}``. Its
-    verdicts, translated from an earlier nolli's ids and checked against this dataset's
-    diagram, become the dataset's, unless it has some already."""
+    verdicts, translated from an earlier nolli's ids and checked against this model's
+    diagram, become the model's, unless it has some already."""
+    from nolli.build import make_review_diagram
     from nolli.ci import results, upgrade
-    from nolli.model import Model
     from nolli.review import check_verdicts
 
-    head = json.loads((ds / "report.json").read_text())["meta"]["diff"]["head"]
+    head = m.meta["diff"]["head"]
     found = results(comments if isinstance(comments, list) else [])
     info: dict = {"found": None, "applies": True}
     mine = [r for r in found if r["head"] == head]
@@ -75,12 +73,12 @@ def from_ci(ds: Path, comments: list | dict) -> dict:
         return info
     r = mine[0]
     info.update(link=r["link"], at=r["at"], nolli=r.get("nolli"), found="verdicts" if r.get("verdicts") else "no-review")
-    if r.get("verdicts") and provenance(ds) is None:
+    if r.get("verdicts") and provenance(store, key) is None:
         given = upgrade(r["verdicts"], r.get("nolli"))
-        ok, errors = check_verdicts(Model.load(ds / "model.json"), (ds / "review.mmd").read_text(), json.dumps(given))
+        ok, errors = check_verdicts(m, make_review_diagram(m), json.dumps(given))
         info["dropped"] = len(errors)
         if ok:
-            store(ds, ok, {"by": "ci", "link": r["link"], "at": r["at"], "nolli": r.get("nolli"), "dropped": len(errors)})
+            save_verdicts(store, key, ok, {"by": "ci", "link": r["link"], "at": r["at"], "nolli": r.get("nolli"), "dropped": len(errors)})
     return info
 
 
@@ -105,30 +103,34 @@ class Job:
 
 
 class Reviews:
-    """The review runs of one server, by dataset name."""
+    """The review runs of one server, by model name."""
 
-    def __init__(self, reviewer=None):
-        """``reviewer``: what runs a review (nolli.reviewer.Reviewer, the default, or a service's own)."""
+    def __init__(self, reviewer=None, work: Path | None = None):
+        """``reviewer``: what runs a review (nolli.reviewer.Reviewer, the default, or a service's
+        own). ``work``: where runs keep their files (default: a temporary directory)."""
         if reviewer is None:
             from nolli.reviewer import Reviewer
 
             reviewer = Reviewer()
         self.reviewer = reviewer
+        self.work = work or Path(tempfile.gettempdir()) / "nolli-reviews"
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
 
     def job(self, name: str) -> Job | None:
         return self.jobs.get(name)
 
-    def start(self, name: str, ds: Path, repo: Callable[[], Path]) -> Job:
-        """The run for ``name``: the one waiting or under way, or a new one. ``repo`` gives the
-        repository with the change's commits, when the run's turn comes."""
+    def start(self, name: str, store: ModelStore, key: Change, sources: Sources) -> Job:
+        """The run for ``name``: the one waiting or under way, or a new one. It reads the model
+        from ``store``, and the change's commits from ``sources`` when its turn comes. It runs in
+        the context of the request that started it (contextvars), as a store may need."""
         with self.lock:
             job = self.jobs.get(name)
             if job and job.state in ("queued", "running"):
                 return job
             job = self.jobs[name] = Job()
-        threading.Thread(target=self._run, args=(job, ds, repo), daemon=True).start()
+        ctx = contextvars.copy_context()
+        threading.Thread(target=ctx.run, args=(self._run, job, name, store, key, sources), daemon=True).start()
         return job
 
     def cancel(self, name: str) -> Job | None:
@@ -139,8 +141,9 @@ class Reviews:
                 job.state, job.ended = "cancelled", time.time()
         return job
 
-    def _run(self, job: Job, ds: Path, repo: Callable[[], Path]) -> None:
+    def _run(self, job: Job, name: str, store: ModelStore, key: Change, sources: Sources) -> None:
         from nolli import reviewer
+        from nolli.build import make_review_brief, make_review_diagram
 
         def on_step(s: str, run: reviewer.Run) -> None:
             if s != job.step:
@@ -154,14 +157,24 @@ class Reviews:
                 job.state, job.ended = "cancelled", job.ended or time.time()
                 return
             job.state, job.started = "running", time.time()
-            work = ds / ".review"
+            work = self.work / name
             shutil.rmtree(work, ignore_errors=True)
             try:
+                m = store.load_model(key)
+                if m is None:
+                    raise ValueError(f"no model of {name}")
+                ds, out = work / "dataset", work / "out"  # what the reviewer reads, what it writes
+                ds.mkdir(parents=True)
+                m.save(ds / "model.json")
+                diagram = make_review_diagram(m)
+                (ds / "review.mmd").write_text(diagram)
+                (ds / "review.md").write_text(make_review_brief(m, diagram))
                 job.step = "fetching the change's commits"
-                run = self.reviewer.review(ds, repo(), work, on_step, job.cancel)
-                verdicts = json.loads((work / "verdicts.json").read_text())
-                store(ds, verdicts, {"by": "agent", "model": run.model, "seconds": run.seconds, "turns": run.turns,
-                                     "cost": round(run.cost, 2)})
+                with sources.open_commits(key.repo, key.base, key.head) as repo:
+                    run = self.reviewer.review(ds, repo, out, on_step, job.cancel)
+                verdicts = json.loads((out / "verdicts.json").read_text())
+                save_verdicts(store, key, verdicts, {"by": "agent", "model": run.model, "seconds": run.seconds,
+                                                     "turns": run.turns, "cost": round(run.cost, 2)})
                 job.state, job.turns, job.cost = "done", run.turns, run.cost
             except reviewer.Cancelled:
                 job.state = "cancelled"
@@ -170,4 +183,4 @@ class Reviews:
             except Exception as exc:  # noqa: BLE001  # the API, the network, git: shown on the page
                 job.state, job.error = "failed", f"{type(exc).__name__}: {exc}"
             finally:
-                job.ended = time.time()  # the run's transcript stays in .review, until the next run
+                job.ended = time.time()  # the run's transcript stays in its work directory, until the next run

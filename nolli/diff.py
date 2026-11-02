@@ -198,40 +198,13 @@ def merge(base: Model, head: Model, changes: dict[str, FileChange]) -> Model:
     return m
 
 
-def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None, extractions=None) -> tuple[Model, dict]:
-    """The merged model and a summary. ``extract(path, progress=…) -> (Model, Context)`` is
-    ``nolli.build.extract``, passed in to keep this module free of the CLI; ``progress``
-    (nolli/progress.py) reports each side's steps. With ``extractions`` (nolli/extractions.py)
-    a side extracted before is read from there, and a new one is kept there."""
-    from .progress import Quiet
-
-    progress = progress or Quiet()
-    repo = repo.resolve()
-    base, head = resolve(repo, base_rev), resolve(repo, head_rev)
+def diff_models(repo: Path, base: Model, head: Model, base_sha: str, head_sha: str) -> Model:
+    """The model of the change from ``base_sha`` to ``head_sha``: the two commits' models merged,
+    with what git (in ``repo``, which has both commits) says changed in each file. Its
+    ``meta["diff"]`` keeps both commits and counts of what changed (``counts``)."""
     t0 = time.time()
-    with tempfile.TemporaryDirectory(prefix="nolli-diff-") as tmp:
-        sides = {}
-        for name, sha in (("base", base), ("head", head)):
-            side = progress.under(name)
-            if extractions and extractions.has(sha):
-                with side.step("reading an earlier extraction"):
-                    hit = extractions.get(sha)
-                if hit:
-                    sides[name] = hit[0]
-                    continue
-            d = Path(tmp) / name
-            d.mkdir()
-            with side.step("checking out the commit"):
-                materialise(repo, sha, d)
-            sides[name], ctx = extract(d, progress=side)
-            if extractions:
-                extractions.put(sha, sides[name], ctx.notes)
-    for side in sides.values():  # the root is the temporary directory; name it after the repository
-        if side.has(address.REPO_ROOT):
-            side.entities[address.REPO_ROOT].name = repo.name
-    with progress.step("comparing the sides"):
-        changes = file_changes(repo, base, head)
-        m = merge(sides["base"], sides["head"], changes)
+    changes = file_changes(repo, base_sha, head_sha)
+    m = merge(base, head, changes)
     by_status: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for e in m.entities.values():
         d = e.attrs.get("diff")
@@ -243,15 +216,41 @@ def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None, extra
         d = r.attrs.get("diff")
         if d:
             by_status["relations"][d["status"]] += 1
+    counts = {k: dict(sorted(v.items())) for k, v in sorted(by_status.items())}
+    counts["files_changed"] = len(changes)
+    root = head.entities.get(address.REPO_ROOT) or base.entities.get(address.REPO_ROOT)
     m.meta = {
-        "repo": repo.name, "commit": head[:7], "files": sides["head"].meta.get("files"),
-        "languages": sides["base"].meta.get("languages", {}) | sides["head"].meta.get("languages", {}),
-        "diff": {"base": base, "head": head, "base_short": base[:7], "head_short": head[:7], "remote": github_remote(repo),
-                 "files_changed": len(changes), "added": sum(c.added for c in changes.values()),
-                 "removed": sum(c.removed for c in changes.values())},
+        "repo": root.name if root else repo.name, "commit": head_sha[:7], "files": head.meta.get("files"),
+        "languages": base.meta.get("languages", {}) | head.meta.get("languages", {}),
+        "diff": {"base": base_sha, "head": head_sha, "base_short": base_sha[:7], "head_short": head_sha[:7],
+                 "remote": github_remote(repo), "files_changed": len(changes), "added": sum(c.added for c in changes.values()),
+                 "removed": sum(c.removed for c in changes.values()), "counts": counts},
         "timings": {"total": round(time.time() - t0, 2)},
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-    summary = {k: dict(sorted(v.items())) for k, v in sorted(by_status.items())}
-    summary["files_changed"] = len(changes)
-    return m, summary
+    return m
+
+
+def diff(repo: Path, base_rev: str, head_rev: str, extract, progress=None) -> tuple[Model, dict]:
+    """The model of a change between two revisions of ``repo``, both extracted here, and the
+    counts of what changed. ``extract(path, progress=…) -> (Model, Context)`` is
+    ``nolli.build.extract``. (nolli.build.fetch_change_model() is the same, with a store.)"""
+    from .progress import Quiet
+
+    progress = progress or Quiet()
+    repo = repo.resolve()
+    base, head = resolve(repo, base_rev), resolve(repo, head_rev)
+    with tempfile.TemporaryDirectory(prefix="nolli-diff-") as tmp:
+        sides = {}
+        for name, sha in (("base", base), ("head", head)):
+            side = progress.under(name)
+            d = Path(tmp) / name
+            d.mkdir()
+            with side.step("checking out the commit"):
+                materialise(repo, sha, d)
+            sides[name], _ctx = extract(d, progress=side)
+            if sides[name].has(address.REPO_ROOT):  # the root is the temporary directory; name it after the repository
+                sides[name].entities[address.REPO_ROOT].name = repo.name
+    with progress.step("comparing the sides"):
+        m = diff_models(repo, sides["base"], sides["head"], base, head)
+    return m, m.meta["diff"]["counts"]

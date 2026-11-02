@@ -44,5 +44,4 @@ readable. Each was a judgement call on a few repositories (reasons in `NOTES.md`
 This file's rules exist once, in Python. `nolli/scene.py` applies them to a view state
 (unfolded boxes plus options) and decides everything else the picture shows: labels,
 badges, emphasis, tooltips. The viewer asks `viewer/serve.py` for that scene on every
-change (`/api/scene`) and only lays it out and draws it; `nolli extract` writes the scene
-of the default cut as `scene.json`.
+change (`/api/scene`) and only lays it out and draws it.

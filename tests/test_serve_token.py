@@ -56,12 +56,28 @@ def test_a_token_that_cannot_be_had_falls_back_to_nobody(tmp_path, monkeypatch, 
     assert capsys.readouterr().err.count("asking as nobody") == 1
 
 
-def test_a_service_handler_gets_the_site(tmp_path):
+def test_a_service_brings_its_handler_parts_and_store(tmp_path):
+    """make_server() takes a service's handler, a subclass of HostedServices with its own fields,
+    and its own store; nothing is kept on classes, so two servers in one process stay apart."""
+    from dataclasses import dataclass
+
+    from nolli.store import DirectoryStore
+
     class Mine(hosted.HostedHandler):
         pass
 
-    srv = hosted.make_server(tmp_path, port=0, token=hosted.Fixed("t"), handler=Mine)
+    @dataclass
+    class MyServices(hosted.HostedServices):
+        hooks: str = ""
+
+    store = DirectoryStore(tmp_path / "elsewhere")
+    srv = hosted.make_server(tmp_path, port=0, token=hosted.Fixed("t"), handler=Mine, store=store,
+                             services=MyServices, hooks="mine")
+    other = hosted.make_server(tmp_path / "other", port=0)
     try:
-        assert Mine.site.github.token("o", "r") == "t" and Mine.data_root == Mine.site.data
+        assert srv.services.site.github.token("o", "r") == "t" and srv.services.store is store and srv.services.hooks == "mine"
+        assert srv.RequestHandlerClass.func is Mine  # type: ignore[attr-defined]
+        assert other.services.store is not store and other.services.site.github.token("o", "r") is None
     finally:
         srv.server_close()
+        other.server_close()

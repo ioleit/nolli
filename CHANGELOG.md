@@ -17,6 +17,41 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   Each spot beside a box or edge moves away from it step by step, out to the edge of the
   canvas, until it is clear of those; the rest of the picture may lie under it.
 
+## Unreleased
+
+### Changed
+
+- **Models are kept in a store, by what they are the model of** (`nolli/store.py`). A key
+  is a repository at one commit (`Commit`) or the change between two commits of one
+  repository (`Change`); `repo.make_change(base, head)` makes one, and two repositories
+  cannot be mixed in one. Everything that reads or writes models goes through a
+  `ModelStore` (`find_key`, `list_names`, `load_model`, `save_model`, `load_review`,
+  `save_review`), and every build gets its commits from a `Sources` (`open_commits`).
+  nolli's own are `DirectoryStore` (a directory per model, as before), `LocalRepository`
+  (`nolli view`) and `CloneCache` (`nolli serve`). A store may refuse a read (`NotAllowed`):
+  the viewer's server then answers 404.
+- **A commit's model is kept like any other**, so a change whose commit was built before
+  (a pull request's base, on its next push) extracts only the other one, also in `nolli view`.
+  The separate extraction cache (`<cache>/extractions`) is gone; `nolli serve` deletes it.
+- **Building** (`nolli/build.py`): `fetch_change_model(store, sources, change)` and
+  `fetch_whole_model(...)` load a model, or build and keep it; the slow steps
+  (`extract_commit`, `diff_commits`) take paths and models and return a model, so the server
+  runs them in processes of their own while the store stays where the request is. The
+  review's diagram and brief are made from the model (`make_review_diagram`,
+  `make_review_brief`); a model records its key, its budget and the change's description.
+- **Fewer files per model**: `view.json`, `scene.json` and `default.mmd` were read by nothing
+  and are no longer written. The viewer's "review.md" link is `/api/brief?d=<name>`; the
+  raw `/data/<name>/<file>` route is gone.
+- **`nolli serve` fetches with its GitHub token** (`NOLLI_GITHUB_TOKEN`) as well as asking the
+  API with it; the token goes to git in its environment, never into a clone's configuration.
+- **For code built on the viewer's server**: what a server works with is a `Services` object
+  on the server (`self.server.services` in a handler), not class attributes, so two servers
+  in one process stay apart. `nolli.viewer.hosted.make_server()` and `main()` also take
+  `store=`, `sources=` and `services=` (a subclass of `HostedServices`, with fields of its
+  own). Builds and review runs run in the context (contextvars) of the request that started
+  them. Removed: `build_diff`, `build_commit`, `fresh`, `nolli/extractions.py`,
+  `change.dataset_name`; `ci.comment()` takes a store and a key.
+
 ## 0.6.0
 
 ### Changed
