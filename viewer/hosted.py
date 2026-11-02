@@ -12,8 +12,10 @@ Models are kept in a ModelStore (default: directories under ``<cache>/data``), a
 come from a Sources (default: bare clones under ``<cache>/repos``, fetched with the same token
 as GitHub's API). git runs with none of this machine's credentials or configuration. GitHub's
 API is asked with ``NOLLI_GITHUB_TOKEN`` if it is set (5,000 requests an hour instead of 60),
-else as nobody; either way only public repositories are shown: one GitHub says is private
-answers 404 like a missing one, whatever the token or this machine's logins reach.
+else as nobody. The server shows whatever that token can read: started with a token that
+reaches private repositories, it shows them to anyone who can reach the server. Deciding who
+may see what is a store's (and sources') job: one that refuses raises NotAllowed, and the
+page answers 404 as for a missing repository.
 
 A service built on this one passes make_server() (and main()) parts of its own: a Token (one
 per repository, say a GitHub App's installation token for each installation), a store and
@@ -279,10 +281,8 @@ class Site:
 
     def plan(self, owner: str, repo: str, pull: int | None = None, sha: str | None = None) -> Plan:
         """What ``/<owner>/<repo>[/pull/<n> | /commit/<sha>]`` shows. Raises github.NotFound for a
-        missing or private repository, ChangeError if GitHub cannot be asked."""
+        repository the token cannot read, ChangeError if GitHub cannot be asked."""
         info = self.api(owner, repo)
-        if info.get("private") is not False:  # what a token sees beyond public repositories stays unseen
-            raise github.NotFound(f"GitHub: repos/{owner}/{repo}: private")
         owner, repo = info["full_name"].split("/")  # GitHub's spelling (paths are case-insensitive)
         r, name = Repo(f"github.com/{owner}/{repo}"), f"{owner}_{repo}"
         if self.max_repo is not None and info.get("size", 0) * 1024 > self.max_repo:
@@ -535,8 +535,8 @@ BUILDING = """<h1>{title}</h1>
 <pre id="log"></pre>"""
 
 PRIVATE = """<h1>Not found, or private</h1>
-<p>GitHub has no public <code>{what}</code>. If it is private: signing in with GitHub is not
-there yet, so this host shows public repositories only.</p>"""
+<p>This host cannot read <code>{what}</code> on GitHub: it does not exist, or it is private
+and this host may not show it to you.</p>"""
 
 NOT_A_PAGE = """<h1>Not a nolli page</h1>
 <p>Paths here are GitHub's: <code>/&lt;owner&gt;/&lt;repo&gt;</code>, <code>…/pull/&lt;n&gt;</code>,

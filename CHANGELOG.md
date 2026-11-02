@@ -50,8 +50,11 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **`nolli agent brief`** writes the brief, and the agent its verdicts, in a directory of the
   agent's own (`<data>/.agent/<name>/`, printed as before); **`nolli agent check`** makes
   verdicts that pass the dataset's review (`"by": "agent"`).
-- **`nolli serve` fetches with its GitHub token** (`NOLLI_GITHUB_TOKEN`) as well as asking the
-  API with it; the token goes to git in its environment, never into a clone's configuration.
+- **`nolli serve` shows what its GitHub token can read**: it fetches with `NOLLI_GITHUB_TOKEN`
+  as well as asking the API with it (the token goes to git in its environment, never into a
+  clone's configuration), and no longer refuses a private repository the token reaches.
+  Started with such a token, it shows those repositories to anyone who can reach it; a
+  store that decides who may see what (raising `NotAllowed`) is how a service limits that.
 - **For code built on the viewer's server**: what a server works with is a `Services` object
   on the server (`self.server.services` in a handler), not class attributes, so two servers
   in one process stay apart. `nolli.viewer.hosted.make_server()` and `main()` also take

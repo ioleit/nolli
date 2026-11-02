@@ -1,6 +1,6 @@
 """The GitHub token of nolli serve without GitHub: one per repository, from the environment or
-from a service built on it, falling back to nobody, and the server refusing a private
-repository whatever its token sees."""
+from a service built on it, falling back to nobody, and the server showing whatever its token
+reads."""
 
 from __future__ import annotations
 
@@ -26,21 +26,22 @@ def test_each_repository_its_own_token(tmp_path, monkeypatch):
     assert site.api("b", "r", "/pulls/1") == {"path": "repos/b/r/pulls/1", "tok": "tok-b"}
 
 
-def test_serve_refuses_private_and_asks_again_as_nobody(tmp_path, monkeypatch):
+def test_serve_shows_what_its_token_reads_and_asks_again_as_nobody(tmp_path, monkeypatch):
+    """A private repository the token reads is planned like any other (who may see it is the
+    store's decision); a public one the token does not see is asked for again as nobody."""
     asked = []
 
     def api(path, tok):
         asked.append((path, tok))
-        if path == "repos/me/secret":
-            return {"full_name": "me/secret", "private": True, "default_branch": "main"}
+        if path.startswith("repos/me/secret"):
+            return {"full_name": "me/secret", "private": True, "default_branch": "main", "commit": {"sha": "a" * 40}}
         if tok:
             raise github.NotFound(path)
         return {"full_name": "o/pub", "private": False}
 
     monkeypatch.setattr(hosted.github, "api", api)
     site = hosted.Site(tmp_path, token=hosted.Fixed("tok"))
-    with pytest.raises(github.NotFound):
-        site.plan("me", "secret")
+    assert site.plan("me", "secret").key == hosted.Repo("github.com/me/secret").make_commit("a" * 40)
     assert site.ask("o", "pub")["full_name"] == "o/pub"
     assert asked[-2:] == [("repos/o/pub", "tok"), ("repos/o/pub", None)]  # the token does not see it
 

@@ -24,8 +24,8 @@ answer and, when they pass, makes them the dataset's review.
 
 ci is for nolli's CI workflow: comment prints the pull request comment for a run's dataset.
 
-serve is view as a service for public GitHub repositories: /<owner>/<repo>/pull/<n> on its
-host shows that PR (nolli/viewer/hosted.py).
+serve is view as a service for GitHub repositories: /<owner>/<repo>/pull/<n> on its host shows
+that PR (nolli/viewer/hosted.py), for every repository its token can read.
 
 extract and diff write a dataset to a directory of your choice.
 
@@ -373,7 +373,8 @@ def main(argv: list[str] | None = None) -> int:
                     "for one, or the PR comes from a fork (which gets no secrets)")
     cc.set_defaults(fn=cmd_ci_comment)
     sv = sub.add_parser("serve", help="the viewer as a service: GitHub's paths (/<owner>/<repo>/pull/<n>) on this host, "
-                        "public repositories only")
+                        "for every repository $NOLLI_GITHUB_TOKEN can read (without it, public ones), "
+                        "to everyone who can reach the host")
     sv.add_argument("--cache", help="clones and datasets (default: $NOLLI_CACHE, else ~/.cache/nolli-serve)")
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, help="default: $PORT, else 8730")
