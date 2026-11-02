@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from nolli.build import extract
-from nolli.rollup import bundle, hidden_by_role, image_aliases, rollup
+from nolli.rollup import hidden_by_role, image_aliases, lift, rollup
 from nolli.view import default_view
 
 FILES = {
@@ -109,7 +109,7 @@ def test_default_cut_lifts_frontend_to_backend(repo: Path):
     view = default_view(m, budget=12)
     hidden = hidden_by_role(m) | set(image_aliases(m))
     rolled = rollup(m, set(view["visible"]), hidden, shown_groups={"api:"})
-    rolled.edges = bundle(m, rolled.edges, set(view["expanded"]))
+    rolled.edges = lift(m, rolled.edges, set(view["expanded"]))
     calls = [e for e in rolled.edges if e.subkind == "http"]
     assert calls, "frontend -> APIs edge"
     assert all(e.src.startswith("repo:frontend") and e.dst == "api:" for e in calls)
@@ -364,3 +364,32 @@ def test_mermaid_ids(repo: Path):
     text = render(sc)
     drawn = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+)\s*[\[(]", line))}
     assert ids(sc).keys() == drawn and set(ids(sc).values()) == {n["id"] for n in sc["nodes"]}
+
+
+def test_type_definitions_and_module_attributes(tmp_path: Path):
+    """Type aliases, ``type`` statements, NewType and friends are symbols like classes, so a
+    reference to one lands on it, not on the module's own code; and ``from pkg import mod``
+    followed by ``mod.thing`` records ``thing`` (the module's function, constant or symbol)."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/__init__.py").write_text("")
+    (tmp_path / "pkg/keys.py").write_text(
+        "from typing import NewType, TypeAlias\n\nclass Commit:\n    pass\n\nclass Change:\n    pass\n\n"
+        "Key = Commit | Change\nSha = NewType('Sha', str)\nNames: TypeAlias = dict[str, int]\n"
+        "FLAGS = READ | WRITE\nrows = table['x']\n\nLIMIT = 3\n\ndef parse(d):\n    return Commit()\n"
+    )
+    (tmp_path / "pkg/use.py").write_text(
+        "from pkg.keys import Key, Sha, Commit\nfrom pkg import keys\nfrom . import keys as k\n"
+        "def f(a: Key, b: Sha) -> Commit:\n    keys.parse({}); keys.LIMIT; k.parse({}); Commit.__name__\n"
+    )
+    m, _ = extract(tmp_path)
+    kinds = {e.name: e.kind for e in m.entities.values() if e.id.startswith("repo:pkg/keys.py#")}
+    assert kinds == {"Commit": "class", "Change": "class", "Key": "type", "Sha": "type", "Names": "type"}
+    uses = {(r.dst, r.attrs.get("name")): r.count for r in m.relations
+            if r.kind == "use" and r.src == "repo:pkg/use.py"}
+    assert uses == {("repo:pkg/keys.py#Key", "Key"): 1, ("repo:pkg/keys.py#Sha", "Sha"): 1,
+                    ("repo:pkg/keys.py#Commit", "Commit"): 1,
+                    ("repo:pkg/keys.py", "parse"): 2, ("repo:pkg/keys.py", "LIMIT"): 1}
+    # the alias's own references count as the module's own code, to its classes
+    own = {(r.dst, r.attrs.get("name")): r.count for r in m.relations
+           if r.kind == "use" and r.src == "repo:pkg/keys.py#Key"}
+    assert own == {("repo:pkg/keys.py#Commit", "Commit"): 1, ("repo:pkg/keys.py#Change", "Change"): 1}

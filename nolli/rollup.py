@@ -26,6 +26,7 @@ annotation on the caller or reader when it is not.
 from __future__ import annotations
 
 from collections import defaultdict
+from functools import lru_cache
 from dataclasses import dataclass, field
 
 from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, Model, address
@@ -50,6 +51,8 @@ class RolledEdge:
     base: int = 0
     head: int = 0
     changed: dict[str, str] = field(default_factory=dict)
+    # the drawn nodes a lifted line stands for at each end (lift()); empty: the ends themselves
+    ends: dict[str, set[str]] = field(default_factory=lambda: {"src": set(), "dst": set()})
 
     @property
     def status(self) -> str | None:
@@ -65,7 +68,8 @@ class RolledEdge:
     def to_dict(self) -> dict:
         return {"kind": self.kind, "src": self.src, "dst": self.dst, "subkind": self.subkind, "count": self.count,
                 "confidence": self.confidence, "via": sorted(self.via), "names": dict(self.names), "types": self.types,
-                "base": self.base, "head": self.head, "changed": dict(sorted(self.changed.items()))}
+                "base": self.base, "head": self.head, "changed": dict(sorted(self.changed.items())),
+                "ends": {"src": sorted(self.ends["src"] or {self.src}), "dst": sorted(self.ends["dst"] or {self.dst})}}
 
     def absorb(self, other: "RolledEdge") -> None:
         """Count, interfaces, names, confidence and changes of an edge folded into this one."""
@@ -77,6 +81,8 @@ class RolledEdge:
         self.base += other.base
         self.head += other.head
         self.changed.update(other.changed)
+        for side in ("src", "dst"):
+            self.ends[side] |= other.ends[side] or {getattr(other, side)}
         if CONF_RANK[other.confidence] > CONF_RANK[self.confidence]:
             self.confidence = other.confidence
 
@@ -403,59 +409,77 @@ def drawn_parent(m: Model, node: str, expanded: set[str]) -> str | None:
     return None
 
 
-def bundle(m: Model, edges: list["RolledEdge"], expanded: set[str], min_fan: int = 3) -> list["RolledEdge"]:
-    """Fan-collapse: edges from one node to >= min_fan children of the same unfolded
-    container are drawn as one edge to the container; symmetrically for sources (also for
-    provide edges, whose source is the interface). Edges inside a container are left alone."""
-    def is_inside(node: str, container: str) -> bool:
-        x: str | None = owner_of(node)
-        while x is not None:
-            if x == container:
-                return True
-            x = m.parent(x)
-        return False
+def lift(m: Model, edges: list[RolledEdge], expanded: set[str], max_lines: int = 4) -> list[RolledEdge]:
+    """Edge lifting: between any two drawn boxes A and B that are not one inside the other,
+    at most ``max_lines`` lines are drawn, counting every line whose ends lie in A (or are A)
+    and in B. A pair with more is fixed, finest pair first: its lines are lifted at the end
+    with the wider spread (more distinct boxes) to that box, which merges them; if still too
+    many, at the other end too. Lifting only ever makes lines coarser, so a lift never
+    breaks a pair fixed before, and nothing finer is drawn under a lifted line. A provide
+    edge (drawn interface -> module) is never lifted at the module's end: which module
+    realises which interface is the point. A lifted line keeps the drawn nodes it stands for
+    in ``ends``."""
+    max_lines = max(1, max_lines)
 
-    def pass_(edges: list[RolledEdge], side: str) -> list[RolledEdge]:
-        groups: dict[tuple, list[RolledEdge]] = defaultdict(list)
-        for e in edges:
-            end = e.dst if side == "dst" else e.src
-            other = e.src if side == "dst" else e.dst
-            c = drawn_parent(m, end, expanded)
-            # which module realises which interface is the point: a provide edge (drawn interface ->
-            # module) is never bundled at the module's end, but siblings in one unfolded API box
-            # realised by the same module are one edge from the box
-            if (e.kind == PROVIDE and side == "dst") or c is None or is_inside(other, c):
-                groups[("keep", id(e))].append(e)
+    @lru_cache(maxsize=None)
+    def above(x: str) -> tuple[str, ...]:
+        """x and its drawn containers, nearest first (own code sits in its module)."""
+        out, p = [x], drawn_parent(m, x, expanded)
+        while p is not None:
+            out.append(p)
+            p = drawn_parent(m, p, expanded)
+        return tuple(out)
+
+    lines = list(edges)
+    for e in lines:
+        for side in ("src", "dst"):
+            e.ends[side] = e.ends[side] or {getattr(e, side)}
+
+    def crossing(a: str, b: str) -> list[RolledEdge]:
+        return [e for e in lines if a in above(e.src) and b in above(e.dst)]
+
+    def merged(es: list[RolledEdge]) -> list[RolledEdge]:
+        """Lines with the same ends and kind become one."""
+        out: dict[tuple, RolledEdge] = {}
+        for e in es:
+            k = (e.kind, e.src, e.dst, e.subkind)
+            if k in out:
+                out[k].absorb(e)
             else:
-                groups[(side, other, c, e.kind, e.subkind)].append(e)
-        out: list[RolledEdge] = []
-        merged_edges: list[tuple[str, str, str, str, RolledEdge]] = []  # (other, container, kind, sub, edge)
-        for key, es in groups.items():
-            if key[0] == "keep" or len({(e.dst if side == "dst" else e.src) for e in es}) < min_fan:
-                out.extend(es)
-                continue
-            _, other, c, kind, sub = key
-            merged = RolledEdge(kind, other if side == "dst" else c, c if side == "dst" else other, sub, 0, "exact")
-            for e in es:
-                merged.absorb(e)
-            merged.via.add(f"fan:{len(es)}")
-            merged_edges.append((other, c, kind, sub, merged))
-        # a bundle that attaches to a container's boundary absorbs every edge from deeper
-        # inside that container to the same other end, so one target is not reached both
-        # from the boundary and from a grandchild
-        for other, c, kind, sub, merged in merged_edges:
-            rest = []
-            for e in out:
-                end = e.dst if side == "dst" else e.src
-                o = e.src if side == "dst" else e.dst
-                if e.kind == kind and e.subkind == sub and o == other and end != c and is_inside(end, c):
-                    merged.absorb(e)
-                else:
-                    rest.append(e)
-            out = rest
-        return out + [me for *_, me in merged_edges]
+                out[k] = e
+        return list(out.values())
 
-    return sorted(pass_(pass_(edges, "dst"), "src"), key=lambda e: (e.src, e.dst, e.kind, e.subkind))
+    while True:
+        # every pair of disjoint drawn boxes a line passes between, with its lines
+        pairs: dict[tuple[str, str], list[RolledEdge]] = defaultdict(list)
+        for e in lines:
+            up_s, up_d = above(e.src), above(e.dst)
+            for a in up_s:
+                for b in up_d:
+                    if a != b and a not in up_d and b not in up_s:
+                        pairs[(a, b)].append(e)
+        bad = [(a, b) for (a, b), es in pairs.items() if len(es) > max_lines]
+        if not bad:
+            break
+        # the finest pair first: deepest, then the most crowded; names settle the rest
+        a, b = max(bad, key=lambda ab: (len(above(ab[0])) + len(above(ab[1])), len(pairs[ab]), ab[0], ab[1]))
+        es = pairs[(a, b)]
+        spread_src, spread_dst = len({e.src for e in es}), len({e.dst for e in es})
+        liftable_dst = [e for e in es if e.kind != PROVIDE]
+        order = ["dst", "src"] if spread_dst >= spread_src or not liftable_dst else ["src", "dst"]
+        for side in order:
+            for e in es:
+                if side == "src":
+                    e.src = a
+                elif e.kind != PROVIDE:
+                    e.dst = b
+                e.via.add("lift")
+            rest = [e for e in lines if e not in es]
+            es = merged(es)
+            lines = rest + es
+            if len(es) <= max_lines:
+                break
+    return sorted(lines, key=lambda e: (e.src, e.dst, e.kind, e.subkind))
 
 
 def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),

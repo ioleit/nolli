@@ -26,14 +26,14 @@ def test_review_fixture(tmp_path, capsys):
 
 
 def test_verdict_on_a_bundled_edge(tmp_path):
-    """Going to the verdict on client.ts ==> GET /alerts/overdue unfolds the API, whose endpoints
-    client.ts calls are then drawn as one edge to the API's box: the verdict goes on that edge,
-    not on client.ts."""
+    """Going to the verdict on client.ts ==> GET /alerts/overdue unfolds the API; with at most two
+    lines between two boxes, the endpoints client.ts calls are drawn as one edge to the API's
+    box: the verdict goes on that edge, not on client.ts."""
     ds = review_repo.build(tmp_path)
     m = Model.load(ds / "model.json")
     verdicts = read_verdicts((ds / "verdicts.json").read_text())
     v = next(r for r in resolve_verdicts(m, verdicts) if r["target"].startswith("n_repo_web_src_client_ts ==>"))
-    s = scene(m, SceneState(expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"]), verdicts)
+    s = scene(m, SceneState(expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"], max_lines=2), verdicts)
     edge = next(e for e in s["edges"] if e["src"] == "repo:web/src/client.ts" and e["kind"] == "use" and e["subkind"] == "http")
     assert edge["dst"] == "api:http:ledger/api/app.py:app"
     assert edge["verdict"] == "question"

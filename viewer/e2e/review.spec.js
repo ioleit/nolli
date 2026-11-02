@@ -96,7 +96,8 @@ test("hovering an edge lights it with its two ends, and its card covers none of 
   const edge = page.locator("#root g.edge", { has: page.locator("g.verdict.problem") });
   await edge.locator("g.verdict circle").hover();
   await expect(tip(page)).toContainText("Skips the store layer");
-  const ends = ["repo:ledger/services/alerts.py", "repo:ledger/storage/db.py"].map(id => node(page, id));
+  // the line is lifted to the storage box: services/ and storage/ exchange more lines than are drawn
+  const ends = ["repo:ledger/services/alerts.py", "repo:ledger/storage"].map(id => node(page, id));
   for (const x of [edge, ...ends]) await expect(x).toHaveClass(/\blit\b/);
   const card = await tip(page).boundingBox();
   for (const x of ends) {

@@ -17,9 +17,14 @@ readable. Each was a judgement call on a few repositories (reasons in `NOTES.md`
 
 - **chain compression**: a directory whose only content is one subdirectory is drawn as
   one box with the joined path;
-- **fan bundling**: when one box depends on three or more children of another unfolded
-  box, one edge to that box's boundary replaces them, and absorbs any deeper edge to the
-  same target;
+- **edge lifting**: between any two drawn boxes that are not one inside the other, at most
+  N lines are drawn (N = 4 by default, a viewer option), counting every line whose ends
+  lie in them. A pair with more is fixed, finest pair first: its lines are lifted at the
+  end with the wider spread to that box, which merges them, and at the other end too if
+  still too many. Lifting only makes lines coarser, so nothing finer is ever drawn under
+  a lifted line. A lifted line keeps the drawn nodes it stands for (`ends`): the viewer
+  ends it at an entry node inside the box and lets hidden edges from there pull those
+  nodes to the top (or bottom);
 - **groups are a filter**: a group (external packages, environment, deployment, HTTP
   API) the view shows is a box like any other, folded or unfolded; one it doesn't show
   becomes **badges instead of edges** (an edge between two hidden groups, such as
