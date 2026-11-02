@@ -132,6 +132,8 @@ export interface SceneEdge {
   single: boolean;
   weak: boolean;
   heuristic: boolean;
+  /** a lifted line (rollup.lift): the drawn nodes it stands for at each end; null: its own ends */
+  ends: { src: string[]; dst: string[] } | null;
   /** references only to types: no dependency at run time */
   types: boolean;
   info: Info;
@@ -149,6 +151,7 @@ export interface SceneState {
   groups: string[];  // root groups drawn as boxes; the others are badges
   budget: number;
   utilities: number;  // more incoming edges than this: a utility; 0: off
+  max_lines: number;  // lines between two boxes at most (rollup.lift)
   side: "both" | "base" | "head";
 }
 

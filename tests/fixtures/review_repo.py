@@ -132,7 +132,7 @@ VERDICTS = [
      "reason": "New cycle: `storage/db` now imports `services/alerts`, which imports `storage/db`. The lowest "
                "box of the backend depends on a service, so every store sits in the cycle too; nothing in "
                "the title asks the database to know about alerts."},
-    {"target": "n_repo_ledger_services_alerts_py --> n_repo_ledger_storage_db_py", "verdict": "problem",
+    {"target": "n_repo_ledger_services_alerts_py --> n_repo_ledger_storage_g", "verdict": "problem",
      "reason": "Skips the store layer: `services/alerts` reads `storage/db` directly, while `billing` reaches "
                "it only through `invoices` and `customers`. The title asks for alerts, not for a second way "
                "into `db`, which now has callers in two layers."},

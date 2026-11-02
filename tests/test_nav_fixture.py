@@ -30,7 +30,7 @@ def test_verdicts_pass_the_check(dataset, capsys):
 
 @pytest.mark.parametrize("unfolded, edge", [
     ([], ("repo:tasks/jobs", "repo:tasks/store")),  # both folders folded
-    (["repo:tasks/jobs", "repo:tasks/store"], ("repo:tasks/jobs/worker.py", "repo:tasks/store")),  # bundled into store
+    (["repo:tasks/jobs", "repo:tasks/store"], ("repo:tasks/jobs/worker.py", "repo:tasks/store/users")),  # users folded
     (["repo:tasks/jobs", "repo:tasks/store", "repo:tasks/store/users"], ("repo:tasks/jobs/worker.py", "repo:tasks/store/users/repo.py")),
 ])
 def test_a_verdict_follows_its_edge_when_rolled_up(dataset, unfolded, edge):

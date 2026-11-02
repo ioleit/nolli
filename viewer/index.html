@@ -34,6 +34,7 @@
   </div>
   <label class="opt row" data-help="How many boxes the default cut may show. Changing it shows the default cut again.">budget <input id="budget" type="number" min="4" max="300" value="28" style="width:52px;margin-left:auto"></label>
   <label class="opt row" data-help="A box with more than this many incoming edges is a utility: its incoming edges are left out, it says how many boxes use it (&ldquo;used by 7&rdquo;), sits at the bottom and has a dotted border. 0: off.">utilities above <input id="utilities" type="number" min="0" max="99" style="width:52px;margin-left:auto"> edges</label>
+  <label class="opt row" data-help="Lines drawn between two boxes at most. More are lifted to a box they are inside, finest pair first (rollup.py): the end with the wider spread first, then, if still too many, both.">lines at most <input id="maxlines" type="number" min="1" max="99" style="width:52px;margin-left:auto"></label>
   <label class="opt row" data-help="Colours, fonts and box style. Kept in this browser and in the link (th=).">theme <select id="theme"></select></label>
 
   <h2>Residue</h2>
