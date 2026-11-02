@@ -6,6 +6,7 @@ comments by nolli serve. The agent itself (nolli/reviewer.py) is replaced: it ne
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import time
 import urllib.error
@@ -15,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from nolli import reviewer
+from nolli.store import DirectoryStore, LocalRepository, Review
 from nolli.viewer import hosted, serve
 from test_ci import bot_comment, comment, dataset  # noqa: F401  # the fixture
 
@@ -30,7 +32,7 @@ def call(srv, path: str, method: str = "GET", body: bytes | None = None) -> tupl
 
 @pytest.fixture
 def server(dataset):  # noqa: F811
-    srv = serve.make_server(dataset.parent, port=0, repos={dataset.name: dataset})
+    srv = serve.make_server(dataset.parent, port=0, repos={dataset.name: dataset.parent.parent / "shop"})
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv
     srv.shutdown()
@@ -107,18 +109,21 @@ def test_a_failed_run_keeps_the_verdicts_shown(server, dataset, monkeypatch):  #
     assert json.loads((dataset / "verdicts.json").read_text())[0]["verdict"] == "good"
 
 
+def open_dataset(ds: Path):
+    """The dataset's store, key and model."""
+    store = DirectoryStore(ds.parent)
+    key = store.find_key(ds.name)
+    return store, key, store.load_model(key)
+
+
 def test_serve_reads_the_ci_review_and_stores_no_uploads(tmp_path, dataset, capsys, monkeypatch):  # noqa: F811
     (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}]))
     text = comment(dataset, capsys)
     (dataset / "verdicts.json").unlink()
+    shutil.copytree(dataset, tmp_path / "cache" / "data" / dataset.name)
     site = hosted.Site(tmp_path / "cache")
-    ds = site.data / dataset.name
-    ds.mkdir()
-    for f in dataset.iterdir():
-        (ds / f.name).write_bytes(f.read_bytes())
-    report = json.loads((ds / "report.json").read_text())  # as the model says: built from '#7' on GitHub
-    report["meta"]["diff"] |= {"remote": "https://github.com/me/shop", "pr": 7}
-    (ds / "report.json").write_text(json.dumps(report))
+    key = site.store.find_key(dataset.name)
+    m = site.store.load_model(key)
     asked = []
 
     def api(path, tok):
@@ -126,16 +131,17 @@ def test_serve_reads_the_ci_review_and_stores_no_uploads(tmp_path, dataset, caps
         return [bot_comment(text)]
 
     monkeypatch.setattr(hosted.github, "api", api)
-    info = site.ci_review(ds)
+    info = site.ci_review(key, m)
     assert asked == ["repos/me/shop/issues/7/comments?per_page=100"] and info["found"] == "verdicts"
-    assert json.loads((ds / "review.json").read_text())["by"] == "ci" and json.loads((ds / "verdicts.json").read_text())[0]["verdict"] == "good"
-    assert site.ci_review(ds) is info and len(asked) == 1  # asked once a minute at most
+    review = site.store.load_review(key)
+    assert review.by["by"] == "ci" and review.verdicts[0]["verdict"] == "good"
+    assert site.ci_review(key, m) is info and len(asked) == 1  # asked once a minute at most
 
     srv = hosted.make_server(tmp_path / "cache", port=0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        assert call(srv, f"/api/verdicts?d={ds.name}", "POST", b"[]")[0] == 405
-        st = call(srv, f"/api/review?d={ds.name}")[1]
+        assert call(srv, f"/api/verdicts?d={dataset.name}", "POST", b"[]")[0] == 405
+        st = call(srv, f"/api/review?d={dataset.name}")[1]
         assert st["server"] == "serve" and st["uploads"] is False and st["verdicts"]["by"] == "ci" and st["ci"]["found"] == "verdicts"
     finally:
         srv.shutdown()
@@ -145,23 +151,21 @@ def test_serve_reads_the_ci_review_and_stores_no_uploads(tmp_path, dataset, caps
 def test_from_ci_without_github(dataset, capsys):  # noqa: F811
     from nolli.viewer.reviews import ci_pull, from_ci
 
-    report = json.loads((dataset / "report.json").read_text())
-    report["meta"]["diff"] |= {"remote": "https://github.com/me/shop", "pr": 7}
-    (dataset / "report.json").write_text(json.dumps(report))
-    assert ci_pull(dataset) == ("me", "shop", 7)
+    store, key, m = open_dataset(dataset)
+    assert ci_pull(m) == ("me", "shop", 7)
     without = comment(dataset, capsys)  # a run without an agent: no verdicts in it
     (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}]))
     reviewed = comment(dataset, capsys)
     (dataset / "verdicts.json").unlink()
 
-    assert from_ci(dataset, []) == {"found": None, "applies": True}
-    assert from_ci(dataset, [bot_comment(without)])["found"] == "no-review" and not (dataset / "verdicts.json").exists()
-    info = from_ci(dataset, [bot_comment(reviewed)])
+    assert from_ci(store, key, m, []) == {"found": None, "applies": True}
+    assert from_ci(store, key, m, [bot_comment(without)])["found"] == "no-review" and store.load_review(key) is None
+    info = from_ci(store, key, m, [bot_comment(reviewed)])
     assert info["found"] == "verdicts" and info["dropped"] == 0
-    assert json.loads((dataset / "review.json").read_text())["by"] == "ci"
-    (dataset / "review.json").write_text(json.dumps({"by": "agent"}))  # a review run here since: kept
-    from_ci(dataset, [bot_comment(reviewed)])
-    assert json.loads((dataset / "review.json").read_text())["by"] == "agent"
+    assert store.load_review(key).by["by"] == "ci"
+    store.save_review(key, Review(store.load_review(key).verdicts, {"by": "agent"}))  # a review run here since: kept
+    from_ci(store, key, m, [bot_comment(reviewed)])
+    assert store.load_review(key).by["by"] == "agent"
 
 
 def test_a_service_brings_its_own_reviewer(tmp_path, dataset, monkeypatch):  # noqa: F811
@@ -177,23 +181,24 @@ def test_a_service_brings_its_own_reviewer(tmp_path, dataset, monkeypatch):  # n
             return "mine-1"
 
         def review(self, ds, repo, out, on_step=None, cancel=None):
+            assert (ds / "review.md").read_text().startswith("# Architecture review") and (repo / ".git").is_dir()
             out.mkdir(parents=True, exist_ok=True)
             (out / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "Mine."}]))
             return reviewer.Run(turns=1, model="mine-1")
 
     mine = Mine()
-    srv = hosted.make_server(dataset.parent.parent, port=0, token=hosted.Token(), reviewer=mine)  # the dataset is in <cache>/data
-    monkeypatch.setattr(hosted.HostedHandler.site, "ci_review", lambda ds: {"found": None, "applies": False})
-    monkeypatch.setattr(hosted.HostedHandler, "review_repo", lambda self, ds: tmp_path)
-    monkeypatch.setattr(hosted.HostedHandler.site, "review_clone", lambda ds: tmp_path)
+    srv = hosted.make_server(dataset.parent.parent, port=0, token=hosted.Token(), reviewer=mine,  # the dataset is in <cache>/data
+                             sources=LocalRepository(dataset.parent.parent / "shop"))
+    monkeypatch.setattr(srv.services.site, "ci_review", lambda key, m: {"found": None, "applies": False})
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         st = call(srv, f"/api/review?d={dataset.name}")[1]
         assert (st["can_run"], st["why_not"], st["model"]) == (False, "No reviews left for this installation.", "mine-1")
         mine.why = None
         call(srv, f"/api/review?d={dataset.name}", "POST")
-        until(lambda: call(srv, f"/api/review?d={dataset.name}")[1]["run"]["state"] == "done")
+        until(lambda: call(srv, f"/api/review?d={dataset.name}")[1]["run"]["state"] in ("done", "failed"))
         st = call(srv, f"/api/review?d={dataset.name}")[1]
+        assert st["run"]["state"] == "done", st["run"]["error"]
         assert st["verdicts"]["by"] == "agent" and st["verdicts"]["model"] == "mine-1"
     finally:
         srv.shutdown()

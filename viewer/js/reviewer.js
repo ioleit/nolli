@@ -140,7 +140,7 @@ function waysHTML() {
       then ask, in a clone of the repository:${code(agentPrompt())}
       The agent builds this same picture on your machine and opens its verdicts in a viewer there.</li>`;
   const hand = st?.uploads
-    ? `<li><b>By hand:</b> give any agent <a href="/data/${esc(name)}/review.md" target="_blank">review.md</a> (the diagram and how to answer),
+    ? `<li><b>By hand:</b> give any agent <a href="/api/brief?d=${encodeURIComponent(name)}" target="_blank">review.md</a> (the diagram and how to answer),
         save its answer as a .json file and <label class="file">load it here…<input type="file" id="rv-file" accept=".json,application/json"></label></li>`
     : "";
   return `<ol class="rr-ways">${keyStep}${own}${hand}</ol>`;

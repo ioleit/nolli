@@ -1,7 +1,7 @@
 """nolli serve (nolli/viewer/hosted.py) without the network: which paths are pages, the viewer's
-page pinned to a dataset, a build's progress as a page shows it, and a build's dataset
-appearing whole or not at all, builds in processes of their own and their limits. Asking
-GitHub is not tested here: it needs the network."""
+page pinned to a model, a build's progress as a page shows it, a build's steps in processes of
+their own and their limits, and a pull request built from a local repository standing in for
+its clone. Asking GitHub is not tested here: it needs the network."""
 
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ from pathlib import Path
 
 import pytest
 
+from nolli.change import ChangeError
 from nolli.progress import SHORT, Progress
+from nolli.store import LocalRepository, Repo
 from nolli.viewer.hosted import ROUTE, Board, Plan, Site, TooLarge, viewer_page
 
 
@@ -51,33 +53,62 @@ def test_board_keeps_finished_steps_and_the_one_under_way():
     assert board.lines == ["head: python symbols    1.4 s"]
 
 
-# Builds run in processes of their own, so they are module-level functions.
+# A build's steps run in processes of their own, so they are module-level functions.
 
-def broken(clone: Path, out: Path, progress: Progress) -> None:
-    out.mkdir(parents=True)
-    (out / "report.json").write_text("{}")
+def working(n: int, progress: Progress) -> dict:
+    with progress.step("drawing"):
+        time.sleep(SHORT)  # listed as a finished step only if it took that long
+    return {"n": n, "pid": os.getpid(), "tmp": tempfile.gettempdir()}
+
+
+def failing(progress: Progress) -> None:
     raise RuntimeError("half way")
 
 
-def working(clone: Path, out: Path, progress: Progress) -> None:
-    with progress.step("drawing"):
-        time.sleep(SHORT)  # listed as a finished step only if it took that long
-        out.mkdir(parents=True)
-        (out / "report.json").write_text("{}")
-        (out / "pid").write_text(str(os.getpid()))
-        (out / "tmp").write_text(tempfile.gettempdir())
-
-
-def slow(clone: Path, out: Path, progress: Progress) -> None:
+def slow(progress: Progress) -> None:
     with progress.step("thinking"):
         time.sleep(60)
 
 
-def dies(clone: Path, out: Path, progress: Progress) -> None:
+def dies(progress: Progress) -> None:
     os._exit(9)  # as if killed (out of memory)
 
 
-def run(site: Site, plan: Plan, seconds: float = 20):
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
+
+
+@pytest.fixture
+def src(tmp_path: Path) -> tuple[Path, str, str, str]:
+    """A repository with a main branch and a branch off it: (path, main's tip, the branch's base, its head)."""
+    r = tmp_path / "src"
+    (r / "shop").mkdir(parents=True)
+    git(tmp_path, "init", "-q", "-b", "main", str(r))
+    git(r, "config", "user.email", "t@example.com")
+    git(r, "config", "user.name", "t")
+    (r / "shop/__init__.py").write_text("")
+    (r / "shop/store.py").write_text("class Store:\n    pass\n")
+    git(r, "add", ".")
+    git(r, "commit", "-q", "-m", "shop")
+    base = git(r, "rev-parse", "HEAD")
+    git(r, "checkout", "-q", "-b", "cache")
+    (r / "shop/cache.py").write_text("from .store import Store\n\nclass Cache:\n    s = Store()\n")
+    git(r, "add", ".")
+    git(r, "commit", "-q", "-m", "a cache")
+    head = git(r, "rev-parse", "HEAD")
+    git(r, "checkout", "-q", "main")
+    (r / "README.md").write_text("later on main\n")
+    git(r, "add", ".")
+    git(r, "commit", "-q", "-m", "main moves on")
+    return r, git(r, "rev-parse", "HEAD"), base, head
+
+
+@pytest.fixture
+def site(tmp_path: Path, src) -> Site:
+    return Site(tmp_path / "cache", sources=LocalRepository(src[0]))
+
+
+def run(site: Site, plan: Plan, seconds: float = 60):
     job = site.start(plan)
     deadline = time.time() + seconds
     while job.state in ("waiting", "building") and time.time() < deadline:
@@ -85,41 +116,62 @@ def run(site: Site, plan: Plan, seconds: float = 20):
     return job
 
 
-@pytest.fixture
-def site(tmp_path: Path) -> Site:
-    subprocess.run(["git", "init", "-q", str(tmp_path / "src")], check=True)
-    return Site(tmp_path / "cache")
+def test_a_step_runs_in_its_own_process_and_reports_its_progress(site):
+    board = Board()
+    out = site.run_step(working, 7, progress=Progress(board).under("head"))  # type: ignore[arg-type]
+    assert out["n"] == 7 and out["pid"] != os.getpid()
+    assert Path(out["tmp"]).parent == site.cache / ".tmp" and not Path(out["tmp"]).exists()  # its temporary files, deleted afterwards
+    assert any(line.startswith("head: drawing") for line in board.lines)
 
 
-def test_a_dataset_appears_whole_or_not_at_all(site, tmp_path):
-    job = run(site, Plan("o_r_broken", "o/r", str(tmp_path / "src"), broken))
-    assert job.state == "error" and "half way" in job.error
-    assert not (site.data / "o_r_broken").exists()
-    assert not any(p.name.endswith(".building") for p in site.data.iterdir())
+def test_a_failing_step_is_an_error(site):
+    with pytest.raises(ChangeError, match="RuntimeError: half way"):
+        site.run_step(failing, progress=Progress(Board()))  # type: ignore[arg-type]
 
 
-def test_a_build_runs_in_its_own_process_and_reports_its_progress(site, tmp_path):
-    job = run(site, Plan("o_r_ok", "o/r", str(tmp_path / "src"), working))
-    assert job.state == "done", job.error
-    out = site.data / "o_r_ok"
-    assert int((out / "pid").read_text()) != os.getpid()
-    assert Path((out / "tmp").read_text()) == site.cache / ".tmp" / "o_r_ok"  # its temporary files, deleted afterwards
-    assert not (site.cache / ".tmp" / "o_r_ok").exists()
-    assert any(line.startswith("drawing") for line in job.board.lines)
-
-
-def test_a_build_past_the_timeout_is_stopped(site, tmp_path):
+def test_a_step_past_the_timeout_is_stopped(site):
     site.timeout = 1
+    board = Board()
     t0 = time.time()
-    job = run(site, Plan("o_r_slow", "o/r", str(tmp_path / "src"), slow))
-    assert job.state == "error" and "stopped after 1 s" in job.error
+    with pytest.raises(ChangeError, match="stopped after 1 s"):
+        site.run_step(slow, progress=Progress(board))  # type: ignore[arg-type]
     assert time.time() - t0 < 15
-    assert job.board.current.startswith("thinking")  # what it was doing when it was stopped
+    assert board.current.startswith("thinking")  # what it was doing when it was stopped
 
 
-def test_a_build_whose_process_dies_is_an_error(site, tmp_path):
-    job = run(site, Plan("o_r_dies", "o/r", str(tmp_path / "src"), dies))
-    assert job.state == "error" and "exit code 9" in job.error
+def test_a_step_whose_process_dies_is_an_error(site):
+    with pytest.raises(ChangeError, match="exit code 9"):
+        site.run_step(dies, progress=Progress(Board()))  # type: ignore[arg-type]
+
+
+def test_a_pull_request_is_built_from_where_it_left_its_base(site, src, monkeypatch):
+    """The plan has GitHub's answer; the build needs the commits only, not GitHub."""
+    from nolli import github
+
+    def no_api(*args, **kwargs):
+        raise AssertionError("the build asked GitHub's API")
+
+    monkeypatch.setattr(github, "api", no_api)
+    _r, main_tip, base, head = src
+    plan = Plan("o_r_pr7", "o/r#7: a cache", Repo("github.com/o/r"), pull=(main_tip, head),
+                about={"pr": 7, "title": "a cache", "description": "the description"})
+    job = run(site, plan)
+    assert job.state == "done", job.error
+    assert job.key == Repo("github.com/o/r").make_change(base, head)  # the merge base, not main's tip
+    key, m = site.find_built(plan)
+    assert key == job.key and m.meta["diff"]["pr"] == 7 and m.meta["diff"]["description"] == "the description"
+    assert m.meta["diff"]["remote"] == "https://github.com/o/r"
+    assert site.store.load_model(Repo("github.com/o/r").make_commit(base)) is not None  # its base, kept for the next push
+
+
+def test_a_build_that_fails_leaves_no_model(site, src, monkeypatch):
+    from nolli.viewer import hosted
+
+    _r, _tip, base, head = src
+    monkeypatch.setattr(hosted, "fetch_change_model", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
+    job = run(site, Plan("o_r_broken", "o/r", Repo("github.com/o/r"), key=Repo("github.com/o/r").make_change(base, head)))
+    assert job.state == "error" and job.error == "half way"
+    assert site.find_built(job.plan) is None
 
 
 def test_a_repository_too_large_is_not_built(site, monkeypatch):
@@ -127,28 +179,3 @@ def test_a_repository_too_large_is_not_built(site, monkeypatch):
     monkeypatch.setattr(site, "api", lambda owner, repo, rest="": {"full_name": "o/big", "private": False, "size": 600 << 10, "default_branch": "main"})
     with pytest.raises(TooLarge, match="600 MB"):
         site.plan("o", "big")
-
-
-def test_a_pull_request_build_asks_github_nothing(tmp_path, monkeypatch):
-    """The server asked for the PR (with its token): the build in its own process gets that answer."""
-    from nolli import github
-    from nolli.change import Change
-    from nolli.viewer import hosted
-
-    def no_api(*args, **kwargs):
-        raise AssertionError("the build asked GitHub's API")
-
-    got = {}
-
-    def fetch_pull(repo, owner, name, number, pr):
-        got.update(owner=owner, name=name, number=number, pr=pr)
-        return Change(head="h" * 40, base="b" * 40, title=pr["title"], description=pr["body"]), {"pr": number, "remote": "x"}
-
-    monkeypatch.setattr(github, "api", no_api)
-    monkeypatch.setattr(github, "fetch_pull", fetch_pull)
-    monkeypatch.setattr(hosted, "build_diff", lambda *a, **k: None)
-    (tmp_path / "out").mkdir()
-    pr = {"head": {"sha": "h" * 40}, "base": {"sha": "b" * 40, "ref": "main"}, "title": "t", "body": "the description"}
-    hosted.build_pull(tmp_path, tmp_path / "out", Progress(), remote="https://github.com/o/r", pull=7, pr=pr, budget=34, extractions=None)
-    assert got == {"owner": "o", "name": "r", "number": 7, "pr": pr}
-    assert (tmp_path / "out" / "pr.md").read_text() == "the description"

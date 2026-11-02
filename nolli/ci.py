@@ -28,6 +28,7 @@ from pathlib import Path
 
 from .change import ChangeError
 from .model import Model, address
+from .store import ModelKey, ModelStore
 
 KEY = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)@([0-9a-f]{7,40})$")
 MARKER = "<!-- nolli -->"
@@ -58,20 +59,25 @@ def key_of(meta: dict) -> str:
     return f"{m.group(1)}/{m.group(2)}#{d['pr']}@{d['head'][:7]}"
 
 
-def comment(ds: Path, skipped: str | None = None) -> str:
-    """The PR comment for a run's dataset: how many structural changes, how many verdicts of
+def comment(store: ModelStore, model_key: ModelKey, skipped: str | None = None) -> str:
+    """The PR comment for a run's model: how many structural changes, how many verdicts of
     each kind, the worst ones (not fine) with their reasons, and how to open the result.
     ``skipped`` says why no review agent ran: "no-key" (the repository has no API key for
     one) or "fork" (a PR from a fork, which gets no secrets)."""
+    from .derived import make_review_diagram
+    from .changes import change_items
     from .review import check_verdicts, diagram_changes, resolve_verdicts
 
-    m = Model.load(ds / "model.json")
+    m = store.load_model(model_key)
+    if m is None:
+        raise ValueError(f"no model of {model_key.format_name()}")
     key = key_of(m.meta)
     d = m.meta["diff"]
     repo = key.split("#")[0]
-    n = len(json.loads((ds / "changes.json").read_text()))
-    vf = ds / "verdicts.json"
-    verdicts, errors = check_verdicts(m, (ds / "review.mmd").read_text(), vf.read_text()) if vf.is_file() else (None, [])
+    n = len(change_items(m))
+    mmd = make_review_diagram(m)
+    review = store.load_review(model_key)
+    verdicts, errors = check_verdicts(m, mmd, json.dumps(review.verdicts)) if review else (None, [])
     commit = f"[`{d['head'][:7]}`](https://github.com/{repo}/pull/{d['pr']}/commits/{d['head']})"
     lines = [MARKER, f"**Nolli** found {n} structural change{'' if n == 1 else 's'} in this PR (at {commit})."]
     after: list[str] = []  # why there is no review, after everything else
@@ -87,7 +93,7 @@ def comment(ds: Path, skipped: str | None = None) -> str:
         verdicts = None
     else:
         verdicts = resolve_verdicts(m, verdicts)
-        status = diagram_changes((ds / "review.mmd").read_text())
+        status = diagram_changes(mmd)
         total = len(verdicts)
         counts = " &nbsp; ".join(f"{mark(k)} {c}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in verdicts)))
         lines[-1] += f" The review agent's {total} verdict{'' if total == 1 else 's'}: {counts}"
@@ -99,10 +105,9 @@ def comment(ds: Path, skipped: str | None = None) -> str:
                 lines.append(f"- {len(listed) - LISTED} more")
     lines += ["", "Run these commands for the interactive viewer:", "",
               "```", "pip install nolli-review", f"nolli view {key}", "```"]
-    mmd = ds / "review.mmd"
-    if mmd.is_file() and len(mmd.read_text()) <= MERMAID_MAX:
+    if len(mmd) <= MERMAID_MAX:
         lines += ["", "<details><summary>Mermaid of all of the changes (experimental)</summary>", "", "```mermaid",
-                  mmd.read_text().rstrip(), "```", "", "</details>"]
+                  mmd.rstrip(), "```", "", "</details>"]
     if after:
         lines += ["", *after]
     result = {"key": key, "base": d["base"], "head": d["head"], "nolli": m.meta.get("nolli"),

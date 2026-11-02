@@ -42,11 +42,13 @@ def test_brief(change):
     assert change["title"] == "Add a cache in front of the store"
     assert Path(change["brief"]).read_text().startswith("# Architecture review: Add a cache in front of the store")
     assert not change["has_verdicts"]
-    assert Path(change["verdicts"]).parent == Path(change["dataset"])
+    work = Path(change["verdicts"]).parent  # the agent's own directory, beside the store
+    assert work == Path(change["brief"]).parent and work.parent.name == ".agent" and work.name == Path(change["dataset"]).name
+    assert sorted(f.name for f in Path(change["dataset"]).iterdir()) == ["key.json", "model.json"]
 
 
 def test_check(change, capsys):
-    mmd = (Path(change["dataset"]) / "review.mmd").read_text()
+    mmd = Path(change["brief"]).read_text()  # the brief holds the diagram the verdicts answer
     edge = next(g for line in mmd.splitlines() if (g := re.match(r"\s*(n_\w+) -->\S* (n_\w+)$", line)))
     good = [{"target": "n_repo_shop_cache_py", "verdict": "fine", "reason": "a cache module"},
             {"target": f"{edge[1]} --> {edge[2]}", "verdict": "question", "reason": "why?"}]
@@ -54,6 +56,8 @@ def test_check(change, capsys):
     assert main(["agent", "check", change["dataset"]]) == 0
     assert json.loads(capsys.readouterr().out) == {"ok": True, "verdicts": 2, "blunder": 0, "problem": 0, "question": 1,
                                                     "brilliant": 0, "good": 0, "fine": 1, "errors": 0}
+    review = json.loads((Path(change["dataset"]) / "review.json").read_text())  # passing verdicts are the dataset's review
+    assert review["by"] == "agent" and len(json.loads((Path(change["dataset"]) / "verdicts.json").read_text())) == 2
     bad = [{"target": f"{edge[2]} --> {edge[1]}", "verdict": "fine", "reason": "x"},
            {"target": "n_repo_shop_nope_py", "verdict": "bad", "reason": ""}]
     Path(change["verdicts"]).write_text(json.dumps(bad))

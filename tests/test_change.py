@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.change import ChangeError, dataset_name, default_branch, resolve, whole
+from nolli.change import ChangeError, default_branch, resolve, whole
 
 
 def git(repo: Path, *args: str) -> str:
@@ -94,7 +94,6 @@ def test_root_commit_is_the_whole_commit(repo):
     r, c = repo
     ch = resolve(r, c["c1"])
     assert (ch.base, ch.head) == (None, c["c1"])
-    assert dataset_name(r, ch) == f"proj-{c['c1'][:7]}"
 
 
 def test_errors(repo, tmp_path):
