@@ -94,6 +94,7 @@ export function syncControls() {
   input("maxlines").value = String(state.maxLines ?? "");
   input("ports").checked = state.ports;
   input("pin").checked = state.pin; input("pull").value = String(state.pull); input("debug").checked = state.debug;
+  for (const id of ["pin", "pull", "debug"]) input(id).disabled = !state.ports;  // they act on the entry nodes ports make
   input("hierarchy").checked = state.hierarchy;
   select("theme").value = state.theme;
   for (const b of document.querySelectorAll("#presets [data-preset]")) b.classList.toggle("on", /** @type {HTMLElement} */ (b).dataset.preset === state.preset);
