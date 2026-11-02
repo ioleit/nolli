@@ -188,20 +188,21 @@ function elkGraph(scene, positions = null) {
   };
   /** @param {string} from @param {string} to */
   const pull = (from, to) => hiddenEdge("pull", from, to);
+  // the drawn line ends at the box's boundary either way (owner's choice, 2026-11-02): the entry
+  // and exit nodes only carry the hidden edges that shape the layering
   scene.edges.forEach((e, i) => {
-    let src = e.src, dst = e.dst;
     if (LAYOUT.ports && e.ends) {
       if (containers.has(e.src) && e.ends.src.some(x => x !== e.src)) {
-        src = gate(e.src, "out");
+        const out = gate(e.src, "out");
         // not from a box pinned to the last layer (a utility): it is taken out of the layering anyway
-        for (const x of new Set(e.ends.src)) if (built.has(x) && x !== e.src && !last.has(x)) pull(x, src);
+        for (const x of new Set(e.ends.src)) if (built.has(x) && x !== e.src && !last.has(x)) pull(x, out);
       }
       if (containers.has(e.dst) && e.ends.dst.some(x => x !== e.dst)) {
-        dst = gate(e.dst, "in");
-        for (const x of new Set(e.ends.dst)) if (built.has(x) && x !== e.dst && !first.has(x)) pull(dst, x);  // own-code dots are first already
+        const entry = gate(e.dst, "in");
+        for (const x of new Set(e.ends.dst)) if (built.has(x) && x !== e.dst && !first.has(x)) pull(entry, x);  // own-code dots are first already
       }
     }
-    edges.push({ id: "e" + i, sources: [src], targets: [dst], labels: mark(e, i), _e: e });
+    edges.push({ id: "e" + i, sources: [e.src], targets: [e.dst], labels: mark(e, i), _e: e });
   });
   // parallel hidden edges are routed as one (they would take channel space for every copy)
   /** @type {Record<string, string>} */
