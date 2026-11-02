@@ -151,9 +151,8 @@ export interface SceneState {
   groups: string[];  // root groups drawn as boxes; the others are badges
   budget: number;
   utilities: number;  // more incoming edges than this: a utility; 0: off
-  side: "both" | "base" | "head";
-  lift: boolean;  // EXPERIMENT control: edge lifting on
   max_lines: number;  // lines between two boxes at most (rollup.lift)
+  side: "both" | "base" | "head";
 }
 
 export interface Scene {
@@ -180,8 +179,6 @@ export interface Laid {
   nodes: Map<string, Box>;
   /** mark: the centre of the edge's verdict mark, where ELK placed it as the edge's label */
   edges: { edge: SceneEdge; sections: Point[][]; mark?: Point | null }[];
-  /** EXPERIMENT: entry nodes and hidden edges, when LAYOUT.debug asks for them */
-  debug?: { nodes: Box[]; edges: { kind: "pull" | "anchor"; sections: Point[][] }[] } | null;
 }
 
 /** Where a dataset's verdicts came from (review.json, viewer/reviews.py). */

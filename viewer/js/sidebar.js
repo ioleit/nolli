@@ -90,13 +90,7 @@ function quick(parent, items) {
 export function syncControls() {
   input("budget").value = String(state.budget);
   input("utilities").value = String(state.utilities ?? "");
-  input("lift").checked = state.lift;
   input("maxlines").value = String(state.maxLines ?? "");
-  input("ports").checked = state.ports;
-  input("pin").checked = state.pin; input("pull").value = String(state.pull); input("debug").checked = state.debug;
-  input("twopass").checked = state.twoPass;
-  for (const id of ["pin", "pull", "debug", "twopass"]) input(id).disabled = !state.ports;  // they act on the entry nodes ports make
-  input("hierarchy").checked = state.hierarchy;
   select("theme").value = state.theme;
   for (const b of document.querySelectorAll("#presets [data-preset]")) b.classList.toggle("on", /** @type {HTMLElement} */ (b).dataset.preset === state.preset);
   byId("custom").hidden = state.preset !== null;
