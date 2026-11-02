@@ -36,6 +36,7 @@
   <label class="opt row" data-help="A box with more than this many incoming edges is a utility: its incoming edges are left out, it says how many boxes use it (&ldquo;used by 7&rdquo;), sits at the bottom and has a dotted border. 0: off.">utilities above <input id="utilities" type="number" min="0" max="99" style="width:52px;margin-left:auto"> edges</label>
   <label class="opt row" data-help="Colours, fonts and box style. Kept in this browser and in the link (th=).">theme <select id="theme"></select></label>
   <label class="opt row" data-help="EXPERIMENT. On: edges from one box to three or more children of an unfolded box become one edge to that box (fan bundling, rollup.py). Off: every edge ends at the nearest visible box; duplicates are merged, nothing else.">bundle fans <input id="bundle" type="checkbox" style="margin-left:auto"></label>
+  <label class="opt row" data-help="EXPERIMENT. On: ELK lays the whole hierarchy out at once (INCLUDE_CHILDREN), edges across levels take part in the layering. Off: each unfolded box is laid out on its own, then the boxes are placed (SEPARATE_CHILDREN).">layout at once <input id="hierarchy" type="checkbox" style="margin-left:auto"></label>
 
   <h2>Residue</h2>
   <ul class="plain" id="residue"></ul>

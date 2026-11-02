@@ -13,7 +13,7 @@
 
 import { byId, input, select } from "./dom.js";
 import { DEFAULTS, PRESETS, VIEWS, query, readHash, state, writeHash } from "./state.js";
-import { layout } from "./layout.js";
+import { LAYOUT, layout } from "./layout.js";
 import { draw, drawGhosts, light } from "./draw.js";
 import { hideTip, pinTip } from "./tip.js";
 import { plan } from "./transition.js";
@@ -269,6 +269,7 @@ onRawToggle(toggle);
 onMermaidToggle(toggle);
 input("utilities").addEventListener("change", () => { state.utilities = Math.max(0, Math.round(+input("utilities").value || 0)); refresh(true); });
 input("bundle").addEventListener("change", () => { state.bundle = input("bundle").checked; refresh(true); });
+input("hierarchy").addEventListener("change", () => { state.hierarchy = input("hierarchy").checked; LAYOUT.hierarchy = state.hierarchy ? "INCLUDE_CHILDREN" : "SEPARATE_CHILDREN"; refresh(true); });
 input("budget").addEventListener("change", () => { state.budget = +input("budget").value; choosePreset("default"); });
 for (const b of document.querySelectorAll("#presets [data-preset]")) b.addEventListener("click", () => {
   const p = /** @type {import("./state.js").Preset} */ (/** @type {HTMLElement} */ (b).dataset.preset);
@@ -322,6 +323,7 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
   if (!name) { loading("no datasets"); return; }
   sel.value = name;
   Object.assign(state, h.st, { name, theme: initialTheme(h.theme), view: h.view, item: h.item, dim: h.dim });
+  LAYOUT.hierarchy = state.hierarchy ? "INCLUDE_CHILDREN" : "SEPARATE_CHILDREN";  // EXPERIMENT
   applyTheme(state.theme);
   // a link to an item unfolds what it needs (the hash may come from a different view state)
   await enter(h.item);

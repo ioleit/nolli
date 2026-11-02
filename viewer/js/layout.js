@@ -70,6 +70,11 @@ function childrenOf(scene) {
 
 const elk = new ELK();
 
+// EXPERIMENT (not for merging): ELK's hierarchy handling, set from the sidebar (main.js).
+// INCLUDE_CHILDREN lays the whole hierarchy out at once (edges across levels take part);
+// SEPARATE_CHILDREN lays each unfolded box out on its own, then places the boxes.
+export const LAYOUT = { hierarchy: "INCLUDE_CHILDREN" };
+
 /** @type {Record<string, string>} */
 const GRAPH_OPTIONS = {
   "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.hierarchyHandling": "INCLUDE_CHILDREN",
@@ -102,6 +107,10 @@ function elkGraph(scene) {
       opts["elk.padding"] = `[top=${pad.top},left=${pad.left},bottom=${pad.bottom},right=${pad.right}]`;
       opts["elk.spacing.nodeNode"] = "16";
       opts["elk.layered.spacing.nodeNodeBetweenLayers"] = "26";
+      if (LAYOUT.hierarchy === "SEPARATE_CHILDREN") {  // EXPERIMENT: laid out on its own, so it needs the root's choices
+        opts["elk.algorithm"] = "layered"; opts["elk.direction"] = "DOWN"; opts["elk.edgeRouting"] = "ORTHOGONAL";
+        opts["elk.layered.nodePlacement.strategy"] = "NETWORK_SIMPLEX"; opts["elk.layered.cycleBreaking.strategy"] = "GREEDY";
+      }
       return node;
     }
     const { w, h } = leafSize(n);
@@ -116,7 +125,7 @@ function elkGraph(scene) {
     ? [{ id: "m" + i, text: e.verdict, width: MARK, height: MARK, layoutOptions: { "elk.edgeLabels.inline": "true" } }] : [];
   /** @type {ElkEdge[]} */
   const edges = scene.edges.map((e, i) => ({ id: "e" + i, sources: [e.src], targets: [e.dst], labels: mark(e, i), _e: e }));
-  return { id: "ROOT", layoutOptions: GRAPH_OPTIONS, children: (kidsOf.get("ROOT") || []).map(build), edges };
+  return { id: "ROOT", layoutOptions: { ...GRAPH_OPTIONS, "elk.hierarchyHandling": LAYOUT.hierarchy }, children: (kidsOf.get("ROOT") || []).map(build), edges };
 }
 
 /** @param {Scene} scene @returns {Promise<Laid>} */
