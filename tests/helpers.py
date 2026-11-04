@@ -6,11 +6,11 @@ import subprocess
 from pathlib import Path
 
 from nolli.build import extract, extract_commit, extract_facts, list_content
-from nolli.datasets import merge_built, open_built
+from nolli.scenes import merge_built, open_built
 from nolli.formats.viewer import export_scene
 from nolli.progress import Quiet
 from nolli.model.scene import Scene
-from nolli.transformations.projection import SceneState, project
+from nolli.transformations.projection import ProjectionSpec, project
 
 
 def open_dir(path: Path, key: str = "test@0") -> Scene:
@@ -19,8 +19,8 @@ def open_dir(path: Path, key: str = "test@0") -> Scene:
 
 
 def draw(scene: Scene, **state) -> dict:
-    """The viewer's JSON of the picture ``SceneState(**state)`` draws of ``scene``."""
-    return export_scene(project(scene, SceneState(**state)))
+    """The viewer's JSON of the picture ``ProjectionSpec(**state)`` draws of ``scene``."""
+    return export_scene(project(scene, ProjectionSpec(**state)))
 
 
 def open_change(repo: Path, base: str, head: str, **about) -> Scene:

@@ -56,9 +56,27 @@ def label(n: dict) -> str:
     return out
 
 
+def list_drawing_order(scene: Scene) -> list[str]:
+    """The nodes in the order they are drawn: a projection's (each container before what it
+    holds), else down the containment tree; nodes the model no longer has are left out."""
+    m = scene.model
+    order = [x for x in m.meta.get("projection", {}).get("order") or [] if x in m.kinds]
+    if len(order) == len(m.kinds):
+        return order
+    seen, out = set(order), list(order)
+    stack = [x for x in reversed(m.list_roots())]
+    while stack:
+        x = stack.pop()
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+        stack.extend(reversed(m.list_children(x)))
+    return out
+
+
 def read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
     """A projected scene's boxes (drawing order) and edges, as the drawing needs them."""
-    order = scene.model.meta.get("projection", {}).get("order") or sorted(scene.model.kinds)
+    order = list_drawing_order(scene)
     nodes = []
     for x in order:
         el = scene.find_element(x)

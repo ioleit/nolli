@@ -23,7 +23,7 @@ export const VIEWS = ["interactive", "mermaid", "json"];
 export const PRESETS = ["default", "folded", "changes", "unfolded"];
 export const ALL_ROLES = ["source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other"];
 
-// the /api/scene parameters (nolli/server/serve.py parse_state)
+// the /api/scene parameters (nolli/server/serve.py parse_spec)
 export function query() {
   const p = new URLSearchParams();
   p.set("d", state.name || "");

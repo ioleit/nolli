@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from nolli.build import extract_facts
-from nolli.datasets import open_built
+from nolli.scenes import open_built
 from nolli.transformations.reading import Reading as Graph
 from nolli.transformations.rollup import hidden_by_role
 

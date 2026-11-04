@@ -5,7 +5,7 @@
 
 Static files are the viewer's (``viewer/``, installed as ``nolli.viewer``). Models are named as the store names them (for nolli
 view, the directories under --data; nolli/store/): ``/api/list`` lists them, newest first;
-``/api/scene?d=<name>&...`` returns the scene a scene state projects (``parse_state`` here
+``/api/scene?d=<name>&...`` returns the scene a scene state projects (``parse_spec`` here
 reads the viewer's location-hash keys; ``nolli/transformations/projection.py``), as JSON with every
 overlay (``nolli/formats/viewer.py``), ``/api/mermaid?d=<name>&...`` the same scene as Mermaid
 (``nolli/formats/mermaid.py``; ``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid,
@@ -44,7 +44,7 @@ from ..keys import ChangeKey, ModelKey, NotAllowed  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..sources import LocalRepository, Sources  # noqa: E402
 from ..store import DirectoryStore, ModelStore  # noqa: E402
-from ..transformations.projection import DEFAULT_UTILITY_IN, PRESETS, SceneState  # noqa: E402
+from ..transformations.projection import DEFAULT_UTILITY_IN, PRESETS, ProjectionSpec  # noqa: E402
 
 from .reviews import Reviews  # noqa: E402
 
@@ -88,9 +88,9 @@ def preload(store: ModelStore, name: str) -> None:
     threading.Thread(target=load, daemon=True).start()
 
 
-def parse_state(q: dict[str, str]) -> SceneState:
+def parse_spec(q: dict[str, str]) -> ProjectionSpec:
     """The viewer's URL parameters (the same keys as its location hash) as a scene state."""
-    st = SceneState()
+    st = ProjectionSpec()
     if q.get("x"):
         st.expanded = [x for x in q["x"].split(",") if x]
     elif q.get("p") in PRESETS:
@@ -176,7 +176,7 @@ class Handler(SimpleHTTPRequestHandler):
         change = isinstance(key, ChangeKey)
         if path == "/api/scene":
             try:
-                out = self.services.datasets.draw_json(sc, parse_state(q))
+                out = self.services.datasets.draw_json(sc, parse_spec(q))
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
@@ -187,7 +187,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(out)
         elif path == "/api/mermaid":
             try:
-                text, ids = self.services.datasets.draw_mermaid(sc, parse_state(q), fade=q.get("nodim") != "1")
+                text, ids = self.services.datasets.draw_mermaid(sc, parse_spec(q), fade=q.get("nodim") != "1")
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return

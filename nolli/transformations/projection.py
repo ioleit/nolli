@@ -1,6 +1,6 @@
 """Projection: a scene folded to what one picture draws.
 
-A scene state (``SceneState``) is the set of unfolded containers (or a preset that names
+A scene state (``ProjectionSpec``) is the set of unfolded containers (or a preset that names
 one) plus the filters and options. ``project`` turns a scene into the scene of that
 picture: the nodes filtered by the state, contracted onto the cut through the containment
 tree that the unfolded containers make, and simplified by the roll-up rules (``rollup.py``,
@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
 from ..model import CONTAIN, USE, EdgeKey, Key, Model, address, metamodel
-from ..model.scene import FixedOverlay, Scene
+from ..model.scene import Element, FixedOverlay, Scene
 from .reading import Reading
 from .rollup import (
     HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, drawn_parent, hidden_by_role, image_aliases, is_init, lift,
@@ -41,10 +42,13 @@ PRESETS = ("default", "folded", "changes", "unfolded")
 
 
 @dataclass
-class SceneState:
-    """What a picture asks for. ``expanded=None`` means: the preset's cut, ``default`` the
-    default cut for ``budget``, ``folded`` the top level, ``changes`` (a change) every area
-    that changed in source code unfolded, ``unfolded`` everything."""
+class ProjectionSpec:
+    """What a projection is asked for: which nodes become boxes (the unfolded containers,
+    ``expanded``, or those ``unfold`` says yes to, or a preset: ``default`` the default cut for
+    ``budget``, ``folded`` the top level, ``changes`` what ``focus`` names, ``unfolded``
+    everything; then the roles and namespace groups shown), how edges are simplified
+    (``utilities``, ``max_lines``), and for a change which side. A container unfolded inside a
+    folded one stays folded."""
     expanded: list[str] | None = None
     preset: str = "default"
     roles: list[str] = field(default_factory=lambda: list(DEFAULT_ROLES))  # shown roles
@@ -54,6 +58,12 @@ class SceneState:
     side: str = "both"  # a change: "base" or "head" draws one commit, "both" the merged picture
     max_lines: int = DEFAULT_MAX_LINES  # lines drawn between two boxes at most (rollup.lift)
     focus: list[str] | None = None  # what the "changes" preset unfolds; the caller says (for a change: nolli.review.changes.find_review_cut)
+    unfold: Callable[[Element], bool] | None = field(default=None, repr=False, compare=False)  # instead of expanded: asked per container
+
+    @classmethod
+    def expanded_if(cls, unfold: Callable[[Element], bool], **rest) -> "ProjectionSpec":
+        """Unfold every container ``unfold`` says yes to (asked about each, in the scene projected)."""
+        return cls(unfold=unfold, **rest)
 
 
 @dataclass
@@ -82,7 +92,7 @@ def is_root_group(g: Reading, x: str) -> bool:
     return g.has(x) and g.kind(x) == "group" and g.parent(x) is None
 
 
-def find_preset_cut(g: Reading, st: SceneState, hidden: set[str]) -> set[str]:
+def find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[str]:
     """The containers a preset unfolds (a change's preset on a plain scene: the default cut)."""
     if st.preset == "folded":
         return {address.REPO_ROOT}
@@ -94,13 +104,16 @@ def find_preset_cut(g: Reading, st: SceneState, hidden: set[str]) -> set[str]:
     return set(find_default_cut(g, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
 
 
-def cut(scene: Scene, st: SceneState) -> Cut:
+def cut(scene: Scene, st: ProjectionSpec) -> Cut:
     """``expanded`` is normalised to the containers actually reached, so folding a box also
     folds everything inside it."""
     g = Reading(scene)
     hidden = hide_for(g, st.roles, st.side)
     shown_groups = set(st.groups)
-    expanded = find_preset_cut(g, st, hidden) if st.expanded is None else {x for x in st.expanded if g.has(x)}
+    if st.unfold is not None:
+        expanded = {x for x in g.nodes if g.children(x) and st.unfold(scene.find_element(x))}
+    else:
+        expanded = find_preset_cut(g, st, hidden) if st.expanded is None else {x for x in st.expanded if g.has(x)}
     expanded = {x for x in expanded if not (is_root_group(g, x) and x not in shown_groups)}  # filtered out: stays folded
     walked: set[str] = set()
     visible = visible_from_expanded(g, expanded, hidden, walked=walked)
@@ -136,8 +149,22 @@ def leaf_count(g: Reading, x: str) -> int:
     return n
 
 
-def project(scene: Scene, st: SceneState) -> Scene:
-    """The scene of the picture ``st`` draws of ``scene``."""
+def project(scene: Scene, st: "ProjectionSpec") -> Scene:
+    """``scene`` folded and filtered as ``st`` asks (``fold``, applied)."""
+    from . import apply
+
+    return apply(scene, fold(st))
+
+
+def fold(st: "ProjectionSpec") -> Callable[[Scene], tuple[Model, FixedOverlay]]:
+    """The projection as a transformation: what ``st`` asks for, of the scene it is given."""
+    return lambda scene: fold_model(scene, st)
+
+
+def fold_model(scene: Scene, st: "ProjectionSpec") -> tuple[Model, FixedOverlay]:
+    """The folded model: its nodes the boxes drawn, each keeping its address and referring to
+    what it stands for, its edges the lines drawn, each referring to the edges it bundles; and
+    the projection's overlay, what it decided about them."""
     g = Reading(scene)
     c = cut(scene, st)
     expanded, hidden, visible, rolled, utilities = c.expanded, c.hidden, c.visible, c.rolled, c.utilities
@@ -265,15 +292,14 @@ def project(scene: Scene, st: SceneState) -> Scene:
         r = g.file(x).get("role")
         if r in by_role and kind in ("file", "directory") and not g.file(x).get("root"):
             by_role[r]["files" if kind == "file" else "dirs"] += 1
-    state = {k: v for k, v in asdict(st).items() if k != "focus"} | {"expanded": sorted(expanded),
+    state = {k: v for k, v in asdict(st).items() if k not in ("focus", "unfold")} | {"expanded": sorted(expanded),
              "preset": None if st.expanded is not None else "default" if st.preset == "changes" and st.focus is None else st.preset}
     drawn_count = sum(1 for x in order if not (root_group(x) and x not in touched))
     meta = {"projection": {"state": state, "order": order, "groups": groups, "roles": [{"id": r, **n} for r, n in by_role.items()],
                            "residue": residue, "utilities": sorted(utilities), "expanded": sorted(expanded),
                            "hidden": len(hidden), "hidden_nodes": sorted(hidden), "stats": {"nodes": drawn_count, "edges": len(keys)},
                            "internal": dict(rolled.internal), "hidden_relations": rolled.hidden_relations,
-                           "unresolved": dict(rolled.unresolved)},
-            **{k: v for k, v in scene.model.meta.items() if k != "projection"}}
-    key = "project:" + hashlib.sha1(f"{scene.model.key}|{sorted(asdict(st).items())}".encode()).hexdigest()[:16]
+                           "unresolved": dict(rolled.unresolved)}}
+    key = "project:" + hashlib.sha1(f"{scene.model.key}|{sorted(state.items())}".encode()).hexdigest()[:16]
     model = Model(key, kinds, [*contain, *keys], refs={"source": {k: tuple(v) for k, v in refs.items()}}, meta=meta, check=False)
-    return Scene(model, [*scene.overlays.values(), FixedOverlay("projection", values)], {"source": scene})
+    return model, FixedOverlay("projection", values)

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from nolli.build import extract_commit, fetch_change, run_here
-from nolli.datasets import open_built, open_change_scene
+from nolli.scenes import open_built, open_change_scene
 from nolli.keys import Repo
 from nolli.model import Model
 from nolli.progress import Quiet

@@ -230,11 +230,22 @@ def sum_edge(el: Element) -> dict | None:
             "changes": changes[:40], "more": max(0, len(changes) - 40)}
 
 
-def merge(base: Scene, head: Scene, key: str, meta: dict | None = None, overlays: list[Overlay] = ()) -> Scene:
-    """The change from ``base`` to ``head`` as a scene: the overlays of both sides (head's of a
-    name win) and ``overlays``."""
-    kinds = {**base.model.kinds, **head.model.kinds}
-    owned = {e.dst for e in head.model.edges if e.kind == CONTAIN}
-    edges = list(head.model.edges) + [e for e in base.model.edges if not (e.kind == CONTAIN and e.dst in owned)]
-    model = Model(key, kinds, edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
-    return Scene(model, [*base.overlays.values(), *head.overlays.values(), *overlays], {"base": base, "head": head})
+def merge(base: Scene, head: Scene, key: str, meta: dict | None = None) -> Scene:
+    """The change from ``base`` to ``head`` (``union``, applied); ``meta``: what the model of the
+    change says about itself, on top of what the two sides' say."""
+    from . import apply
+
+    return apply({"base": base, "head": head}, union(key, meta))
+
+
+def union(key: str, meta: dict | None = None):
+    """Merge as a transformation: of two scenes by role (``base``, ``head``), the model holding
+    every node and edge of either, each referring to its namesake on each side."""
+    def make(sides: dict[str, Scene]) -> Model:
+        base, head = sides["base"], sides["head"]
+        kinds = {**base.model.kinds, **head.model.kinds}
+        owned = {e.dst for e in head.model.edges if e.kind == CONTAIN}
+        edges = list(head.model.edges) + [e for e in base.model.edges if not (e.kind == CONTAIN and e.dst in owned)]
+        return Model(key, kinds, edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
+
+    return make

@@ -17,8 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from .build import Maps, Run, extract, extract_commit, fetch_change, fetch_whole_model, is_fresh, list_content, run_here, version
-from .extractors.overlays import make_base_overlays
+from .build import Run, extract, extract_commit, fetch_change, fetch_whole_model, is_fresh, list_content, run_here, version
 from .model import Key, Model
 from .keys import ChangeKey, Commit, ModelKey, Repo
 from .model.scene import Overlay, Scene
@@ -34,12 +33,13 @@ from .sources.spec import ChangeError, ChangeSpec, find_toplevel
 from .sources.spec import resolve as resolve_spec, whole as resolve_whole
 from .store import ModelStore, write_change, write_commit
 from .store.maps import MapStore, MemoryMaps
-from .transformations.merge import describe_change, is_change, merge
+from .scenes import merge_built, open_built, open_change_scene, open_commit_scene
+from .transformations.merge import is_change
 from .formats.mermaid import list_ids, render
 from .formats.viewer import export_scene
 from .formats.report import make_report
 from .review.brief import make_brief
-from .transformations.projection import DEFAULT_BUDGET, SceneState, project
+from .transformations.projection import DEFAULT_BUDGET, ProjectionSpec, project
 
 class Datasets:
     def __init__(self, store: ModelStore, sources: Sources | None = None) -> None:
@@ -75,17 +75,17 @@ class Datasets:
 
     # -- pictures ------------------------------------------------------------------
 
-    def draw(self, scene: Scene, state: SceneState) -> Scene:
+    def draw(self, scene: Scene, state: ProjectionSpec) -> Scene:
         """The picture ``state`` asks for; a change's "changes" preset unfolds what it changed."""
         if state.preset == "changes" and state.focus is None and is_change(scene):
             state.focus = find_review_cut(scene)
         return project(scene, state)
 
-    def draw_json(self, scene: Scene, state: SceneState) -> dict:
+    def draw_json(self, scene: Scene, state: ProjectionSpec) -> dict:
         """The picture as the viewer reads it (``nolli/formats/viewer.py``)."""
         return export_scene(self.draw(scene, state))
 
-    def draw_mermaid(self, scene: Scene, state: SceneState, fade: bool = True) -> tuple[str, dict[str, str]]:
+    def draw_mermaid(self, scene: Scene, state: ProjectionSpec, fade: bool = True) -> tuple[str, dict[str, str]]:
         """The picture as Mermaid, and each Mermaid node id to the box it is."""
         picture = self.draw(scene, state)
         return render(picture, fade=fade), list_ids(picture)
@@ -115,7 +115,7 @@ class Datasets:
         unfolded. The same for the same change and version of nolli, so verdicts on its ids
         stay valid."""
         budget = (scene.model.meta.get("change") or {}).get("budget") or DEFAULT_BUDGET
-        return project(scene, SceneState(budget=budget, preset="changes", focus=find_review_cut(scene)))
+        return project(scene, ProjectionSpec(budget=budget, preset="changes", focus=find_review_cut(scene)))
 
     def make_review_diagram(self, scene: Scene) -> str:
         """The review diagram (``review.mmd``)."""
@@ -130,7 +130,7 @@ class Datasets:
         """What a model is, in numbers (``report.json``), with its default picture's size."""
         meta = scene.model.meta
         budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or DEFAULT_BUDGET
-        return make_report(scene, self.draw(scene, SceneState(budget=budget)))
+        return make_report(scene, self.draw(scene, ProjectionSpec(budget=budget)))
 
     def make_ci_comment(self, scene: Scene, skipped: str | None = None) -> str:
         """The pull request comment of a CI run on the change (``nolli/review/ci.py``)."""
@@ -158,77 +158,6 @@ class Datasets:
         """The kept verdicts checked again against the review diagram (None without verdicts)."""
         kept = self.load_verdicts(scene)
         return self.check_verdicts(scene, json.dumps(kept)) if kept else (None, [])
-
-
-# -- scenes of stored or just built models ----------------------------------------------
-
-
-def make_overlays(maps: MapStore) -> list[Overlay]:
-    """The overlays nolli shows on any scene, on top of the extractors'."""
-    from .transformations.merge import Change
-    from .formats.descriptions.hover import Hover
-    from .formats.descriptions.label import Label
-    from .review.card import Review
-    from .review.verdicts import Verdicts
-
-    return [Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]
-
-
-def open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
-    """An extracted model with its extractors' overlays and nolli's (or ``overlays``)."""
-    return Scene(model, [*make_base_overlays(model, maps), *(make_overlays(maps) if overlays is None else overlays)])
-
-
-def open_commit_scene(store: ModelStore, commit: Commit, overlays: list[Overlay] | None = None) -> Scene | None:
-    m = store.load_model(commit)
-    return None if m is None else open_scene(m, store, overlays)
-
-
-def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
-    """The change merged from its two stored commits, with what it says about itself in its
-    model's ``meta["change"]``."""
-    about = store.load_change(change)
-    if about is None:
-        return None
-    base, head = (open_commit_scene(store, c, overlays) for c in change.list_sides())
-    if base is None or head is None:
-        return None
-    meta = {"repo": head.model.meta.get("repo"), "commit": change.head[:7], "files": head.model.meta.get("files"),
-            "languages": {**base.model.meta.get("languages", {}), **head.model.meta.get("languages", {})},
-            **join_readers(base.model.meta, head.model.meta),
-            "change": describe_change(about, store.open_maps("content").load(change.format_key()))}
-    return merge(base, head, change.format_key(), meta)
-
-
-def join_readers(base: dict, head: dict) -> dict:
-    """Who says what in a change: the overlays both sides' extractors wrote, each language's symbols."""
-    return {"overlays": sorted(set(base.get("overlays") or []) | set(head.get("overlays") or [])),
-            "symbols": {**(base.get("symbols") or {}), **(head.get("symbols") or {})}}
-
-
-def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
-    """A model just extracted, not kept anywhere, as a scene."""
-    from .store.maps import MemoryMaps
-
-    store = MemoryMaps({n: {model.key: v} for n, v in maps.items()})
-    return open_scene(model, store, overlays)
-
-
-def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, about: dict, content: Mapping[Key, dict],
-                overlays: list[Overlay] | None = None) -> Scene:
-    """A change of two models just extracted, not kept anywhere (``nolli diff``, tests)."""
-    from .store.maps import MemoryMaps
-
-    store = MemoryMaps()
-    for m, maps in (base, head):
-        for n, v in maps.items():
-            store.open_maps(n).save(m.key, v)
-    store.open_maps("content").save(key, content)
-    bs, hs = (open_scene(m, store, overlays) for m, _ in (base, head))
-    meta = {"repo": hs.model.meta.get("repo"), "commit": about.get("head", "")[:7], "files": hs.model.meta.get("files"),
-            "languages": {**bs.model.meta.get("languages", {}), **hs.model.meta.get("languages", {})},
-            **join_readers(bs.model.meta, hs.model.meta), "change": describe_change(about, content)}
-    return merge(bs, hs, key, meta)
 
 
 # -- from what a user names to datasets --------------------------------------------------

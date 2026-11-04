@@ -82,7 +82,7 @@ def build(out: Path) -> Path:
 
 def keep_verdicts(ds: Path) -> None:
     """VERDICTS as the dataset's review (verdicts.json beside it, as an agent leaves it)."""
-    from nolli.datasets import open_change_scene
+    from nolli.scenes import open_change_scene
     from nolli.review.verdicts import keep_verdicts_file
     from nolli.store import DirectoryStore
 

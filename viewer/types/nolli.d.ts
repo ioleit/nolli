@@ -181,7 +181,7 @@ export interface SceneEdge {
   review?: Review;
 }
 
-export interface SceneState {
+export interface ProjectionSpec {
   expanded: string[];
   preset: "default" | "folded" | "changes" | "unfolded" | null;  // the preset that gave expanded; null: unfolded by hand
   roles: string[];
@@ -193,7 +193,7 @@ export interface SceneState {
 }
 
 export interface Scene {
-  state: SceneState;
+  state: ProjectionSpec;
   nodes: SceneNode[];  // drawing order: a container before what it contains
   edges: SceneEdge[];
   groups: { id: string; namespace: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter

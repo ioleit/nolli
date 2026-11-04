@@ -16,7 +16,7 @@ import pytest
 from helpers import draw, extract_facts, find_node, open_dir
 
 from nolli.transformations.reading import Reading as Graph
-from nolli.transformations.projection import SceneState, project
+from nolli.transformations.projection import ProjectionSpec, project
 from nolli.transformations.rollup import hidden_by_role, image_aliases, lift, rollup
 from nolli.transformations.unfold import find_default_cut
 
@@ -200,7 +200,7 @@ def test_utilities_by_incoming_edges(repo: Path):
 
     scene = open_dir(repo)
     g = Graph(scene)
-    rolled = cut(scene, SceneState(utilities=0)).rolled
+    rolled = cut(scene, ProjectionSpec(utilities=0)).rolled
     before = list(rolled.edges)
     utilities = utility_badges(g, rolled, min_in=0)  # every used box outside a group
     targets = {e.dst for e in before if e.kind == USE}
@@ -208,7 +208,7 @@ def test_utilities_by_incoming_edges(repo: Path):
     assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
     src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
     assert any(k.startswith("util:") for k in rolled.annotations[src])
-    rolled = cut(scene, SceneState(utilities=0)).rolled
+    rolled = cut(scene, ProjectionSpec(utilities=0)).rolled
     assert utility_badges(g, rolled, min_in=1) == set()  # nothing has more than one
 
 
@@ -270,7 +270,7 @@ def test_own_code_dot(tmp_path: Path):
 
 def test_directory_with_source_inside_stays_shown():
     """A directory whose bytes are mostly config is still drawn when it holds source files."""
-    from nolli.datasets import open_built
+    from nolli.scenes import open_built
     from nolli.extractors.facts import Entity, Facts, Provenance
 
     m = Facts()
@@ -318,8 +318,8 @@ def test_mermaid_draws_the_scene(repo: Path):
     from nolli.formats.viewer import export_scene
 
     scene = open_dir(repo)
-    for st in (SceneState(budget=12), SceneState(preset="folded"), SceneState(preset="unfolded"),
-               SceneState(expanded=["repo:", "repo:backend"])):
+    for st in (ProjectionSpec(budget=12), ProjectionSpec(preset="folded"), ProjectionSpec(preset="unfolded"),
+               ProjectionSpec(expanded=["repo:", "repo:backend"])):
         projected = project(scene, st)
         sc = export_scene(projected)
         text = render(projected)
@@ -333,15 +333,15 @@ def test_mermaid_draws_the_scene(repo: Path):
 def test_presets(repo: Path):
     """A preset names a cut; the scene says which one gave it, and none once boxes are given."""
     from nolli.formats.viewer import export_scene
-    from nolli.server.serve import parse_state
+    from nolli.server.serve import parse_spec
 
     scene = open_dir(repo)
-    folded = export_scene(project(scene, parse_state({"p": "folded"})))
+    folded = export_scene(project(scene, parse_spec({"p": "folded"})))
     assert folded["state"]["expanded"] == ["repo:"] and folded["state"]["preset"] == "folded"
     unfolded = draw(scene, preset="unfolded")
     assert {"repo:backend", "repo:backend/api"} <= set(unfolded["state"]["expanded"])
     assert draw(scene, preset="changes")["state"]["preset"] == "default"  # not a change's dataset
-    assert export_scene(project(scene, parse_state({"p": "folded", "x": "repo:,repo:backend"})))["state"]["preset"] is None
+    assert export_scene(project(scene, parse_spec({"p": "folded", "x": "repo:,repo:backend"})))["state"]["preset"] is None
 
 
 def test_mermaid_ids(repo: Path):
@@ -351,7 +351,7 @@ def test_mermaid_ids(repo: Path):
     from nolli.formats.mermaid import list_ids, render
     from nolli.formats.viewer import export_scene
 
-    projected = project(open_dir(repo), SceneState(expanded=["repo:", "repo:backend"]))
+    projected = project(open_dir(repo), ProjectionSpec(expanded=["repo:", "repo:backend"]))
     sc = export_scene(projected)
     text = render(projected)
     drawn = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+)\s*[\[(]", line))}

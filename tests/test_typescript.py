@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from nolli.build import extract_facts
-from nolli.datasets import open_built
+from nolli.scenes import open_built
 from nolli.formats.descriptions.hover import Source, Ctx, edge_info
 from nolli.formats.descriptions.label import module_stem
 from nolli.transformations.reading import Reading as Graph

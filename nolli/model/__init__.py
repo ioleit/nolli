@@ -149,6 +149,14 @@ class Model:
     def list_in(self, x: str) -> list[EdgeKey]:
         return self._in.get(x, [])
 
+    def select(self, keep) -> "Model":
+        """The part of this model with the nodes ``keep`` names and the edges between them (an
+        edge in ``keep`` too), each referring to itself here (``refs``: the same key)."""
+        keep = set(keep)
+        kinds = {x: k for x, k in self.kinds.items() if x in keep}
+        edges = [e for e in self.edges if e.src in kinds and e.dst in kinds]
+        return Model(f"{self.key}|select", kinds, edges, refs={"source": None}, check=False)
+
     def count_nodes_by_kind(self) -> dict[str, int]:
         out: dict[str, int] = defaultdict(int)
         for k in self.kinds.values():
