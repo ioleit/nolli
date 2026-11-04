@@ -135,13 +135,11 @@ def mark(verdict: str) -> str:
 def list_statuses(review: Scene) -> dict[str, str]:
     """What the review diagram draws as changed: a node id (a subgraph's without ``_g``), or
     ``"<src> <dst>"`` for an edge, to added, removed or changed."""
-    from .export.mermaid import make_node_id
-
     out = {}
     for el in [*review.list_nodes(), *review.list_edges()]:
         st = (el.get("change") or {}).get("status")
         if st in NEW:
-            out[f"{make_node_id(el.key.src)} {make_node_id(el.key.dst)}" if el.is_edge else make_node_id(el.key)] = st
+            out[f"{address.format_identifier(el.key.src)} {address.format_identifier(el.key.dst)}" if el.is_edge else address.format_identifier(el.key)] = st
     return out
 
 

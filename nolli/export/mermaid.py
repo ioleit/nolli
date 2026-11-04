@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 
+from ..model import address
 from ..scene import Scene
 
 STYLE_ARROW = {"import": "-->", "http": "==>", "env": "-.->", "deploy": "-.->", "provide": "-.->"}
@@ -35,8 +36,7 @@ CLASS_DEF = {
 STATUS_STROKE = {"added": "#2e9b4f", "removed": "#c94040", "changed": "#d08a1a"}
 
 
-def make_node_id(eid: str) -> str:
-    return "n_" + re.sub(r"[^A-Za-z0-9]", "_", eid)
+make_node_id = address.format_identifier
 
 
 def text(s: str) -> str:

@@ -85,10 +85,10 @@ def find_preset_cut(g: Graph, st: SceneState, hidden: set[str]) -> set[str]:
     """The containers a preset unfolds (a change's preset on a plain scene: the default cut)."""
     if st.preset == "folded":
         return {address.REPO_ROOT}
-    if st.preset == "changes" and g.is_change:
-        from ..overlays.verdicts import find_review_cut
-
-        return set(find_review_cut(g.scene))
+    if st.preset == "changes":  # what the scene's overlays focus on (a change: what it changed)
+        focus = [f for o in g.scene.overlays.values() if hasattr(o, "list_focus") and (f := o.list_focus(g.scene)) is not None]
+        if focus:
+            return {address.REPO_ROOT, *(x for f in focus for x in f)}
     if st.preset == "unfolded":
         return {x for x in g.nodes if x not in hidden and g.children(x)}
     hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]

@@ -42,6 +42,7 @@ A namespace's root is its scheme alone (``api:``, ``repo:``).
 
 from __future__ import annotations
 
+import re
 from urllib.parse import quote, unquote
 
 from .metamodel import API, CONFIG, NAMESPACES, PKG, REPO, RUNTIME, UNRESOLVED  # noqa: F401 (spelled through address)
@@ -129,6 +130,12 @@ def own_code(eid: str) -> str:
 
 def is_own_code(eid: str) -> bool:
     return eid.endswith("#") and is_repo(eid)
+
+
+def format_identifier(eid: str) -> str:
+    """The address as an identifier, as diagrams name a node (Mermaid's ``n_repo_nolli_scene_py``) and a
+    review's verdicts name their targets."""
+    return "n_" + re.sub(r"[^A-Za-z0-9]", "_", eid)
 
 
 def owner(eid: str) -> str:

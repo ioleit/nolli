@@ -15,10 +15,9 @@ import json
 import re
 from collections import defaultdict
 
-from ..export.mermaid import make_node_id
 from ..model import address
 from ..scene import Element, MapStore, Scene, StoredMaps
-from .change import find_change_scene, format_name, list_ancestors_to_unfold, list_changes
+from .change import find_change_scene, find_review_cut, format_name, list_ancestors_to_unfold  # noqa: F401
 from ..transform.graph import Graph
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
@@ -37,9 +36,9 @@ def find_diagram_ids(scene: Scene) -> dict[str, str]:
     ``<id>_g``), and a module's own code (``<file>#``) or a directory's."""
     out = {}
     for x, kind in scene.model.kinds.items():
-        out[make_node_id(x)] = out[make_node_id(x) + "_g"] = x
+        out[address.format_identifier(x)] = out[address.format_identifier(x) + "_g"] = x
         if kind in ("file", "directory"):
-            out[make_node_id(address.own_code(x))] = address.own_code(x)
+            out[address.format_identifier(address.own_code(x))] = address.own_code(x)
     return out
 
 
@@ -172,16 +171,6 @@ def keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) -
     verdicts = read_verdicts(text, find_diagram_ids(scene))
     save_verdicts(maps, key, verdicts, by)
     return verdicts
-
-
-def find_review_cut(scene: Scene) -> list[str]:
-    """The boxes to unfold so that every change in source code is drawn: what going to each
-    of them unfolds, together. The review diagram and the viewer's "all changes" use it."""
-    out = {address.REPO_ROOT}
-    for it in list_changes(scene):
-        if it["role"] == "source":
-            out.update(it["reveal"])
-    return sorted(out)
 
 
 class Verdicts:

@@ -145,7 +145,8 @@ def test_items_verdicts_and_export(repo):
 
     from nolli.export.brief import make_brief
     from nolli.overlays.change import list_changes
-    from nolli.overlays.verdicts import find_diagram_ids, find_review_cut, read_verdicts
+    from nolli.overlays.change import find_review_cut
+    from nolli.overlays.verdicts import find_diagram_ids, read_verdicts
 
     path, base, head = repo
     sc = open_change(path, base, head)

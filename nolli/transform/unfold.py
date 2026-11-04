@@ -10,7 +10,10 @@ no internal structure (externals, env, endpoints) never unfold by themselves.
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from ..model import address
+from ..scene import Scene
 from .graph import Graph
 from .rollup import hidden_by_role, image_aliases, init_anchor_dirs, is_init, reveal_scores, visible_from_expanded
 
@@ -41,8 +44,6 @@ def find_default_cut(g: Graph, budget: int = 34, hidden_roles=None, always_expan
     anchors = init_anchor_dirs(g, hidden)
     expanded: set[str] = {e for e in always_expand if g.has(e)}
     diff = g.is_change
-    if diff:
-        from ..overlays.change import index_changes, score_changes
     phases = [score_changes(g.scene, hidden), lca] if diff else [lca]
     # in a review, boxes where nothing changed are faded and cost half a box of attention
     changed = index_changes(g.scene) if diff else {}
@@ -75,3 +76,73 @@ def find_default_cut(g: Graph, budget: int = 34, hidden_roles=None, always_expan
             expanded.add(best)
     visible = visible_from_expanded(g, expanded, hidden)
     return {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible), "hidden_roles": list(roles)}
+
+
+# ---------- unfolding towards a change ----------
+
+def index_changes(scene: Scene) -> dict[str, dict]:
+    """Per node of a change, the changes in its subtree (itself included): changed lines and
+    files (from file records, so class lines are not counted twice), nodes added and removed."""
+    return scene.memo(_index_changes)
+
+
+def _index_changes(scene: Scene) -> dict[str, dict]:
+    g = Graph(scene)
+    idx: dict[str, dict] = defaultdict(lambda: {"added": 0, "removed": 0, "files": 0, "new": 0, "gone": 0})
+    for x in g.nodes:
+        d = g.diff(x)
+        if not d:
+            continue
+        lines = g.kind(x) == "file" and ("git" in d)
+        cur: str | None = x
+        while cur is not None:
+            a = idx[cur]
+            if lines:
+                a["added"] += d.get("added", 0)
+                a["removed"] += d.get("removed", 0)
+                a["files"] += 1
+            if d["status"] == "added" and g.kind(x) != "group":
+                a["new"] += 1
+            elif d["status"] == "removed" and g.kind(x) != "group":
+                a["gone"] += 1
+            cur = g.parent(cur)
+    return dict(idx)
+
+
+def score_changes(scene: Scene, hidden: set[str]) -> dict[str, float]:
+    """Per container, how much unfolding it shows about the change: changed relations that
+    run between its children (weighted), plus children that contain changes."""
+    g = Graph(scene)
+    idx = index_changes(scene)
+    score: dict[str, float] = defaultdict(float)
+    chain_cache: dict[str, list[str] | None] = {}
+
+    def chain(x: str) -> list[str] | None:
+        if x in chain_cache:
+            return chain_cache[x]
+        out, cur = [], x
+        while cur is not None:
+            if cur in hidden:
+                chain_cache[x] = None
+                return None
+            out.append(cur)
+            cur = g.parent(cur)
+        chain_cache[x] = out
+        return out
+
+    for r in g.relations:
+        if not r.diff:
+            continue
+        cs, cd = chain(r.src), chain(r.dst)
+        if not cs or not cd:
+            continue
+        common = next((a for a in cs if a in set(cd)), None)
+        if common is not None and common not in (r.src, r.dst):
+            score[common] += 3
+    for x in idx:
+        if x in hidden:
+            continue
+        p = g.parent(x)
+        if p is not None and p not in hidden:
+            score[p] += 1  # unfolding p tells its changed child apart from the others
+    return dict(score)

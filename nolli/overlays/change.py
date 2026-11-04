@@ -21,6 +21,7 @@ from collections import defaultdict
 from ..model import SYMBOL_KINDS, EdgeKey, address
 from ..scene import Element, Scene, StoredMaps
 from ..transform.graph import Graph
+from ..transform.unfold import index_changes, score_changes  # noqa: F401 (the change's, for callers)
 
 
 def find_change_scene(el: Element) -> Scene | None:
@@ -42,6 +43,10 @@ class Change:
 
     def __init__(self, content: StoredMaps) -> None:
         self.content = content
+
+    def list_focus(self, scene: Scene) -> list[str] | None:
+        """What the ``changes`` preset unfolds: every area that changed in source code."""
+        return find_review_cut(scene) if is_change(scene) else None
 
     def compute(self, el: Element) -> dict | None:
         if is_change(el.scene):
@@ -176,35 +181,6 @@ def count_changes(scene: Scene) -> dict:
     return out
 
 
-def index_changes(scene: Scene) -> dict[str, dict]:
-    """Per node of a change, the changes in its subtree (itself included): changed lines and
-    files (from file records, so class lines are not counted twice), nodes added and removed."""
-    return scene.memo(_index_changes)
-
-
-def _index_changes(scene: Scene) -> dict[str, dict]:
-    g = Graph(scene)
-    idx: dict[str, dict] = defaultdict(lambda: {"added": 0, "removed": 0, "files": 0, "new": 0, "gone": 0})
-    for x in g.nodes:
-        d = g.diff(x)
-        if not d:
-            continue
-        lines = g.kind(x) == "file" and ("git" in d)
-        cur: str | None = x
-        while cur is not None:
-            a = idx[cur]
-            if lines:
-                a["added"] += d.get("added", 0)
-                a["removed"] += d.get("removed", 0)
-                a["files"] += 1
-            if d["status"] == "added" and g.kind(x) != "group":
-                a["new"] += 1
-            elif d["status"] == "removed" and g.kind(x) != "group":
-                a["gone"] += 1
-            cur = g.parent(cur)
-    return dict(idx)
-
-
 def describe_node(scene: Scene, x: str, internal: int = 0) -> dict | None:
     """What the viewer shows on a box of a change: its status and the totals inside it."""
     if address.is_own_code(x) or not scene.has(x):
@@ -263,47 +239,6 @@ def describe_edge(el: Element) -> dict | None:
     facts = [c for f in changed[:40] for c in describe_fact(change, EdgeKey.parse(f), links) if change.has(EdgeKey.parse(f))]
     return {"status": status, "base": p.get("base", 0), "head": p.get("head", 0), "facts": changed,
             "changes": facts, "more": max(0, len(changed) - 40)}
-
-
-# ---------- unfolding towards the changes ----------
-
-def score_changes(scene: Scene, hidden: set[str]) -> dict[str, float]:
-    """Per container, how much unfolding it shows about the change: changed relations that
-    run between its children (weighted), plus children that contain changes."""
-    g = Graph(scene)
-    idx = index_changes(scene)
-    score: dict[str, float] = defaultdict(float)
-    chain_cache: dict[str, list[str] | None] = {}
-
-    def chain(x: str) -> list[str] | None:
-        if x in chain_cache:
-            return chain_cache[x]
-        out, cur = [], x
-        while cur is not None:
-            if cur in hidden:
-                chain_cache[x] = None
-                return None
-            out.append(cur)
-            cur = g.parent(cur)
-        chain_cache[x] = out
-        return out
-
-    for r in g.relations:
-        if not r.diff:
-            continue
-        cs, cd = chain(r.src), chain(r.dst)
-        if not cs or not cd:
-            continue
-        common = next((a for a in cs if a in set(cd)), None)
-        if common is not None and common not in (r.src, r.dst):
-            score[common] += 3
-    for x in idx:
-        if x in hidden:
-            continue
-        p = g.parent(x)
-        if p is not None and p not in hidden:
-            score[p] += 1  # unfolding p tells its changed child apart from the others
-    return dict(score)
 
 
 # ---------- details for one box ----------
@@ -502,3 +437,13 @@ def _list_changes(scene: Scene) -> list[dict]:
     for i, it in enumerate(items, 1):
         it["id"] = f"C{i}"
     return items
+
+
+def find_review_cut(scene: Scene) -> list[str]:
+    """The boxes to unfold so that every change in source code is drawn: what going to each
+    of them unfolds, together. The review diagram and the viewer's "all changes" use it."""
+    out = {address.REPO_ROOT}
+    for it in list_changes(scene):
+        if it["role"] == "source":
+            out.update(it["reveal"])
+    return sorted(out)
