@@ -2,7 +2,7 @@
 write them. ``Facts`` is mutable and checked against the metamodel as it grows; when
 extraction is done, ``split()`` turns it into the structure (``nolli.model.Model``) and, per
 extractor, what that extractor said about each node and edge (its overlay's stored map,
-``nolli/scene.py``).
+``nolli/model/scene.py``).
 
 Which extractor said what: an entity's attributes are recorded under the extractor that
 wrote each of them (``Facts.current`` while it runs, so a language's symbols extractor

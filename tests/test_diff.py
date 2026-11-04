@@ -67,13 +67,13 @@ def status(sc, x):
 
 def keep(sc, verdicts):
     """Verdicts kept as the change's review, as save_verdicts keeps them in a store."""
-    from nolli.overlays.verdicts import dump_verdicts
+    from nolli.review.verdicts import dump_verdicts
 
     sc.overlays["verdicts"].stored.save(sc.model.key, dump_verdicts(verdicts), {"by": "test"})
 
 
 def test_structure_and_content(repo):
-    from nolli.overlays.change import summarize_change
+    from nolli.transformations.merge import summarize_change
 
     path, base, head = repo
     sc = open_change(path, base, head)
@@ -109,7 +109,8 @@ def test_repository_untouched(repo):
 
 def test_scene_review(repo):
     from nolli.cli import find_repo
-    from nolli.overlays.change import Links, detail_box
+    from nolli.transformations.merge import Links
+    from nolli.review.changes import detail_box
 
     path, base, head = repo
     git(path, "remote", "add", "origin", "git@github.com:acme/demo.git")
@@ -143,10 +144,10 @@ def test_scene_review(repo):
 def test_items_verdicts_and_export(repo):
     import json
 
-    from nolli.export.brief import make_brief
-    from nolli.overlays.change import list_changes
-    from nolli.overlays.change import find_review_cut
-    from nolli.overlays.verdicts import find_diagram_ids, read_verdicts
+    from nolli.review.brief import make_brief
+    from nolli.review.changes import list_changes
+    from nolli.review.changes import find_review_cut
+    from nolli.review.verdicts import find_diagram_ids, read_verdicts
 
     path, base, head = repo
     sc = open_change(path, base, head)
@@ -192,7 +193,7 @@ def test_items_verdicts_and_export(repo):
 
 
 def test_rolled_up_verdicts_are_counted():
-    from nolli.overlays.review import describe_box
+    from nolli.review.card import describe_box
 
     v = lambda i, verdict: {"id": f"V{i}", "verdict": verdict, "reason": f"reason {i}"}  # noqa: E731
     # few verdicts: every reason in full, worst first

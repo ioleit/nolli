@@ -46,7 +46,7 @@ readable. Each was a judgement call on a few repositories (reasons in `NOTES.md`
   the default re-exports every package has;
 - **images** that run as exactly one service are drawn as that service.
 
-This file's rules exist once, in Python. `nolli/transform/project.py` applies them to a view state
+This file's rules exist once, in Python. `nolli/transformations/projection.py` applies them to a view state
 (unfolded boxes plus options) and decides everything else the picture shows: labels,
-badges, emphasis, tooltips. The viewer asks `viewer/serve.py` for that scene on every
+badges, emphasis, tooltips. The viewer asks the server (`nolli/server/serve.py`) for that scene on every
 change (`/api/scene`) and only lays it out and draws it.

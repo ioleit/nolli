@@ -1,16 +1,4 @@
-"""Where nolli keeps what it builds: models, by key (``nolli/keys.py``), and the maps
-overlays keep for them (``nolli/scene.py``: ``StoredMaps``).
-
-``ModelStore`` is the interface: a commit's model with the maps its extractors saved
-(``save_model``), a change's own record (``save_change``: what it says about itself, its
-two sides and the maps kept for the change, git's hunks and a review's verdicts among
-them), and per overlay its maps (``open_maps``). nolli's own is ``DirectoryStore``; a
-service built on nolli can bring one that keeps models elsewhere or decides per request
-who may read what (raising ``NotAllowed``).
-
-Everything stored carries a format; data of another format is not read (it is built again).
-This module depends on the data model only.
-"""
+"""nolli's own store: models in directories (``DirectoryStore``), and their maps beside them."""
 
 from __future__ import annotations
 
@@ -20,56 +8,12 @@ import shutil
 import threading
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol
 
-from .keys import ChangeKey, Commit, ModelKey, NotAllowed, parse_key, dump_key  # noqa: F401 (NotAllowed: part of the protocol)
-from .model import EdgeKey, FormatError, Key, Model
-from .scene import MapStore, StoredMaps
+from ..model import Key, Model
+from ..model.keys import ChangeKey, Commit, ModelKey, Repo, dump_key, parse_key
+from .maps import dump_map, parse_map
 
-FORMAT = 1  # of key.json, change.json and an overlay's map
-
-
-class ModelStore(MapStore, Protocol):
-    def find_key(self, name: str) -> ModelKey | None:
-        """The key of the stored model called ``name`` (``key.format_name()``, or a name it was
-        stored under), None if there is none. URLs carry names."""
-
-    def list_names(self) -> list[str]:
-        """The names of the stored models this request may read, newest first."""
-
-    def load_model(self, key: Commit) -> Model | None:
-        """A commit's model, None if there is none (or of another format). Raises NotAllowed if
-        this request may not read ``key.repo``."""
-
-    def save_model(self, key: Commit, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
-        """Keep a commit's model and the maps its extractors made, replacing what was kept."""
-
-    def load_change(self, key: ChangeKey) -> dict | None:
-        """What a change says about itself (title, pr, description, …), None if it is not kept.
-        Raises NotAllowed as load_model."""
-
-    def save_change(self, key: ChangeKey, about: dict, sides: Mapping[str, tuple[Model, Mapping[str, Mapping[Key, dict]]]],
-                    maps: Mapping[str, Mapping[Key, dict]]) -> None:
-        """Keep a change: what it says about itself, its two commits' models (``base``, ``head``:
-        model and maps, kept with it so a change is all in one place) and the maps kept for the
-        change itself. Maps saved for it since (a review's verdicts) stay."""
-
-
-# -- maps as JSON --------------------------------------------------------------------
-
-
-def dump_map(model_key: str, values: Mapping[Key, dict], about: dict | None) -> dict:
-    nodes = {k: v for k, v in values.items() if not isinstance(k, EdgeKey)}
-    edges = {k.format(): v for k, v in values.items() if isinstance(k, EdgeKey)}
-    return {"format": FORMAT, "model": model_key, "about": about, "nodes": nodes, "edges": edges}
-
-
-def parse_map(d: dict) -> tuple[dict[Key, dict], dict | None]:
-    if d.get("format") != FORMAT:
-        raise FormatError(f"a map of format {d.get('format')!r}, this nolli reads {FORMAT}")
-    values: dict[Key, dict] = dict(d.get("nodes") or {})
-    values.update({EdgeKey.parse(k): v for k, v in (d.get("edges") or {}).items()})
-    return values, d.get("about")
+FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
 
 
 # -- nolli's own: models in directories ----------------------------------------------
@@ -84,6 +28,7 @@ class DirectoryStore:
       ``head/`` (its commits, as above) and ``overlays/`` (git's hunks, verdicts).
 
     A directory written elsewhere (``nolli diff -o``, a CI run's artifact) is read the same way.
+    Every read goes through ``check`` (no-op here: a service built on nolli overrides it).
     """
 
     def __init__(self, root: Path):
@@ -95,6 +40,9 @@ class DirectoryStore:
         self.places: dict[str, Path] = {}  # model key (text) -> directory, a change's sides included
         self.scanned = 0
         self.cache: dict[Path, tuple[tuple[int, int], object]] = {}  # file -> (inode, mtime), what it parsed to
+
+    def check(self, repo: Repo) -> None:
+        """Raises NotAllowed unless the current request may read ``repo``: everyone may, here."""
 
     def locate(self, key: ModelKey) -> Path:
         """The model's directory (existing or not), for code that works with its files."""
@@ -164,6 +112,7 @@ class DirectoryStore:
         return value
 
     def load_model(self, key: Commit) -> Model | None:
+        self.check(key.repo)
         self.scan()
         d = self.places.get(key.format_key())
         if d is None:
@@ -174,6 +123,7 @@ class DirectoryStore:
         return m
 
     def load_change(self, key: ChangeKey) -> dict | None:
+        self.check(key.repo)
         d = self.locate(key)
         about = self.read_json(d / "change.json", lambda j: j["about"] if j.get("format") == FORMAT else None)
         if about is None:
@@ -223,6 +173,8 @@ class DirectoryStore:
         return DirectoryMaps(self, name)
 
     def locate_maps(self, model_key: str, name: str) -> Path | None:
+        """Where a model's map is; checked, as every read (the repository is the key's text before ``@``)."""
+        self.check(Repo(model_key.rpartition("@")[0]))
         self.scan()
         d = self.places.get(model_key)
         return None if d is None else d / "overlays" / f"{name}.json"

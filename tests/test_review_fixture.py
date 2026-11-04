@@ -11,7 +11,7 @@ from pathlib import Path
 from helpers import draw, find_node
 from nolli.build import open_change_scene
 from nolli.cli import main
-from nolli.overlays.verdicts import describe_verdicts
+from nolli.review.verdicts import describe_verdicts
 from nolli.store import DirectoryStore
 
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))

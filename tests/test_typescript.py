@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 
 from nolli.build import extract_facts, open_built
-from nolli.overlays.hover import Ctx, edge_info
-from nolli.overlays.label import module_stem
-from nolli.transform.graph import Graph
-from nolli.transform.rollup import RolledEdge, is_init
+from nolli.formats.descriptions.hover import Ctx, edge_info
+from nolli.formats.descriptions.label import module_stem
+from nolli.transformations.graph import Graph
+from nolli.transformations.rollup import RolledEdge, is_init
 
 FILES = {
     "tsconfig.base.json": '{ // shared\n "compilerOptions": { "baseUrl": "./app/src", "paths": { "@/*": ["./*"] } } }\n',

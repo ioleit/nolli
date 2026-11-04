@@ -17,7 +17,7 @@ The structure (entity kind, id; ``nolli/model/address.py`` makes the ids):
     resource  api:<protocol>:<key>/<seg>/<seg>     a step in the API's path tree (a parameter is ``{}``)
     endpoint  api:<protocol>:<key>/<seg>#<VERB>    one operation: its method on its path
 
-Names follow the picture's pattern, icons then a readable name (``nolli/overlays/label.py``):
+Names follow the picture's pattern, icons then a readable name (``nolli/formats/descriptions/label.py``):
 an API is named after the directory it is declared in (``API server``), a resource by
 its own segments relative to its parent, which is drawn whenever it is (``/ assistant``,
 ``/ api`` at the top),

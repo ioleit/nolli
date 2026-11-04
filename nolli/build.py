@@ -1,11 +1,11 @@
 """Building models and opening their scenes: nolli the library's way from a repository to
-what the command line (``nolli/cli.py``) and the server (``nolli/viewer/``) show.
+what the command line (``nolli/cli.py``) and the server (``nolli/server/``) show.
 
 - ``extract``: a directory's files -> its model and, per extractor, what it said (maps);
 - ``fetch_commit_model``, ``fetch_change``: from the store, or built from a ``Sources`` and
   kept in the store;
 - ``open_commit_scene``, ``open_change_scene``: a stored model with its overlays, a change
-  merged from its two commits (``nolli/transform/merge.py``).
+  merged from its two commits (``nolli/transformations/merge.py``).
 
 The steps that take time (``extract_commit``, ``list_content``) take paths and return data,
 so a caller can run them elsewhere (``run``: the service runs them in processes of their
@@ -23,14 +23,16 @@ from typing import Any
 from .extractors import Context, all_extractors, language_names
 from .extractors.facts import Facts
 from .extractors.match import run_all as match_all
-from .keys import ChangeKey, Commit
+from .model.keys import ChangeKey, Commit
 from .model import Key, Model, address
 from .progress import Progress, Quiet
-from .scene import MapStore, Overlay, Scene, make_base_overlays
+from .extractors.overlays import make_base_overlays
+from .model.scene import Overlay, Scene
+from .store.maps import MapStore
 from .sources import Sources
 from .sources.git import export_commit, find_head, list_file_changes, list_tracked_files
 from .store import ModelStore
-from .transform.merge import merge
+from .transformations.merge import merge
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
@@ -168,10 +170,14 @@ def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, abou
 
 
 def make_overlays(maps: MapStore) -> list[Overlay]:
-    """The overlays nolli shows on any scene, on top of the extractors' (``nolli/overlays/``)."""
-    from .overlays import make_overlays as make
+    """The overlays nolli shows on any scene, on top of the extractors'."""
+    from .transformations.merge import Change
+    from .formats.descriptions.hover import Hover
+    from .formats.descriptions.label import Label
+    from .review.card import Review
+    from .review.verdicts import Verdicts
 
-    return make(maps)
+    return [Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]
 
 
 def open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
@@ -201,7 +207,7 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
 
 def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
     """A model just extracted, not kept anywhere, as a scene."""
-    from .scene import MemoryMaps
+    from .store.maps import MemoryMaps
 
     store = MemoryMaps({n: {model.key: v} for n, v in maps.items()})
     return open_scene(model, store, overlays)
@@ -210,7 +216,7 @@ def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) 
 def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, about: dict, content: Mapping[Key, dict],
                 overlays: list[Overlay] | None = None) -> Scene:
     """A change of two models just extracted, not kept anywhere (``nolli diff``, tests)."""
-    from .scene import MemoryMaps
+    from .store.maps import MemoryMaps
 
     store = MemoryMaps()
     for m, maps in (base, head):

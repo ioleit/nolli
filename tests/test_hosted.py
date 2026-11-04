@@ -1,4 +1,4 @@
-"""nolli serve (nolli/viewer/hosted.py) without the network: which paths are pages, the viewer's
+"""nolli serve (nolli/server/hosted.py) without the network: which paths are pages, the viewer's
 page pinned to a model, a build's progress as a page shows it, a build's steps in processes of
 their own and their limits, and a pull request built from a local repository standing in for
 its clone. Asking GitHub is not tested here: it needs the network."""
@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from nolli.keys import Repo
+from nolli.model.keys import Repo
 from nolli.progress import SHORT, Progress
 from nolli.sources import LocalRepository
 from nolli.sources.spec import ChangeError
-from nolli.viewer.hosted import ROUTE, Board, Plan, Site, TooLarge, viewer_page
+from nolli.server.hosted import ROUTE, Board, Plan, Site, TooLarge, viewer_page
 
 
 def test_routes():
@@ -167,10 +167,10 @@ def test_a_pull_request_is_built_from_where_it_left_its_base(site, src, monkeypa
 
 
 def test_a_build_that_fails_leaves_no_model(site, src, monkeypatch):
-    from nolli.viewer import hosted
+    from nolli.server import hosted
 
     _r, _tip, base, head = src
-    monkeypatch.setattr(hosted, "fetch_change", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
+    monkeypatch.setattr(hosted.Datasets, "build", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
     job = run(site, Plan("o_r_broken", "o/r", Repo("github.com/o/r"), key=Repo("github.com/o/r").make_change(base, head)))
     assert job.state == "error" and job.error == "half way"
     assert site.find_built(job.plan) is None

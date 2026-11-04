@@ -12,7 +12,7 @@ Nothing is a settled design.
   Structure is what a sound graph needs: addresses (their namespace is in them), node
   kinds and edge kinds, the metamodel's checks. Everything else goes in overlays: names,
   roles, sizes, docstrings, an import's lines, a review's verdict.
-- An overlay is code that answers for one element (`compute(element)`, `nolli/scene.py`).
+- An overlay is code that answers for one element (`compute(element)`, `nolli/model/scene.py`).
   The element carries what the overlay needs: its key and kind, what it stands for
   (`sources`), and a way to ask other overlays. Where an overlay's knowledge comes from is
   its own business. It may use a map it keeps in the store, by model key, through a handle
@@ -185,7 +185,7 @@ Nothing is a settled design.
   or with a different reference count) and content (changed lines per file and per
   class, from `git diff -M -U0`). Content is recorded even when nothing structural
   changed, so a review can still point at it. Classes record their end line for this.
-- What changed is the `change` overlay's to say (`nolli/overlays/change.py`). It compares
+- What changed is the `change` overlay's to say (`nolli/transformations/merge.py`). It compares
   what the two sides' overlays say, and takes git's hunks from the change's `content` map,
   so merge reads no git. Base and head commits and the GitHub remote are what the change
   says about itself (`meta["change"]`), enough to build links later.

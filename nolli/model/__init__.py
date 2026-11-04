@@ -6,12 +6,12 @@ Three levels, a module each:
   edges between them, each a kind (``contain`` among them: the ownership tree) and a
   subkind (how a use was found: ``import``, ``ref``, ``http``, …). Everything else that is
   known about a node or an edge (its name, size, role, a docstring, which lines an import
-  is on, a review's verdict) is in *overlays* (``nolli/scene.py``), never in the model;
+  is on, a review's verdict) is in *overlays* (``nolli/model/scene.py``), never in the model;
 - the *metamodel* says what any model may contain: kinds, namespaces, which relations
   connect which namespaces (``metamodel.py``); an extracted model is checked against it;
 - an *address* is how a node's id is spelled in its namespace (``address.py``).
 
-A model made by a transformation (a change, a projection: ``nolli/transform/``) also refers
+A model made by a transformation (a change, a projection: ``nolli/transformations/``) also refers
 to the elements of the models it was made from (``refs``). ``model.json`` holds a model with
 its ``format``; a reader refuses another format rather than misread it.
 """
@@ -71,7 +71,7 @@ Key = Union[str, EdgeKey]  # a node's address, or an edge's
 class Model:
     """Structure: ``kinds`` (address -> kind), ``edges``, and for a derived model ``refs``
     (role -> element -> the elements of that source it stands for). ``key`` names the model
-    (what it is the model of: ``nolli/store.py`` keys); stored overlays are kept by it."""
+    (what it is the model of: ``nolli/store/`` keys); stored overlays are kept by it."""
 
     def __init__(self, key: str = "", kinds: dict[str, str] | None = None, edges: Iterable[EdgeKey] = (),
                  refs: dict[str, dict[Key, tuple[Key, ...]]] | None = None, meta: dict | None = None,

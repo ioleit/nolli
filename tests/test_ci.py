@@ -1,4 +1,4 @@
-"""nolli in CI (nolli/ci.py): the key a PR comment gives, and the comment itself, for a
+"""nolli in CI (nolli/review/ci.py): the key a PR comment gives, and the comment itself, for a
 change without a review, with one, and with verdicts that fail the check. Downloading an
 artifact is not tested here: it needs GitHub."""
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.ci import is_key, key_of, read_result
+from nolli.review.ci import is_key, key_of, read_result
 from nolli.build import open_change_scene
 from nolli.cli import main
 from nolli.store import DirectoryStore
@@ -130,7 +130,7 @@ def test_listed(dataset, capsys, monkeypatch):
 
 
 def test_failed_review(dataset, capsys):
-    from nolli.overlays.verdicts import keep_verdicts_file
+    from nolli.review.verdicts import keep_verdicts_file
 
     review(dataset, [{"target": "n_nope", "verdict": "good", "reason": "x"}], capsys)  # nolli agent check keeps none of it
     assert "No review: the review agent wrote no verdicts." in comment(dataset, capsys)
@@ -156,7 +156,7 @@ def bot_comment(text: str, login: str = "nolli-review[bot]", n: int = 1) -> dict
 
 
 def test_results_from_the_comments(dataset, capsys):
-    from nolli.ci import results
+    from nolli.review.ci import results
 
     review(dataset, [{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}], capsys)
     text = comment(dataset, capsys)

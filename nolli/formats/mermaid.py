@@ -1,6 +1,6 @@
 """Mermaid of a scene: the second renderer, for READMEs, PR comments and agents.
 
-It draws a projected scene (``nolli/transform/project.py``) as the viewer draws it: the same
+It draws a projected scene (``nolli/transformations/projection.py``) as the viewer draws it: the same
 boxes, containers and edges, named by the ``label`` overlay and marked by ``change``,
 with Mermaid's own layout, top to bottom. Only what plain Mermaid can say, so that the text
 renders anywhere (GitHub included) and stays readable as text: no click handlers, no
@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 from ..model import address
-from ..scene import Scene
+from ..model.scene import Scene
 
 STYLE_ARROW = {"import": "-->", "http": "==>", "env": "-.->", "deploy": "-.->", "provide": "-.->"}
 KIND_CLASS = {"package": "ext", "service": "deploy", "image": "deploy", "host": "deploy", "group": "group",

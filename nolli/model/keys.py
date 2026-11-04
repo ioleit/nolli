@@ -1,6 +1,6 @@
 """What a model is the model of: its key. A repository at one commit (``Commit``), or the
 change between two commits of one repository (``ChangeKey``). Stores keep models by key
-(``nolli/store.py``), sources fetch the commits a key names (``nolli/sources/``), and a
+(``nolli/store/``), sources fetch the commits a key names (``nolli/sources/``), and a
 model's ``key`` (``Model.key``) is its key as text, which stored overlays are kept by."""
 
 from __future__ import annotations

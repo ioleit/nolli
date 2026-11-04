@@ -1,11 +1,11 @@
 """Reviews of a server's models: where a model's verdicts came from, and review agent runs
 started from the viewer ("Review structural changes").
 
-A change's review is its ``verdicts`` map (nolli/overlays/verdicts.py) and who made them, the
+A change's review is its ``verdicts`` map (nolli/review/verdicts.py) and who made them, the
 map's ``about``: ``{"by": "agent" | "ci" | "upload", "at": <ISO time>, ...}``, with the model, time and cost
 of an agent run here, or the link to the CI comment they were read from. A pull request's
 model can take its verdicts from nolli's CI (from_ci(), given the PR's comments; the server
-asks GitHub for them). A run (nolli/reviewer.py) works in a directory of its own under the
+asks GitHub for them). A run (nolli/review/agent.py) works in a directory of its own under the
 server's work directory (its transcript stays there until the next run) and replaces the
 verdicts only when its own pass nolli's check, so the ones shown stay until then. Runs live
 in memory: a server that restarts forgets runs under way, not verdicts.
@@ -23,9 +23,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from nolli.keys import ChangeKey, ModelKey
-from nolli.overlays.verdicts import find_provenance as provenance, save_verdicts  # noqa: F401 (the server's)
-from nolli.scene import Scene
+from nolli.model.keys import ChangeKey, ModelKey
+from nolli.model.scene import Scene
 from nolli.sources import Sources
 from nolli.store import ModelStore
 
@@ -49,9 +48,8 @@ def from_ci(store: ModelStore, key: ModelKey, scene: Scene, comments: list | dic
     commit: ``{"found": "verdicts" | "no-review" | "earlier" | None, "applies": True, ...}``. Its
     verdicts, checked against this change's diagram, become the change's, unless it has some
     already. A result of another format (an earlier nolli) is not read."""
-    from nolli.ci import results
-    from nolli.export.brief import make_review_diagram
-    from nolli.overlays.verdicts import check_verdicts
+    from nolli.datasets import Datasets
+    from nolli.review.ci import results
 
     head = scene.model.meta["change"]["head"]
     found = results(comments if isinstance(comments, list) else [])
@@ -63,11 +61,12 @@ def from_ci(store: ModelStore, key: ModelKey, scene: Scene, comments: list | dic
         return info
     r = mine[0]
     info.update(link=r["link"], at=r["at"], nolli=r.get("nolli"), found="verdicts" if r.get("verdicts") else "no-review")
-    if r.get("verdicts") and provenance(store, key) is None:
-        ok, errors = check_verdicts(scene, make_review_diagram(scene), json.dumps(r["verdicts"]))
+    datasets = Datasets(store)
+    if r.get("verdicts") and datasets.find_provenance(key) is None:
+        ok, errors = datasets.check_verdicts(scene, json.dumps(r["verdicts"]))
         info["dropped"] = len(errors)
         if ok:
-            save_verdicts(store, key, ok, {"by": "ci", "link": r["link"], "at": r["at"], "nolli": r.get("nolli"), "dropped": len(errors)})
+            datasets.keep_verdicts(key, ok, {"by": "ci", "link": r["link"], "at": r["at"], "nolli": r.get("nolli"), "dropped": len(errors)})
     return info
 
 
@@ -98,7 +97,7 @@ class Reviews:
         """``reviewer``: what runs a review (nolli.reviewer.Reviewer, the default, or a service's
         own). ``work``: where runs keep their files (default: a temporary directory)."""
         if reviewer is None:
-            from nolli.reviewer import Reviewer
+            from nolli.review.agent import Reviewer
 
             reviewer = Reviewer()
         self.reviewer = reviewer
@@ -131,10 +130,11 @@ class Reviews:
         return job
 
     def _run(self, job: Job, name: str, store: ModelStore, key: ChangeKey, sources: Sources) -> None:
-        from nolli import reviewer
-        from nolli.build import open_change_scene
-        from nolli.export.brief import make_review_brief, make_review_diagram
-        from nolli.overlays.verdicts import check_verdicts
+        from nolli.review import agent as reviewer
+        from nolli.datasets import Datasets
+        from nolli.review.brief import make_review_brief, make_review_diagram
+        from nolli.review.verdicts import check_verdicts
+        datasets = Datasets(store)
 
         def on_step(s: str, run: reviewer.Run) -> None:
             if s != job.step:
@@ -151,7 +151,7 @@ class Reviews:
             work = self.work / name
             shutil.rmtree(work, ignore_errors=True)
             try:
-                scene = open_change_scene(store, key)
+                scene = datasets.open_scene(key)
                 if scene is None:
                     raise ValueError(f"no model of {name}")
                 out = work / "out"  # what the reviewer writes; its brief, as it read it, beside
@@ -167,7 +167,7 @@ class Reviews:
                 with sources.open_commits(key.repo, key.base, key.head) as repo:
                     run = self.reviewer.review(brief, key.head, check, repo, out, on_step, job.cancel)
                 verdicts, _errors = check((out / "verdicts.json").read_text())
-                save_verdicts(store, key, verdicts, {"by": "agent", "model": run.model, "seconds": run.seconds,
+                datasets.keep_verdicts(key, verdicts, {"by": "agent", "model": run.model, "seconds": run.seconds,
                                                      "turns": run.turns, "cost": round(run.cost, 2)})
                 job.state, job.turns, job.cost = "done", run.turns, run.cost
             except reviewer.Cancelled:

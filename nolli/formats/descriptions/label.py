@@ -6,10 +6,10 @@ text, where the word-like icons stay in front ("svc api", "GET health")."""
 
 from __future__ import annotations
 
-from ..model import address
-from ..scene import Element
-from ..transform.graph import Graph
-from ..transform.rollup import display_path
+from ...model import address
+from ...model.scene import Element
+from ...transformations.graph import Graph
+from ...transformations.rollup import display_path
 
 SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "function": "f"}  # model.SYMBOL_KINDS
 VERB_ICON = {"WEBSOCKET": "WS", "DELETE": "DEL", "OPTIONS": "OPT"}

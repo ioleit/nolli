@@ -19,11 +19,11 @@ from collections import defaultdict
 
 from dataclasses import dataclass, field
 
-from ..model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, EdgeKey, address
-from ..prose import count, listing, paragraphs, quote, say
-from ..scene import Element, Scene
-from ..transform.graph import Graph
-from ..transform.rollup import chain_end, is_init
+from ...model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, EdgeKey, address
+from .prose import count, listing, paragraphs, quote, say
+from ...model.scene import Element, Scene
+from ...transformations.graph import Graph
+from ...transformations.rollup import chain_end, is_init
 from .label import find_source, format_prose, is_module
 
 @dataclass

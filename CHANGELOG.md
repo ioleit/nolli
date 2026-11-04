@@ -11,12 +11,14 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   edge comes from an overlay: one per extractor, plus `change`, `verdicts`, `label`,
   `hover` and `review`. Merge and projection take a scene and return one, whose elements
   refer to what they stand for. The packages:
-  - `nolli/model`, `nolli/scene.py`;
+  - `nolli/model` (with `scene.py` and `keys.py`);
   - `nolli/extractors` (with `facts.py`, the builder extraction writes into);
-  - `nolli/transform` (merge, projection);
-  - `nolli/overlays`, `nolli/export` (viewer JSON, Mermaid, the review brief, the report);
+  - `nolli/transformations` (merge with the overlay that says what changed, projection);
+  - `nolli/formats` (viewer JSON, Mermaid, the report; `descriptions/`: label, hover text);
+  - `nolli/review` (verdicts, the card, the brief, the agent, the CI comment, the numbered changes);
   - `nolli/sources` (the only place git runs, the change spec, GitHub);
-  - `nolli/keys.py`, `nolli/store.py`.
+  - `nolli/store` (models, the maps overlays keep, one access check), `nolli/server`;
+  - `nolli/datasets.py`, what the command line, CI and the server use.
 - **Stored data has a format and is built again when it has another one.** Datasets from
   0.7.0 and before are not read. A dataset directory is:
   - a commit: `key.json`, `model.json`, `overlays/`;

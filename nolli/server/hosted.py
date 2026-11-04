@@ -6,7 +6,7 @@
 shows, ``/<owner>/<repo>/commit/<sha>`` the change that commit makes to its parent, and
 ``/<owner>/<repo>`` the repository as a whole at the head of its default branch. The first
 visit builds the model in the background (a page says how far it got); later visits find it
-in the store, keyed by its commits (nolli/store.py), so a new push is a new model.
+in the store, keyed by its commits (nolli/store/), so a new push is a new model.
 
 Models are kept in a ModelStore (default: directories under ``<cache>/data``), and commits
 come from a Sources (default: bare clones under ``<cache>/repos``, fetched with the same token
@@ -27,7 +27,7 @@ asks sees that request.
 
 Each commit's model is kept too, so a pull request's base is extracted once for all its
 pushes. With ``--keep 20G`` the default store and clones stay within that size: after each
-build, what was used longest ago is deleted (nolli/retention.py).
+build, what was used longest ago is deleted (nolli/server/retention.py).
 
 The steps of a build that take time (extracting a commit, merging two) run in processes of
 their own, ``--builds`` builds at the same time (the rest wait), so a server with more CPUs
@@ -39,9 +39,9 @@ The viewer is the local one (``serve.py``), its page pinned to the one model; th
 same, without ``/api/list`` and without storing uploaded verdicts.
 
 Verdicts come from two places. A pull request's page looks for what nolli's CI left in the
-PR's comments for its head commit (nolli/ci.py) and shows those verdicts, asking GitHub at
+PR's comments for its head commit (nolli/review/ci.py) and shows those verdicts, asking GitHub at
 most once a minute per model. And with ``ANTHROPIC_API_KEY`` set where the server runs,
-the viewer's "Review structural changes" starts a review agent (viewer/reviews.py) whose
+the viewer's "Review structural changes" starts a review agent (reviews.py) whose
 verdicts then are the model's; anyone who can open the page can start one, so the key's
 owner pays for every visitor's review (one run per model at a time, two runs at once).
 """
@@ -67,25 +67,21 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
-HERE = Path(__file__).resolve().parent
-if not __package__:
-    sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
+import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 
-from nolli import retention  # noqa: E402
-from nolli.build import fetch_change, fetch_whole_model, is_fresh, open_change_scene, open_commit_scene  # noqa: E402
-from nolli.keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: E402
+HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
+
+from nolli.server import retention  # noqa: E402
+from nolli.datasets import Datasets  # noqa: E402
+from nolli.model.keys import ModelKey, NotAllowed, Repo  # noqa: E402
 from nolli.progress import Progress  # noqa: E402
-from nolli.scene import Scene  # noqa: E402
+from nolli.model.scene import Scene  # noqa: E402
 from nolli.sources import CloneCache, FetchError, Sources, github  # noqa: E402
 from nolli.sources.spec import ChangeError, merge_base  # noqa: E402
 from nolli.store import DirectoryStore, ModelStore  # noqa: E402
 
-try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file
-    from .reviews import Reviews, ci_pull, from_ci
-    from .serve import Handler, Server, Services, preload
-except ImportError:
-    from reviews import Reviews, ci_pull, from_ci  # type: ignore[no-redef]
-    from serve import Handler, Server, Services, preload  # type: ignore[no-redef]
+from .reviews import Reviews, ci_pull, from_ci  # noqa: E402
+from .serve import Handler, Server, Services, preload  # noqa: E402
 
 OWNER = r"(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
 REPO = r"(?P<repo>[A-Za-z0-9._-]{1,100})"
@@ -309,13 +305,8 @@ class Site:
         key = plan.key or self.built.get(plan.name)
         if key is None:
             return None
-        if isinstance(key, ChangeKey):
-            if not is_fresh(self.store.load_change(key)):
-                return None
-            sc = open_change_scene(self.store, key)
-        else:
-            m = self.store.load_model(key)
-            sc = open_commit_scene(self.store, key) if m is not None and is_fresh(m) else None
+        datasets = Datasets(self.store, self.sources)
+        sc = datasets.open_scene(key) if datasets.is_built(key) else None
         return (key, sc) if sc is not None else None
 
     def ci_review(self, key: ModelKey, m: Scene) -> dict:
@@ -358,11 +349,9 @@ class Site:
                     base_tip, head = plan.pull
                     with progress.step("fetching the pull request"), self.sources.open_commits(plan.repo, base_tip, head) as clone:
                         key = plan.repo.make_change(merge_base(clone, base_tip, head), head)
-                if isinstance(key, ChangeKey):
-                    fetch_change(self.store, self.sources, key, about={**plan.about, "budget": self.budget},
-                                 run=self.run_step, progress=progress)
-                elif isinstance(key, Commit):
-                    fetch_whole_model(self.store, self.sources, key, run=self.run_step, progress=progress)
+                if key is not None:
+                    Datasets(self.store, self.sources).build(key, about={**plan.about, "budget": self.budget},
+                                                             run=self.run_step, progress=progress)
                 job.key = key
                 if key is not None:
                     self.built[plan.name] = key

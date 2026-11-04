@@ -1,6 +1,6 @@
 """``verdicts``: what a review said about a change's boxes and edges.
 
-A review agent answers on the review diagram (``nolli/export/brief.py``): each verdict
+A review agent answers on the review diagram (``nolli/review/brief.py``): each verdict
 targets a node id of that Mermaid diagram (``n_…``), or an edge ``n_a --> n_b``. Read, a
 verdict names what it is about by address (``ends``: one node, or the two ends of an edge),
 and that is how it is kept: the ``verdicts`` map of the change (``StoredMaps``), by target
@@ -16,9 +16,11 @@ import re
 from collections import defaultdict
 
 from ..model import address
-from ..scene import Element, MapStore, Scene, StoredMaps
-from .change import find_change_scene, find_review_cut, format_name, list_ancestors_to_unfold  # noqa: F401
-from ..transform.graph import Graph
+from ..model.scene import Element, Scene
+from ..store.maps import MapStore, StoredMaps
+from ..transformations.merge import find_change_scene  # noqa: F401
+from .changes import find_review_cut, format_name, list_ancestors_to_unfold
+from ..transformations.graph import Graph
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
 # shows the mark of a box's highest-ranked verdict). The brief offers fine / good / question / problem;
@@ -153,7 +155,7 @@ def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
 
 def find_provenance(maps: MapStore, key) -> dict | None:
     """Who made a change's verdicts (its ``verdicts`` map's ``about``); None without verdicts.
-    ``key``: the change's key (``nolli/keys.py``)."""
+    ``key``: the change's key (``nolli/model/keys.py``)."""
     stored = maps.open_maps("verdicts")
     return (stored.load_about(key.format_key()) or {"by": "unknown"}) if stored.load(key.format_key()) else None
 

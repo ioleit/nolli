@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..scene import Scene
-from ..transform.project import DEFAULT_BUDGET, SceneState, project
+from ..model.scene import Scene
+from ..transformations.projection import DEFAULT_BUDGET, SceneState, project
 
 
 def summarize(scene: Scene) -> dict:
@@ -30,7 +30,7 @@ def make_report(scene: Scene) -> dict:
               "unresolved": sorted(x for x, k in scene.model.kinds.items() if k == "unresolved"),
               "notes": meta.get("notes", {})}
     if "base" in scene.sources:
-        from ..overlays.change import count_changes
+        from ..transformations.merge import count_changes
 
         report["diff"] = count_changes(scene)
     return report

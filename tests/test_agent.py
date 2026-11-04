@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from nolli.cli import main
-from nolli.overlays.verdicts import parse_verdicts
+from nolli.review.verdicts import parse_verdicts
 from nolli.store import DirectoryStore
 
 

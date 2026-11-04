@@ -80,7 +80,7 @@ class Reviewer:
     built on nolli serve can give the server a reviewer of its own (``make_server(reviewer=...)``)
     with other tools, models or loops; what it has to keep is the contract: it reads the change's
     brief (review.md, the diagram in it) and repository, and leaves ``out/verdicts.json`` that
-    passes ``check`` (nolli's: ``nolli.overlays.verdicts.check_verdicts``)."""
+    passes ``check`` (nolli's: ``nolli.review.verdicts.check_verdicts``)."""
 
     def available(self) -> str | None:
         """Why no review can run here, or None. A word the viewer knows ("key", "package") or a

@@ -15,10 +15,10 @@ import pytest
 
 from helpers import draw, extract_facts, find_node, open_dir
 
-from nolli.transform.graph import Graph
-from nolli.transform.project import SceneState, project
-from nolli.transform.rollup import hidden_by_role, image_aliases, lift, rollup
-from nolli.transform.unfold import find_default_cut
+from nolli.transformations.graph import Graph
+from nolli.transformations.projection import SceneState, project
+from nolli.transformations.rollup import hidden_by_role, image_aliases, lift, rollup
+from nolli.transformations.unfold import find_default_cut
 
 FILES = {
     "backend/__init__.py": "",
@@ -195,8 +195,8 @@ def test_utilities_by_incoming_edges(repo: Path):
     """A box with more than N incoming dependency edges is a utility: its incoming edges
     become badges on their sources. Boxes in groups never are."""
     from nolli.model import USE
-    from nolli.transform.project import cut
-    from nolli.transform.rollup import utility_badges
+    from nolli.transformations.projection import cut
+    from nolli.transformations.rollup import utility_badges
 
     scene = open_dir(repo)
     g = Graph(scene)
@@ -297,7 +297,7 @@ def test_box_names_are_icons_then_a_name(repo: Path):
 
 def test_markdown_from_repository_text():
     """Names and docstrings from a repository can't turn into Markdown (prose.py)."""
-    from nolli.prose import code, esc, quote, say
+    from nolli.formats.descriptions.prose import code, esc, quote, say
 
     assert say("{} references {} in {}", "api/", "1 name", "lib/") == "`api/` references `1 name` in `lib/`"
     assert code("a`b") == "``a`b``" and code("`x`") == "`` `x` ``"
@@ -313,9 +313,9 @@ def test_mermaid_draws_the_scene(repo: Path):
     canvas, not a subgraph."""
     import re
 
-    from nolli.export.mermaid import make_node_id as nid
-    from nolli.export.mermaid import render
-    from nolli.export.viewer import export_scene
+    from nolli.formats.mermaid import make_node_id as nid
+    from nolli.formats.mermaid import render
+    from nolli.formats.viewer import export_scene
 
     scene = open_dir(repo)
     for st in (SceneState(budget=12), SceneState(preset="folded"), SceneState(preset="unfolded"),
@@ -332,8 +332,8 @@ def test_mermaid_draws_the_scene(repo: Path):
 
 def test_presets(repo: Path):
     """A preset names a cut; the scene says which one gave it, and none once boxes are given."""
-    from nolli.export.viewer import export_scene
-    from nolli.transform.project import parse_state
+    from nolli.formats.viewer import export_scene
+    from nolli.server.serve import parse_state
 
     scene = open_dir(repo)
     folded = export_scene(project(scene, parse_state({"p": "folded"})))
@@ -348,8 +348,8 @@ def test_mermaid_ids(repo: Path):
     """The id map sent with the Mermaid text names every box drawn, by the id the text uses."""
     import re
 
-    from nolli.export.mermaid import list_ids, render
-    from nolli.export.viewer import export_scene
+    from nolli.formats.mermaid import list_ids, render
+    from nolli.formats.viewer import export_scene
 
     projected = project(open_dir(repo), SceneState(expanded=["repo:", "repo:backend"]))
     sc = export_scene(projected)

@@ -26,11 +26,9 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from .keys import ModelKey
-from .model import address
-from .scene import Scene
-from .sources.spec import ChangeError
-from .store import ModelStore
+from ..model import address
+from ..model.scene import Scene
+from ..sources.spec import ChangeError
 
 FORMAT = 1  # of the result a comment carries; one of another format is not read
 
@@ -63,27 +61,23 @@ def key_of(meta: dict) -> str:
     return f"{m.group(1)}/{m.group(2)}#{d['pr']}@{d['head'][:7]}"
 
 
-def comment(store: ModelStore, model_key: ModelKey, skipped: str | None = None) -> str:
-    """The PR comment for a run's model: how many structural changes, how many verdicts of
-    each kind, the worst ones (not fine) with their reasons, and how to open the result.
-    ``skipped`` says why no review agent ran: "no-key" (the repository has no API key for
-    one) or "fork" (a PR from a fork, which gets no secrets)."""
-    from .build import open_change_scene
-    from .export.brief import make_review_scene
-    from .export.mermaid import render
-    from .overlays.change import list_changes
-    from .overlays.verdicts import check_verdicts, describe_verdicts, parse_verdicts
+def comment(scene: Scene, kept: list[dict], skipped: str | None = None) -> str:
+    """The PR comment for a run's change: how many structural changes, how many verdicts of
+    each kind (``kept``: the change's verdicts, checked again here against its diagram), the
+    worst ones (not fine) with their reasons, and how to open the result. ``skipped`` says
+    why no review agent ran: "no-key" (the repository has no API key for one) or "fork" (a PR
+    from a fork, which gets no secrets)."""
+    from .brief import make_review_scene
+    from ..formats.mermaid import render
+    from .changes import list_changes
+    from .verdicts import check_verdicts, describe_verdicts
 
-    scene = open_change_scene(store, model_key)
-    if scene is None:
-        raise ValueError(f"no model of {model_key.format_name()}")
     key = key_of(scene.model.meta)
     d = scene.model.meta["change"]
     repo = key.split("#")[0]
     n = len(list_changes(scene))
     review = make_review_scene(scene)
     mmd = render(review)
-    kept = parse_verdicts(store.open_maps("verdicts").load(scene.model.key))
     verdicts, errors = check_verdicts(scene, mmd, json.dumps(kept)) if kept else (None, [])
     commit = f"[`{d['head'][:7]}`](https://github.com/{repo}/pull/{d['pr']}/commits/{d['head']})"
     lines = [MARKER, f"**Nolli** found {n} structural change{'' if n == 1 else 's'} in this PR (at {commit})."]
@@ -145,9 +139,9 @@ def list_statuses(review: Scene) -> dict[str, str]:
 
 def what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
-    from .overlays.change import format_name
-    from .overlays.label import is_module
-    from .transform.graph import Graph
+    from .changes import format_name
+    from ..formats.descriptions.label import is_module
+    from ..transformations.graph import Graph
 
     g = scene.memo(Graph)
     ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]
@@ -196,7 +190,7 @@ def results(comments: list[dict]) -> list[dict]:
 
 def fetch(key: str, data: Path) -> Path:
     """The dataset a CI run stored under ``key``, downloaded into ``data`` (once)."""
-    from .sources.github import api, download, token
+    from ..sources.github import api, download, token
 
     owner, repo, pr, head = KEY.match(key).groups()
     name = artifact_name(pr, head)

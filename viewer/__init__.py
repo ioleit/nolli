@@ -1,1 +1,1 @@
-"""The nolli viewer, served by serve.py (``nolli view``)."""
+"""The nolli viewer: the page, its scripts and styles, served by nolli/server/serve.py (``nolli view``)."""

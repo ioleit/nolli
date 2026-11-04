@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from ..model import address
-from ..scene import Scene
+from ..model.scene import Scene
 from .graph import Graph
 from .rollup import hidden_by_role, image_aliases, init_anchor_dirs, is_init, reveal_scores, visible_from_expanded
 

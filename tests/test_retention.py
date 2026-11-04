@@ -1,4 +1,4 @@
-"""Keeping a cache within bounds (nolli/retention.py), and nolli serve keeping its own."""
+"""Keeping a cache within bounds (nolli/server/retention.py), and nolli serve keeping its own."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ import time
 from pathlib import Path
 
 import pytest
-from nolli.keys import Repo
-from nolli.viewer.hosted import KINDS, Job, Plan, Site
+from nolli.model.keys import Repo
+from nolli.server.hosted import KINDS, Job, Plan, Site
 
-from nolli import retention
-from nolli.retention import LeastRecentlyUsed, parse_size, scan, sweep
+from nolli.server import retention
+from nolli.server.retention import LeastRecentlyUsed, parse_size, scan, sweep
 
 
 def make(cache: Path, rel: str, size: int, used: float) -> Path:

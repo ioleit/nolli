@@ -4,9 +4,9 @@
   its properties (a dict) or None. The file tree's overlay says a file's role and size, a
   language's says which names a module defines, the change overlay what a change did to a
   box, the verdicts overlay what a review said about it. An overlay decides for itself where
-  its knowledge comes from: a map it keeps in the store (``StoredMaps``, by model key, as an
-  extractor saved it), other overlays (``element.get``), or what the element stands for in
-  the models it was made from (``element.sources``).
+  its knowledge comes from: a map it keeps in the store (``nolli.store.StoredOverlay``, by
+  model key, as an extractor saved it), other overlays (``element.get``), or what the element
+  stands for in the models it was made from (``element.sources``).
 - An *element* is a node or an edge as an overlay sees it: its key and kind, and for an
   edge its two ends; its place in the structure; what it stands for (``sources``: role ->
   elements of the source scenes: ``source`` for a projection, ``base`` and ``head`` for a
@@ -15,8 +15,8 @@
   into. It hands out elements and keeps what overlays answered (once per scene and element;
   an overlay asking for itself about the same element is an error, not a loop).
 
-Transformations (``nolli/transform/``) take a scene and return one; exporters
-(``nolli/export/``) take a scene.
+Transformations (``nolli/transformations/``) take a scene and return one; formats
+(``nolli/formats/``) take a scene.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterable, Mapping
 from functools import cached_property
 from typing import Any, Protocol
 
-from .model import CONTAIN, EdgeKey, Key, Model
+from . import CONTAIN, EdgeKey, Key, Model
 
 
 class Overlay(Protocol):
@@ -36,21 +36,6 @@ class Overlay(Protocol):
 
 class OverlayCycle(Exception):
     pass
-
-
-class StoredMaps(Protocol):
-    """One overlay's maps in a store, by model key (``MapStore.open_maps(name)``): an overlay
-    sees only the maps saved under its name."""
-
-    def load(self, model_key: str) -> Mapping[Key, dict]: ...
-
-    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None: ...
-
-    def load_about(self, model_key: str) -> dict | None: ...
-
-
-class MapStore(Protocol):
-    def open_maps(self, name: str) -> StoredMaps: ...
 
 
 class Element:
@@ -222,82 +207,3 @@ class FixedOverlay:
 
     def compute(self, element: Element) -> dict | None:
         return self.values.get(element.key)
-
-
-class StoredOverlay:
-    """What the store keeps under this name for the element's model. ``follow``: an element
-    with nothing stored takes what its namesake in a source has (a projected box what the
-    node it is says; a change's node what head, else base, says)."""
-
-    export = False  # an extractor's word: read by other overlays, not shown as it is
-
-    def __init__(self, name: str, stored: StoredMaps, follow: bool = True) -> None:
-        self.name, self.stored, self.follow = name, stored, follow
-
-    def compute(self, element: Element) -> dict | None:
-        own = self.stored.load(element.model_key).get(element.key)
-        if own is not None or not self.follow:
-            return own
-        same = element.find_same()
-        return same.get(self.name) if same is not None else None
-
-
-class FactsOverlay:
-    """``facts``: what all extractors said, together (each wrote different attributes; an
-    edge's facts and counts add up), for code that does not care which one said it."""
-
-    name = "facts"
-    export = False
-
-    def __init__(self, names: Iterable[str]) -> None:
-        self.names = tuple(names)
-
-    def compute(self, element: Element) -> dict | None:
-        parts = [v for n in self.names if (v := element.get(n))]
-        if not parts:
-            same = element.find_same()
-            return same.get(self.name) if same is not None else None
-        if not element.is_edge:
-            out: dict = {}
-            for p in parts:
-                out.update(p)
-            return out
-        return {"count": sum(p.get("count", 0) for p in parts), "facts": [f for p in parts for f in p.get("facts", [])]}
-
-
-class MemoryMaps:
-    """Maps in memory (a model just extracted, tests)."""
-
-    def __init__(self, maps: dict[str, dict[str, dict[Key, dict]]] | None = None) -> None:
-        self.maps = maps if maps is not None else {}  # name -> model key -> values
-        self.about: dict[tuple[str, str], dict] = {}
-
-    def open_maps(self, name: str) -> "_MemoryHandle":
-        return _MemoryHandle(self, name)
-
-
-class _MemoryHandle:
-    def __init__(self, store: MemoryMaps, name: str) -> None:
-        self.store, self.name = store, name
-
-    def load(self, model_key: str) -> Mapping[Key, dict]:
-        return self.store.maps.get(self.name, {}).get(model_key, {})
-
-    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None:
-        self.store.maps.setdefault(self.name, {})[model_key] = dict(values)
-        if about is not None:
-            self.store.about[(self.name, model_key)] = about
-
-    def load_about(self, model_key: str) -> dict | None:
-        return self.store.about.get((self.name, model_key))
-
-
-def make_base_overlays(model: Model, maps: MapStore) -> list[Overlay]:
-    """The overlays of an extracted model: one per extractor that said something (the model
-    names them, ``meta["overlays"]``), and ``facts`` over all of them."""
-    names = model.meta.get("overlays") or []
-    return [*(StoredOverlay(n, maps.open_maps(n)) for n in names), FactsOverlay(names)]
-
-
-__all__ = ["CONTAIN", "Element", "FactsOverlay", "FixedOverlay", "MapStore", "MemoryMaps", "Overlay", "OverlayCycle",
-           "Scene", "StoredMaps", "StoredOverlay", "make_base_overlays"]

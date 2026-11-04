@@ -1,7 +1,7 @@
-"""Reviews in the viewer's server (viewer/reviews.py, /api/review): where the verdicts came from,
+"""Reviews in the viewer's server (nolli/server/reviews.py, /api/review): where the verdicts came from,
 whether a review agent can run, a run's states through start, cancel and the end, uploads
 where they are stored and refused where they are not, and verdicts read from nolli's CI
-comments by nolli serve. The agent itself (nolli/reviewer.py) is replaced: it needs the API."""
+comments by nolli serve. The agent itself (nolli/review/agent.py) is replaced: it needs the API."""
 
 from __future__ import annotations
 
@@ -18,14 +18,15 @@ import pytest
 
 import subprocess
 
-from nolli import reviewer
+from nolli.review import agent as reviewer
 from nolli.build import fetch_change, open_change_scene
-from nolli.ci import comment as ci_comment
-from nolli.keys import Repo
-from nolli.overlays.verdicts import find_provenance, keep_verdicts_file, parse_verdicts, save_verdicts
+from nolli.review.ci import comment as ci_comment
+from nolli.model.keys import Repo
+from nolli.review.verdicts import find_provenance, keep_verdicts_file, parse_verdicts, save_verdicts
 from nolli.sources import LocalRepository
+from nolli.datasets import Datasets
 from nolli.store import DirectoryStore
-from nolli.viewer import hosted, serve
+from nolli.server import hosted, serve
 
 GOOD = json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}])
 
@@ -69,12 +70,13 @@ def comment(ds: Path, verdicts: str | None = None) -> str:
     """The PR comment nolli's CI writes for the dataset, with ``verdicts`` (a verdicts.json) if
     given; the dataset itself is left as it was."""
     if verdicts is None:
-        return ci_comment(*open_dataset(ds)[:2])
+        store, _key, sc = open_dataset(ds)
+        return ci_comment(sc, Datasets(store).load_verdicts(sc))
     with tempfile.TemporaryDirectory() as tmp:
         shutil.copytree(ds, Path(tmp) / ds.name)
         store, key, sc = open_dataset(Path(tmp) / ds.name)
         keep_verdicts_file(store, key, sc, verdicts, {"by": "agent"})
-        return ci_comment(store, key)
+        return ci_comment(sc, Datasets(store).load_verdicts(sc))
 
 
 def bot_comment(text: str, login: str = "nolli-review[bot]", n: int = 1) -> dict:
@@ -208,7 +210,7 @@ def test_serve_reads_the_ci_review_and_stores_no_uploads(tmp_path, dataset, monk
 
 
 def test_from_ci_without_github(dataset):
-    from nolli.viewer.reviews import ci_pull, from_ci
+    from nolli.server.reviews import ci_pull, from_ci
 
     store, key, m = open_dataset(dataset)
     assert ci_pull(m) == ("me", "shop", 7)

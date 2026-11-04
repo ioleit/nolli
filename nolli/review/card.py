@@ -7,9 +7,10 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 
 from ..model import EdgeKey
-from ..prose import code, count, listing, mark, one_line, paragraphs, say
-from ..scene import Element, Scene
-from .change import find_change_scene, list_changes
+from ..formats.descriptions.prose import code, count, listing, mark, one_line, paragraphs, say
+from ..model.scene import Element, Scene
+from ..transformations.merge import find_change_scene
+from .changes import list_changes
 from .verdicts import VERDICT_RANK, find_drawn
 
 FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside

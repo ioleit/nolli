@@ -11,7 +11,7 @@ view shows a change of the git repository you are in, or of --repo: by default t
 current branch against the default branch; <change> can be a branch or commit (what it
 adds to the default branch), <base>..<head> or <base>...<head> (see nolli/sources/spec.py), or
 a GitHub pull request: its URL, or '#<n>' on the repository's GitHub remote (nolli/sources/github.py),
-or the key a CI run's PR comment gives, <owner>/<repo>#<n>@<head> (nolli/ci.py): that run's
+or the key a CI run's PR comment gives, <owner>/<repo>#<n>@<head> (nolli/review/ci.py): that run's
 dataset, downloaded from GitHub, verdicts and all.
 It builds the change's dataset under --data (default: $NOLLI_DATA, else
 $XDG_DATA_HOME/nolli or ~/.local/share/nolli), reusing one built before, then serves the
@@ -25,16 +25,16 @@ answer and, when they pass, makes them the dataset's review.
 ci is for nolli's CI workflow: comment prints the pull request comment for a run's dataset.
 
 serve is view as a service for GitHub repositories: /<owner>/<repo>/pull/<n> on its host shows
-that PR (nolli/viewer/hosted.py), for every repository its token can read.
+that PR (nolli/server/hosted.py), for every repository its token can read.
 
 extract and diff write a dataset to a directory of your choice.
 
-Under --data (nolli view, agent), a dataset is a directory of the store (nolli/store.py,
+Under --data (nolli view, agent), a dataset is a directory of the store (nolli/store/,
 DirectoryStore): a commit's key.json, model.json (its structure) and overlays/ (what each
 extractor said); a change's key.json, change.json, base/ and head/ (its commits) and its own
 overlays/ (git's hunks, a review's verdicts, which the viewer shows). extract and diff -o
 write a dataset to a directory of your choice, with what is made from it too: report.json
-(counts, unresolved references, extractor notes, nolli/export/report.py); for a change also
+(counts, unresolved references, extractor notes, nolli/formats/report.py); for a change also
 changes.json (the numbered changes), review.mmd (Mermaid with every change in source code
 unfolded) and review.md (what a review agent gets: that diagram, how to answer, and the
 change's description, from --description or pr.md in the output directory).
@@ -48,7 +48,7 @@ import sys
 import time
 from pathlib import Path
 
-from .keys import ChangeKey, Commit, ModelKey, Repo
+from .model.keys import ChangeKey, ModelKey, Repo
 from .progress import Progress
 from .store import DirectoryStore
 
@@ -66,13 +66,13 @@ def find_repo(repo: Path) -> Repo:
 def write_extras(scene, out: Path) -> dict:
     """What extract and diff -o write beside the dataset: report.json, and for a change what a
     review agent reads (changes.json, review.mmd, review.md). Returns the report."""
-    from .export.report import make_report
+    from .formats.report import make_report
 
     report = make_report(scene)
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
     if "base" in scene.sources:
-        from .export.brief import make_review_brief, make_review_diagram
-        from .overlays.change import list_changes
+        from .review.brief import make_review_brief, make_review_diagram
+        from .review.changes import list_changes
 
         (out / "changes.json").write_text(json.dumps(list_changes(scene), indent=1))
         mmd = make_review_diagram(scene)
@@ -141,7 +141,10 @@ class Built:
     """A change (or commit), built or found in the store: what view and the agent commands work on."""
 
     def __init__(self, repo: Path, spec, store: DirectoryStore, key: ModelKey):
+        from .datasets import Datasets
+
         self.repo, self.spec, self.store, self.key = repo, spec, store, key
+        self.datasets = Datasets(store)
         self.out = store.locate(key)
         self.name = self.out.name
 
@@ -149,7 +152,7 @@ class Built:
 def build(args: argparse.Namespace, cmd: str) -> Built | None:
     """Resolve args.change in args.repo and build it unless a fresh one is stored. Progress goes
     to stderr; None (after saying why) if the change cannot be resolved."""
-    from .build import fetch_change, fetch_whole_model, is_fresh
+    from .datasets import Datasets
     from .sources import FetchError, LocalRepository, github
     from .sources.git import GitError
     from .sources.spec import ChangeError, find_toplevel, resolve, whole
@@ -168,21 +171,18 @@ def build(args: argparse.Namespace, cmd: str) -> Built | None:
         return None
     key_repo = Repo.from_remote(host["remote"]) if host.get("remote") else find_repo(repo)
     key: ModelKey = key_repo.make_change(spec.base, spec.head) if spec.is_diff else key_repo.make_commit(spec.head)
-    store, sources = DirectoryStore(find_data_dir(args.data)), LocalRepository(repo)
+    store = DirectoryStore(find_data_dir(args.data))
+    datasets = Datasets(store, LocalRepository(repo))
     b = Built(repo, spec, store, key)
     what = f"{spec.base[:7]}..{spec.head[:7]}" if spec.is_diff else f"{spec.head[:7]} (the whole repository)"
     print(f"{repo.name}: {what}  {spec.title}", file=sys.stderr)
-    stored = store.load_change(key) if isinstance(key, ChangeKey) else store.load_model(key)
-    if args.rebuild or stored is None or not is_fresh(stored):
+    if args.rebuild or not datasets.is_built(key):
         print(f"building {b.out}", file=sys.stderr, flush=True)
         t0 = time.time()
         try:
-            if isinstance(key, ChangeKey):
-                fetch_change(store, sources, key, rebuild=args.rebuild, progress=Progress(), about={
-                    "pr": host.get("pr"), "title": spec.title, "description": spec.description, "budget": args.budget})
-                m = store.load_model(key.list_sides()[1])
-            else:
-                m = fetch_whole_model(store, sources, key, rebuild=args.rebuild, progress=Progress())
+            datasets.build(key, rebuild=args.rebuild, progress=Progress(), about={
+                "pr": host.get("pr"), "title": spec.title, "description": spec.description, "budget": args.budget})
+            m = store.load_model(key.list_sides()[1] if isinstance(key, ChangeKey) else key)
         except (ChangeError, FetchError, GitError) as exc:
             print(f"nolli {cmd}: {exc}", file=sys.stderr)
             return None
@@ -203,7 +203,7 @@ def cmd_view(args: argparse.Namespace) -> int:
     ds = Path(args.change).expanduser() if args.change else None
     if ds and (ds / "key.json").is_file():  # a dataset directory, as nolli agent brief prints it
         return serve(DirectoryStore(ds.resolve().parent), ds.resolve().name, args.host, args.port, not args.no_open)
-    from . import ci
+    from .review import ci
     from .sources.spec import ChangeError
 
     if ci.is_key(args.change):  # a CI run's result, as its PR comment names it
@@ -223,7 +223,7 @@ def cmd_view(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    from .viewer.hosted import main as hosted
+    from .server.hosted import main as hosted
 
     argv = ["--host", args.host, "--budget", str(args.budget)]
     argv += ["--cache", args.cache] if args.cache else []
@@ -243,9 +243,7 @@ def find_agent_dir(store: DirectoryStore, name: str) -> Path:
 def cmd_brief(args: argparse.Namespace) -> int:
     """nolli agent brief: build the change and say, as JSON on stdout, where the brief is, where
     the verdicts go and how to check them."""
-    from .build import open_change_scene
-    from .export.brief import make_review_brief
-    from .overlays.verdicts import find_provenance as provenance
+    from .review.brief import make_review_brief
 
     b = build(args, "agent brief")
     if b is None:
@@ -257,12 +255,12 @@ def cmd_brief(args: argparse.Namespace) -> int:
         return 2
     work = find_agent_dir(b.store, b.name)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "review.md").write_text(make_review_brief(open_change_scene(b.store, b.key)))
+    (work / "review.md").write_text(make_review_brief(b.datasets.open_scene(b.key)))
     verdicts = work / "verdicts.json"
     print(json.dumps({
         "repository": str(b.repo), "base": spec.base, "head": spec.head, "title": spec.title, "dataset": str(b.out),
         "brief": str(work / "review.md"), "verdicts": str(verdicts),
-        "has_verdicts": verdicts.is_file() or provenance(b.store, b.key) is not None,
+        "has_verdicts": verdicts.is_file() or b.datasets.find_provenance(b.key) is not None,
         "inspect": f"git -C {b.repo} diff {spec.base[:12]} {spec.head[:12]}",
         "check": f"nolli agent check {b.out}",
         "view": f"nolli view {b.out}",
@@ -273,9 +271,8 @@ def cmd_brief(args: argparse.Namespace) -> int:
 def cmd_check(args: argparse.Namespace) -> int:
     """nolli agent check: the verdicts against the diagram they answer; problems on stderr. Verdicts
     that pass become the change's review."""
-    from .build import open_change_scene
-    from .export.brief import make_review_diagram
-    from .overlays.verdicts import VERDICTS, check_verdicts, save_verdicts
+    from .datasets import Datasets
+    from .review.verdicts import VERDICTS
 
     target = Path(args.dataset).expanduser().resolve()
     vf: Path | None = None
@@ -284,8 +281,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         target = target.parent.parent.parent / target.parent.name if target.parent.parent.name == ".agent" else target.parent
     ds = target if (target / "key.json").is_file() else find_data_dir(args.data) / args.dataset
     store = DirectoryStore(ds.parent)
-    key = store.find_key(ds.name)
-    scene = open_change_scene(store, key) if isinstance(key, ChangeKey) else None
+    datasets = Datasets(store)
+    key = datasets.find_key(ds.name)
+    scene = datasets.open_scene(key) if isinstance(key, ChangeKey) else None
     if scene is None:
         print(f"nolli agent check: {args.dataset} is not a change's dataset", file=sys.stderr)
         return 2
@@ -296,28 +294,30 @@ def cmd_check(args: argparse.Namespace) -> int:
     if not vf.is_file():
         print(f"nolli agent check: no {vf}", file=sys.stderr)
         return 1
-    verdicts, errors = check_verdicts(scene, make_review_diagram(scene), vf.read_text())
+    verdicts, errors = datasets.check_verdicts(scene, vf.read_text())
     for e in errors:
         print(e, file=sys.stderr)
     counts = {v: sum(x["verdict"] == v for x in verdicts) for v in reversed(VERDICTS)}
     print(json.dumps({"ok": not errors, "verdicts": len(verdicts), **counts, "errors": len(errors)}))
     if errors:
         return 1
-    save_verdicts(store, key, verdicts, {"by": "agent"})
+    datasets.keep_verdicts(key, verdicts, {"by": "agent"})
     return 0
 
 
 def cmd_ci_comment(args: argparse.Namespace) -> int:
     """nolli ci comment: the PR comment for a CI run's dataset, on stdout."""
-    from .ci import comment
+    from .datasets import Datasets
+    from .review.ci import comment
 
     ds = Path(args.dataset).expanduser().resolve()
-    store = DirectoryStore(ds.parent)
-    key = store.find_key(ds.name)
+    datasets = Datasets(DirectoryStore(ds.parent))
+    key = datasets.find_key(ds.name)
     try:
-        if not isinstance(key, ChangeKey):
+        scene = datasets.open_scene(key) if isinstance(key, ChangeKey) else None
+        if scene is None:
             raise ValueError(f"{ds} is not a change's dataset")
-        print(comment(store, key, args.skipped), end="")
+        print(comment(scene, datasets.load_verdicts(scene), args.skipped), end="")
     except (OSError, ValueError) as exc:
         print(f"nolli ci comment: {exc}", file=sys.stderr)
         return 2
@@ -344,7 +344,7 @@ def serve(store: DirectoryStore, name: str, host: str, port: int, open_browser: 
     import webbrowser
     from urllib.parse import quote
 
-    from .viewer.serve import make_server, preload
+    from .server.serve import make_server, preload
 
     try:
         srv = make_server(store, host, port, {name: repo} if repo else None)

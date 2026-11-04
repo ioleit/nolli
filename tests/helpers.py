@@ -6,10 +6,10 @@ import subprocess
 from pathlib import Path
 
 from nolli.build import extract, extract_commit, extract_facts, list_content, merge_built, open_built  # noqa: F401
-from nolli.export.viewer import export_scene
+from nolli.formats.viewer import export_scene
 from nolli.progress import Quiet
-from nolli.scene import Scene
-from nolli.transform.project import SceneState, project
+from nolli.model.scene import Scene
+from nolli.transformations.projection import SceneState, project
 
 
 def open_dir(path: Path, key: str = "test@0") -> Scene:

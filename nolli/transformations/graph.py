@@ -10,7 +10,7 @@ from functools import cached_property
 from typing import Iterator
 
 from ..model import CONTAIN, EdgeKey
-from ..scene import Scene
+from ..model.scene import Scene
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 

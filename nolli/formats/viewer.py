@@ -1,7 +1,7 @@
 """A projected scene as JSON, as the viewer reads it (``/api/scene``): every drawn box and
 edge with the properties every overlay gives it, under the overlay's name (``projection``,
 ``label``, ``hover``, ``change``, ``verdicts``, ``review``, and whatever else the scene has).
-An overlay that says ``export = False`` (an extractor's word, read by the others) is left out.
+The extractors' overlays (read by the others) are left out.
 Boxes come in drawing order, each naming its drawn parent; ids are stable across states
 (addresses, ``<id>#`` for a module's own code, ``kind|src|dst|subkind`` for edges), so a
 client can diff two scenes to animate the step between them."""
@@ -10,14 +10,26 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..scene import Element, Scene
+from ..model.scene import Element, Scene
 from .mermaid import find_root
 
 FORMAT = 1
 
 
+def list_extracted(scene: Scene) -> set[str]:
+    """The overlays the extractors wrote (each extracted model names its own), all the way down."""
+    out, stack = {"facts"}, [scene]
+    while stack:
+        s = stack.pop()
+        out |= set(s.model.meta.get("overlays") or [])
+        stack.extend(s.sources.values())
+    return out
+
+
 def list_exported(scene: Scene) -> list[str]:
-    return [n for n, o in scene.overlays.items() if getattr(o, "export", True)]
+    """Every overlay but the extractors': they are read by the others, not shown as they are."""
+    left_out = list_extracted(scene)
+    return [n for n in scene.overlays if n not in left_out]
 
 
 def describe(el: Element, names: list[str]) -> dict:
@@ -41,7 +53,7 @@ def export_scene(scene: Scene) -> dict:
            "overlays": names}
     root = find_root(scene)
     if root is not None and "base" in root.sources:
-        from ..overlays.change import Links, index_changes, summarize_change
+        from ..transformations.merge import Links, index_changes, summarize_change
 
         statuses: dict[str, int] = defaultdict(int)
         for e in edges:

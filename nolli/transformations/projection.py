@@ -23,7 +23,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 
 from ..model import CONTAIN, USE, EdgeKey, Key, Model, address, metamodel
-from ..scene import FixedOverlay, Scene
+from ..model.scene import FixedOverlay, Scene
 from .graph import Graph
 from .rollup import (
     HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, drawn_parent, hidden_by_role, image_aliases, is_init, lift,
@@ -53,6 +53,7 @@ class SceneState:
     utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
     side: str = "both"  # a change: "base" or "head" draws one commit, "both" the merged picture
     max_lines: int = DEFAULT_MAX_LINES  # lines drawn between two boxes at most (rollup.lift)
+    focus: list[str] | None = None  # what the "changes" preset unfolds; the caller says (for a change: nolli.review.changes.find_review_cut)
 
 
 @dataclass
@@ -85,10 +86,8 @@ def find_preset_cut(g: Graph, st: SceneState, hidden: set[str]) -> set[str]:
     """The containers a preset unfolds (a change's preset on a plain scene: the default cut)."""
     if st.preset == "folded":
         return {address.REPO_ROOT}
-    if st.preset == "changes":  # what the scene's overlays focus on (a change: what it changed)
-        focus = [f for o in g.scene.overlays.values() if hasattr(o, "list_focus") and (f := o.list_focus(g.scene)) is not None]
-        if focus:
-            return {address.REPO_ROOT, *(x for f in focus for x in f)}
+    if st.preset == "changes" and st.focus is not None:  # what the caller focuses on
+        return {address.REPO_ROOT, *st.focus}
     if st.preset == "unfolded":
         return {x for x in g.nodes if x not in hidden and g.children(x)}
     hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
@@ -272,8 +271,8 @@ def project(scene: Scene, st: SceneState) -> Scene:
         r = g.attrs(x).get("role")
         if r in by_role and kind in ("file", "directory") and not g.attrs(x).get("root"):
             by_role[r]["files" if kind == "file" else "dirs"] += 1
-    state = asdict(st) | {"expanded": sorted(expanded),
-                          "preset": None if st.expanded is not None else "default" if st.preset == "changes" and not g.is_change else st.preset}
+    state = {k: v for k, v in asdict(st).items() if k != "focus"} | {"expanded": sorted(expanded),
+             "preset": None if st.expanded is not None else "default" if st.preset == "changes" and st.focus is None else st.preset}
     drawn_count = sum(1 for x in order if not (root_group(x) and x not in touched))
     meta = {"projection": {"state": state, "order": order, "groups": groups, "roles": [{"id": r, **n} for r, n in by_role.items()],
                            "residue": residue, "utilities": sorted(utilities), "expanded": sorted(expanded),
@@ -284,24 +283,3 @@ def project(scene: Scene, st: SceneState) -> Scene:
     key = "project:" + hashlib.sha1(f"{scene.model.key}|{sorted(asdict(st).items())}".encode()).hexdigest()[:16]
     model = Model(key, kinds, [*contain, *keys], refs={"source": {k: tuple(v) for k, v in refs.items()}}, meta=meta, check=False)
     return Scene(model, [*scene.overlays.values(), FixedOverlay("projection", values)], {"source": scene})
-
-
-def parse_state(q: dict[str, str]) -> SceneState:
-    """The viewer's URL parameters (the same keys as its location hash) as a state."""
-    st = SceneState()
-    if q.get("x"):
-        st.expanded = [x for x in q["x"].split(",") if x]
-    elif q.get("p") in PRESETS:
-        st.preset = q["p"]
-    if q.get("r") is not None:
-        st.roles = [r for r in q["r"].split(",") if r]
-    if q.get("b"):
-        st.budget = int(q["b"])
-    if q.get("g") is not None:
-        st.groups = [x for x in q["g"].split(",") if x]
-    st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
-    if q.get("s") in ("base", "head"):
-        st.side = q["s"]
-    if q.get("ml"):
-        st.max_lines = max(1, int(q["ml"]))
-    return st

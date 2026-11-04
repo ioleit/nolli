@@ -2,23 +2,24 @@
 changed (the reviewer looks at the same picture), how to answer, and the change's
 description; and the diagram itself (``review.mmd``), the change with every area that
 changed in source code unfolded. Verdicts come back as JSON on the diagram's node ids
-(``nolli/overlays/verdicts.py``)."""
+(``nolli/review/verdicts.py``)."""
 
 from __future__ import annotations
 
 import re
 
-from ..overlays.change import Links, summarize_change
-from ..scene import Scene
-from ..transform.project import DEFAULT_BUDGET, SceneState, project
-from .mermaid import render
+from ..transformations.merge import Links, summarize_change
+from .changes import find_review_cut
+from ..model.scene import Scene
+from ..transformations.projection import DEFAULT_BUDGET, SceneState, project
+from ..formats.mermaid import render
 
 
 def make_review_scene(scene: Scene) -> Scene:
     """The change as the review diagram draws it: every area that changed unfolded. The same
     for the same change and version of nolli, so verdicts on its ids stay valid."""
     budget = (scene.model.meta.get("change") or {}).get("budget") or DEFAULT_BUDGET
-    return project(scene, SceneState(budget=budget, preset="changes"))
+    return project(scene, SceneState(budget=budget, preset="changes", focus=find_review_cut(scene)))
 
 
 def make_review_diagram(scene: Scene) -> str:

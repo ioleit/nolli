@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from nolli.sources import github
-from nolli.viewer import hosted
+from nolli.server import hosted
 
 
 def test_from_env():

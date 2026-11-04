@@ -1,5 +1,5 @@
 // The viewer only lays out and draws. Which boxes exist, which edges connect them, and
-// every label, badge and emphasis flag come from the server: /api/scene (nolli/scene.py).
+// every label, badge and emphasis flag come from the server: /api/scene (nolli/model/scene.py).
 //
 //   state.js    scene state and viewer settings, URL hash, scene query
 //   layout.js   scene -> positions and edge routes (ELK), no DOM

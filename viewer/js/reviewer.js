@@ -1,6 +1,6 @@
 // The review, at the top of the review panel's list: where the verdicts shown came from, and
 // "Review structural changes", which starts a review agent on the server (POST /api/review,
-// viewer/reviews.py). A run takes minutes: the block follows it (GET /api/review) wherever
+// nolli/server/reviews.py). A run takes minutes: the block follows it (GET /api/review) wherever
 // the reader goes meanwhile, says what the agent is doing, and can cancel it; the tab's
 // title says it too. Without an API key where nolli runs the button is disabled, and "Other
 // ways to review" says how to add one, and how to review with your own coding agent

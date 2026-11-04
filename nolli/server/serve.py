@@ -1,35 +1,32 @@
 """Serve the nolli viewer and the models of a store.
 
     nolli view …                                      (installed: builds a model, then serves)
-    python -I viewer/serve.py --data ~/data/nolli [--host 127.0.0.1] [--port 8720]   (a checkout)
+    python -m nolli.server.serve --data ~/data/nolli [--host 127.0.0.1] [--port 8720]
 
-Static files come from this directory. Models are named as the store names them (for nolli
-view, the directories under --data; nolli/store.py): ``/api/list`` lists them, newest first;
+Static files are the viewer's (``viewer/``, installed as ``nolli.viewer``). Models are named as the store names them (for nolli
+view, the directories under --data; nolli/store/): ``/api/list`` lists them, newest first;
 ``/api/scene?d=<name>&...`` returns the scene a scene state projects (``parse_state`` here
-reads the viewer's location-hash keys; ``nolli/transform/project.py``), as JSON with every
-overlay (``nolli/export/viewer.py``), ``/api/mermaid?d=<name>&...`` the same scene as Mermaid
-(``nolli/export/mermaid.py``; ``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid,
+reads the viewer's location-hash keys; ``nolli/transformations/projection.py``), as JSON with every
+overlay (``nolli/formats/viewer.py``), ``/api/mermaid?d=<name>&...`` the same scene as Mermaid
+(``nolli/formats/mermaid.py``; ``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid,
 ids}``, ids mapping each Mermaid node id to its scene id); ``/api/node?d=<name>&id=<node>``
-returns the details of one box in a change (``nolli/overlays/change.py``), ``/api/changes?d=``
+returns the details of one box in a change (``nolli/transformations/merge.py``), ``/api/changes?d=``
 its numbered changes and the review's verdicts, ``/api/brief?d=`` what a review agent gets
 (Markdown), and ``POST /api/verdicts?d=`` stores a review's verdicts. ``/api/review?d=`` says
 where the verdicts came from and whether a review agent can run here; ``POST /api/review?d=``
-starts one (it needs ANTHROPIC_API_KEY and the change's commits, viewer/reviews.py),
+starts one (it needs ANTHROPIC_API_KEY and the change's commits, reviews.py),
 ``POST /api/review/cancel?d=`` stops it. Every read of a model goes through the store, which
 may refuse it (NotAllowed): the answer is then 404, as for no such model.
 
 What the server works with (``Services``: the store, where review agents get commits, the
 review runs) lives on the server object, which every request's handler reaches as
-``self.server``. Needs only the standard library, but for the review agent. Installed, this
-is ``nolli.viewer.serve``; run as a script from a checkout, it imports the nolli package of
-that checkout, not an installed copy.
+``self.server``. Needs only the standard library, but for the review agent.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -38,26 +35,23 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote
 
-HERE = Path(__file__).resolve().parent
-if not __package__:
-    sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
+import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 
-from nolli.build import open_change_scene, open_commit_scene  # noqa: E402
-from nolli.export.brief import make_review_brief  # noqa: E402
-from nolli.export.mermaid import list_ids, render  # noqa: E402
-from nolli.export.viewer import export_scene  # noqa: E402
-from nolli.keys import ChangeKey, ModelKey, NotAllowed  # noqa: E402
-from nolli.overlays.change import detail_box, list_changes  # noqa: E402
-from nolli.overlays.verdicts import Verdicts, describe_verdicts, find_diagram_ids, read_verdicts  # noqa: E402
-from nolli.scene import Scene  # noqa: E402
+HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
+
+from nolli.datasets import Datasets  # noqa: E402
+from nolli.formats.mermaid import list_ids, render  # noqa: E402
+from nolli.formats.viewer import export_scene  # noqa: E402
+from nolli.model.keys import ChangeKey, ModelKey, NotAllowed  # noqa: E402
+from nolli.model.scene import Scene  # noqa: E402
+from nolli.review.brief import make_review_brief  # noqa: E402
+from nolli.review.changes import detail_box, list_changes  # noqa: E402
+from nolli.review.verdicts import describe_verdicts, find_diagram_ids, read_verdicts  # noqa: E402
 from nolli.sources import LocalRepository, Sources  # noqa: E402
 from nolli.store import DirectoryStore, ModelStore  # noqa: E402
-from nolli.transform.project import parse_state, project  # noqa: E402
+from nolli.transformations.projection import DEFAULT_UTILITY_IN, PRESETS, SceneState  # noqa: E402
 
-try:  # installed: nolli.viewer.reviews; from a checkout, reviews.py beside this file
-    from .reviews import Reviews, provenance, save_verdicts
-except ImportError:
-    from reviews import Reviews, provenance, save_verdicts  # type: ignore[no-redef]
+from .reviews import Reviews  # noqa: E402
 
 
 @dataclass
@@ -71,6 +65,10 @@ class Services:
     repos: dict[str, Path] = field(default_factory=dict)  # or, by model name, the local repository it came from
     uploads: bool = True  # POST /api/verdicts stores a review's verdicts
 
+    @property
+    def datasets(self) -> Datasets:
+        return Datasets(self.store, self.sources)
+
     def find_sources(self, name: str) -> Sources | None:
         """Where a review agent run on the model ``name`` gets the change's commits."""
         return LocalRepository(self.repos[name]) if name in self.repos else self.sources
@@ -82,28 +80,38 @@ class Server(ThreadingHTTPServer):
         self.services = services
 
 
-def open_stored(store: ModelStore, key: ModelKey) -> Scene | None:
-    """The scene of a stored model: a change merged from its commits, or one commit."""
-    return open_change_scene(store, key) if isinstance(key, ChangeKey) else open_commit_scene(store, key)
-
-
 def preload(store: ModelStore, name: str) -> None:
     """Start reading a model in the background, for the viewer's first request."""
     def load() -> None:
         try:
             key = store.find_key(name)
             if key:
-                open_stored(store, key)
+                Datasets(store).open_scene(key)
         except (NotAllowed, OSError, ValueError):
             pass
 
     threading.Thread(target=load, daemon=True).start()
 
 
-def load_verdicts(scene: Scene) -> list[dict]:
-    """A change's kept verdicts."""
-    v = scene.overlays.get("verdicts")
-    return v.load(scene) if isinstance(v, Verdicts) else []
+def parse_state(q: dict[str, str]) -> SceneState:
+    """The viewer's URL parameters (the same keys as its location hash) as a scene state."""
+    st = SceneState()
+    if q.get("x"):
+        st.expanded = [x for x in q["x"].split(",") if x]
+    elif q.get("p") in PRESETS:
+        st.preset = q["p"]
+    if q.get("r") is not None:
+        st.roles = [r for r in q["r"].split(",") if r]
+    if q.get("b"):
+        st.budget = int(q["b"])
+    if q.get("g") is not None:
+        st.groups = [x for x in q["g"].split(",") if x]
+    st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
+    if q.get("s") in ("base", "head"):
+        st.side = q["s"]
+    if q.get("ml"):
+        st.max_lines = max(1, int(q["ml"]))
+    return st
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -119,10 +127,10 @@ class Handler(SimpleHTTPRequestHandler):
     def open_model(self, name: str | None) -> tuple[ModelKey, Scene] | None:
         """The scene of the model ``name``, through the store; None if there is none, or the store
         refuses it."""
-        store = self.services.store
+        datasets = self.services.datasets
         try:
-            key = store.find_key(name or "")
-            sc = open_stored(store, key) if key else None
+            key = datasets.find_key(name or "")
+            sc = datasets.open_scene(key) if key else None
         except NotAllowed:
             return None
         return (key, sc) if key and sc is not None else None
@@ -137,7 +145,7 @@ class Handler(SimpleHTTPRequestHandler):
         if why is None and self.services.find_sources(name) is None:
             why = "repo"
         job = reviews.job(name)
-        return {"verdicts": provenance(self.services.store, key), "run": job.status() if job else None,
+        return {"verdicts": self.services.datasets.find_provenance(key), "run": job.status() if job else None,
                 "can_run": why is None, "why_not": why, "uploads": self.services.uploads,
                 "model": reviews.reviewer.model(), "server": "view"}
 
@@ -173,7 +181,7 @@ class Handler(SimpleHTTPRequestHandler):
         change = isinstance(key, ChangeKey)
         if path == "/api/scene":
             try:
-                out = export_scene(project(sc, parse_state(q)))
+                out = export_scene(self.services.datasets.draw(sc, parse_state(q)))
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
@@ -184,7 +192,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(out)
         elif path == "/api/mermaid":
             try:
-                ps = project(sc, parse_state(q))
+                ps = self.services.datasets.draw(sc, parse_state(q))
                 text = render(ps, fade=q.get("nodim") != "1")
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
@@ -195,7 +203,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_text(text)
         elif path == "/api/changes":
             self.send_json({"items": list_changes(sc) if change else [],
-                            "verdicts": describe_verdicts(sc, load_verdicts(sc)) if change else []})
+                            "verdicts": describe_verdicts(sc, self.services.datasets.load_verdicts(sc)) if change else []})
         elif path == "/api/node":
             d = detail_box(sc, q.get("id", "")) if change else None
             if d is None:
@@ -244,7 +252,7 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError, KeyError, TypeError) as exc:
             self.send_json({"error": str(exc)}, 400)
             return
-        save_verdicts(self.services.store, found[0], v, {"by": "upload"})
+        self.services.datasets.keep_verdicts(found[0], v, {"by": "upload"})
         self.send_json({"saved": len(v)})
 
     def send_text(self, text: str, ctype: str = "text/plain; charset=utf-8") -> None:
