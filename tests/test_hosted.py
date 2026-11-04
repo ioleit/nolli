@@ -13,9 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from nolli.change import ChangeError
+from nolli.keys import Repo
 from nolli.progress import SHORT, Progress
-from nolli.store import LocalRepository, Repo
+from nolli.sources import LocalRepository
+from nolli.sources.spec import ChangeError
 from nolli.viewer.hosted import ROUTE, Board, Plan, Site, TooLarge, viewer_page
 
 
@@ -146,7 +147,7 @@ def test_a_step_whose_process_dies_is_an_error(site):
 
 def test_a_pull_request_is_built_from_where_it_left_its_base(site, src, monkeypatch):
     """The plan has GitHub's answer; the build needs the commits only, not GitHub."""
-    from nolli import github
+    from nolli.sources import github
 
     def no_api(*args, **kwargs):
         raise AssertionError("the build asked GitHub's API")
@@ -158,9 +159,10 @@ def test_a_pull_request_is_built_from_where_it_left_its_base(site, src, monkeypa
     job = run(site, plan)
     assert job.state == "done", job.error
     assert job.key == Repo("github.com/o/r").make_change(base, head)  # the merge base, not main's tip
-    key, m = site.find_built(plan)
-    assert key == job.key and m.meta["diff"]["pr"] == 7 and m.meta["diff"]["description"] == "the description"
-    assert m.meta["diff"]["remote"] == "https://github.com/o/r"
+    key, sc = site.find_built(plan)
+    about = sc.model.meta["change"]
+    assert key == job.key and about["pr"] == 7 and about["description"] == "the description"
+    assert about["remote"] == "https://github.com/o/r" and sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
     assert site.store.load_model(Repo("github.com/o/r").make_commit(base)) is not None  # its base, kept for the next push
 
 
@@ -168,7 +170,7 @@ def test_a_build_that_fails_leaves_no_model(site, src, monkeypatch):
     from nolli.viewer import hosted
 
     _r, _tip, base, head = src
-    monkeypatch.setattr(hosted, "fetch_change_model", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
+    monkeypatch.setattr(hosted, "fetch_change", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
     job = run(site, Plan("o_r_broken", "o/r", Repo("github.com/o/r"), key=Repo("github.com/o/r").make_change(base, head)))
     assert job.state == "error" and job.error == "half way"
     assert site.find_built(job.plan) is None

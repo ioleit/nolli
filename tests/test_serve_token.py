@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from nolli import github
+from nolli.sources import github
 from nolli.viewer import hosted
 
 

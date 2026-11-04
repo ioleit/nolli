@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 
 from nolli.cli import main
+from nolli.overlays.verdicts import parse_verdicts
+from nolli.store import DirectoryStore
 
 
 def git(repo: Path, *args: str) -> None:
@@ -44,7 +46,8 @@ def test_brief(change):
     assert not change["has_verdicts"]
     work = Path(change["verdicts"]).parent  # the agent's own directory, beside the store
     assert work == Path(change["brief"]).parent and work.parent.name == ".agent" and work.name == Path(change["dataset"]).name
-    assert sorted(f.name for f in Path(change["dataset"]).iterdir()) == ["key.json", "model.json"]
+    # the dataset holds what the store keeps of a change, nothing of the agent's
+    assert sorted(f.name for f in Path(change["dataset"]).iterdir()) == ["base", "change.json", "head", "key.json", "overlays"]
 
 
 def test_check(change, capsys):
@@ -56,14 +59,18 @@ def test_check(change, capsys):
     assert main(["agent", "check", change["dataset"]]) == 0
     assert json.loads(capsys.readouterr().out) == {"ok": True, "verdicts": 2, "blunder": 0, "problem": 0, "question": 1,
                                                     "brilliant": 0, "good": 0, "fine": 1, "errors": 0}
-    review = json.loads((Path(change["dataset"]) / "review.json").read_text())  # passing verdicts are the dataset's review
-    assert review["by"] == "agent" and len(json.loads((Path(change["dataset"]) / "verdicts.json").read_text())) == 2
+    ds = Path(change["dataset"])  # passing verdicts are the dataset's review
+    store = DirectoryStore(ds.parent)
+    key = store.find_key(ds.name).format_key()
+    assert store.open_maps("verdicts").load_about(key)["by"] == "agent"
+    assert [v["verdict"] for v in parse_verdicts(store.open_maps("verdicts").load(key))] == ["fine", "question"]
     bad = [{"target": f"{edge[2]} --> {edge[1]}", "verdict": "fine", "reason": "x"},
            {"target": "n_repo_shop_nope_py", "verdict": "bad", "reason": ""}]
     Path(change["verdicts"]).write_text(json.dumps(bad))
     assert main(["agent", "check", change["verdicts"]]) == 1
     err = capsys.readouterr().err
     assert "draws no edge" in err and "is not a node" in err and "must be one of" in err and "needs a reason" in err
+    assert len(parse_verdicts(store.open_maps("verdicts").load(key))) == 2  # failing verdicts replace no review
 
 
 def test_skill(tmp_path, capsys):

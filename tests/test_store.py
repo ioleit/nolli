@@ -1,5 +1,5 @@
-"""Where models are kept and where commits come from (nolli/store.py), and building through them
-(nolli/build.py): keys, the directory store, clones fetched from a remote, and a change's model
+"""Where models are kept (nolli/store.py, nolli/keys.py) and where commits come from
+(nolli/sources/), and building through them (nolli/build.py): keys, the directory store, clones fetched from a remote, and a change's model
 built once, its commits' models reused."""
 
 from __future__ import annotations
@@ -10,9 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from nolli.build import extract_commit, fetch_change_model, run_here
+from nolli.build import extract_commit, fetch_change, open_built, open_change_scene, run_here
+from nolli.keys import Repo
 from nolli.model import Model
-from nolli.store import CloneCache, DirectoryStore, FetchError, LocalRepository, Repo, Review, read_key
+from nolli.progress import Quiet
+from nolli.sources import CloneCache, FetchError, LocalRepository
+from nolli.store import DirectoryStore, read_key, write_change
 
 
 def git(repo: Path, *args: str) -> str:
@@ -51,32 +54,40 @@ def test_keys():
 
 
 def model(name: str) -> Model:
-    m = Model()
-    m.meta = {"repo": name}
-    return m
+    return Model(meta={"repo": name})
 
 
-def test_directory_store_keeps_models_and_reviews(tmp_path):
+def test_directory_store_keeps_models_changes_and_verdicts(tmp_path):
     store = DirectoryStore(tmp_path / "data")
     repo = Repo("github.com/o/r")
     c1, c2 = repo.make_commit("1" * 40), repo.make_commit("2" * 40)
     change = c1.make_change_to(c2.sha)
-    assert store.load_model(change) is None and store.find_key(change.format_name()) is None
-    store.save_model(c1, model("one"))
-    store.save_model(change, model("change"))
-    assert store.load_model(change).meta["repo"] == "change" and store.load_model(c1).meta["repo"] == "one"
+    assert store.load_change(change) is None and store.load_model(c1) is None and store.find_key(change.format_name()) is None
+    store.save_model(c1, model("one"), {"fs": {"repo:": {"name": "one"}}})
+    assert store.load_model(c1).meta["repo"] == "one" and store.load_model(c1).key == c1.format_key()
+    assert store.open_maps("fs").load(c1.format_key()) == {"repo:": {"name": "one"}}
+    sides = {"base": (model("base"), {}), "head": (model("head"), {"fs": {"repo:": {"name": "head"}}})}
+    store.save_change(change, {"title": "a change"}, sides, {"content": {"repo:a.py": {"status": "added"}}})
+    assert store.load_change(change) == {"title": "a change"}
+    assert store.load_model(c2).meta["repo"] == "head"  # a change's side is a commit's model too
+    assert store.load_model(c1).meta["repo"] == "one"  # the commit's own directory before the change's side
+    assert store.open_maps("fs").load(c2.format_key()) == {"repo:": {"name": "head"}}
+    assert store.open_maps("content").load(change.format_key()) == {"repo:a.py": {"status": "added"}}
     assert store.find_key(change.format_name()) == change and store.find_key(c1.format_name()) == c1
     assert set(store.list_names()) == {change.format_name(), c1.format_name()}
     for bad in ("", "..", "../data", ".hidden", "a/b"):
         assert store.find_key(bad) is None
 
-    assert store.load_review(change) is None
-    store.save_review(change, Review([{"target": "n_x", "verdict": "good", "reason": "ok", "extra": 1}], {"by": "upload"}))
-    store.save_model(change, model("rebuilt"))  # the review stays with the model it answers
-    review = store.load_review(change)
-    assert review.verdicts == [{"target": "n_x", "verdict": "good", "reason": "ok"}] and review.by == {"by": "upload"}
-    assert store.load_model(change).meta["repo"] == "rebuilt"
+    verdicts = store.open_maps("verdicts")
+    assert verdicts.load(change.format_key()) == {} and verdicts.load_about(change.format_key()) is None
+    kept = {"repo:x": {"verdicts": [{"id": "V1", "target": "n_x", "verdict": "good", "reason": "ok"}]}}
+    verdicts.save(change.format_key(), kept, {"by": "upload"})
+    store.save_change(change, {"title": "rebuilt"}, sides, {"content": {}})  # the verdicts stay with the change they answer
+    assert verdicts.load(change.format_key()) == kept and verdicts.load_about(change.format_key()) == {"by": "upload"}
+    assert store.load_change(change) == {"title": "rebuilt"}
     assert not [p for p in store.root.iterdir() if p.name.startswith(".")]  # no work left over
+    with pytest.raises(KeyError):
+        store.open_maps("verdicts").save(repo.make_commit("3" * 40).format_key(), kept)  # no model to keep them for
 
 
 def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
@@ -86,27 +97,30 @@ def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
 
     store = DirectoryStore(tmp_path / "data")
     key = Repo("github.com/o/r").make_commit("1" * 40)
-    store.save_model(key, model("before"))
+    store.save_model(key, model("before"), {})
     monkeypatch.setattr(Model, "save", broken)
     with pytest.raises(RuntimeError):
-        store.save_model(key, model("x"))
+        store.save_model(key, model("x"), {})
     assert [p.name for p in store.root.iterdir()] == [key.format_name()]  # the model kept before, no work left over
     assert store.load_model(key).meta["repo"] == "before"
 
 
 def test_a_directory_written_elsewhere_is_found_by_its_name(tmp_path):
-    """nolli diff -o writes a model under a name of its own; one from before keys were recorded
-    gets its key from its meta."""
+    """nolli diff -o writes a change under a name of its own; its key.json says what it is.
+    A directory without one (or of another format: data from before) is not read."""
+    key = Repo("github.com/o/ledger").make_change("a" * 40, "b" * 40)
     d = tmp_path / "data" / "ledger-review"
     d.mkdir(parents=True)
-    (d / "model.json").write_text(json.dumps({"meta": {}, "entities": [], "relations": []}))
-    (d / "report.json").write_text(json.dumps({"meta": {"repo": "ledger", "diff": {"base": "a" * 40, "head": "b" * 40,
-                                                                                 "remote": "https://github.com/o/ledger"}}}))
-    key = read_key(d)
-    assert key == Repo("github.com/o/ledger").make_change("a" * 40, "b" * 40)
+    write_change(d, key, {"title": "t"}, {"base": (model("ledger"), {}), "head": (model("ledger"), {})}, {})
+    old = tmp_path / "data" / "old-review"
+    old.mkdir()
+    (old / "model.json").write_text(json.dumps({"meta": {}, "entities": [], "relations": []}))
+    assert read_key(d) == key and read_key(old) is None
     store = DirectoryStore(tmp_path / "data")
-    assert store.find_key("ledger-review") == key and store.load_model(key) is not None
-    assert store.locate(key) == d
+    assert store.find_key("ledger-review") == key and store.load_change(key) == {"title": "t"}
+    assert store.locate(key) == d and store.find_key("old-review") is None
+    (d / "key.json").write_text(json.dumps({**json.loads((d / "key.json").read_text()), "format": 0}))
+    assert read_key(d) is None
 
 
 def test_local_repository_has_its_commits(src):
@@ -149,22 +163,26 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     repo = Repo(str(path))
     calls: list[str] = []
     first = repo.make_change(shas[0], shas[1])
-    m = fetch_change_model(store, sources, first, run=counting(calls), about={"title": "a cache", "budget": 12})
-    assert calls == ["extract_commit", "extract_commit", "diff_commits"]
-    assert m.meta["diff"]["title"] == "a cache" and m.meta["budget"] == 12 and m.meta["key"]["base"] == shas[0]
-    assert m.has("repo:shop/cache.py") and m.entities["repo:shop/cache.py"].attrs["diff"]["status"] == "added"
-    assert sorted(f.name for f in store.locate(first).iterdir()) == ["key.json", "model.json"]  # the model, nothing made from it
+    about = fetch_change(store, sources, first, run=counting(calls), about={"title": "a cache", "budget": 12})
+    assert calls == ["extract_commit", "extract_commit", "list_content"]
+    assert about["title"] == "a cache" and about["budget"] == 12 and about["base"] == shas[0] and about["head"] == shas[1]
+    sc = open_change_scene(store, first)
+    assert sc.model.meta["change"]["title"] == "a cache" and sc.model.meta["change"]["base"] == shas[0]
+    assert sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
+    assert sorted(f.name for f in store.locate(first).iterdir()) == ["base", "change.json", "head", "key.json", "overlays"]
+    assert sorted(f.name for f in (store.locate(first) / "overlays").iterdir()) == ["content.json"]  # nothing made from it
 
     calls.clear()
-    assert fetch_change_model(store, sources, first, run=counting(calls)).meta["diff"]["title"] == "a cache"
+    assert fetch_change(store, sources, first, run=counting(calls))["title"] == "a cache"
     assert calls == []  # stored: nothing built
-    fetch_change_model(store, sources, repo.make_change(shas[1], shas[2]), run=counting(calls))
-    assert calls == ["extract_commit", "diff_commits"]  # its base is the first change's head
+    fetch_change(store, sources, repo.make_change(shas[1], shas[2]), run=counting(calls))
+    assert calls == ["extract_commit", "list_content"]  # its base is the first change's head
 
 
 def test_extract_commit_names_the_root(src):
     path, shas = src
-    from nolli.progress import Quiet
-
-    m = extract_commit(path, shas[0], "shop", progress=Quiet())
-    assert m.entities["repo:"].name == "shop" and m.meta["commit"] == shas[0][:7] and not m.has("repo:shop/cache.py")
+    m, maps = extract_commit(path, shas[0], "shop", progress=Quiet())
+    assert m.meta["commit"] == shas[0][:7] and m.meta["repo"] == "shop" and not m.has("repo:shop/cache.py")
+    assert m.has("repo:shop/store.py")
+    m.key = "shop@0"
+    assert open_built(m, maps).find_element("repo:").get("facts")["name"] == "shop"

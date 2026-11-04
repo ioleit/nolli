@@ -450,6 +450,7 @@ def lift(g: Graph, edges: list[RolledEdge], expanded: set[str], max_lines: int =
                 out[k] = e
         return list(out.values())
 
+    done: set[tuple[str, str]] = set()  # pairs lifted as far as they go: never again (a pair of provide lines may stay over)
     while True:
         # every pair of disjoint drawn boxes a line passes between, with its lines
         pairs: dict[tuple[str, str], list[RolledEdge]] = defaultdict(list)
@@ -459,11 +460,12 @@ def lift(g: Graph, edges: list[RolledEdge], expanded: set[str], max_lines: int =
                 for b in up_d:
                     if a != b and a not in up_d and b not in up_s:
                         pairs[(a, b)].append(e)
-        bad = [(a, b) for (a, b), es in pairs.items() if len(es) > max_lines]
+        bad = [(a, b) for (a, b), es in pairs.items() if len(es) > max_lines and (a, b) not in done]
         if not bad:
             break
         # the finest pair first: deepest, then the most crowded; names settle the rest
         a, b = max(bad, key=lambda ab: (len(above(ab[0])) + len(above(ab[1])), len(pairs[ab]), ab[0], ab[1]))
+        done.add((a, b))
         es = pairs[(a, b)]
         spread_src, spread_dst = len({e.src for e in es}), len({e.dst for e in es})
         liftable_dst = [e for e in es if e.kind != PROVIDE]
