@@ -26,8 +26,9 @@ from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 
-from ..model import address
-from ..progress import Progress, Quiet
+from nolli.model import address
+from nolli.progress import Progress, Quiet
+
 from .facts import Facts
 
 

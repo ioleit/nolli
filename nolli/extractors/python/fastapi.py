@@ -14,8 +14,9 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
-from ...model import address
-from .. import Context, api
+from nolli.extractors import Context, api
+from nolli.model import address
+
 from .imports import module_name_of
 from .resolve import module_candidates
 

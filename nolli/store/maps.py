@@ -11,8 +11,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from ..model import EdgeKey, FormatError, Key
-from ..model.scene import Element
+from nolli.model import EdgeKey, FormatError, Key
+from nolli.model.scene import Element
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
 

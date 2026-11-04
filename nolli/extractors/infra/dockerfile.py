@@ -15,9 +15,9 @@ import re
 import shlex
 from pathlib import PurePosixPath
 
-from ...model import ALLOCATE, CONTAIN, USE, address
-from .. import Context
-from ..facts import Entity, Provenance, Relation
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.model import ALLOCATE, CONTAIN, USE, address
 
 PY_MODULE = re.compile(r"(?:python[\d.]*\s+-m\s+|uvicorn\s+|gunicorn\s+)([A-Za-z_][\w.]*)(?::\w+)?")
 SCRIPT = re.compile(r"(?:^|\s)((?:[\w./-]+/)?[\w-]+\.(?:py|sh|js|mjs|ts))(?=\s|$)")

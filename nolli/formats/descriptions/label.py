@@ -6,9 +6,10 @@ text, where the word-like icons stay in front ("svc api", "GET health")."""
 
 from __future__ import annotations
 
-from ...model import address
-from ...model.scene import Element
-from ...model.vocabulary import read_file
+from nolli.model import address
+from nolli.model.scene import Element
+from nolli.model.vocabulary import read_file
+
 from .names import format_name, read_api
 
 SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "function": "f"}  # model.SYMBOL_KINDS

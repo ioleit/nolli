@@ -8,10 +8,10 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cached_property
 
-from ..formats.descriptions.names import format_name
-from ..model import CONTAIN, EdgeKey
-from ..model.scene import Scene
-from ..model.vocabulary import count_references, read_file, read_symbols
+from nolli.formats.descriptions.names import format_name
+from nolli.model import CONTAIN, EdgeKey
+from nolli.model.scene import Scene
+from nolli.model.vocabulary import count_references, read_file, read_symbols
 
 
 @dataclass

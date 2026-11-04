@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import PurePosixPath
 
-from ..model import address
+from nolli.model import address
+
 from . import Context, languages
 from .facts import Entity, Provenance
 

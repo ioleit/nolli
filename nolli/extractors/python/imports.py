@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import ast
 
-from ...model import USE, address
-from .. import Context
-from ..facts import Entity, Provenance, Relation
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.model import USE, address
 
 
 def module_name_of(rel: str) -> str:

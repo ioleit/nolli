@@ -9,8 +9,9 @@ import threading
 from collections.abc import Mapping
 from pathlib import Path
 
-from ..keys import ChangeKey, Commit, ModelKey, Repo, dump_key, parse_key
-from ..model import Key, Model
+from nolli.keys import ChangeKey, Commit, ModelKey, Repo, dump_key, parse_key
+from nolli.model import Key, Model
+
 from .maps import dump_map, parse_map
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)

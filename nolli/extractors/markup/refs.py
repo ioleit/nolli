@@ -22,10 +22,10 @@ from __future__ import annotations
 import posixpath
 import re
 
-from ...model import USE, address
-from .. import Context
-from ..facts import Provenance, Relation
-from ..interfaces import CDN, ensure_ext, package_name
+from nolli.extractors import Context
+from nolli.extractors.facts import Provenance, Relation
+from nolli.extractors.interfaces import CDN, ensure_ext, package_name
+from nolli.model import USE, address
 
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 TEMPLATE = re.compile(r"\{\{|\{%|\$\{|<%")

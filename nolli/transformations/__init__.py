@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
-from ..model import Key, Model
-from ..model.scene import Overlay, Scene
+from nolli.model import Key, Model
+from nolli.model.scene import Overlay, Scene
 
 Transformation = Callable[..., "Model | tuple[Model, Overlay]"]
 

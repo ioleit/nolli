@@ -23,8 +23,9 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
-from ..model import CONTAIN, USE, EdgeKey, Key, Model, address, metamodel
-from ..model.scene import Element, FixedOverlay, Scene
+from nolli.model import CONTAIN, USE, EdgeKey, Key, Model, address, metamodel
+from nolli.model.scene import Element, FixedOverlay, Scene
+
 from .reading import Reading
 from .rollup import (
     HIDDEN_ROLES_DEFAULT,

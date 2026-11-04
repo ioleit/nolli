@@ -26,9 +26,9 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from ..model import address
-from ..model.scene import Scene
-from ..sources.spec import ChangeError
+from nolli.model import address
+from nolli.model.scene import Scene
+from nolli.sources.spec import ChangeError
 
 FORMAT = 1  # of the result a comment carries; one of another format is not read
 
@@ -68,7 +68,8 @@ def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None =
     change's review diagram as a scene (``Datasets.draw_review``). ``skipped`` says
     why no review agent ran: "no-key" (the repository has no API key for one) or "fork" (a PR
     from a fork, which gets no secrets)."""
-    from ..formats.mermaid import render
+    from nolli.formats.mermaid import render
+
     from .changes import list_changes
     from .verdicts import check_verdicts, describe_verdicts
 
@@ -188,7 +189,7 @@ def results(comments: list[dict]) -> list[dict]:
 
 def fetch(key: str, data: Path) -> Path:
     """The dataset a CI run stored under ``key``, downloaded into ``data`` (once)."""
-    from ..sources.github import api, download, token
+    from nolli.sources.github import api, download, token
 
     owner, repo, pr, head = KEY.match(key).groups()
     name = artifact_name(pr, head)

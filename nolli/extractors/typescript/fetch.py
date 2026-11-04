@@ -20,7 +20,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .. import Context, api
+from nolli.extractors import Context, api
+
 from .imports import walk
 
 AXIOS_METHODS = {"get", "post", "put", "patch", "delete"}

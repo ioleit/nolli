@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from urllib.parse import unquote
 
-from ...model import address, metamodel
-from ...model.scene import Element
+from nolli.model import address, metamodel
+from nolli.model.scene import Element
 
 
 def format_name(el: Element) -> str:

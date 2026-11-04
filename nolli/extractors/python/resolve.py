@@ -8,10 +8,10 @@ import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import SYMBOL_KINDS, USE, address
-from .. import Context
-from ..facts import Relation
-from ..interfaces import ensure_ext
+from nolli.extractors import Context
+from nolli.extractors.facts import Relation
+from nolli.extractors.interfaces import ensure_ext
+from nolli.model import SYMBOL_KINDS, USE, address
 
 SOURCE_ROOTS = ("src", "lib", "python")
 

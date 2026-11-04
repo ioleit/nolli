@@ -19,10 +19,10 @@ from pathlib import PurePosixPath
 
 import yaml
 
-from ...model import ALLOCATE, CONTAIN, PROVIDE, USE, address
-from .. import Context
-from ..facts import Entity, Provenance, Relation
-from ..interfaces import ensure_env, ensure_host
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.extractors.interfaces import ensure_env, ensure_host
+from nolli.model import ALLOCATE, CONTAIN, PROVIDE, USE, address
 
 COMPOSE_NAMES = re.compile(r"(^|/)(docker-)?compose(\.[\w-]+)?\.ya?ml$")
 URL_HOST = re.compile(r"[a-z][a-z0-9+.-]*://(?:[^@/\s]*@)?([A-Za-z0-9_.-]+)(?::\d+)?")

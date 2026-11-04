@@ -14,7 +14,8 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Protocol
 
-from ..keys import NotAllowed, Repo  # noqa: F401 (part of the protocol)
+from nolli.keys import NotAllowed, Repo  # noqa: F401 (part of the protocol)
+
 from .git import GitError, has_commit, run_git
 
 

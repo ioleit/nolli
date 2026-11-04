@@ -13,9 +13,9 @@ from dataclasses import dataclass, field
 
 from tree_sitter_language_pack import get_parser
 
-from ...model import USE, address
-from .. import Context
-from ..facts import Entity, Provenance, Relation
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.model import USE, address
 
 GRAMMAR = {".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",
            ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript"}

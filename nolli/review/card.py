@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from collections import Counter
 
-from ..formats.descriptions.names import format_name
-from ..formats.descriptions.prose import code, count, listing, mark, one_line, paragraphs, say
-from ..model.scene import Element
+from nolli.formats.descriptions.names import format_name
+from nolli.formats.descriptions.prose import code, count, listing, mark, one_line, paragraphs, say
+from nolli.model.scene import Element
+
 from .changes import list_changes
 from .verdicts import VERDICT_RANK, find_box, iter_boxes
 

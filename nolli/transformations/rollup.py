@@ -29,7 +29,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cache
 
-from ..model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, address
+from nolli.model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, address
+
 from .reading import CONF_RANK, Reading
 
 HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "data", "asset", "other")

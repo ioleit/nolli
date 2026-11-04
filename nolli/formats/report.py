@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..model import SYMBOL_KINDS
-from ..model.scene import Scene
+from nolli.model import SYMBOL_KINDS
+from nolli.model.scene import Scene
 
 
 def summarize(scene: Scene) -> dict:

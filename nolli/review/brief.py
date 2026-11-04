@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import re
 
-from ..model.scene import Scene
-from ..transformations.merge import Links
+from nolli.model.scene import Scene
+from nolli.transformations.merge import Links
 
 
 def make_brief(scene: Scene, mermaid: str, description: str | None = None) -> str:

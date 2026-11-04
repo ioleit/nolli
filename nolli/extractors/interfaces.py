@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import re
 
-from ..model import CONTAIN, address
+from nolli.model import CONTAIN, address
+
 from . import Context
 from .facts import Entity, Provenance, Relation
 

@@ -17,10 +17,10 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 
-from ..model import CONTAIN, SYMBOL_KINDS, Key, Model, address
-from ..model.scene import Element, Scene
-from ..model.vocabulary import count_references, read_references, read_symbols
-from ..store.maps import StoredMaps
+from nolli.model import CONTAIN, SYMBOL_KINDS, Key, Model, address
+from nolli.model.scene import Element, Scene
+from nolli.model.vocabulary import count_references, read_references, read_symbols
+from nolli.store.maps import StoredMaps
 
 
 def is_change(scene: Scene) -> bool:

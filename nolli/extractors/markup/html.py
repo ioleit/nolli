@@ -13,8 +13,9 @@ from __future__ import annotations
 
 from html.parser import HTMLParser
 
-from ...model import address
-from .. import Context
+from nolli.extractors import Context
+from nolli.model import address
+
 from . import css
 from .refs import link
 

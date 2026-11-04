@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from urllib.parse import unquote
 
-from ..model import CONTAIN, EdgeKey, address
-from ..model.scene import Scene
-from ..model.vocabulary import FileFacts, Reference, read_file, read_references
+from nolli.model import CONTAIN, EdgeKey, address
+from nolli.model.scene import Scene
+from nolli.model.vocabulary import FileFacts, Reference, read_file, read_references
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 

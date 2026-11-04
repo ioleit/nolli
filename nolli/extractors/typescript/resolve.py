@@ -27,10 +27,10 @@ import re
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import USE, address
-from .. import Context
-from ..facts import Entity, Provenance, Relation
-from ..interfaces import ensure_ext, ensure_host, is_url, package_name
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.extractors.interfaces import ensure_ext, ensure_host, is_url, package_name
+from nolli.model import USE, address
 
 NODE_BUILTINS = {
     "assert", "buffer", "child_process", "cluster", "crypto", "dgram", "dns", "events", "fs", "http", "http2", "https",

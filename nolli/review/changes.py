@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..model import SYMBOL_KINDS, address
-from ..model.scene import Scene
-from ..transformations.merge import TOTALS, Links
+from nolli.model import SYMBOL_KINDS, address
+from nolli.model.scene import Scene
+from nolli.transformations.merge import TOTALS, Links
+
 from .reading import Reader
 
 MAX_ITEMS = 60

@@ -23,9 +23,9 @@ from __future__ import annotations
 import ast
 from collections import Counter
 
-from ...model import USE, address
-from .. import Context
-from ..facts import Entity, Provenance, Relation
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.model import USE, address
 
 FUNC_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 DOC_MAX = 240  # characters of a docstring's summary kept

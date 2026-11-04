@@ -12,8 +12,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..model import address
-from ..model.scene import Scene
+from nolli.model import address
+from nolli.model.scene import Scene
+
 from .reading import Reading
 from .rollup import (
     hidden_by_role,

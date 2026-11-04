@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import re
 
-from ...model import address
-from .. import Context
+from nolli.extractors import Context
+from nolli.model import address
+
 from .refs import link
 
 COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)

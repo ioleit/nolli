@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import re
 
-from ..model import address
-from ..model.scene import Scene
+from nolli.model import address
+from nolli.model.scene import Scene
 
 STYLE_ARROW = {"import": "-->", "http": "==>", "env": "-.->", "deploy": "-.->", "provide": "-.->"}
 KIND_CLASS = {"package": "ext", "service": "deploy", "image": "deploy", "host": "deploy", "group": "group",

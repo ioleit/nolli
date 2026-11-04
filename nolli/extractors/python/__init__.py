@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import ast
 
-from .. import Language
+from nolli.extractors import Language
+
 from . import env, fastapi, imports, resolve, symbols
 
 

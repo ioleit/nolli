@@ -20,8 +20,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from ..keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
-from ..model import Key, Model
+from nolli.keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
+from nolli.model import Key, Model
+
 from .maps import MapStore, MemoryMaps, StoredMaps, StoredOverlay  # noqa: F401
 
 FORMAT = 1  # of key.json and change.json

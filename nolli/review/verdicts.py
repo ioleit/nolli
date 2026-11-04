@@ -15,9 +15,10 @@ import json
 import re
 from collections import defaultdict
 
-from ..model import address
-from ..model.scene import Element, Scene
-from ..store.maps import MapStore, StoredMaps
+from nolli.model import address
+from nolli.model.scene import Element, Scene
+from nolli.store.maps import MapStore, StoredMaps
+
 from .changes import format_name, list_ancestors_to_unfold
 from .reading import Reader
 

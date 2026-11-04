@@ -18,7 +18,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
-from ..model import ALLOCATE, CONTAIN, PROVIDE, USE, EdgeKey, Key, Model, address, metamodel
+from nolli.model import ALLOCATE, CONTAIN, PROVIDE, USE, EdgeKey, Key, Model, address, metamodel
 
 
 @dataclass

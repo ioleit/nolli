@@ -36,7 +36,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from ..model import CONTAIN, PROVIDE, USE, address
+from nolli.model import CONTAIN, PROVIDE, USE, address
+
 from . import Context
 from .facts import Entity, Facts, Provenance, Relation
 

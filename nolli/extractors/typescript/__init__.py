@@ -5,7 +5,8 @@ type syntax."""
 
 from __future__ import annotations
 
-from .. import Language
+from nolli.extractors import Language
+
 from . import env, fetch, imports, resolve, symbols
 
 LANGUAGE = Language(

@@ -4,9 +4,9 @@ names them, ``meta["overlays"]``), each in its own words; what every language sa
 
 from __future__ import annotations
 
-from ..model import Model
-from ..model.scene import Overlay
-from ..store.maps import MapStore, StoredOverlay
+from nolli.model import Model
+from nolli.model.scene import Overlay
+from nolli.store.maps import MapStore, StoredOverlay
 
 
 def make_base_overlays(model: Model, maps: MapStore) -> list[Overlay]:

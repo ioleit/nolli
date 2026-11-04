@@ -8,7 +8,8 @@ client can diff two scenes to animate the step between them."""
 
 from __future__ import annotations
 
-from ..model.scene import Element, Scene
+from nolli.model.scene import Element, Scene
+
 from .mermaid import list_drawing_order
 
 FORMAT = 1

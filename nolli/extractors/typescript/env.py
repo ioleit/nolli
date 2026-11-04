@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import re
 
-from ...model import USE, address
-from .. import Context
-from ..facts import Provenance, Relation
-from ..interfaces import ensure_env
+from nolli.extractors import Context
+from nolli.extractors.facts import Provenance, Relation
+from nolli.extractors.interfaces import ensure_env
+from nolli.model import USE, address
 
 JS_ENV = re.compile(rb"(?:process\.env|import\.meta\.env)\.([A-Za-z_][A-Za-z0-9_]*)")
 
