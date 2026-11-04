@@ -6,8 +6,6 @@ Nothing is a settled design.
 
 ## Model, overlays and scenes
 
-Decided with the owner on 2026-11-03, from a sketch tried on nolli's own models.
-
 - The model is structure only (`nolli/model/`): nodes are addresses with a kind, and edges
   are a kind (`contain` among them), two ends and a subkind. A derived model also refers
   to what each of its elements stands for in the models it was made from (`refs`).
