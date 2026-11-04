@@ -2,6 +2,34 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## Unreleased
+
+### Changed
+
+- **The core is rewritten around models, overlays and scenes** (NOTES.md, "Model,
+  overlays and scenes"). A model is structure only. Everything known about a node or an
+  edge comes from an overlay: one per extractor, plus `change`, `verdicts`, `label`,
+  `hover` and `review`. Merge and projection take a scene and return one, whose elements
+  refer to what they stand for. The packages:
+  - `nolli/model`, `nolli/scene.py`;
+  - `nolli/extractors` (with `facts.py`, the builder extraction writes into);
+  - `nolli/transform` (merge, projection);
+  - `nolli/overlays`, `nolli/export` (viewer JSON, Mermaid, the review brief, the report);
+  - `nolli/sources` (the only place git runs, the change spec, GitHub);
+  - `nolli/keys.py`, `nolli/store.py`.
+- **Stored data has a format and is built again when it has another one.** Datasets from
+  0.7.0 and before are not read. A dataset directory is:
+  - a commit: `key.json`, `model.json`, `overlays/`;
+  - a change: `key.json`, `change.json`, `base/`, `head/`, `overlays/`.
+- **Verdicts are kept by what they are about** (the `verdicts` map, by address), not by
+  the review diagram's node ids. Agents still answer on the diagram's ids.
+- **The viewer's JSON gives each box and edge its overlays under their names**
+  (`projection`, `label`, `hover`, `change`, `verdicts`, `review`).
+- **A change's hover texts list every name an edge references.** Merging used to keep one
+  fact per edge.
+- **"unfolded" finishes on every repository.** Edge lifting looped when it could not bring
+  two boxes under the line limit.
+
 ## 0.7.0
 
 ### Changed

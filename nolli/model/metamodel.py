@@ -1,7 +1,7 @@
 """What any model may contain: the kinds of entities and relations, the namespaces entities
 live in, and which relations connect which namespaces.
 
-A model is the graph of one codebase (a ``Model``, a dataset's ``model.json``); this module
+A model is the structure of one codebase (a ``Model``, a dataset's ``model.json``); this module
 is its metamodel. nolli is opinionated about structure: an extractor's job is to put what
 it finds into these namespaces, and a new domain (data stores, queues) is a new namespace
 here first. ``Model.add_entity`` and ``add_relation`` check every fact against it; how an
@@ -30,7 +30,7 @@ The namespaces:
     Names the code reads at runtime to steer its behaviour, wherever their values come from.
 ``unresolved``
     Not structure: references an extractor saw but could not bind yet. The matchers bind
-    them (``nolli/match.py``); those left are gathered under its root.
+    them (``nolli/extractors/match.py``); those left are gathered under its root.
 
 Each namespace has a root holding its top-level entities: a group, or for ``repo`` the
 repository's directory. ``contain`` never crosses namespaces.

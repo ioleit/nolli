@@ -6,7 +6,7 @@ another module spells a scheme).
 
 An address names a thing within one snapshot. Base and head of a change produce the same
 address for the same thing on their own, which is what lets a diff be one merged model
-(``nolli/diff.py``). What is not identity stays out of the address: the kind and what
+(``nolli/transform/merge.py``). What is not identity stays out of the address: the kind and what
 extractors say about a thing (a folder that becomes a package keeps its address), versions
 (on edges), commits, provenance. Addresses are relative to the repository unless the thing
 has a name of its own outside it (a package on a registry).
