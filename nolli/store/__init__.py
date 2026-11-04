@@ -22,8 +22,7 @@ from typing import Protocol
 
 from nolli.keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
 from nolli.model import Key, Model
-
-from .maps import MapStore, MemoryMaps, StoredMaps, StoredOverlay  # noqa: F401
+from nolli.store.maps import MapStore, MemoryMaps, StoredMaps, StoredOverlay  # noqa: F401
 
 FORMAT = 1  # of key.json and change.json
 
@@ -59,4 +58,4 @@ class ModelStore(MapStore, Protocol):
 
 
 
-from .directory import DirectoryMaps, DirectoryStore, read_key, write_change, write_commit  # noqa: F401
+from nolli.store.directory import DirectoryMaps, DirectoryStore, read_key, write_change, write_commit  # noqa: F401

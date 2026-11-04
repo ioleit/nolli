@@ -8,9 +8,8 @@ from __future__ import annotations
 import re
 
 from nolli.extractors import Context
+from nolli.extractors.markup.refs import link
 from nolli.model import address
-
-from .refs import link
 
 COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 IMPORT = re.compile(r"""@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]+)\1""", re.IGNORECASE)

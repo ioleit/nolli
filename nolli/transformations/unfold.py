@@ -14,9 +14,8 @@ from collections import defaultdict
 
 from nolli.model import address
 from nolli.model.scene import Scene
-
-from .reading import Reading
-from .rollup import (
+from nolli.transformations.reading import Reading
+from nolli.transformations.rollup import (
     hidden_by_role,
     image_aliases,
     init_anchor_dirs,

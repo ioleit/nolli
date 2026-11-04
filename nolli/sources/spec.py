@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .git import GitError, run_git
+from nolli.sources.git import GitError, run_git
 
 
 class ChangeError(Exception):

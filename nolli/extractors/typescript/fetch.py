@@ -21,8 +21,7 @@ import re
 from dataclasses import dataclass
 
 from nolli.extractors import Context, api
-
-from .imports import walk
+from nolli.extractors.typescript.imports import walk
 
 AXIOS_METHODS = {"get", "post", "put", "patch", "delete"}
 

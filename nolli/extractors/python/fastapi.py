@@ -15,10 +15,9 @@ import ast
 from dataclasses import dataclass, field
 
 from nolli.extractors import Context, api
+from nolli.extractors.python.imports import module_name_of
+from nolli.extractors.python.resolve import module_candidates
 from nolli.model import address
-
-from .imports import module_name_of
-from .resolve import module_candidates
 
 METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "websocket", "api_route"}
 

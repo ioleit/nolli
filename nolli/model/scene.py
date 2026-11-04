@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterable, Mapping
 from functools import cached_property
 from typing import Any, Protocol
 
-from . import EdgeKey, Key, Model
+from nolli.model import EdgeKey, Key, Model
 
 
 class Overlay(Protocol):

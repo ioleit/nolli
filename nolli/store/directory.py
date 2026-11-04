@@ -11,8 +11,7 @@ from pathlib import Path
 
 from nolli.keys import ChangeKey, Commit, ModelKey, Repo, dump_key, parse_key
 from nolli.model import Key, Model
-
-from .maps import dump_map, parse_map
+from nolli.store.maps import dump_map, parse_map
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
 

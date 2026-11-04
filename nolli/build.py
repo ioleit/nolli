@@ -18,16 +18,16 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .extractors import Context, all_extractors, language_names, list_symbols_overlays
-from .extractors.facts import Facts
-from .extractors.match import run_all as match_all
-from .keys import ChangeKey, Commit
-from .model import Key, Model, address
-from .progress import Progress, Quiet
-from .sources import Sources
-from .sources.git import export_commit, find_head, list_file_changes, list_tracked_files
-from .store import ModelStore
-from .store.maps import MapStore
+from nolli.extractors import Context, all_extractors, language_names, list_symbols_overlays
+from nolli.extractors.facts import Facts
+from nolli.extractors.match import run_all as match_all
+from nolli.keys import ChangeKey, Commit
+from nolli.model import Key, Model, address
+from nolli.progress import Progress, Quiet
+from nolli.sources import Sources
+from nolli.sources.git import export_commit, find_head, list_file_changes, list_tracked_files
+from nolli.store import ModelStore
+from nolli.store.maps import MapStore
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 

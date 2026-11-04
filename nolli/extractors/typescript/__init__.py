@@ -6,8 +6,7 @@ type syntax."""
 from __future__ import annotations
 
 from nolli.extractors import Language
-
-from . import env, fetch, imports, resolve, symbols
+from nolli.extractors.typescript import env, fetch, imports, resolve, symbols
 
 LANGUAGE = Language(
     name="typescript",

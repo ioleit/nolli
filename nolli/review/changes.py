@@ -8,9 +8,8 @@ from collections import defaultdict
 
 from nolli.model import SYMBOL_KINDS, address
 from nolli.model.scene import Scene
+from nolli.review.reading import Reader
 from nolli.transformations.merge import TOTALS, Links
-
-from .reading import Reader
 
 MAX_ITEMS = 60
 

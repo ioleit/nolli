@@ -24,8 +24,8 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import address, metamodel
-from .metamodel import (  # noqa: F401 (the vocabulary, as callers import it)
+from nolli.model import address, metamodel
+from nolli.model.metamodel import (
     ALLOCATE,
     ARTIFACT_KINDS,
     COMPONENT_KINDS,

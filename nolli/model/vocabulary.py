@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 if TYPE_CHECKING:
-    from .scene import Element
+    from nolli.model.scene import Element
 
 
 class Reference(TypedDict):

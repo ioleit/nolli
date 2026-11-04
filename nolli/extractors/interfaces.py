@@ -7,10 +7,9 @@ from __future__ import annotations
 
 import re
 
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Provenance, Relation
 from nolli.model import CONTAIN, address
-
-from . import Context
-from .facts import Entity, Provenance, Relation
 
 
 def ensure_env(ctx: Context, name: str, extractor: str = "env") -> str:

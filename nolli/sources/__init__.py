@@ -15,8 +15,7 @@ from pathlib import Path
 from typing import Protocol
 
 from nolli.keys import NotAllowed, Repo  # noqa: F401 (part of the protocol)
-
-from .git import GitError, has_commit, run_git
+from nolli.sources.git import GitError, has_commit, run_git
 
 
 class FetchError(GitError):

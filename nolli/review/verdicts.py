@@ -17,10 +17,9 @@ from collections import defaultdict
 
 from nolli.model import address
 from nolli.model.scene import Element, Scene
+from nolli.review.changes import format_name, list_ancestors_to_unfold
+from nolli.review.reading import Reader
 from nolli.store.maps import MapStore, StoredMaps
-
-from .changes import format_name, list_ancestors_to_unfold
-from .reading import Reader
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
 # shows the mark of a box's highest-ranked verdict). The brief offers fine / good / question / problem;

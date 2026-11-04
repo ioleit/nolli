@@ -33,9 +33,8 @@ from collections import Counter
 
 from nolli.extractors import Context
 from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.extractors.typescript.imports import read
 from nolli.model import USE, address
-
-from .imports import read
 
 EXTRACTOR = "typescript-symbols"
 DECLS = {"class_declaration": "class", "abstract_class_declaration": "class", "class": "class",

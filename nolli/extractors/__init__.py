@@ -26,10 +26,9 @@ from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 
+from nolli.extractors.facts import Facts
 from nolli.model import address
 from nolli.progress import Progress, Quiet
-
-from .facts import Facts
 
 
 @dataclass
@@ -144,9 +143,9 @@ def all_extractors():
     language its front-end (imports, symbols) and adapters, then what pages and
     stylesheets load (``markup``), then infrastructure, then
     the shared structures the adapters reported into (``api``)."""
-    from . import api, fs
-    from .infra import compose, dockerfile
-    from .markup import css, html
+    from nolli.extractors import api, fs
+    from nolli.extractors.infra import compose, dockerfile
+    from nolli.extractors.markup import css, html
 
     return [("fs", fs.run), *(x for lang in languages() for x in lang.extractors),
             ("html", html.run), ("css", css.run), ("compose", compose.run), ("dockerfile", dockerfile.run),

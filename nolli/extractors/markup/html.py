@@ -14,10 +14,9 @@ from __future__ import annotations
 from html.parser import HTMLParser
 
 from nolli.extractors import Context
+from nolli.extractors.markup import css
+from nolli.extractors.markup.refs import link
 from nolli.model import address
-
-from . import css
-from .refs import link
 
 EXTENSIONS = (".html", ".htm")
 SRC = {"script": "script", "img": "image", "source": "media", "video": "media", "audio": "media",

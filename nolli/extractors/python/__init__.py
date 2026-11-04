@@ -6,8 +6,7 @@ from __future__ import annotations
 import ast
 
 from nolli.extractors import Language
-
-from . import env, fastapi, imports, resolve, symbols
+from nolli.extractors.python import env, fastapi, imports, resolve, symbols
 
 
 def parse(rel: str, source: bytes) -> ast.Module:

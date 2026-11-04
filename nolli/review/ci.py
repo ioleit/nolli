@@ -69,9 +69,8 @@ def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None =
     why no review agent ran: "no-key" (the repository has no API key for one) or "fork" (a PR
     from a fork, which gets no secrets)."""
     from nolli.formats.mermaid import render
-
-    from .changes import list_changes
-    from .verdicts import check_verdicts, describe_verdicts
+    from nolli.review.changes import list_changes
+    from nolli.review.verdicts import check_verdicts, describe_verdicts
 
     key = key_of(scene.model.meta)
     d = scene.model.meta["change"]
@@ -139,8 +138,8 @@ def list_statuses(review: Scene) -> dict[str, str]:
 
 def what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
-    from .changes import format_name
-    from .reading import Reader
+    from nolli.review.changes import format_name
+    from nolli.review.reading import Reader
 
     g = scene.memo(Reader)
     ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]

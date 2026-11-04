@@ -10,10 +10,9 @@ entities so views can count them. Placeholders bound everywhere are removed.
 
 from __future__ import annotations
 
+from nolli.extractors import Context, all_resolvers, api
+from nolli.extractors.facts import Provenance, Relation
 from nolli.model import CONTAIN, address
-
-from . import Context, all_resolvers, api
-from .facts import Provenance, Relation
 
 
 def prune_unresolved(ctx: Context) -> None:

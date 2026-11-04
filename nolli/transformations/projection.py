@@ -25,9 +25,8 @@ from dataclasses import asdict, dataclass, field
 
 from nolli.model import CONTAIN, USE, EdgeKey, Key, Model, address, metamodel
 from nolli.model.scene import Element, FixedOverlay, Scene
-
-from .reading import Reading
-from .rollup import (
+from nolli.transformations.reading import Reading
+from nolli.transformations.rollup import (
     HIDDEN_ROLES_DEFAULT,
     RolledUp,
     chain_end,
@@ -41,7 +40,7 @@ from .rollup import (
     utility_badges,
     visible_from_expanded,
 )
-from .unfold import find_default_cut
+from nolli.transformations.unfold import find_default_cut
 
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)

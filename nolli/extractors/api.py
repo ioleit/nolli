@@ -36,10 +36,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Facts, Provenance, Relation
 from nolli.model import CONTAIN, PROVIDE, USE, address
-
-from . import Context
-from .facts import Entity, Facts, Provenance, Relation
 
 
 @dataclass

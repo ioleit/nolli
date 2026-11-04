@@ -21,8 +21,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .git import has_commit
-from .spec import ChangeError, ChangeSpec, git, merge_base
+from nolli.sources.git import has_commit
+from nolli.sources.spec import ChangeError, ChangeSpec, git, merge_base
 
 URL = re.compile(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/pulls?/(\d+)(?:[/?#].*)?$")
 NUMBER = re.compile(r"^(?:#|pr:|pr/)(\d+)$", re.IGNORECASE)

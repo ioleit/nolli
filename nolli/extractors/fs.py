@@ -10,10 +10,9 @@ from __future__ import annotations
 import re
 from pathlib import PurePosixPath
 
+from nolli.extractors import Context, languages
+from nolli.extractors.facts import Entity, Provenance
 from nolli.model import address
-
-from . import Context, languages
-from .facts import Entity, Provenance
 
 # Languages nolli only names (their files are drawn, not read); the extracted languages
 # add their own extensions (``Language.extensions``, see ``lang_by_ext``).

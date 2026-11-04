@@ -9,9 +9,8 @@ from collections import Counter
 from nolli.formats.descriptions.names import format_name
 from nolli.formats.descriptions.prose import code, count, listing, mark, one_line, paragraphs, say
 from nolli.model.scene import Element
-
-from .changes import list_changes
-from .verdicts import VERDICT_RANK, find_box, iter_boxes
+from nolli.review.changes import list_changes
+from nolli.review.verdicts import VERDICT_RANK, find_box, iter_boxes
 
 FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside
 

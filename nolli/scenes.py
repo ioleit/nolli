@@ -6,25 +6,25 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from . import transformations
-from .build import Maps
-from .extractors.overlays import make_base_overlays
-from .keys import ChangeKey, Commit, ModelKey
-from .model import Key, Model
-from .model.scene import Overlay, Scene
-from .store import ModelStore
-from .store.maps import MapStore, MemoryMaps
-from .transformations import merge
-from .transformations.merge import describe_change
+from nolli import transformations
+from nolli.build import Maps
+from nolli.extractors.overlays import make_base_overlays
+from nolli.keys import ChangeKey, Commit, ModelKey
+from nolli.model import Key, Model
+from nolli.model.scene import Overlay, Scene
+from nolli.store import ModelStore
+from nolli.store.maps import MapStore, MemoryMaps
+from nolli.transformations import merge
+from nolli.transformations.merge import describe_change
 
 
 def make_overlays(maps: MapStore) -> list[Overlay]:
     """The overlays nolli shows on any scene, on top of the extractors'."""
-    from .formats.descriptions.hover import Hover
-    from .formats.descriptions.label import Label
-    from .review.card import Review
-    from .review.verdicts import Verdicts
-    from .transformations.merge import Change
+    from nolli.formats.descriptions.hover import Hover
+    from nolli.formats.descriptions.label import Label
+    from nolli.review.card import Review
+    from nolli.review.verdicts import Verdicts
+    from nolli.transformations.merge import Change
 
     return [Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]
 
