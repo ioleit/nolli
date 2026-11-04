@@ -31,10 +31,10 @@ function steps(sc) {
   /** @type {Step[]} */
   const out = [];
   for (const n of sc.nodes) {
-    if (isAnchor(n) || !n.foldable) continue;
+    if (isAnchor(n) || !n.projection.foldable) continue;
     const x = new Set(sc.state.expanded);
-    if (n.container) x.delete(n.id); else x.add(n.id);
-    out.push({ id: n.id, action: n.container ? "fold" : "unfold", expanded: [...x] });
+    if (n.projection.container) x.delete(n.id); else x.add(n.id);
+    out.push({ id: n.id, action: n.projection.container ? "fold" : "unfold", expanded: [...x] });
   }
   return out;
 }

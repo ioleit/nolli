@@ -40,7 +40,7 @@ export async function showMermaid(scene, url) {
     const { svg } = await mermaid.render(id, src);
     if (rendered !== url) return;
     source = src; diagram = id;
-    const foldable = new Set(scene.nodes.filter(n => "foldable" in n && n.foldable).map(n => n.id));
+    const foldable = new Set(scene.nodes.filter(n => "foldable" in n.projection && n.projection.foldable).map(n => n.id));
     clickable = new Map(Object.entries(body.ids).filter(([, x]) => foldable.has(x)));
     const ms = Math.round(performance.now() - t0);
     pane.innerHTML = `<div class="req">GET <a href="${esc(url)}" target="_blank">${esc(url)}</a> · ${src.split("\n").length} lines · ${ms} ms

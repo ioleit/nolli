@@ -15,7 +15,7 @@ import { render as paragraphs } from "./md.js";
 
 /**
  * @typedef {import("../types/nolli").Info} Info
- * @typedef {{ info: Info, review?: Info }} Card what a card says: about the box or edge, and in a review, about the change (its own part, under a line)
+ * @typedef {{ hover?: { text: Info }, review?: { card: Info } }} Card what a card says: about the box or edge (its hover overlay), and in a review, about the change (its own part, under a line)
  */
 
 const tipEl = byId("tip");
@@ -24,10 +24,10 @@ const GAP = 12;  // the least room between the text and what it describes
 
 /** @param {Card} card */
 function render(card) {
-  if (!card.review) return paragraphs(card.info);
+  if (!card.review?.card) return paragraphs(card.hover?.text ?? "");
   const cols = document.createElement("div"); cols.className = "parts";
-  const main = document.createElement("div"); main.className = "main"; main.appendChild(paragraphs(card.info));
-  const rev = document.createElement("div"); rev.className = "rev"; rev.appendChild(paragraphs(card.review));
+  const main = document.createElement("div"); main.className = "main"; main.appendChild(paragraphs(card.hover?.text ?? ""));
+  const rev = document.createElement("div"); rev.className = "rev"; rev.appendChild(paragraphs(card.review.card));
   cols.append(main, rev);
   return cols;
 }
@@ -158,7 +158,7 @@ let pinned = false;
  */
 function put(card, arounds, self) {
   tipEl.replaceChildren(render(card)); shown = card;
-  tipEl.classList.toggle("two", !!card.review);
+  tipEl.classList.toggle("two", !!card.review?.card);
   tipEl.style.display = "block";
   const canvas = svg.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
   const t = place(arounds, w, h, canvas, obstacles(self));
