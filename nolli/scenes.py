@@ -13,7 +13,9 @@ from .model import Key, Model
 from .model.scene import Overlay, Scene
 from .store import ModelStore
 from .store.maps import MapStore, MemoryMaps
-from .transformations.merge import describe_change, merge
+from . import transformations
+from .transformations import merge
+from .transformations.merge import describe_change
 
 
 def make_overlays(maps: MapStore) -> list[Overlay]:
@@ -50,7 +52,7 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
             "languages": {**base.model.meta.get("languages", {}), **head.model.meta.get("languages", {})},
             **join_readers(base.model.meta, head.model.meta),
             "change": describe_change(about, store.open_maps("content").load(change.format_key()))}
-    return merge(base, head, change.format_key(), meta)
+    return transformations.apply({"base": base, "head": head}, merge.union(change.format_key(), meta))
 
 
 def join_readers(base: dict, head: dict) -> dict:
@@ -77,7 +79,7 @@ def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, ab
     meta = {"repo": hs.model.meta.get("repo"), "commit": about.get("head", "")[:7], "files": hs.model.meta.get("files"),
             "languages": {**bs.model.meta.get("languages", {}), **hs.model.meta.get("languages", {})},
             **join_readers(bs.model.meta, hs.model.meta), "change": describe_change(about, content)}
-    return merge(bs, hs, key, meta)
+    return transformations.apply({"base": bs, "head": hs}, merge.union(key, meta))
 
 
 def open_stored(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:

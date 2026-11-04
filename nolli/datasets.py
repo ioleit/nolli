@@ -39,7 +39,9 @@ from .formats.mermaid import list_ids, render
 from .formats.viewer import export_scene
 from .formats.report import make_report
 from .review.brief import make_brief
-from .transformations.projection import DEFAULT_BUDGET, ProjectionSpec, project
+from . import transformations
+from .transformations import projection
+from .transformations.projection import DEFAULT_BUDGET, ProjectionSpec
 
 class Datasets:
     def __init__(self, store: ModelStore, sources: Sources | None = None) -> None:
@@ -79,7 +81,7 @@ class Datasets:
         """The picture ``state`` asks for; a change's "changes" preset unfolds what it changed."""
         if state.preset == "changes" and state.focus is None and is_change(scene):
             state.focus = find_review_cut(scene)
-        return project(scene, state)
+        return transformations.apply(scene, projection.fold(state))
 
     def draw_json(self, scene: Scene, state: ProjectionSpec) -> dict:
         """The picture as the viewer reads it (``nolli/formats/viewer.py``)."""
@@ -115,7 +117,8 @@ class Datasets:
         unfolded. The same for the same change and version of nolli, so verdicts on its ids
         stay valid."""
         budget = (scene.model.meta.get("change") or {}).get("budget") or DEFAULT_BUDGET
-        return project(scene, ProjectionSpec(budget=budget, preset="changes", focus=find_review_cut(scene)))
+        spec = ProjectionSpec(budget=budget, preset="changes", focus=find_review_cut(scene))
+        return transformations.apply(scene, projection.fold(spec))
 
     def make_review_diagram(self, scene: Scene) -> str:
         """The review diagram (``review.mmd``)."""

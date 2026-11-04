@@ -16,7 +16,9 @@ import pytest
 from helpers import draw, extract_facts, find_node, open_dir
 
 from nolli.transformations.reading import Reading as Graph
-from nolli.transformations.projection import ProjectionSpec, project
+from nolli import transformations
+from nolli.transformations import projection
+from nolli.transformations.projection import ProjectionSpec
 from nolli.transformations.rollup import hidden_by_role, image_aliases, lift, rollup
 from nolli.transformations.unfold import find_default_cut
 
@@ -320,7 +322,7 @@ def test_mermaid_draws_the_scene(repo: Path):
     scene = open_dir(repo)
     for st in (ProjectionSpec(budget=12), ProjectionSpec(preset="folded"), ProjectionSpec(preset="unfolded"),
                ProjectionSpec(expanded=["repo:", "repo:backend"])):
-        projected = project(scene, st)
+        projected = transformations.apply(scene, projection.fold(st))
         sc = export_scene(projected)
         text = render(projected)
         boxes = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+?)(?:_g)? ?[\[(]", line))}
@@ -336,12 +338,12 @@ def test_presets(repo: Path):
     from nolli.server.serve import parse_spec
 
     scene = open_dir(repo)
-    folded = export_scene(project(scene, parse_spec({"p": "folded"})))
+    folded = export_scene(transformations.apply(scene, projection.fold(parse_spec({"p": "folded"}))))
     assert folded["state"]["expanded"] == ["repo:"] and folded["state"]["preset"] == "folded"
     unfolded = draw(scene, preset="unfolded")
     assert {"repo:backend", "repo:backend/api"} <= set(unfolded["state"]["expanded"])
     assert draw(scene, preset="changes")["state"]["preset"] == "default"  # not a change's dataset
-    assert export_scene(project(scene, parse_spec({"p": "folded", "x": "repo:,repo:backend"})))["state"]["preset"] is None
+    assert export_scene(transformations.apply(scene, projection.fold(parse_spec({"p": "folded", "x": "repo:,repo:backend"}))))["state"]["preset"] is None
 
 
 def test_mermaid_ids(repo: Path):
@@ -351,7 +353,7 @@ def test_mermaid_ids(repo: Path):
     from nolli.formats.mermaid import list_ids, render
     from nolli.formats.viewer import export_scene
 
-    projected = project(open_dir(repo), ProjectionSpec(expanded=["repo:", "repo:backend"]))
+    projected = transformations.apply(open_dir(repo), projection.fold(ProjectionSpec(expanded=["repo:", "repo:backend"])))
     sc = export_scene(projected)
     text = render(projected)
     drawn = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+)\s*[\[(]", line))}

@@ -230,14 +230,6 @@ def sum_edge(el: Element) -> dict | None:
             "changes": changes[:40], "more": max(0, len(changes) - 40)}
 
 
-def merge(base: Scene, head: Scene, key: str, meta: dict | None = None) -> Scene:
-    """The change from ``base`` to ``head`` (``union``, applied); ``meta``: what the model of the
-    change says about itself, on top of what the two sides' say."""
-    from . import apply
-
-    return apply({"base": base, "head": head}, union(key, meta))
-
-
 def union(key: str, meta: dict | None = None):
     """Merge as a transformation: of two scenes by role (``base``, ``head``), the model holding
     every node and edge of either, each referring to its namesake on each side."""

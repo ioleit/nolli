@@ -149,13 +149,6 @@ def leaf_count(g: Reading, x: str) -> int:
     return n
 
 
-def project(scene: Scene, st: "ProjectionSpec") -> Scene:
-    """``scene`` folded and filtered as ``st`` asks (``fold``, applied)."""
-    from . import apply
-
-    return apply(scene, fold(st))
-
-
 def fold(st: "ProjectionSpec") -> Callable[[Scene], tuple[Model, FixedOverlay]]:
     """The projection as a transformation: what ``st`` asks for, of the scene it is given."""
     return lambda scene: fold_model(scene, st)

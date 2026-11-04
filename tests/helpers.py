@@ -10,7 +10,9 @@ from nolli.scenes import merge_built, open_built
 from nolli.formats.viewer import export_scene
 from nolli.progress import Quiet
 from nolli.model.scene import Scene
-from nolli.transformations.projection import ProjectionSpec, project
+from nolli import transformations
+from nolli.transformations import projection
+from nolli.transformations.projection import ProjectionSpec
 
 
 def open_dir(path: Path, key: str = "test@0") -> Scene:
@@ -20,7 +22,7 @@ def open_dir(path: Path, key: str = "test@0") -> Scene:
 
 def draw(scene: Scene, **state) -> dict:
     """The viewer's JSON of the picture ``ProjectionSpec(**state)`` draws of ``scene``."""
-    return export_scene(project(scene, ProjectionSpec(**state)))
+    return export_scene(transformations.apply(scene, projection.fold(ProjectionSpec(**state))))
 
 
 def open_change(repo: Path, base: str, head: str, **about) -> Scene:

@@ -6,7 +6,8 @@ the dict for several, None for "the same key there"). The result has its sources
 its model carries their meta under its own, and their scenes are its sources.
 
 nolli's own: ``projection.fold`` (fold and filter a scene, ``projection.py``), ``merge.union``
-(two commits into the change between them, ``merge.py``); a selection is ``select``.
+(two commits into the change between them, ``merge.py``); a selection is ``select``. As in
+``transformations.apply(scene, projection.fold(spec))``.
 """
 
 from __future__ import annotations
