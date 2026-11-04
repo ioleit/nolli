@@ -11,8 +11,8 @@ import re
 from pathlib import PurePosixPath
 
 from ..model import address
-from .facts import Entity, Provenance
 from . import Context, languages
+from .facts import Entity, Provenance
 
 # Languages nolli only names (their files are drawn, not read); the extracted languages
 # add their own extensions (``Language.extensions``, see ``lang_by_ext``).

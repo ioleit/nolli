@@ -8,8 +8,8 @@ from __future__ import annotations
 import re
 
 from ..model import CONTAIN, address
-from .facts import Entity, Provenance, Relation
 from . import Context
+from .facts import Entity, Provenance, Relation
 
 
 def ensure_env(ctx: Context, name: str, extractor: str = "env") -> str:

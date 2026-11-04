@@ -16,15 +16,14 @@ deployment, HTTP), which the boxes themselves no longer carry as badges.
 from __future__ import annotations
 
 from collections import defaultdict
-
 from dataclasses import dataclass, field
 
 from ...model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, EdgeKey, address
-from .prose import count, listing, paragraphs, quote, say
 from ...model.scene import Element, Scene
 from ...model.vocabulary import read_file, read_references, read_symbols
 from .label import format_prose
 from .names import format_name, read_api
+from .prose import count, listing, paragraphs, quote, say
 
 
 class Source:

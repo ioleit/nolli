@@ -9,8 +9,8 @@ import threading
 from collections.abc import Mapping
 from pathlib import Path
 
-from ..model import Key, Model
 from ..keys import ChangeKey, Commit, ModelKey, Repo, dump_key, parse_key
+from ..model import Key, Model
 from .maps import dump_map, parse_map
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
@@ -169,7 +169,7 @@ class DirectoryStore:
 
     # -- maps ------------------------------------------------------------------
 
-    def open_maps(self, name: str) -> "DirectoryMaps":
+    def open_maps(self, name: str) -> DirectoryMaps:
         return DirectoryMaps(self, name)
 
     def locate_maps(self, model_key: str, name: str) -> Path | None:

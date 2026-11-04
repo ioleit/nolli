@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import re
 
-from ..transformations.merge import Links
 from ..model.scene import Scene
+from ..transformations.merge import Links
 
 
 def make_brief(scene: Scene, mermaid: str, description: str | None = None) -> str:
@@ -95,6 +95,6 @@ ids of an edge drawn in the diagram:
 """
     picture = "\n## The diagram\n\n```mermaid\n" + mermaid + "```\n"
     if description:  # its headings go two levels down, under this one
-        description = re.sub(r"^(#{1,4}) ", r"##\1 ", description.strip(), flags=re.M)
+        description = re.sub(r"^(#{1,4}) ", r"##\1 ", description.strip(), flags=re.MULTILINE)
     desc = f"\n## The description\n\nRead this after the diagram (step 2).\n\n{description}\n" if description else ""
     return head + howto + picture + desc

@@ -16,8 +16,8 @@ from dataclasses import dataclass, field
 
 from ...model import address
 from .. import Context, api
-from .resolve import module_candidates
 from .imports import module_name_of
+from .resolve import module_candidates
 
 METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "websocket", "api_route"}
 

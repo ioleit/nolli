@@ -14,15 +14,13 @@ the PR and the change's totals are here too.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 
-import hashlib
-from collections import defaultdict
-
-from ..model import CONTAIN, SYMBOL_KINDS, EdgeKey, Model, address
-from ..model.scene import Element, Overlay, Scene
-from ..store.maps import StoredMaps
+from ..model import CONTAIN, SYMBOL_KINDS, Key, Model, address
+from ..model.scene import Element, Scene
 from ..model.vocabulary import count_references, read_references, read_symbols
+from ..store.maps import StoredMaps
 
 
 def is_change(scene: Scene) -> bool:

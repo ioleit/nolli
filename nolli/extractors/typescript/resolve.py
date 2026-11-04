@@ -28,8 +28,8 @@ from collections import defaultdict
 from pathlib import PurePosixPath
 
 from ...model import USE, address
-from ..facts import Entity, Provenance, Relation
 from .. import Context
+from ..facts import Entity, Provenance, Relation
 from ..interfaces import ensure_ext, ensure_host, is_url, package_name
 
 NODE_BUILTINS = {
@@ -57,7 +57,7 @@ def read_json(ctx: Context, rel: str) -> dict | None:
     """JSON as tsconfig writes it: comments and trailing commas allowed."""
     try:
         text = ctx.read(rel).decode("utf-8", "replace")
-        text = re.sub(r'("(?:\\.|[^"\\])*")|//[^\n]*|/\*.*?\*/', lambda mo: mo.group(1) or "", text, flags=re.S)
+        text = re.sub(r'("(?:\\.|[^"\\])*")|//[^\n]*|/\*.*?\*/', lambda mo: mo.group(1) or "", text, flags=re.DOTALL)
         cfg = json.loads(re.sub(r",\s*([}\]])", r"\1", text))
     except (OSError, json.JSONDecodeError):
         return None
@@ -109,8 +109,8 @@ class Resolver:
             base = opts.get("baseUrl", paths_dir)
             for alias, targets in paths.items():
                 if targets and isinstance(targets, list) and isinstance(targets[0], str):
-                    a = alias[:-1] if alias.endswith("*") else alias
-                    t = targets[0][:-1] if targets[0].endswith("*") else targets[0]
+                    a = alias.removesuffix("*")
+                    t = targets[0].removesuffix("*")
                     aliases.append((a, norm(PurePosixPath(base) / t) + ("/" if t.endswith("/") else "")))
             if aliases or "baseUrl" in opts:
                 out.append((d, sorted(aliases, key=lambda x: -len(x[0])), opts.get("baseUrl")))

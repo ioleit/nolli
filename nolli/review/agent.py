@@ -20,7 +20,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 MODEL = "claude-opus-5-5"
 EFFORT = "high"
 PRICE = {"input": 4.0, "output": 20.0, "cache_read": 0.20, "cache_write": 5.0}  # $ per million tokens, claude-opus-5-5
@@ -91,7 +90,7 @@ class Reviewer:
         """What the review panel names as the reviewer."""
         return MODEL
 
-    def review(self, brief: str, head: str, check: "Check", repo: Path, out: Path,
+    def review(self, brief: str, head: str, check: Check, repo: Path, out: Path,
                on_step: Callable[[str, Run], None] | None = None, cancel: threading.Event | None = None) -> Run:
         """As review() below: writes out/verdicts.json, reports steps to ``on_step``, stops when
         ``cancel`` is set (Cancelled), raises Failed without verdicts that pass the check. The Run
@@ -136,7 +135,7 @@ def review(brief: str, head: str, check: Check, repo: Path, out: Path, on_step: 
     saved: list[str] = [""]  # the last write_verdicts
     cancel = cancel or threading.Event()
     run = Run()
-    say = (lambda s: on_step(s, run)) if on_step else (lambda s: None)  # noqa: E731
+    say = (lambda s: on_step(s, run)) if on_step else (lambda s: None)
 
     def call(name: str, args: dict) -> tuple[str, bool]:
         if name == "git":

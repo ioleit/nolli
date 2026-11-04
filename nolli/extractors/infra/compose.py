@@ -20,13 +20,13 @@ from pathlib import PurePosixPath
 import yaml
 
 from ...model import ALLOCATE, CONTAIN, PROVIDE, USE, address
-from ..facts import Entity, Provenance, Relation
 from .. import Context
+from ..facts import Entity, Provenance, Relation
 from ..interfaces import ensure_env, ensure_host
 
 COMPOSE_NAMES = re.compile(r"(^|/)(docker-)?compose(\.[\w-]+)?\.ya?ml$")
 URL_HOST = re.compile(r"[a-z][a-z0-9+.-]*://(?:[^@/\s]*@)?([A-Za-z0-9_.-]+)(?::\d+)?")
-PERMISSION_KEY = re.compile(r"CORS|ORIGIN|ALLOWED|WHITELIST|TRUSTED", re.I)
+PERMISSION_KEY = re.compile(r"CORS|ORIGIN|ALLOWED|WHITELIST|TRUSTED", re.IGNORECASE)
 
 
 def run(ctx: Context) -> None:

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import tempfile
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -24,10 +24,10 @@ from .extractors.match import run_all as match_all
 from .keys import ChangeKey, Commit
 from .model import Key, Model, address
 from .progress import Progress, Quiet
-from .store.maps import MapStore
 from .sources import Sources
 from .sources.git import export_commit, find_head, list_file_changes, list_tracked_files
 from .store import ModelStore
+from .store.maps import MapStore
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 

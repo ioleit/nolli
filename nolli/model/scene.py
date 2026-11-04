@@ -25,13 +25,13 @@ from collections.abc import Callable, Iterable, Mapping
 from functools import cached_property
 from typing import Any, Protocol
 
-from . import CONTAIN, EdgeKey, Key, Model
+from . import EdgeKey, Key, Model
 
 
 class Overlay(Protocol):
     name: str
 
-    def compute(self, element: "Element") -> dict | None: ...
+    def compute(self, element: Element) -> dict | None: ...
 
 
 class OverlayCycle(Exception):
@@ -41,9 +41,9 @@ class OverlayCycle(Exception):
 class Element:
     """A node or an edge of a scene."""
 
-    __slots__ = ("_scene", "key", "__dict__")
+    __slots__ = ("__dict__", "_scene", "key")
 
-    def __init__(self, scene: "Scene", key: Key) -> None:
+    def __init__(self, scene: Scene, key: Key) -> None:
         self._scene = scene
         self.key = key
 
@@ -70,25 +70,25 @@ class Element:
         ``meta["projection"]``)."""
         return self._scene.model.meta
 
-    def find_holder(self, key: Key, role: str = "source") -> "Element | None":
+    def find_holder(self, key: Key, role: str = "source") -> Element | None:
         """The element of this scene that stands for ``key`` of its ``role`` source (each node
         of a source is held by one element), None if none does."""
         k = self._scene.find_holder(key, role)
         return None if k is None else self._scene.find_element(k)
 
     @property
-    def scene(self) -> "Scene":
+    def scene(self) -> Scene:
         """The scene, for what an overlay computes once for all of its elements (``scene.memo``)."""
         return self._scene
 
     # -- what it stands for ----------------------------------------------------
 
     @cached_property
-    def sources(self) -> dict[str, tuple["Element", ...]]:
+    def sources(self) -> dict[str, tuple[Element, ...]]:
         return {role: tuple(src.find_element(k) for k in self._scene.list_refs(role, self.key) if src.model.has(k))
                 for role, src in self._scene.sources.items()}
 
-    def find_same(self, *roles: str) -> "Element | None":
+    def find_same(self, *roles: str) -> Element | None:
         """The element with this key in the first of ``roles`` (default: head, base, source)
         that has one: a projection's box that is a node of its source, a change's node as one
         side has it."""
@@ -101,28 +101,28 @@ class Element:
     # -- structure -----------------------------------------------------------
 
     @property
-    def src(self) -> "Element":
+    def src(self) -> Element:
         return self._scene.find_element(self.key.src)  # type: ignore[union-attr]
 
     @property
-    def dst(self) -> "Element":
+    def dst(self) -> Element:
         return self._scene.find_element(self.key.dst)  # type: ignore[union-attr]
 
     @property
-    def parent(self) -> "Element | None":
+    def parent(self) -> Element | None:
         p = self._scene.model.find_parent(self.key)  # type: ignore[arg-type]
         return None if p is None else self._scene.find_element(p)
 
     @property
-    def children(self) -> list["Element"]:
+    def children(self) -> list[Element]:
         return [self._scene.find_element(c) for c in self._scene.model.list_children(self.key)]  # type: ignore[arg-type]
 
     @property
-    def out_edges(self) -> list["Element"]:
+    def out_edges(self) -> list[Element]:
         return [self._scene.find_element(e) for e in self._scene.model.list_out(self.key)]  # type: ignore[arg-type]
 
     @property
-    def in_edges(self) -> list["Element"]:
+    def in_edges(self) -> list[Element]:
         return [self._scene.find_element(e) for e in self._scene.model.list_in(self.key)]  # type: ignore[arg-type]
 
     def iter_ancestors(self):
@@ -141,7 +141,7 @@ class Element:
 
 
 class Scene:
-    def __init__(self, model: Model, overlays: Iterable[Overlay], sources: Mapping[str, "Scene"] | None = None) -> None:
+    def __init__(self, model: Model, overlays: Iterable[Overlay], sources: Mapping[str, Scene] | None = None) -> None:
         self.model = model
         self.overlays: dict[str, Overlay] = {}
         for o in overlays:
@@ -152,7 +152,7 @@ class Scene:
         self._busy: set[tuple[str, Key]] = set()
         self._memo: dict[Any, Any] = {}
 
-    def with_overlays(self, *more: Overlay) -> "Scene":
+    def with_overlays(self, *more: Overlay) -> Scene:
         """The same model and sources with more overlays (one of the same name replaces it)."""
         return Scene(self.model, [*self.overlays.values(), *more], self.sources)
 
@@ -193,7 +193,7 @@ class Scene:
                     held[x] = k
         return held.get(key)
 
-    def memo(self, fn: Callable[["Scene"], Any]) -> Any:
+    def memo(self, fn: Callable[[Scene], Any]) -> Any:
         """``fn(scene)``, computed once per scene: for an overlay that needs all of a scene's
         elements at once (the numbered changes, where verdicts land)."""
         if fn not in self._memo:

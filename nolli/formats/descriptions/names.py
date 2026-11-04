@@ -37,7 +37,7 @@ def format_name(el: Element) -> str:
 def read_api(el: Element) -> dict:
     """What the extractor that made an API, a path step or an endpoint says about it: its
     protocol, method, path, the readable path below its step (``short``)."""
-    if not address.scheme_of(el.key) == address.API:
+    if address.scheme_of(el.key) != address.API:
         return {}
     for name in el.meta.get("overlays") or []:
         v = el.get(name)

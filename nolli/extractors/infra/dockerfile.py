@@ -16,8 +16,8 @@ import shlex
 from pathlib import PurePosixPath
 
 from ...model import ALLOCATE, CONTAIN, USE, address
-from ..facts import Entity, Provenance, Relation
 from .. import Context
+from ..facts import Entity, Provenance, Relation
 
 PY_MODULE = re.compile(r"(?:python[\d.]*\s+-m\s+|uvicorn\s+|gunicorn\s+)([A-Za-z_][\w.]*)(?::\w+)?")
 SCRIPT = re.compile(r"(?:^|\s)((?:[\w./-]+/)?[\w-]+\.(?:py|sh|js|mjs|ts))(?=\s|$)")
@@ -71,7 +71,7 @@ def run(ctx: Context) -> None:
                     p = PurePosixPath(src.rstrip("/"))
                     full = (ctx_dir / p) if str(p) not in (".", "") else ctx_dir
                     full_s = str(full) if str(full) not in ("", ".") else "."
-                    full_s = full_s[2:] if full_s.startswith("./") else full_s
+                    full_s = full_s.removeprefix("./")
                     fid = address.repo(full_s)
                     if m.has(fid):
                         m.add_relation(Relation(ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))

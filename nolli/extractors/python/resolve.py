@@ -9,8 +9,8 @@ from collections import defaultdict
 from pathlib import PurePosixPath
 
 from ...model import SYMBOL_KINDS, USE, address
-from ..facts import Relation
 from .. import Context
+from ..facts import Relation
 from ..interfaces import ensure_ext
 
 SOURCE_ROOTS = ("src", "lib", "python")

@@ -6,9 +6,9 @@ the extractor that found it (``read_references``), and in a change what changed 
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Iterator
 from urllib.parse import unquote
 
 from ..model import CONTAIN, EdgeKey, address

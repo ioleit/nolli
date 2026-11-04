@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Union
 
 from . import address, metamodel
 from .metamodel import (  # noqa: F401 (the vocabulary, as callers import it)
@@ -60,12 +60,12 @@ class EdgeKey:
         return f"{self.kind}|{self.src}|{self.dst}|{self.subkind}"
 
     @classmethod
-    def parse(cls, s: str) -> "EdgeKey":
+    def parse(cls, s: str) -> EdgeKey:
         kind, src, dst, sub = s.split("|", 3)
         return cls(kind, src, dst, sub)
 
 
-Key = Union[str, EdgeKey]  # a node's address, or an edge's
+Key = str | EdgeKey  # a node's address, or an edge's
 
 
 class Model:
@@ -149,7 +149,7 @@ class Model:
     def list_in(self, x: str) -> list[EdgeKey]:
         return self._in.get(x, [])
 
-    def select(self, keep) -> "Model":
+    def select(self, keep) -> Model:
         """The part of this model with the nodes ``keep`` names and the edges between them (an
         edge in ``keep`` too), each referring to itself here (``refs``: the same key)."""
         keep = set(keep)
@@ -176,11 +176,11 @@ class Model:
         path.write_text(json.dumps(self.to_dict(), indent=1))
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Model":
+    def from_dict(cls, d: dict) -> Model:
         if d.get("format") != FORMAT:
             raise FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {FORMAT}")
         return cls(d.get("key", ""), d["nodes"], (EdgeKey(*e) for e in d["edges"]), meta=d.get("meta") or {})
 
     @classmethod
-    def load(cls, path: Path) -> "Model":
+    def load(cls, path: Path) -> Model:
         return cls.from_dict(json.loads(path.read_text()))

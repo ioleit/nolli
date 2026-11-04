@@ -4,9 +4,9 @@ what changed (the ``change`` overlay)."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Iterator
 
 from ..formats.descriptions.names import format_name
 from ..model import CONTAIN, EdgeKey

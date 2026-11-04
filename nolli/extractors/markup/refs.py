@@ -23,8 +23,8 @@ import posixpath
 import re
 
 from ...model import USE, address
-from ..facts import Provenance, Relation
 from .. import Context
+from ..facts import Provenance, Relation
 from ..interfaces import CDN, ensure_ext, package_name
 
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")

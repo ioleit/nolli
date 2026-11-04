@@ -20,8 +20,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from ..model import Key, Model
 from ..keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
+from ..model import Key, Model
 from .maps import MapStore, MemoryMaps, StoredMaps, StoredOverlay  # noqa: F401
 
 FORMAT = 1  # of key.json and change.json
@@ -58,4 +58,4 @@ class ModelStore(MapStore, Protocol):
 
 
 
-from .directory import DirectoryMaps, DirectoryStore, read_key, write_change, write_commit  # noqa: E402,F401
+from .directory import DirectoryMaps, DirectoryStore, read_key, write_change, write_commit  # noqa: F401

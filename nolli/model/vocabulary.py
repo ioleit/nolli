@@ -69,12 +69,12 @@ class SymbolFacts(TypedDict):
 # -- reading them off an element (the model's ``meta`` names who says what) -----------------
 
 
-def read_file(el: "Element") -> FileFacts | dict:
+def read_file(el: Element) -> FileFacts | dict:
     """What the file tree says about a file or directory ({} for anything else)."""
     return el.get("fs") or {}
 
 
-def read_references(el: "Element") -> list[Reference]:
+def read_references(el: Element) -> list[Reference]:
     """The references an edge stands for, as the extractor that found it says ([] for none)."""
     for name in el.meta.get("overlays") or []:
         v = el.get(name)
@@ -83,11 +83,11 @@ def read_references(el: "Element") -> list[Reference]:
     return []
 
 
-def count_references(el: "Element") -> int:
+def count_references(el: Element) -> int:
     return sum(r["count"] for r in read_references(el))
 
 
-def read_symbols(el: "Element") -> ModuleFacts | SymbolFacts | dict:
+def read_symbols(el: Element) -> ModuleFacts | SymbolFacts | dict:
     """What its language says a module, or a class (type, …) in one, defines ({} for anything else)."""
     f = el if el.kind == "file" else el.parent
     language = read_file(f).get("language") if f is not None else None

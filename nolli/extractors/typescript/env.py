@@ -8,8 +8,8 @@ from __future__ import annotations
 import re
 
 from ...model import USE, address
-from ..facts import Provenance, Relation
 from .. import Context
+from ..facts import Provenance, Relation
 from ..interfaces import ensure_env
 
 JS_ENV = re.compile(rb"(?:process\.env|import\.meta\.env)\.([A-Za-z_][A-Za-z0-9_]*)")

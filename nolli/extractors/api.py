@@ -37,8 +37,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from ..model import CONTAIN, PROVIDE, USE, address
-from .facts import Entity, Provenance, Relation
 from . import Context
+from .facts import Entity, Facts, Provenance, Relation
 
 
 @dataclass
@@ -129,7 +129,6 @@ def build(ctx: Context) -> None:
     if not ops:
         return
     m = ctx.model
-    prov = Provenance("api")
     group = m.ensure_root(address.API, "api")
 
     by_api: dict[tuple[str, str], list[Operation]] = defaultdict(list)
@@ -138,53 +137,59 @@ def build(ctx: Context) -> None:
 
     names = api_names({k: v[0].api_file for k, v in by_api.items()})
     for (protocol, key), api_ops in sorted(by_api.items()):
-        aid = address.api_app(protocol, key)
-        m.add_entity(Entity(aid, "api", names[(protocol, key)],
-                            {"protocol": protocol, "key": key, "file": api_ops[0].api_file,
-                             "about": api_ops[0].api_about, "operations": len(api_ops)}, prov))
-        m.add_relation(Relation(CONTAIN, group, aid, provenance=prov))
+        add_api(m, group, protocol, key, names[(protocol, key)], api_ops)
 
-        root = _step()
-        for op in api_ops:
-            s = root
-            for seg in segments(protocol, op.path):
-                s = s.children.setdefault(step_key(seg), _step())
-                s.names[seg] += 1
-            s.ops.append(op)
 
-        def endpoint(op: Operation, parent: str, name: str) -> None:
-            eid = address.api_operation(aid, segments(protocol, op.path), op.verb)
-            if not m.has(eid):
-                m.add_entity(Entity(eid, "endpoint", f"{op.verb} {name}".rstrip(),
-                                    {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "short": name},
-                                    Provenance(op.extractor, op.file, op.line)))
-                m.add_relation(Relation(CONTAIN, parent, eid, provenance=prov))
-            m.add_relation(Relation(PROVIDE, address.repo(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
-                                    provenance=Provenance(op.extractor, op.file, op.line), attrs={"handler": op.handler}))
+def add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: list[Operation]) -> None:
+    """One API: its node under ``group``, its path steps (``resource``) and its operations (``endpoint``)."""
+    prov = Provenance("api")
+    aid = address.api_app(protocol, key)
+    m.add_entity(Entity(aid, "api", name,
+                        {"protocol": protocol, "key": key, "file": api_ops[0].api_file,
+                         "about": api_ops[0].api_about, "operations": len(api_ops)}, prov))
+    m.add_relation(Relation(CONTAIN, group, aid, provenance=prov))
 
-        def emit(s: _Step, parent: str, path: list[str], label: list[str]) -> None:
-            # merge steps that add nothing: no operation of their own, one step below
-            while not s.ops and len(s.children) == 1:
-                seg, s = next(iter(s.children.items()))
-                path, label = path + [seg], label + [s.label()]
-            text = "/".join(label)  # relative to its parent; the "/" icon says it is a path
-            verbs = sorted({op.verb for op in s.ops})
-            if len(verbs) == 1 and not s.children:
-                for op in s.ops:
-                    endpoint(op, parent, text)
-                return
-            rid = address.api_step(aid, path)
-            m.add_entity(Entity(rid, "resource", text, {"protocol": protocol, "path": "/" + "/".join(path), "api": aid}, prov))
-            m.add_relation(Relation(CONTAIN, parent, rid, provenance=prov))
-            for op in sorted(s.ops, key=lambda o: o.verb):
-                endpoint(op, rid, "")
-            for seg, child in sorted(s.children.items()):
-                emit(child, rid, path + [seg], [child.label()])
+    root = _step()
+    for op in api_ops:
+        s = root
+        for seg in segments(protocol, op.path):
+            s = s.children.setdefault(step_key(seg), _step())
+            s.names[seg] += 1
+        s.ops.append(op)
 
-        for op in sorted(root.ops, key=lambda o: o.verb):
-            endpoint(op, aid, "/")
-        for seg, child in sorted(root.children.items()):
-            emit(child, aid, [seg], [child.label()])
+    def endpoint(op: Operation, parent: str, name: str) -> None:
+        eid = address.api_operation(aid, segments(protocol, op.path), op.verb)
+        if not m.has(eid):
+            m.add_entity(Entity(eid, "endpoint", f"{op.verb} {name}".rstrip(),
+                                {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "short": name},
+                                Provenance(op.extractor, op.file, op.line)))
+            m.add_relation(Relation(CONTAIN, parent, eid, provenance=prov))
+        m.add_relation(Relation(PROVIDE, address.repo(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
+                                provenance=Provenance(op.extractor, op.file, op.line), attrs={"handler": op.handler}))
+
+    def emit(s: _Step, parent: str, path: list[str], label: list[str]) -> None:
+        # merge steps that add nothing: no operation of their own, one step below
+        while not s.ops and len(s.children) == 1:
+            seg, s = next(iter(s.children.items()))
+            path, label = path + [seg], label + [s.label()]
+        text = "/".join(label)  # relative to its parent; the "/" icon says it is a path
+        verbs = sorted({op.verb for op in s.ops})
+        if len(verbs) == 1 and not s.children:
+            for op in s.ops:
+                endpoint(op, parent, text)
+            return
+        rid = address.api_step(aid, path)
+        m.add_entity(Entity(rid, "resource", text, {"protocol": protocol, "path": "/" + "/".join(path), "api": aid}, prov))
+        m.add_relation(Relation(CONTAIN, parent, rid, provenance=prov))
+        for op in sorted(s.ops, key=lambda o: o.verb):
+            endpoint(op, rid, "")
+        for seg, child in sorted(s.children.items()):
+            emit(child, rid, path + [seg], [child.label()])
+
+    for op in sorted(root.ops, key=lambda o: o.verb):
+        endpoint(op, aid, "/")
+    for seg, child in sorted(root.children.items()):
+        emit(child, aid, [seg], [child.label()])
 
 
 # ---------- matching calls to operations ----------

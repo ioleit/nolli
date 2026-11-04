@@ -24,15 +24,15 @@ class Repo:
     url: str
 
     @classmethod
-    def from_remote(cls, remote: str) -> "Repo":
+    def from_remote(cls, remote: str) -> Repo:
         """From a remote's URL as git or nolli spells it (``https://github.com/o/r``, ``git@github.com:o/r.git``)."""
         m = GITHUB_REMOTE.match(remote)
         return cls(f"{m.group(1)}/{m.group(2)}/{m.group(3)}") if m else cls(remote)
 
-    def make_commit(self, sha: str) -> "Commit":
+    def make_commit(self, sha: str) -> Commit:
         return Commit(self, sha)
 
-    def make_change(self, base: str, head: str) -> "ChangeKey":
+    def make_change(self, base: str, head: str) -> ChangeKey:
         return ChangeKey(self, base, head)
 
     def format_slug(self) -> str:
@@ -56,7 +56,7 @@ class Commit:
     repo: Repo
     sha: str  # full
 
-    def make_change_to(self, head: str) -> "ChangeKey":
+    def make_change_to(self, head: str) -> ChangeKey:
         """The change from this commit to ``head``, in the same repository."""
         return ChangeKey(self.repo, self.sha, head)
 

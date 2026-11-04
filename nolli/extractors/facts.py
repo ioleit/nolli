@@ -15,8 +15,8 @@ path, line) and a confidence class: ``exact`` (resolved by construction), ``heur
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Iterable, Iterator
 
 from ..model import ALLOCATE, CONTAIN, PROVIDE, USE, EdgeKey, Key, Model, address, metamodel
 
@@ -31,7 +31,7 @@ class Provenance:
 class Attrs(dict):
     """An entity's attributes, remembering which extractor wrote each."""
 
-    def __init__(self, facts: "Facts", data: dict, by: str) -> None:
+    def __init__(self, facts: Facts, data: dict, by: str) -> None:
         super().__init__(data)
         self.facts = facts
         self.by = {k: by for k in data}

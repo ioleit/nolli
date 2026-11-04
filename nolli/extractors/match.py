@@ -10,8 +10,8 @@ entities so views can count them. Placeholders bound everywhere are removed.
 
 from __future__ import annotations
 
-from . import Context, all_resolvers, api
 from ..model import CONTAIN, address
+from . import Context, all_resolvers, api
 from .facts import Provenance, Relation
 
 

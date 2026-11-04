@@ -15,7 +15,14 @@ from collections import defaultdict
 from ..model import address
 from ..model.scene import Scene
 from .reading import Reading
-from .rollup import hidden_by_role, image_aliases, init_anchor_dirs, is_init, reveal_scores, visible_from_expanded
+from .rollup import (
+    hidden_by_role,
+    image_aliases,
+    init_anchor_dirs,
+    is_init,
+    reveal_scores,
+    visible_from_expanded,
+)
 
 
 def unfold_cost(g: Reading, v: str, hidden: set[str], anchors: set[str] = frozenset()) -> int:
@@ -47,7 +54,7 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
     phases = [score_changes(g.scene, hidden), lca] if diff else [lca]
     # in a review, boxes where nothing changed are faded and cost half a box of attention
     changed = index_changes(g.scene) if diff else {}
-    weight = (lambda x: 1.0 if x in changed or address.is_own_code(x) else 0.5) if diff else (lambda x: 1.0)  # noqa: E731
+    weight = (lambda x: 1.0 if x in changed or address.is_own_code(x) else 0.5) if diff else (lambda x: 1.0)
 
     def cost_of_unfolding(v: str) -> float:
         if not diff:

@@ -41,7 +41,7 @@ class MemoryMaps:
         self.maps = maps if maps is not None else {}  # name -> model key -> values
         self.about: dict[tuple[str, str], dict] = {}
 
-    def open_maps(self, name: str) -> "_MemoryHandle":
+    def open_maps(self, name: str) -> _MemoryHandle:
         return _MemoryHandle(self, name)
 
 

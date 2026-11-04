@@ -21,14 +21,14 @@ names the languages. The rest of nolli never imports from here, except ``cli`` a
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
-from typing import Callable, Iterator
 
 from ..model import address
-from .facts import Facts
 from ..progress import Progress, Quiet
+from .facts import Facts
 
 
 @dataclass

@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 from tree_sitter_language_pack import get_parser
 
 from ...model import USE, address
-from ..facts import Entity, Provenance, Relation
 from .. import Context
+from ..facts import Entity, Provenance, Relation
 
 GRAMMAR = {".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",
            ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript"}
@@ -173,7 +173,7 @@ def run(ctx: Context) -> None:
             pending.append((fid, imp.spec, imp.line, attrs))
     ctx.notes["js-imports"] = pending
     for fid, spec, line, attrs in pending:
-        relative = spec.startswith(".") or spec.startswith("/")
+        relative = spec.startswith((".", "/"))
         uid = address.unresolved("js", f"{spec}@{address.path_of(fid)}" if relative else spec)
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", spec, {"language": "javascript"}, Provenance("ts-imports")))

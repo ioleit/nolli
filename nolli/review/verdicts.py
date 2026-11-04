@@ -18,7 +18,7 @@ from collections import defaultdict
 from ..model import address
 from ..model.scene import Element, Scene
 from ..store.maps import MapStore, StoredMaps
-from .changes import find_review_cut, format_name, list_ancestors_to_unfold
+from .changes import format_name, list_ancestors_to_unfold
 from .reading import Reader
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
@@ -139,7 +139,7 @@ def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
     out = []
     for v in verdicts:
         ends = v.get("ends") or []
-        name = lambda x: format_name(g, address.owner(x)) + (" (own code)" if address.is_own_code(x) else "")  # noqa: E731
+        name = lambda x: format_name(g, address.owner(x)) + (" (own code)" if address.is_own_code(x) else "")
         reveal: list[str] = []
         for x in ends:
             if not g.has(address.owner(x)):

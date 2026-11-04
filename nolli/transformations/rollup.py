@@ -26,8 +26,8 @@ annotation on the caller or reader when it is not.
 from __future__ import annotations
 
 from collections import defaultdict
-from functools import lru_cache
 from dataclasses import dataclass, field
+from functools import cache
 
 from ..model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, address
 from .reading import CONF_RANK, Reading
@@ -72,7 +72,7 @@ class RolledEdge:
                 "base": self.base, "head": self.head, "changed": dict(sorted(self.changed.items())),
                 "ends": {"src": sorted(self.ends["src"] or {self.src}), "dst": sorted(self.ends["dst"] or {self.dst})}}
 
-    def absorb(self, other: "RolledEdge") -> None:
+    def absorb(self, other: RolledEdge) -> None:
         """Count, interfaces, names, confidence and changes of an edge folded into this one."""
         self.count += other.count
         self.types += other.types
@@ -306,7 +306,7 @@ def top_of(g: Reading, node: str, expanded: set[str]) -> str:
         cur = p
 
 
-def utility_badges(g: Reading, rolled: "RolledUp", min_in: int = 6) -> set[str]:
+def utility_badges(g: Reading, rolled: RolledUp, min_in: int = 6) -> set[str]:
     """Boxes with more than ``min_in`` incoming dependency edges in the picture are
     utilities: all those edges become badges on their sources ("→ observability"), like
     externals, since a box that many arrows point at mostly adds clutter. Edges are counted
@@ -412,7 +412,7 @@ def lift(g: Reading, edges: list[RolledEdge], expanded: set[str], max_lines: int
     in ``ends``."""
     max_lines = max(1, max_lines)
 
-    @lru_cache(maxsize=None)
+    @cache
     def above(x: str) -> tuple[str, ...]:
         """x and its drawn containers, nearest first (own code sits in its module)."""
         out, p = [x], drawn_parent(g, x, expanded)

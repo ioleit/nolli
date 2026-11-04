@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from typing import Iterable, Iterator, TextIO, TypeVar
+from typing import TextIO, TypeVar
 
 T = TypeVar("T")
 SHORT = 0.5  # s: a step this quick leaves no line
@@ -28,7 +29,7 @@ class Progress:
         self.label = ""
         self.last = 0.0
 
-    def under(self, prefix: str) -> "Progress":
+    def under(self, prefix: str) -> Progress:
         """The same progress, its steps labelled ``prefix`` (the side of a change: base, head)."""
         p = Progress(self.stream, f"{self.prefix}{prefix}: ", self.t0)
         p.live = self.live
@@ -80,7 +81,7 @@ class Quiet(Progress):
         super().__init__(stream=sys.stderr)
         self.live = False
 
-    def under(self, prefix: str) -> "Progress":
+    def under(self, prefix: str) -> Progress:
         return self
 
     @contextmanager

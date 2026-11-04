@@ -116,7 +116,7 @@ def api(path: str, tok: str | None | object = AMBIENT) -> dict:
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):  # noqa: ANN002, ANN003
+    def redirect_request(self, *args, **kwargs):
         return None
 
 

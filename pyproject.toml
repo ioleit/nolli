@@ -53,3 +53,9 @@ packages = ["nolli", "nolli.model", "nolli.formats", "nolli.sources", "nolli.tra
 
 [tool.ruff]
 line-length = 110
+
+[tool.ruff.lint]
+# ruff's own rules, and no relative imports: every module names the package it imports from
+extend-select = ["TID252"]
+# nested ifs that each say one thing; a bad file is a ValueError, whatever is wrong in it
+ignore = ["SIM102", "TRY004"]

@@ -24,8 +24,8 @@ import ast
 from collections import Counter
 
 from ...model import USE, address
-from ..facts import Entity, Provenance, Relation
 from .. import Context
+from ..facts import Entity, Provenance, Relation
 
 FUNC_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 DOC_MAX = 240  # characters of a docstring's summary kept
@@ -229,7 +229,7 @@ def run(ctx: Context) -> None:
                 pending[(src, b)] += n
     ctx.notes["py-aliases"] = aliases_by_file
     for (src, b), n in pending.items():
-        name = {"local": lambda: b[2], "from": lambda: b[2], "module": lambda: b[1], "chain": lambda: b[1].rsplit(".", 1)[-1]}[b[0]]()
+        name = b[2] if b[0] in ("local", "from") else b[1] if b[0] == "module" else b[1].rsplit(".", 1)[-1]
         if b[0] == "from" and len(b) == 4:  # ``name.attr``: resolve.py takes ``attr`` when name is a module
             name = f"{b[2]}.{b[3]}"
         if b[0] == "local":

@@ -27,8 +27,18 @@ from ..model import CONTAIN, USE, EdgeKey, Key, Model, address, metamodel
 from ..model.scene import Element, FixedOverlay, Scene
 from .reading import Reading
 from .rollup import (
-    HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, drawn_parent, hidden_by_role, image_aliases, is_init, lift,
-    representative, rollup, utility_badges, visible_from_expanded,
+    HIDDEN_ROLES_DEFAULT,
+    RolledUp,
+    chain_end,
+    drawn_parent,
+    hidden_by_role,
+    image_aliases,
+    is_init,
+    lift,
+    representative,
+    rollup,
+    utility_badges,
+    visible_from_expanded,
 )
 from .unfold import find_default_cut
 
@@ -61,7 +71,7 @@ class ProjectionSpec:
     unfold: Callable[[Element], bool] | None = field(default=None, repr=False, compare=False)  # instead of expanded: asked per container
 
     @classmethod
-    def expanded_if(cls, unfold: Callable[[Element], bool], **rest) -> "ProjectionSpec":
+    def expanded_if(cls, unfold: Callable[[Element], bool], **rest) -> ProjectionSpec:
         """Unfold every container ``unfold`` says yes to (asked about each, in the scene projected)."""
         return cls(unfold=unfold, **rest)
 
@@ -149,12 +159,12 @@ def leaf_count(g: Reading, x: str) -> int:
     return n
 
 
-def fold(st: "ProjectionSpec") -> Callable[[Scene], tuple[Model, FixedOverlay]]:
+def fold(st: ProjectionSpec) -> Callable[[Scene], tuple[Model, FixedOverlay]]:
     """The projection as a transformation: what ``st`` asks for, of the scene it is given."""
     return lambda scene: fold_model(scene, st)
 
 
-def fold_model(scene: Scene, st: "ProjectionSpec") -> tuple[Model, FixedOverlay]:
+def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     """The folded model: its nodes the boxes drawn, each keeping its address and referring to
     what it stands for, its edges the lines drawn, each referring to the edges it bundles; and
     the projection's overlay, what it decided about them."""
@@ -164,7 +174,7 @@ def fold_model(scene: Scene, st: "ProjectionSpec") -> tuple[Model, FixedOverlay]
     shown_groups = set(st.groups)
     # a root group is drawn when the filter shows it and it has something to unfold (rollup
     # leaves no edge on one the filter hides)
-    root_group = lambda x: is_root_group(g, x) and (x not in shown_groups or not g.children(x))  # noqa: E731
+    root_group = lambda x: is_root_group(g, x) and (x not in shown_groups or not g.children(x))
     edges = rolled.edges
     out_total: dict[str, int] = defaultdict(int)
     for e in edges:

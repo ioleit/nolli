@@ -109,8 +109,8 @@ def render(scene: Scene, fade: bool = True) -> str:
     kids: dict[str | None, list[dict]] = {}
     for n in node_list:
         kids.setdefault(n["parent"], []).append(n)
-    ref = lambda x: make_node_id(x) + "_g" if nodes[x].get("container") else make_node_id(x)  # noqa: E731
-    status = lambda x: (x.get("diff") or {}).get("status")  # noqa: E731
+    ref = lambda x: make_node_id(x) + "_g" if nodes[x].get("container") else make_node_id(x)
+    status = lambda x: (x.get("diff") or {}).get("status")
     out = ["flowchart TD"]
     classes: list[tuple[str, str]] = []  # given after the nodes: subgraphs take them only that way
 

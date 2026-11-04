@@ -45,7 +45,7 @@ from __future__ import annotations
 import re
 from urllib.parse import quote, unquote
 
-from .metamodel import API, CONFIG, NAMESPACES, PKG, REPO, RUNTIME, UNRESOLVED  # noqa: F401 (spelled through address)
+from .metamodel import API, CONFIG, NAMESPACES, PKG, REPO, RUNTIME, UNRESOLVED
 
 
 def scheme_of(eid: str) -> str:

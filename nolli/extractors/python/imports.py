@@ -11,8 +11,8 @@ from __future__ import annotations
 import ast
 
 from ...model import USE, address
-from ..facts import Entity, Provenance, Relation
 from .. import Context
+from ..facts import Entity, Provenance, Relation
 
 
 def module_name_of(rel: str) -> str:
@@ -30,7 +30,7 @@ def run(ctx: Context) -> None:
         if tree is None:
             continue
         fid = address.repo(rel)
-        pkg_parts = rel.split("/")[:-1] if not rel.endswith("__init__.py") else rel.split("/")[:-1]
+        pkg_parts = rel.split("/")[:-1]  # the package a relative import starts from: the file's directory
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for a in node.names:
