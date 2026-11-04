@@ -45,6 +45,12 @@ def run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
 def extract(repo: Path, config: dict | None = None, progress: Progress | None = None, key: str = "") -> tuple[Model, Maps]:
     """The model of the files under ``repo`` as they are (a working tree, or a checkout), and
     what each extractor said about its nodes and edges."""
+    return extract_facts(repo, config, progress).split(key)
+
+
+def extract_facts(repo: Path, config: dict | None = None, progress: Progress | None = None) -> Facts:
+    """What the extractors found under ``repo``, before it is split into structure and maps
+    (``Facts``: entities and relations with their attributes, as the extractors wrote them)."""
     facts = Facts()
     progress = progress or Quiet()
     ctx = Context(repo=repo, model=facts, files=list_tracked_files(repo), config=config or {}, progress=progress)
@@ -64,7 +70,7 @@ def extract(repo: Path, config: dict | None = None, progress: Progress | None = 
     facts.meta = {"repo": str(repo), "commit": head[:7] if head else None, "files": len(ctx.files), "languages": language_names(),
                   "timings": timings, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                   "notes": {k: v for k, v in ctx.notes.items() if k not in WORKING_NOTES}, "nolli": version()}
-    return facts.split(key)
+    return facts
 
 
 def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple[Model, Maps]:
