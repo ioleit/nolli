@@ -9,7 +9,7 @@ from collections import defaultdict
 from ..model import SYMBOL_KINDS, address
 from ..model.scene import Scene
 from ..transformations.graph import Graph
-from ..transformations.merge import Links, describe_fact, describe_node
+from ..transformations.merge import TOTALS, Links
 
 
 MAX_ITEMS = 60
@@ -50,14 +50,34 @@ def detail_box(scene: Scene, x: str) -> dict | None:
             entities.append({"id": eid, "kind": kind, "name": g.name(eid), "status": d["status"], "path": path,
                              "link": (links.blob(path, "base" if d["status"] == "removed" else "head", a.get("line"),
                                                  a.get("end_line")) if path else None)})
-    deps = [c for r in g.relations if r.diff and (r.src in sub or r.dst in sub) for c in describe_fact(scene, r.key, links)]
+    deps = [r.diff["fact"] for r in g.relations if r.diff and (r.src in sub or r.dst in sub)]
     deps.sort(key=lambda c: ({"added": 0, "removed": 1, "changed": 2}[c["status"]], c["src"], c["dst"]))
     a = g.attrs(target)
-    return {"id": x, "kind": g.kind(target), "name": g.name(target), "path": a.get("path"), "diff": describe_node(scene, target),
+    return {"id": x, "kind": g.kind(target), "name": g.name(target), "path": a.get("path"), "diff": sum_subtree(scene, target),
             "files": files[:MAX_ITEMS], "more_files": max(0, len(files) - MAX_ITEMS),
             "classes": classes[:MAX_ITEMS], "entities": entities[:MAX_ITEMS], "more_entities": max(0, len(entities) - MAX_ITEMS),
             "dependencies": deps[:MAX_ITEMS], "more_dependencies": max(0, len(deps) - MAX_ITEMS),
             "link": links.diff(a["path"]) if g.kind(target) == "file" and a.get("path") else None}
+
+
+def sum_subtree(scene: Scene, x: str) -> dict | None:
+    """What changed in a node of a change and everything under it: its own status, the totals."""
+    own = scene.find_element(x).get("change") or {}
+    totals = dict.fromkeys(TOTALS, 0)
+    seen = False
+    for y in [x, *scene.model.iter_descendants(x)]:
+        rec = scene.find_element(y).get("change")
+        if rec:
+            seen = True
+            for k in TOTALS:
+                totals[k] += (rec.get("totals") or {}).get(k, 0)
+    status = own.get("status") if own.get("status") in ("added", "removed") else "changed" if seen else None
+    if status is None:
+        return None
+    out = {"status": status, **totals, "internal": 0}
+    if scene.model.kinds[x] in SYMBOL_KINDS and own.get("status") == "same":
+        out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)
+    return out | {k: own[k] for k in ("git", "old_path", "renamed_to") if own.get(k)}
 
 
 # ---------- the numbered changes a reviewer (person or agent) goes through ----------
@@ -173,7 +193,7 @@ def _list_changes(scene: Scene) -> list[dict]:
             word = {"added": "now realised by", "removed": "no longer realised by", "changed": "realisation changed"}[st]
         targets = sorted({f"{'+' if r.diff['status'] == 'added' else '−' if r.diff['status'] == 'removed' else '~'}"
                           f"{format_name(g, r.dst if kind != 'provide' else r.src)}" for r in rs})
-        changes = sorted((c for r in rs for c in describe_fact(scene, r.key, links)),
+        changes = sorted((r.diff["fact"] for r in rs),
                          key=lambda c: ({"added": 0, "removed": 1, "changed": 2}[c["status"]], c["dst"]))
         first = changes[0]
         role = find_role(g, a)

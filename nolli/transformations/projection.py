@@ -215,8 +215,9 @@ def project(scene: Scene, st: SceneState) -> Scene:
             build(r, None)
 
     drawn = set(order)
-    # what each drawn box stands for: a leaf what the cut represents by it, a container itself
-    # and everything drawn inside it, own code the module's own facts
+    # what each drawn box stands for, each node by exactly one box: the innermost drawn box
+    # holding it (a container itself, what is inside belongs to what is drawn inside), a
+    # package's own code what its package body holds
     rep = representative(g, visible, hidden, image_aliases(g))
     refs: dict[Key, list[Key]] = defaultdict(list)
     for x in sorted(g.nodes):
@@ -226,14 +227,7 @@ def project(scene: Scene, st: SceneState) -> Scene:
         if r is not None and r in drawn:
             refs[r].append(x)
     for x in order:
-        if address.is_own_code(x) and address.owner(x) not in refs[x]:
-            refs[x].insert(0, address.owner(x))
-    for x in reversed(order):  # containers: themselves and what is drawn inside, innermost first
-        p = parent_of[x]
-        if p is not None and not address.is_own_code(x):
-            refs[p].extend(k for k in refs[x] if k not in refs[p])
-    for x in order:
-        if not address.is_own_code(x) and g.has(x):
+        if x in refs[x]:
             refs[x] = [x] + [k for k in refs[x] if k != x]
 
     def local(e) -> bool:

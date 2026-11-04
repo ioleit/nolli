@@ -65,6 +65,18 @@ class Element:
         return self.key.format() if isinstance(self.key, EdgeKey) else self.key
 
     @property
+    def meta(self) -> dict:
+        """What the element's model says about itself (a change's ``meta["change"]``, a picture's
+        ``meta["projection"]``)."""
+        return self._scene.model.meta
+
+    def find_holder(self, key: Key, role: str = "source") -> "Element | None":
+        """The element of this scene that stands for ``key`` of its ``role`` source (each node
+        of a source is held by one element), None if none does."""
+        k = self._scene.find_holder(key, role)
+        return None if k is None else self._scene.find_element(k)
+
+    @property
     def scene(self) -> "Scene":
         """The scene, for what an overlay computes once for all of its elements (``scene.memo``)."""
         return self._scene
@@ -169,6 +181,17 @@ class Scene:
         if refs is None:  # the same key on that side (a change's sides)
             return (key,) if role in self.model.refs else ()
         return refs.get(key, ())
+
+    def find_holder(self, key: Key, role: str = "source") -> Key | None:
+        """The key of the element that refers to ``key`` of its ``role`` source (the innermost,
+        when several do)."""
+        held = self._memo.get(("holders", role))
+        if held is None:
+            held = self._memo[("holders", role)] = {}
+            for k, ks in (self.model.refs.get(role) or {}).items():
+                for x in ks:
+                    held[x] = k
+        return held.get(key)
 
     def memo(self, fn: Callable[["Scene"], Any]) -> Any:
         """``fn(scene)``, computed once per scene: for an overlay that needs all of a scene's

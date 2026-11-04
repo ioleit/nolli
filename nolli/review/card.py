@@ -4,47 +4,42 @@ happened to it and the verdicts on it (``card``, Markdown)."""
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 
-from ..model import EdgeKey
 from ..formats.descriptions.prose import code, count, listing, mark, one_line, paragraphs, say
-from ..model.scene import Element, Scene
-from ..transformations.merge import find_change_scene
+from ..model.scene import Element
 from .changes import list_changes
-from .verdicts import VERDICT_RANK, find_drawn
+from .verdicts import VERDICT_RANK, find_box, iter_boxes
 
 FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside
 
 
-def place_items(scene: Scene) -> dict:
-    """Which numbered changes each drawn box and edge shows. An item about facts lands on the
-    edges carrying those facts; an item about nodes (or facts that fell inside one box) on the
-    box that stands for them."""
-    change = find_change_scene(scene.list_nodes()[0]) if scene.model.kinds else None
-    if change is None:
-        return {}
-    items = list_changes(change)
-    inv = find_drawn(scene)
-    drawn = set(scene.model.kinds)
-    by_fact: dict[str, list[str]] = defaultdict(list)
-    for it in items:
-        for f in it["facts"]:
-            by_fact[f].append(it["id"])
-    out: dict = defaultdict(set)
-    placed: set[str] = set()
-    for e in scene.list_edges():
-        ids = {i for f in (e.get("projection") or {}).get("changed", []) for i in by_fact.get(f, [])}
-        out[e.key] |= ids
-        placed |= ids
-    for it in items:
-        if it["id"] in placed and it["category"] == "dependency":
-            continue
-        for x in it["focus"]:
-            r = x if x in drawn else inv.get(x)
-            if r is not None and r in drawn:
-                out[r].add(it["id"])
-                break
-    return {k: sorted(v, key=lambda i: int(i[1:])) for k, v in out.items()}
+def list_items(el: Element) -> dict[str, dict]:
+    """Which numbered changes a change's node or edge is about (a node those that focus on it, an
+    edge those whose facts it is), by id, with what placing them needs."""
+    items = list_changes(el.scene)
+    mine = [it for it in items if (el.id in it["facts"] if el.is_edge else el.key in it["focus"])]
+    return {it["id"]: {"category": it["category"], "focus": it["focus"]} for it in mine}
+
+
+def place_items(el: Element) -> list[str]:
+    """Which numbered changes a drawn box or edge shows. An item about facts lands on the edges
+    carrying those facts; an item about nodes (or facts that fell inside one box, or became a
+    badge) on the box that stands for the first of them that is drawn."""
+    src = el.sources.get("source", ())
+    if el.is_edge:
+        return sorted({i for s in src for i in (s.get("review") or {}).get("about", {})}, key=lambda i: int(i[1:]))
+    near = [*iter_boxes(el), *el.iter_ancestors()]  # a line lifted to a box around it carries what is inside too
+    carried = {i for b in near for e in [*b.out_edges, *b.in_edges] for i in (e.get("review") or {}).get("items", [])}
+    out = set()
+    for s in src:
+        for i, it in (s.get("review") or {}).get("about", {}).items():
+            if it["category"] == "dependency" and i in carried:
+                continue
+            first = next((f for f in it["focus"] if find_box(el.scene, f) is not None), None)
+            if first is not None and find_box(el.scene, first) == el.key:
+                out.add(i)
+    return sorted(out, key=lambda i: int(i[1:]))
 
 
 def list_verdict_lines(verdicts: list[dict], inside: list[dict] = (), items: int = 0, where: str = "") -> list[str]:
@@ -89,7 +84,7 @@ def describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = (),
     return paragraphs(lines + list_verdict_lines(verdicts, inside, items, f"in this {kind}"))
 
 
-def describe_edge(names: dict[str, str], ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0) -> str:
+def describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0) -> str:
     """Sentences on top of an edge's hover card in a review: how its references changed, which
     names came or went, and the verdicts on it and on the dependencies it bundles."""
     lines: list[str] = []
@@ -100,8 +95,8 @@ def describe_edge(names: dict[str, str], ed: dict | None, verdicts: list[dict], 
             lines.append(say("Removed in this change: {} gone", count(ed["base"], "reference")))
         else:
             lines.append(say("Changed: {} → {} references", ed["base"], ed["head"]))
-        came = sorted({names.get(c["dst"], c["dst"]) for c in ed.get("changes", []) if c["status"] == "added"})
-        went = sorted({names.get(c["dst"], c["dst"]) for c in ed.get("changes", []) if c["status"] == "removed"})
+        came = sorted({c.get("dst_name", c["dst"]) for c in ed.get("changes", []) if c["status"] == "added"})
+        went = sorted({c.get("dst_name", c["dst"]) for c in ed.get("changes", []) if c["status"] == "removed"})
         if came:
             lines.append(listing("Now uses {}", came, "more", limit=4))
         if went:
@@ -113,23 +108,20 @@ class Review:
     name = "review"
 
     def compute(self, el: Element) -> dict | None:
-        if "source" not in el.scene.sources or find_change_scene(el) is None:
-            return None
         if el.is_edge and el.kind == "contain":
             return None
-        items = el.scene.memo(place_items).get(el.key, [])
+        if "change" not in el.meta:
+            return None
+        if "source" not in el.scene.sources:  # the change itself: which numbered changes are about it
+            about = list_items(el)
+            return {"items": sorted(about, key=lambda i: int(i[1:])), "about": about} if about else None
+        items = place_items(el)
         v = el.get("verdicts") or {}
         own, inside = v.get("own", []), v.get("inside", [])
+        ed = el.get("change")
         if el.is_edge:
-            change = find_change_scene(el)
-            ed = el.get("change")
-            names = {c["dst"]: (change.find_element(c["dst"]).get("facts") or {}).get("name", c["dst"]) if change.has(c["dst"]) else c["dst"]
-                     for c in (ed or {}).get("changes", [])}
-            card = describe_edge(names, ed, own, inside, len(items))
+            card = describe_edge(ed, own, inside, len(items))
         else:
             kind = el.kind if el.kind != "anchor" else "box"
-            card = describe_box(el.get("change"), own, inside, len(items), kind.replace("_", " "))
+            card = describe_box(ed, own, inside, len(items), kind.replace("_", " "))
         return {"items": items, "card": card}
-
-
-__all__ = ["EdgeKey", "Review", "place_items"]

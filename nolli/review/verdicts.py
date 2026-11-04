@@ -18,7 +18,6 @@ from collections import defaultdict
 from ..model import address
 from ..model.scene import Element, Scene
 from ..store.maps import MapStore, StoredMaps
-from ..transformations.merge import find_change_scene  # noqa: F401
 from .changes import find_review_cut, format_name, list_ancestors_to_unfold
 from ..transformations.graph import Graph
 
@@ -176,8 +175,9 @@ def keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) -
 
 
 class Verdicts:
-    """A change's own elements: the verdicts kept on them. A drawn box or edge: the verdicts
-    that land on it (``place_verdicts``), and the worst of them."""
+    """On a change's node: the verdicts that start there (on the node, on its own code, or on an
+    edge from it), as kept. On a drawn box or edge: the verdicts that land on it, from what it
+    and what it holds stand for (``land``), and the worst of them."""
 
     name = "verdicts"
 
@@ -190,20 +190,28 @@ class Verdicts:
     def load_about(self, scene: Scene) -> dict | None:
         return self.stored.load_about(scene.model.key)
 
-    def place(self, scene: Scene) -> dict:
-        """Where this review's verdicts land in a projected scene (once per scene)."""
-        change = find_change_scene(next(iter(scene.list_nodes()), None)) if scene.model.kinds else None
-        return place_verdicts(scene, describe_verdicts(change, self.load(change))) if change is not None else {}
+    def group(self, scene: Scene) -> dict[str, list[dict]]:
+        """A change's verdicts by the node their first end belongs to (once per scene)."""
+        out: dict[str, list[dict]] = defaultdict(list)
+        for v in self.load(scene):
+            if v.get("ends"):
+                out[address.owner(v["ends"][0])].append(v)
+        return dict(out)
 
     def compute(self, el: Element) -> dict | None:
         if "source" not in el.scene.sources:
-            own = self.stored.load(el.model_key).get(el.key) if not el.is_edge else None
-            return {"verdicts": own["verdicts"]} if own else None
-        change = find_change_scene(el)
-        if change is None:
+            vs = [] if el.is_edge else el.scene.memo(self.group).get(el.key, [])
+            return {"starting": vs} if vs else None
+        if el.is_edge and el.kind == "contain":
             return None
-        placed = el.scene.memo(self.place)
-        vs = placed.get(el.key) or []
+        roots = [el.src, el.dst] if el.is_edge else [el.parent or el] if el.kind == "anchor" else [el]
+        seen, vs = set(), []
+        for v in (v for r in roots for b in iter_boxes(r) for s in b.sources.get("source", ())
+                  for v in (s.get(self.name) or {}).get("starting", [])):
+            if v["id"] not in seen and land(el.scene, v) == el.key:
+                seen.add(v["id"])
+                vs.append(v)
+        vs.sort(key=lambda v: int(v["id"][1:]))
         if not vs:
             return {"verdicts": [], "verdict": None, "own": [], "inside": []}
         ends = [el.key.src, el.key.dst] if el.is_edge else [el.key]
@@ -212,59 +220,49 @@ class Verdicts:
                 "own": own, "inside": [v for v in vs if v not in own]}
 
 
-def find_drawn(scene: Scene):
-    """base node -> the drawn box that stands for it, the innermost one."""
-    order = scene.model.meta.get("projection", {}).get("order", [])
-    inv: dict[str, str] = {}
-    for n in order:
-        for k in scene.list_refs("source", n):
-            inv[k] = n
-    for n in order:
-        inv[n] = n
-    return inv
+def iter_boxes(el: Element):
+    """A drawn box and every box drawn inside it."""
+    yield el
+    for c in el.children:
+        yield from iter_boxes(c)
 
 
-def place_verdicts(scene: Scene, verdicts: list[dict]) -> dict:
-    """Where each verdict is shown in a projected scene: on the drawn box that stands for its
-    target, or on the drawn edge that carries the edge between its two ends. Roll-up and fan
-    bundling both draw an edge between boxes that contain its ends (a folded box, or the
-    unfolded box a bundle ends at), so that is the drawn edge between the boxes around the two
-    ends, the innermost there is. An edge that fell inside one box lands on that box; one
-    drawn as a badge, on its source."""
-    inv = find_drawn(scene)
-    drawn = set(scene.model.kinds)
-    parent = {x: scene.model.find_parent(x) for x in drawn}
+def find_box(scene: Scene, x: str) -> str | None:
+    """The drawn box that stands for ``x``: itself if drawn (a module's own code too), else the one
+    holding it (or its owner)."""
+    if scene.has(x):
+        return x
+    return scene.find_holder(x) or scene.find_holder(address.owner(x))
 
-    def drawn_box(x: str) -> str | None:
-        r = x if x in drawn else inv.get(x) or inv.get(address.owner(x))
-        return r if r in drawn else None
 
+def land(scene: Scene, v: dict) -> object | None:
+    """Where a verdict is shown in a picture: on the drawn box that stands for its target, or on
+    the drawn edge that carries the edge between its two ends. Roll-up and fan bundling both
+    draw an edge between boxes that contain its ends (a folded box, or the unfolded box a bundle
+    ends at), so that is the drawn edge between the boxes around the two ends, the innermost
+    there is. An edge that fell inside one box lands on that box; one drawn as a badge, on its
+    source."""
+    ends = [find_box(scene, x) for x in v["ends"]]
+    if not ends or None in ends:
+        return None
+    if len(ends) == 2 and ends[0] != ends[1]:
+        e = find_carrier(scene, ends[0], ends[1])
+        if e is not None:
+            return e
+    return ends[0]
+
+
+def find_carrier(scene: Scene, a: str, b: str):
+    """The drawn edge that carries an edge from a to b (drawn boxes), or from b to a."""
     def around(x: str) -> list[str]:
         out = [x]
-        while parent.get(out[-1]) in drawn:
-            out.append(parent[out[-1]])
+        while (p := scene.model.find_parent(out[-1])) is not None:
+            out.append(p)
         return out
 
-    edge_at: dict[tuple[str, str], object] = {}
-    for e in scene.model.list_edges():
-        edge_at.setdefault((e.src, e.dst), e)
-
-    def carrier(a: str, b: str):
-        for s, d in ((a, b), (b, a)):
-            found = [(i + j, edge_at[(x, y)]) for i, x in enumerate(around(s)) for j, y in enumerate(around(d)) if (x, y) in edge_at]
-            if found:
-                return min(found, key=lambda f: f[0])[1]
-        return None
-
-    on: dict = defaultdict(list)
-    for v in verdicts:
-        ends = [drawn_box(x) for x in v["ends"]]
-        if not ends or None in ends:
-            continue
-        if len(ends) == 2 and ends[0] != ends[1]:
-            e = carrier(ends[0], ends[1])
-            if e is not None:
-                on[e].append(v)
-                continue
-        on[ends[0]].append(v)
-    return dict(on)
+    for s, d in ((a, b), (b, a)):
+        found = [(i + j, e) for i, x in enumerate(around(s)) for j, y in enumerate(around(d))
+                 for e in scene.model.list_out(x) if e.dst == y]
+        if found:
+            return min(found, key=lambda f: f[0])[1]
+    return None

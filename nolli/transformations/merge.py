@@ -23,17 +23,6 @@ from ..model import CONTAIN, SYMBOL_KINDS, EdgeKey, Model, address
 from ..model.scene import Element, Overlay, Scene
 from ..store.maps import StoredMaps
 from .graph import Graph
-from .unfold import index_changes, score_changes  # noqa: F401 (the change's, for callers)
-
-
-def find_change_scene(el: Element) -> Scene | None:
-    """The change an element is of or was drawn from (a projection's source, all the way down)."""
-    scene = el.scene
-    while scene is not None:
-        if "base" in scene.sources:
-            return scene
-        scene = scene.sources.get("source")
-    return None
 
 
 def is_change(scene: Scene) -> bool:
@@ -49,8 +38,8 @@ class Change:
     def compute(self, el: Element) -> dict | None:
         if is_change(el.scene):
             return self.compare(el)
-        if "source" in el.scene.sources and find_change_scene(el) is not None:
-            return describe_edge(el) if el.is_edge else describe_box(el)
+        if "source" in el.scene.sources:  # a picture: what changed underneath, from what it stands for
+            return sum_edge(el) if el.is_edge else sum_box(el)
         return None
 
     # -- on a change's own elements --------------------------------------------------
@@ -61,10 +50,14 @@ class Change:
             nb = (b.get("facts") or {}).get("count", 0) if b else 0
             nh = (h.get("facts") or {}).get("count", 0) if h else 0
             if b is None:
-                return {"status": "added", "base": 0, "head": nh}
-            if h is None:
-                return {"status": "removed", "base": nb, "head": 0}
-            return {"status": "changed", "base": nb, "head": nh} if nb != nh else None
+                rec = {"status": "added", "base": 0, "head": nh}
+            elif h is None:
+                rec = {"status": "removed", "base": nb, "head": 0}
+            elif nb != nh:
+                rec = {"status": "changed", "base": nb, "head": nh}
+            else:
+                return None
+            return rec | {"fact": describe_fact(el, rec, b, h)}
         content = self.content.load(el.model_key)
         rec: dict = {}
         if b is None:
@@ -84,7 +77,13 @@ class Change:
             if lines:
                 rec.setdefault("status", "same")
                 rec.update(lines)
-        return rec or None
+        if not rec:
+            return None
+        files = el.kind == "file" and "git" in rec  # lines are counted by files, so a class's are not counted twice
+        rec["totals"] = {"added": rec.get("added", 0) if files else 0, "removed": rec.get("removed", 0) if files else 0,
+                         "files": int(files), "new": int(rec["status"] == "added" and el.kind != "group"),
+                         "gone": int(rec["status"] == "removed" and el.kind != "group")}
+        return rec
 
     def list_class_lines(self, el: Element, b: Element | None, h: Element | None, content) -> dict | None:
         f = address.file_of(el.key)
@@ -163,66 +162,73 @@ def describe_change(about: dict, content: Mapping[Key, dict]) -> dict:
     return d
 
 
-def describe_node(scene: Scene, x: str, internal: int = 0) -> dict | None:
-    """What the viewer shows on a box of a change: its status and the totals inside it."""
-    if address.is_own_code(x) or not scene.has(x):
+TOTALS = ("added", "removed", "files", "new", "gone")
+
+
+def sum_box(el: Element) -> dict | None:
+    """A drawn box: its own status, and the totals of what changed in what it stands for and in
+    the boxes drawn inside it; ``internal``, the changed dependencies the projection found
+    between what it holds."""
+    if el.kind == "anchor":
         return None
-    g = Graph(scene)
-    own = g.diff(x)
-    agg = index_changes(scene).get(x)
-    status = own.get("status") if own.get("status") in ("added", "removed") else None
-    if status is None and (agg or internal):
-        status = "changed"
+    totals = dict.fromkeys(TOTALS, 0)
+    own, seen = None, False
+    for s in el.sources.get("source", ()):
+        rec = s.get("change")
+        if rec:
+            seen = True
+            own = rec if s.key == el.key else own
+            for k in TOTALS:
+                totals[k] += (rec.get("totals") or {}).get(k, 0)
+    for c in el.children:
+        rec = c.get("change")
+        if rec:
+            seen = True
+            for k in TOTALS:
+                totals[k] += (rec.get("totals") or {}).get(k, 0)
+    internal = (el.get("projection") or {}).get("internal_changes", 0)
+    own = own or {}
+    status = own.get("status") if own.get("status") in ("added", "removed") else "changed" if seen or internal else None
     if status is None:
         return None
-    out = {"status": status, **(agg or {"added": 0, "removed": 0, "files": 0, "new": 0, "gone": 0})}
-    if g.kind(x) in SYMBOL_KINDS and own.get("status") == "same":
+    out = {"status": status, **totals, "totals": totals, "internal": internal}
+    if el.kind in SYMBOL_KINDS and own.get("status") == "same":
         out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)  # its own lines; files count them for the module
-    out["internal"] = internal
     for k in ("git", "old_path", "renamed_to"):
         if own.get(k):
             out[k] = own[k]
     return out
 
 
-def describe_box(el: Element) -> dict | None:
-    """A drawn box: describe_node of the node it is, with the changes between what it holds."""
-    change = find_change_scene(el)
-    p = el.get("projection") or {}
-    return describe_node(change, el.key, p.get("internal_changes", 0)) if change is not None else None
-
-
-def describe_fact(scene: Scene, key: EdgeKey, links: Links) -> list[dict]:
-    """The changed facts of one edge of a change, each with a link to where it changed."""
-    el = scene.find_element(key)
-    d = el.get("change")
-    if not d:
-        return []
-    side = el.find_same("base" if d["status"] == "removed" else "head")
+def describe_fact(el: Element, rec: dict, b: Element | None, h: Element | None) -> dict:
+    """A changed edge of a change for a tooltip or details panel, with a link to where it changed."""
+    side = b if rec["status"] == "removed" else h
     facts = ((side.get("facts") or {}).get("facts") or []) if side else []
-    g = Graph(scene)
     first = facts[0] if facts else {}
-    path = first.get("path") or (g.attrs(key.src).get("path") if g.has(key.src) else None)
+    path = first.get("path") or (el.src.get("facts") or {}).get("path")
     line = first.get("line")
-    return [{"fact": key.format(), "status": d["status"], "kind": key.kind, "subkind": key.subkind, "src": key.src, "dst": key.dst,
-             "base": d.get("base", 0), "head": d.get("head", 0), "path": path, "line": line,
-             "link": links.diff(path, line, "base" if d["status"] == "removed" else "head") if path else None}]
+    key = el.key
+    links = Links(el.meta.get("change") or {})
+    return {"fact": key.format(), "status": rec["status"], "kind": key.kind, "subkind": key.subkind, "src": key.src, "dst": key.dst,
+            "dst_name": (el.dst.get("facts") or {}).get("name", key.dst),
+            "base": rec.get("base", 0), "head": rec.get("head", 0), "path": path, "line": line,
+            "link": links.diff(path, line, "base" if rec["status"] == "removed" else "head") if path else None}
 
 
-def describe_edge(el: Element) -> dict | None:
-    """A drawn edge: how its references changed, and the changed facts it bundles."""
+def sum_edge(el: Element) -> dict | None:
+    """A drawn edge: how its references changed (the projection counted them), and the changed
+    edges it bundles."""
     p = el.get("projection") or {}
-    status = p.get("status")
-    change = find_change_scene(el)
-    if not status or change is None:
+    if not p.get("status"):
         return None
-    links = Links(change.model.meta.get("change") or {})
-    changed = sorted(p.get("changed") or [])
-    facts = [c for f in changed[:40] for c in describe_fact(change, EdgeKey.parse(f), links) if change.has(EdgeKey.parse(f))]
-    return {"status": status, "base": p.get("base", 0), "head": p.get("head", 0), "facts": changed,
-            "changes": facts, "more": max(0, len(changed) - 40)}
-
-
+    changes: list[dict] = []
+    for s in el.sources.get("source", ()):
+        rec = s.get("change")
+        if rec:
+            changes.extend(rec["changes"] if "changes" in rec else [rec["fact"]])
+    changes.sort(key=lambda c: c["fact"])
+    return {"status": p["status"], "base": p.get("base", 0), "head": p.get("head", 0), "facts": [c["fact"] for c in changes],
+            "changes": changes[:40], "more": max(0, len(changes) - 40)}
 
 
 def merge(base: Scene, head: Scene, key: str, meta: dict | None = None, overlays: list[Overlay] = ()) -> Scene:
