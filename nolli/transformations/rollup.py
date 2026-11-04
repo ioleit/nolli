@@ -256,16 +256,6 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
     return visible
 
 
-def display_path(g: Reading, eid: str, expanded: set[str]) -> str:
-    """A directory's path relative to its nearest unfolded ancestor (chains show their full run)."""
-    parts = [g.segment(eid)]
-    p = g.parent(eid)
-    while p is not None and p not in expanded and not g.file(p).get("root"):
-        parts.append(g.segment(p))
-        p = g.parent(p)
-    return "/".join(reversed(parts))
-
-
 def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[str, str] | None = None):
     cache: dict[str, str | None] = {}
     alias = alias or {}
