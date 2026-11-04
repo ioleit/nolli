@@ -1,11 +1,9 @@
-"""Building models and opening their scenes: nolli the library's way from a repository to
-what the command line (``nolli/cli.py``) and the server (``nolli/server/``) show.
+"""Building models: from a repository's files to what the store keeps (``nolli/datasets.py``
+opens them as scenes).
 
 - ``extract``: a directory's files -> its model and, per extractor, what it said (maps);
 - ``fetch_commit_model``, ``fetch_change``: from the store, or built from a ``Sources`` and
   kept in the store;
-- ``open_commit_scene``, ``open_change_scene``: a stored model with its overlays, a change
-  merged from its two commits (``nolli/transformations/merge.py``).
 
 The steps that take time (``extract_commit``, ``list_content``) take paths and return data,
 so a caller can run them elsewhere (``run``: the service runs them in processes of their
@@ -26,13 +24,10 @@ from .extractors.match import run_all as match_all
 from .model.keys import ChangeKey, Commit
 from .model import Key, Model, address
 from .progress import Progress, Quiet
-from .extractors.overlays import make_base_overlays
-from .model.scene import Overlay, Scene
 from .store.maps import MapStore
 from .sources import Sources
 from .sources.git import export_commit, find_head, list_file_changes, list_tracked_files
 from .store import ModelStore
-from .transformations.merge import merge
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
@@ -164,66 +159,3 @@ def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, abou
     with progress.step("keeping the change"):
         store.save_change(change, record, sides, {"content": content})
     return record
-
-
-# -- scenes ----------------------------------------------------------------------------
-
-
-def make_overlays(maps: MapStore) -> list[Overlay]:
-    """The overlays nolli shows on any scene, on top of the extractors'."""
-    from .transformations.merge import Change
-    from .formats.descriptions.hover import Hover
-    from .formats.descriptions.label import Label
-    from .review.card import Review
-    from .review.verdicts import Verdicts
-
-    return [Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]
-
-
-def open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
-    """An extracted model with its extractors' overlays and nolli's (or ``overlays``)."""
-    return Scene(model, [*make_base_overlays(model, maps), *(make_overlays(maps) if overlays is None else overlays)])
-
-
-def open_commit_scene(store: ModelStore, commit: Commit, overlays: list[Overlay] | None = None) -> Scene | None:
-    m = store.load_model(commit)
-    return None if m is None else open_scene(m, store, overlays)
-
-
-def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
-    """The change merged from its two stored commits, with what it says about itself in its
-    model's ``meta["change"]``."""
-    about = store.load_change(change)
-    if about is None:
-        return None
-    base, head = (open_commit_scene(store, c, overlays) for c in change.list_sides())
-    if base is None or head is None:
-        return None
-    meta = {"repo": head.model.meta.get("repo"), "commit": change.head[:7], "files": head.model.meta.get("files"),
-            "languages": {**base.model.meta.get("languages", {}), **head.model.meta.get("languages", {})},
-            "change": dict(about)}
-    return merge(base, head, change.format_key(), meta)
-
-
-def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
-    """A model just extracted, not kept anywhere, as a scene."""
-    from .store.maps import MemoryMaps
-
-    store = MemoryMaps({n: {model.key: v} for n, v in maps.items()})
-    return open_scene(model, store, overlays)
-
-
-def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, about: dict, content: Mapping[Key, dict],
-                overlays: list[Overlay] | None = None) -> Scene:
-    """A change of two models just extracted, not kept anywhere (``nolli diff``, tests)."""
-    from .store.maps import MemoryMaps
-
-    store = MemoryMaps()
-    for m, maps in (base, head):
-        for n, v in maps.items():
-            store.open_maps(n).save(m.key, v)
-    store.open_maps("content").save(key, content)
-    bs, hs = (open_scene(m, store, overlays) for m, _ in (base, head))
-    meta = {"repo": hs.model.meta.get("repo"), "commit": about.get("head", "")[:7], "files": hs.model.meta.get("files"),
-            "languages": {**bs.model.meta.get("languages", {}), **hs.model.meta.get("languages", {})}, "change": dict(about)}
-    return merge(bs, hs, key, meta)

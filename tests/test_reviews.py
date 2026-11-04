@@ -19,7 +19,8 @@ import pytest
 import subprocess
 
 from nolli.review import agent as reviewer
-from nolli.build import fetch_change, open_change_scene
+from nolli.build import fetch_change
+from nolli.datasets import open_change_scene
 from nolli.review.ci import comment as ci_comment
 from nolli.model.keys import Repo
 from nolli.review.verdicts import find_provenance, keep_verdicts_file, parse_verdicts, save_verdicts

@@ -82,7 +82,8 @@ def write_extras(scene, out: Path) -> dict:
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
-    from .build import extract, open_built
+    from .build import extract
+    from .datasets import open_built
     from .sources.git import find_head
     from .store import write_commit
 
@@ -100,7 +101,8 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
-    from .build import extract_commit, list_content, merge_built, version
+    from .build import extract_commit, list_content, version
+    from .datasets import merge_built
     from .progress import Quiet
     from .sources.git import find_commit
     from .store import write_change

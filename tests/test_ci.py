@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from nolli.review.ci import is_key, key_of, read_result
-from nolli.build import open_change_scene
+from nolli.datasets import open_change_scene
 from nolli.cli import main
 from nolli.store import DirectoryStore
 

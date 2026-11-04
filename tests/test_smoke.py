@@ -270,7 +270,7 @@ def test_own_code_dot(tmp_path: Path):
 
 def test_directory_with_source_inside_stays_shown():
     """A directory whose bytes are mostly config is still drawn when it holds source files."""
-    from nolli.build import open_built
+    from nolli.datasets import open_built
     from nolli.extractors.facts import Entity, Facts, Provenance
 
     m = Facts()
