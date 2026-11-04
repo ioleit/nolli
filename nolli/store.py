@@ -1,180 +1,90 @@
-"""Where nolli keeps what it builds, and where it gets the commits it builds from.
+"""Where nolli keeps what it builds: models, by key (``nolli/keys.py``), and the maps
+overlays keep for them (``nolli/scene.py``: ``StoredMaps``).
 
-A model is the model of something: a repository at one commit (``Commit``), or the change
-between two commits of one repository (``Change``). That is its key (``ModelKey``). Two
-interfaces stand between the code that builds and shows models and where they are kept:
+``ModelStore`` is the interface: a commit's model with the maps its extractors saved
+(``save_model``), a change's own record (``save_change``: what it says about itself, its
+two sides and the maps kept for the change, git's hunks and a review's verdicts among
+them), and per overlay its maps (``open_maps``). nolli's own is ``DirectoryStore``; a
+service built on nolli can bring one that keeps models elsewhere or decides per request
+who may read what (raising ``NotAllowed``).
 
-- ``ModelStore``: models and their reviews, by key. nolli's own is ``DirectoryStore``.
-- ``Sources``: a local git repository that has the commits a build needs. nolli's own are
-  ``LocalRepository`` (a checkout you have, ``nolli view``) and ``CloneCache`` (bare clones
-  fetched from their remotes, ``nolli serve``).
-
-A service built on nolli can bring its own of either, for example one that keeps models
-elsewhere or decides per request who may read what (and raises ``NotAllowed`` for the rest).
-
-This module depends on the data model only. What is made from a model (a review's diagram
-and brief, a report) is nolli/derived.py; whoever needs it loads the model and makes it.
+Everything stored carries a format; data of another format is not read (it is built again).
+This module depends on the data model only.
 """
 
 from __future__ import annotations
 
-import contextlib
-import fcntl
 import json
 import os
-import re
 import shutil
-import subprocess
 import threading
-from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
 
-from .model import Model
+from .keys import ChangeKey, Commit, ModelKey, NotAllowed, parse_key, dump_key  # noqa: F401 (NotAllowed: part of the protocol)
+from .model import EdgeKey, FormatError, Key, Model
+from .scene import MapStore, StoredMaps
 
-# -- keys ------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Repo:
-    """A repository, by where it comes from: ``github.com/<owner>/<repo>`` for one on GitHub,
-    else the path of a local repository (``/home/me/src/shop``)."""
-
-    url: str
-
-    @classmethod
-    def from_remote(cls, remote: str) -> Repo:
-        """From a remote's URL as git or nolli spells it (``https://github.com/o/r``, ``git@github.com:o/r.git``)."""
-        m = re.match(r"^(?:https://(?:[^@/]+@)?|ssh://git@|git@)?(github\.com)[/:]([^/]+)/(.+?)(?:\.git)?/?$", remote)
-        return cls(f"{m.group(1)}/{m.group(2)}/{m.group(3)}") if m else cls(remote)
-
-    def make_commit(self, sha: str) -> Commit:
-        return Commit(self, sha)
-
-    def make_change(self, base: str, head: str) -> Change:
-        return Change(self, base, head)
-
-    def format_slug(self) -> str:
-        """A short name: ``owner_repo`` on GitHub, else the directory's name."""
-        parts = self.url.rstrip("/").split("/")
-        return f"{parts[1]}_{parts[2]}" if parts[0] == "github.com" and len(parts) == 3 else parts[-1]
-
-    def format_remote(self) -> str | None:
-        """Where git fetches it from: ``https://github.com/<owner>/<repo>``, or None for a local one."""
-        return f"https://{self.url}" if self.url.startswith("github.com/") else None
+FORMAT = 1  # of key.json, change.json and an overlay's map
 
 
-@dataclass(frozen=True)
-class Commit:
-    """A repository at one commit."""
-
-    repo: Repo
-    sha: str  # full
-
-    def make_change_to(self, head: str) -> Change:
-        """The change from this commit to ``head``, in the same repository."""
-        return Change(self.repo, self.sha, head)
-
-    def format_name(self) -> str:
-        return f"{self.repo.format_slug()}-{self.sha[:7]}"
-
-
-@dataclass(frozen=True)
-class Change:
-    """The change between two commits of one repository."""
-
-    repo: Repo
-    base: str  # full
-    head: str  # full
-
-    def list_sides(self) -> tuple[Commit, Commit]:
-        return self.repo.make_commit(self.base), self.repo.make_commit(self.head)
-
-    def format_name(self) -> str:
-        return f"{self.repo.format_slug()}-{self.base[:7]}-{self.head[:7]}"
-
-
-ModelKey = Commit | Change
-
-
-def format_key(key: ModelKey) -> dict:
-    """The key as JSON, as a model records it (``meta["key"]``)."""
-    return {"repo": key.repo.url, "head": key.head, "base": key.base} if isinstance(key, Change) else \
-        {"repo": key.repo.url, "head": key.sha}
-
-
-def parse_key(d: dict) -> ModelKey:
-    repo = Repo(d["repo"])
-    return repo.make_change(d["base"], d["head"]) if d.get("base") else repo.make_commit(d["head"])
-
-
-# -- what is kept ------------------------------------------------------------
-
-
-@dataclass
-class Review:
-    """A review of a change: its verdicts on the review diagram's boxes and edges, and who made
-    them (``{"by": "agent" | "ci" | "upload", "at": <ISO time>, ...}``).
-    TODO: annotations on the model, once verdicts live there."""
-
-    verdicts: list[dict]
-    by: dict = field(default_factory=lambda: {"by": "unknown"})
-
-
-class NotAllowed(Exception):
-    """The current request may not read this repository. A server answers 404, as for one
-    that does not exist."""
-
-
-class FetchError(Exception):
-    """The commits a build needs could not be had (not in the repository, or not fetched)."""
-
-
-class ModelStore(Protocol):
-    """Models and their reviews, by key."""
-
+class ModelStore(MapStore, Protocol):
     def find_key(self, name: str) -> ModelKey | None:
         """The key of the stored model called ``name`` (``key.format_name()``, or a name it was
         stored under), None if there is none. URLs carry names."""
 
     def list_names(self) -> list[str]:
-        """The names of the stored models this request may read, newest first (a list to pick
-        from, as nolli view offers)."""
+        """The names of the stored models this request may read, newest first."""
 
-    def load_model(self, key: ModelKey) -> Model | None:
-        """The stored model, None if there is none. Raises NotAllowed if this request may not
-        read ``key.repo``."""
+    def load_model(self, key: Commit) -> Model | None:
+        """A commit's model, None if there is none (or of another format). Raises NotAllowed if
+        this request may not read ``key.repo``."""
 
-    def save_model(self, key: ModelKey, model: Model) -> None:
-        """Keep ``model`` as the model of ``key``, replacing one kept before."""
+    def save_model(self, key: Commit, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
+        """Keep a commit's model and the maps its extractors made, replacing what was kept."""
 
-    def load_review(self, key: ModelKey) -> Review | None:
-        """The review of the model, None if it has none. Raises NotAllowed as load_model."""
+    def load_change(self, key: ChangeKey) -> dict | None:
+        """What a change says about itself (title, pr, description, …), None if it is not kept.
+        Raises NotAllowed as load_model."""
 
-    def save_review(self, key: ModelKey, review: Review) -> None:
-        """Keep ``review`` as the model's review, replacing one kept before."""
-
-
-class Sources(Protocol):
-    """Local git repositories to build from."""
-
-    def open_commits(self, repo: Repo, *shas: str) -> AbstractContextManager[Path]:
-        """A local repository of ``repo`` that has ``shas`` (fetching what is missing), held
-        while the ``with`` block uses it. Raises NotAllowed if this request may not read
-        ``repo``, also when nothing needs fetching."""
+    def save_change(self, key: ChangeKey, about: dict, sides: Mapping[str, tuple[Model, Mapping[str, Mapping[Key, dict]]]],
+                    maps: Mapping[str, Mapping[Key, dict]]) -> None:
+        """Keep a change: what it says about itself, its two commits' models (``base``, ``head``:
+        model and maps, kept with it so a change is all in one place) and the maps kept for the
+        change itself. Maps saved for it since (a review's verdicts) stay."""
 
 
-# -- nolli's own: models in directories --------------------------------------
+# -- maps as JSON --------------------------------------------------------------------
+
+
+def dump_map(model_key: str, values: Mapping[Key, dict], about: dict | None) -> dict:
+    nodes = {k: v for k, v in values.items() if not isinstance(k, EdgeKey)}
+    edges = {k.format(): v for k, v in values.items() if isinstance(k, EdgeKey)}
+    return {"format": FORMAT, "model": model_key, "about": about, "nodes": nodes, "edges": edges}
+
+
+def parse_map(d: dict) -> tuple[dict[Key, dict], dict | None]:
+    if d.get("format") != FORMAT:
+        raise FormatError(f"a map of format {d.get('format')!r}, this nolli reads {FORMAT}")
+    values: dict[Key, dict] = dict(d.get("nodes") or {})
+    values.update({EdgeKey.parse(k): v for k, v in (d.get("edges") or {}).items()})
+    return values, d.get("about")
+
+
+# -- nolli's own: models in directories ----------------------------------------------
 
 
 class DirectoryStore:
-    """Models as directories under ``root``, one per model, named after its key: the model
-    (``model.json``), its key (``key.json``, read without parsing the model) and its review
-    (``verdicts.json`` + ``review.json``). Every directory under ``root`` with a model.json is a
-    model, also one written elsewhere under a name of its own (``nolli diff -o``, a CI run's
-    artifact); its key comes from its files (read_key())."""
+    """Models as directories under ``root``, one per key, named after it:
+
+    - a commit: ``key.json``, ``model.json`` and ``overlays/<name>.json``, one per overlay
+      with something kept for the model (its extractors');
+    - a change: ``key.json``, ``change.json`` (what it says about itself), ``base/`` and
+      ``head/`` (its commits, as above) and ``overlays/`` (git's hunks, verdicts).
+
+    A directory written elsewhere (``nolli diff -o``, a CI run's artifact) is read the same way.
+    """
 
     def __init__(self, root: Path):
         self.root = Path(root).expanduser().resolve()
@@ -182,9 +92,9 @@ class DirectoryStore:
         self.lock = threading.Lock()
         self.index: dict[ModelKey, Path] = {}  # key -> its directory
         self.names: dict[str, ModelKey] = {}  # directory name -> key
-        self.scanned = 0  # root's mtime (ns) when it was last read
-        self.models: dict[Path, tuple[tuple[int, int], Model]] = {}  # model.json -> which file (inode, mtime), the model parsed
-        self.loading: dict[Path, threading.Lock] = {}
+        self.places: dict[str, Path] = {}  # model key (text) -> directory, a change's sides included
+        self.scanned = 0
+        self.cache: dict[Path, tuple[tuple[int, int], object]] = {}  # file -> (inode, mtime), what it parsed to
 
     def locate(self, key: ModelKey) -> Path:
         """The model's directory (existing or not), for code that works with its files."""
@@ -192,7 +102,6 @@ class DirectoryStore:
         return self.index.get(key) or self.root / key.format_name()
 
     def scan(self) -> None:
-        """Read which directories hold which models, when ``root`` changed since the last time."""
         try:
             mtime = self.root.stat().st_mtime_ns
         except OSError:
@@ -201,21 +110,26 @@ class DirectoryStore:
             if mtime == self.scanned:
                 return
             self.scanned = mtime
-            index, names = {}, {}
-            for d in self.root.iterdir():
-                if d.name.startswith(".") or not (d / "model.json").is_file():
+            index, names, places = {}, {}, {}
+            for d in sorted(self.root.iterdir()):
+                key = read_key(d) if not d.name.startswith(".") else None
+                if key is None:
                     continue
-                key = read_key(d)
-                if key is not None:
-                    index.setdefault(key, d)
-                    names[d.name] = key
-            self.index, self.names = index, names
+                index.setdefault(key, d)
+                names[d.name] = key
+                places.setdefault(key.format_key(), d)
+                if isinstance(key, ChangeKey):
+                    for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
+                        places.setdefault(commit.format_key(), d / side)
+            for k, d in index.items():  # a commit's own directory before a change's side
+                places[k.format_key()] = d
+            self.index, self.names, self.places = index, names, places
 
     def find_key(self, name: str) -> ModelKey | None:
         if not name or "/" in name or name.startswith("."):
             return None
         self.scan()
-        if name not in self.names and (self.root / name / "model.json").is_file():
+        if name not in self.names and (self.root / name / "key.json").is_file():
             self.scanned = 0  # written since: read again
             self.scan()
         return self.names.get(name)
@@ -225,198 +139,149 @@ class DirectoryStore:
 
         def mtime(name: str) -> float:
             try:
-                return (self.root / name / "model.json").stat().st_mtime
+                return (self.root / name / "key.json").stat().st_mtime
             except OSError:
                 return 0.0
 
         return sorted(self.names, key=lambda n: -mtime(n))
 
-    def load_model(self, key: ModelKey) -> Model | None:
-        f = self.locate(key) / "model.json"
-        with self.lock:
-            lock = self.loading.setdefault(f, threading.Lock())
-        with lock:  # a second request waits for a load under way
-            try:
-                st = f.stat()
-            except OSError:
-                return None
-            version = (st.st_ino, st.st_mtime_ns)  # a model saved again is a new file
-            hit = self.models.get(f)
-            if hit and hit[0] == version:
-                return hit[1]
-            m = Model.load(f)
-            m.roots()  # the containment index, built before threads share the model
-            self.models[f] = (version, m)
-            return m
+    def read_json(self, f: Path, parse):
+        """``parse(json)`` of a file, kept until the file changes; None if missing, unreadable
+        or of another format."""
+        try:
+            st = f.stat()
+        except OSError:
+            return None
+        version = (st.st_ino, st.st_mtime_ns)
+        hit = self.cache.get(f)
+        if hit and hit[0] == version:
+            return hit[1]
+        try:
+            value = parse(json.loads(f.read_text()))
+        except (OSError, ValueError, KeyError, TypeError):
+            value = None
+        self.cache[f] = (version, value)
+        return value
 
-    def save_model(self, key: ModelKey, model: Model) -> None:
-        """Written next to the final directory, then swapped in whole; a review kept before stays."""
-        model.meta["key"] = format_key(key)
+    def load_model(self, key: Commit) -> Model | None:
+        self.scan()
+        d = self.places.get(key.format_key())
+        if d is None:
+            return None
+        m = self.read_json(d / "model.json", Model.from_dict)
+        if m is not None:
+            m.key = key.format_key()
+        return m
+
+    def load_change(self, key: ChangeKey) -> dict | None:
+        d = self.locate(key)
+        about = self.read_json(d / "change.json", lambda j: j["about"] if j.get("format") == FORMAT else None)
+        if about is None:
+            return None
+        sides = all(self.load_model(c) is not None for c in key.list_sides())
+        return about if sides else None
+
+    def save_model(self, key: Commit, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         out = self.locate(key)
+        self.swap(out, lambda tmp: write_commit(tmp, key, model, maps))
+        with self.lock:
+            self.index[key], self.names[out.name], self.places[key.format_key()] = out, key, out
+
+    def save_change(self, key: ChangeKey, about: dict, sides, maps) -> None:
+        out = self.locate(key)
+
+        def write(tmp: Path) -> None:
+            write_change(tmp, key, about, sides, maps)
+            kept = out / "overlays" / "verdicts.json"  # a review stays with the change it answers
+            if kept.is_file() and "verdicts" not in maps:
+                shutil.copy2(kept, tmp / "overlays" / "verdicts.json")
+
+        self.swap(out, write)
+        with self.lock:
+            self.index[key], self.names[out.name], self.places[key.format_key()] = out, key, out
+            for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
+                self.places.setdefault(commit.format_key(), out / side)
+
+    def swap(self, out: Path, write) -> None:
+        """Written next to the final directory, then swapped in whole."""
         tag = f"{os.getpid()}.{threading.get_ident()}"
         tmp, old = self.root / f".{out.name}.{tag}", self.root / f".{out.name}.old.{tag}"
         shutil.rmtree(tmp, ignore_errors=True)
         tmp.mkdir(parents=True)
         try:
-            model.save(tmp / "model.json")
-            (tmp / "key.json").write_text(json.dumps(format_key(key)))
-            for f in ("verdicts.json", "review.json"):  # the review stays with the model it answers
-                if (out / f).is_file():
-                    shutil.copy2(out / f, tmp / f)
+            write(tmp)
             if out.exists():
                 out.rename(old)
             tmp.rename(out)
             shutil.rmtree(old, ignore_errors=True)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-        with self.lock:
-            self.index[key], self.names[out.name] = out, key
 
-    def load_review(self, key: ModelKey) -> Review | None:
-        d = self.locate(key)
-        try:
-            verdicts = json.loads((d / "verdicts.json").read_text())
-        except (OSError, ValueError):
-            return None
-        try:
-            by = json.loads((d / "review.json").read_text())
-        except (OSError, ValueError):
-            by = {"by": "unknown"}  # verdicts from before review.json existed
-        return Review(verdicts if isinstance(verdicts, list) else [], by)
+    # -- maps ------------------------------------------------------------------
 
-    def save_review(self, key: ModelKey, review: Review) -> None:
-        d = self.locate(key)
-        (d / "verdicts.json").write_text(json.dumps([{k: v[k] for k in ("target", "verdict", "reason")} for v in review.verdicts], indent=1))
-        (d / "review.json").write_text(json.dumps(review.by, indent=1))
+    def open_maps(self, name: str) -> "DirectoryMaps":
+        return DirectoryMaps(self, name)
+
+    def locate_maps(self, model_key: str, name: str) -> Path | None:
+        self.scan()
+        d = self.places.get(model_key)
+        return None if d is None else d / "overlays" / f"{name}.json"
+
+
+class DirectoryMaps:
+    def __init__(self, store: DirectoryStore, name: str) -> None:
+        self.store, self.name = store, name
+
+    def read(self, model_key: str) -> tuple[dict[Key, dict], dict | None] | None:
+        f = self.store.locate_maps(model_key, self.name)
+        return None if f is None else self.store.read_json(f, parse_map)
+
+    def load(self, model_key: str) -> Mapping[Key, dict]:
+        got = self.read(model_key)
+        return got[0] if got else {}
+
+    def load_about(self, model_key: str) -> dict | None:
+        got = self.read(model_key)
+        return got[1] if got else None
+
+    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None:
+        f = self.store.locate_maps(model_key, self.name)
+        if f is None:
+            raise KeyError(f"no model {model_key} to keep {self.name} for")
+        f.parent.mkdir(exist_ok=True)
+        tmp = f.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
+        tmp.write_text(json.dumps(dump_map(model_key, values, about), indent=1))
+        tmp.replace(f)
+
+
+def write_maps(d: Path, model_key: str, maps: Mapping[str, Mapping[Key, dict]]) -> None:
+    (d / "overlays").mkdir(exist_ok=True)
+    for name, values in maps.items():
+        (d / "overlays" / f"{name}.json").write_text(json.dumps(dump_map(model_key, values, None)))
+
+
+def write_commit(d: Path, key: Commit, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
+    model.key = key.format_key()
+    (d / "key.json").write_text(json.dumps({"format": FORMAT, **dump_key(key)}))
+    model.save(d / "model.json")
+    write_maps(d, model.key, maps)
+
+
+def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]]) -> None:
+    """A change's directory (``DirectoryStore``) at ``d``, which exists."""
+    (d / "key.json").write_text(json.dumps({"format": FORMAT, **dump_key(key)}))
+    (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": about}, indent=1))
+    for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
+        (d / side).mkdir(exist_ok=True)
+        write_commit(d / side, commit, *sides[side])
+    write_maps(d, key.format_key(), maps)
 
 
 def read_key(d: Path) -> ModelKey | None:
-    """The key of a model directory: its key.json; else what its meta records (report.json's, as
-    nolli diff -o and nolli before 0.7 wrote it, smaller than model.json; else model.json's),
-    for a model from before keys were recorded what the meta says about its commits."""
+    """The key of a model directory (its key.json), None for anything else (another format
+    included)."""
     try:
-        return parse_key(json.loads((d / "key.json").read_text()))
+        j = json.loads((d / "key.json").read_text())
+        return parse_key(j) if j.get("format") == FORMAT else None
     except (OSError, ValueError, KeyError, TypeError):
-        pass
-    meta = None
-    for f in ("report.json", "model.json"):
-        try:
-            meta = json.loads((d / f).read_text()).get("meta", {})
-            break
-        except (OSError, ValueError):
-            continue
-    if meta is None:
         return None
-    if isinstance(meta.get("key"), dict):
-        try:
-            return parse_key(meta["key"])
-        except (KeyError, TypeError):
-            return None
-    diff = meta.get("diff") or {}
-    repo = Repo.from_remote(diff["remote"]) if diff.get("remote") else Repo(str(meta.get("repo") or d.name))
-    if diff.get("base") and diff.get("head"):
-        return repo.make_change(diff["base"], diff["head"])
-    return repo.make_commit(str(meta.get("commit") or d.name))
-
-
-# -- nolli's own: local repositories -----------------------------------------
-
-
-def run_git(repo: Path, *args: str, env: dict | None = None) -> str:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, env=env, check=False)
-    if r.returncode:
-        raise FetchError(r.stderr.strip() or f"git {args[0]} failed")
-    return r.stdout
-
-
-def has_commit(repo: Path, sha: str) -> bool:
-    return subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{sha}^{{commit}}"],
-                          capture_output=True, check=False).returncode == 0
-
-
-class LocalRepository:
-    """A repository you have checked out: every commit a build needs is in it already."""
-
-    def __init__(self, path: Path):
-        self.path = Path(path)
-
-    @contextlib.contextmanager
-    def open_commits(self, repo: Repo, *shas: str) -> Iterator[Path]:
-        missing = [s for s in shas if not has_commit(self.path, s)]
-        if missing:
-            raise FetchError(f"{self.path} has no commit {', '.join(s[:7] for s in missing)}")
-        yield self.path
-
-
-@contextlib.contextmanager
-def lock_clone(clone: Path) -> Iterator[None]:
-    """One git command at a time in a clone, across processes."""
-    with open(clone / "nolli.lock", "w") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
-
-
-class CloneCache:
-    """Bare clones under ``root`` (``<root>/<owner>/<repo>``), fetched from their remotes as
-    builds need commits. git runs with ``token(owner, repo)`` if it gives one (as an HTTP
-    header, never stored in the clone), else with no credentials."""
-
-    def __init__(self, root: Path, token: Callable[[str, str], str | None] | None = None):
-        self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=True)
-        self.token = token
-        self.held: dict[Path, int] = {}  # clones in use, how many times (retention leaves them)
-        self.lock = threading.Lock()
-
-    def locate(self, repo: Repo) -> Path:
-        owner, name = repo.url.rstrip("/").split("/")[-2:]
-        return self.root / owner.lower() / name.lower()
-
-    def list_held(self) -> set[Path]:
-        with self.lock:
-            return set(self.held)
-
-    @contextlib.contextmanager
-    def open_commits(self, repo: Repo, *shas: str) -> Iterator[Path]:
-        remote = repo.format_remote()
-        if remote is None:
-            raise ValueError(f"no remote to fetch {repo.url} from")
-        path = self.locate(repo)
-        with self.lock:
-            self.held[path] = self.held.get(path, 0) + 1
-        try:
-            path.mkdir(parents=True, exist_ok=True)
-            with lock_clone(path):
-                if not (path / "HEAD").is_file():
-                    run_git(path, "init", "-q", "--bare")
-                    run_git(path, "remote", "add", "origin", remote)
-                os.utime(path)  # used now (retention)
-                missing = [s for s in shas if not has_commit(path, s)]
-                if missing:
-                    self.fetch_commits(repo, path, missing)
-            yield path
-        finally:
-            with self.lock:
-                self.held[path] -= 1
-                if not self.held[path]:
-                    del self.held[path]
-
-    def fetch_commits(self, repo: Repo, clone: Path, shas: list[str]) -> None:
-        """git fetch, with the token in git's environment (not its arguments, which other
-        processes can read)."""
-        import base64
-
-        owner, name = repo.url.rstrip("/").split("/")[-2:]
-        tok = self.token(owner, name) if self.token else None
-        env = dict(os.environ)
-        if tok:
-            basic = base64.b64encode(f"x-access-token:{tok}".encode()).decode()
-            env.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.extraHeader",
-                       GIT_CONFIG_VALUE_0=f"Authorization: Basic {basic}")
-        try:
-            run_git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", *shas, env=env)
-        except FetchError as exc:
-            raise FetchError(f"could not fetch {', '.join(s[:7] for s in shas)} from {repo.url}: {exc}") from None

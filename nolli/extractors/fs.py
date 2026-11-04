@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import PurePosixPath
 
-from ..model import Entity, Provenance, address
+from ..model import address
+from .facts import Entity, Provenance
 from . import Context, languages
 
 # Languages nolli only names (their files are drawn, not read); the extracted languages

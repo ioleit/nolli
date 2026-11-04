@@ -195,8 +195,20 @@ def build(out: Path) -> Path:
     (ds / "pr.md").write_text(PR)
     if main(["diff", str(repo), "main", "cache-and-alerts", "-o", str(ds), "--title", PR.splitlines()[0]]) != 0:
         raise RuntimeError("nolli diff failed")
-    (ds / "verdicts.json").write_text(json.dumps(VERDICTS, indent=1))
+    keep_verdicts(ds)
     return ds
+
+
+def keep_verdicts(ds: Path) -> None:
+    """VERDICTS as the dataset's review (verdicts.json beside it, as an agent leaves it)."""
+    from nolli.build import open_change_scene
+    from nolli.overlays.verdicts import keep_verdicts_file
+    from nolli.store import DirectoryStore
+
+    (ds / "verdicts.json").write_text(json.dumps(VERDICTS, indent=1))
+    store = DirectoryStore(ds.parent)
+    key = store.find_key(ds.name)
+    keep_verdicts_file(store, key, open_change_scene(store, key), (ds / "verdicts.json").read_text(), {"by": "unknown"})
 
 
 if __name__ == "__main__":

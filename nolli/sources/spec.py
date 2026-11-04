@@ -1,4 +1,4 @@
-"""What ``nolli view`` shows: a change between two commits of a git repository, or one
+"""What ``nolli view`` shows (a ``ChangeSpec``): a change between two commits of a git repository, or one
 commit as a whole, resolved from what the user typed.
 
 Plain git only; nothing here knows about GitHub or any other host.
@@ -18,9 +18,10 @@ The default branch is ``origin/HEAD`` if the clone has it, else ``main`` or ``ma
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from .git import GitError, run_git
 
 
 class ChangeError(Exception):
@@ -28,7 +29,7 @@ class ChangeError(Exception):
 
 
 @dataclass
-class Change:
+class ChangeSpec:
     head: str                  # full sha
     base: str | None = None    # full sha; None: the head commit as a whole, no change
     title: str = ""            # what the viewer's header calls it
@@ -41,12 +42,12 @@ class Change:
 
 def git(repo: Path, *args: str) -> str:
     try:
-        return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
-    except subprocess.CalledProcessError as exc:
-        raise ChangeError(exc.stderr.strip() or f"git {' '.join(args)} failed") from None
+        return run_git(repo, *args)
+    except GitError as exc:
+        raise ChangeError(str(exc)) from None
 
 
-def toplevel(path: Path) -> Path:
+def find_toplevel(path: Path) -> Path:
     """The root of the git working tree that ``path`` is in."""
     try:
         return Path(git(path, "rev-parse", "--show-toplevel").strip())
@@ -54,7 +55,7 @@ def toplevel(path: Path) -> Path:
         raise ChangeError(f"{path} is not in a git repository") from None
 
 
-def commit(repo: Path, rev: str) -> str:
+def find_commit(repo: Path, rev: str) -> str:
     try:
         return git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
     except ChangeError:
@@ -90,40 +91,40 @@ def first_parent(repo: Path, sha: str) -> str | None:
     return parents[0] if parents else None
 
 
-def resolve(repo: Path, spec: str | None) -> Change:
+def resolve(repo: Path, spec: str | None) -> ChangeSpec:
     """The change that ``spec`` (see the module docstring) names in ``repo``."""
     if spec and "..." in spec:
         a, _, b = spec.partition("...")
-        head = commit(repo, b or "HEAD")
-        return describe(repo, Change(head=head, base=merge_base(repo, commit(repo, a or "HEAD"), head)), b or "HEAD")
+        head = find_commit(repo, b or "HEAD")
+        return describe(repo, ChangeSpec(head=head, base=merge_base(repo, find_commit(repo, a or "HEAD"), head)), b or "HEAD")
     if spec and ".." in spec:
         a, _, b = spec.partition("..")
-        return describe(repo, Change(head=commit(repo, b or "HEAD"), base=commit(repo, a or "HEAD")), b or "HEAD")
+        return describe(repo, ChangeSpec(head=find_commit(repo, b or "HEAD"), base=find_commit(repo, a or "HEAD")), b or "HEAD")
     rev = spec or "HEAD"
-    head = commit(repo, rev)
+    head = find_commit(repo, rev)
     main = default_branch(repo)
     if main is None:
         if spec is None:
-            return describe(repo, Change(head=head), rev)
+            return describe(repo, ChangeSpec(head=head), rev)
         raise ChangeError(f"no default branch (origin/HEAD, main or master) to compare {spec!r} with; "
                           f"name both ends: nolli view <base>..{spec}")
-    base = merge_base(repo, commit(repo, main), head)
+    base = merge_base(repo, find_commit(repo, main), head)
     if base != head:
-        return describe(repo, Change(head=head, base=base), rev)
+        return describe(repo, ChangeSpec(head=head, base=base), rev)
     if spec is None:  # on the default branch, or nothing new on this one: the whole of HEAD
-        return describe(repo, Change(head=head), rev)
+        return describe(repo, ChangeSpec(head=head), rev)
     parent = first_parent(repo, head)
     if parent is None:
-        return describe(repo, Change(head=head), rev)
-    return describe(repo, Change(head=head, base=parent), rev)
+        return describe(repo, ChangeSpec(head=head), rev)
+    return describe(repo, ChangeSpec(head=head, base=parent), rev)
 
 
-def whole(repo: Path, rev: str = "HEAD") -> Change:
+def whole(repo: Path, rev: str = "HEAD") -> ChangeSpec:
     """One commit as a whole, no change: ``nolli view --whole [<commit>]``."""
-    return describe(repo, Change(head=commit(repo, rev)), rev)
+    return describe(repo, ChangeSpec(head=find_commit(repo, rev)), rev)
 
 
-def describe(repo: Path, ch: Change, rev: str) -> Change:
+def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
     """Title and description from the commits: one commit gives its subject and body; several
     give the branch's name (or the range) and the list of their subjects."""
     if not ch.is_diff:

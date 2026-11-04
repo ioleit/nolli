@@ -10,8 +10,9 @@ entities so views can count them. Placeholders bound everywhere are removed.
 
 from __future__ import annotations
 
-from .extractors import Context, all_resolvers, api
-from .model import CONTAIN, Provenance, Relation, address
+from . import Context, all_resolvers, api
+from ..model import CONTAIN, address
+from .facts import Provenance, Relation
 
 
 def prune_unresolved(ctx: Context) -> None:

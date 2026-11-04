@@ -20,8 +20,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .model import Model
-from .review import check_verdicts
 
 MODEL = "claude-opus-5-5"
 EFFORT = "high"
@@ -80,9 +78,9 @@ class Run:
 class Reviewer:
     """What a server's "Review structural changes" runs: by default this module's agent. A service
     built on nolli serve can give the server a reviewer of its own (``make_server(reviewer=...)``)
-    with other tools, models or loops; what it has to keep is the contract: it reads the dataset
-    (``model.json``, ``review.mmd``, ``review.md``) and the change's repository, and leaves
-    ``out/verdicts.json`` that passes nolli's check (``check_verdicts``)."""
+    with other tools, models or loops; what it has to keep is the contract: it reads the change's
+    brief (review.md, the diagram in it) and repository, and leaves ``out/verdicts.json`` that
+    passes ``check`` (nolli's: ``nolli.overlays.verdicts.check_verdicts``)."""
 
     def available(self) -> str | None:
         """Why no review can run here, or None. A word the viewer knows ("key", "package") or a
@@ -93,13 +91,13 @@ class Reviewer:
         """What the review panel names as the reviewer."""
         return MODEL
 
-    def review(self, ds: Path, repo: Path, out: Path, on_step: Callable[[str, Run], None] | None = None,
-               cancel: threading.Event | None = None) -> Run:
+    def review(self, brief: str, head: str, check: "Check", repo: Path, out: Path,
+               on_step: Callable[[str, Run], None] | None = None, cancel: threading.Event | None = None) -> Run:
         """As review() below: writes out/verdicts.json, reports steps to ``on_step``, stops when
         ``cancel`` is set (Cancelled), raises Failed without verdicts that pass the check. The Run
         says the model, time and turns; a reviewer that pays otherwise than PRICE subclasses it
         for its own ``cost``."""
-        return review(ds, repo, out, on_step, cancel)
+        return review(brief, head, check, repo, out, on_step, cancel)
 
 
 def prompt(brief: str, head: str) -> str:
@@ -123,17 +121,18 @@ def doing(name: str, args: dict) -> str:
     return {"write_verdicts": "writing verdicts", "check": "checking verdicts"}.get(name, name)
 
 
-def review(ds: Path, repo: Path, out: Path, on_step: Callable[[str, Run], None] | None = None,
+Check = Callable[[str], tuple[list[dict], list[str]]]  # verdicts.json -> (verdicts, problems)
+
+
+def review(brief: str, head: str, check: Check, repo: Path, out: Path, on_step: Callable[[str, Run], None] | None = None,
            cancel: threading.Event | None = None, effort: str = EFFORT) -> Run:
-    """Review the change of dataset ``ds`` (its review.md and review.mmd) with the code in the git
-    repository ``repo``. Writes out/verdicts.json and out/transcript.json; raises Cancelled or Failed."""
+    """Review a change from its brief (review.md) with the code in the git repository ``repo``,
+    ``check`` judging the verdicts against the diagram they answer. Writes out/verdicts.json
+    and out/transcript.json; raises Cancelled or Failed."""
     import anthropic
 
     client = anthropic.Anthropic()
     out.mkdir(parents=True, exist_ok=True)
-    m = Model.load(ds / "model.json")
-    mermaid = (ds / "review.mmd").read_text()
-    head = m.meta["diff"]["head"]
     saved: list[str] = [""]  # the last write_verdicts
     cancel = cancel or threading.Event()
     run = Run()
@@ -159,12 +158,12 @@ def review(ds: Path, repo: Path, out: Path, on_step: Callable[[str, Run], None] 
         if name == "check":
             if not saved[0]:
                 return "no verdicts saved yet", True
-            verdicts, errors = check_verdicts(m, mermaid, saved[0])
+            verdicts, errors = check(saved[0])
             return ("\n".join(errors) if errors else f"ok: {len(verdicts)} verdicts"), bool(errors)
         return f"unknown tool {name}", True
 
     t0 = time.time()
-    messages: list = [{"role": "user", "content": prompt((ds / "review.md").read_text(), head)}]
+    messages: list = [{"role": "user", "content": prompt(brief, head)}]
     try:
         while True:
             if run.turns >= TURNS_MAX:
@@ -216,7 +215,7 @@ def review(ds: Path, repo: Path, out: Path, on_step: Callable[[str, Run], None] 
               [c.model_dump() if hasattr(c, "model_dump") else c for c in x["content"]]} for x in messages], indent=1))
     if not saved[0]:
         raise Failed("the agent wrote no verdicts")
-    verdicts, errors = check_verdicts(m, mermaid, saved[0])
+    verdicts, errors = check(saved[0])
     if errors:
         raise Failed(f"the agent's verdicts fail nolli's check ({len(errors)} problems, e.g. {errors[0]})")
     (out / "verdicts.json").write_text(json.dumps([{k: v[k] for k in ("target", "verdict", "reason")} for v in verdicts], indent=1))

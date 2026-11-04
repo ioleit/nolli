@@ -1,31 +1,40 @@
-"""Building models: extracting a commit, and merging two commits' models into the model of the
-change between them. Models are kept in a ModelStore and built from a Sources
-(nolli/store.py); what is made from a model is in nolli/derived.py. Used by the command line (``nolli/cli.py``) and the service
-(``nolli/viewer/hosted.py``).
+"""Building models and opening their scenes: nolli the library's way from a repository to
+what the command line (``nolli/cli.py``) and the server (``nolli/viewer/``) show.
 
-The steps that take time (extract_commit(), diff_commits()) take paths and models and return a
-model, so a caller can run them elsewhere (``run``: the service runs them in processes of their
-own); the store and the sources are used only where fetch_change_model() is called.
+- ``extract``: a directory's files -> its model and, per extractor, what it said (maps);
+- ``fetch_commit_model``, ``fetch_change``: from the store, or built from a ``Sources`` and
+  kept in the store;
+- ``open_commit_scene``, ``open_change_scene``: a stored model with its overlays, a change
+  merged from its two commits (``nolli/transform/merge.py``).
+
+The steps that take time (``extract_commit``, ``list_content``) take paths and return data,
+so a caller can run them elsewhere (``run``: the service runs them in processes of their
+own); the store and the sources are used only here.
 """
 
 from __future__ import annotations
 
-import subprocess
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from . import match
 from .extractors import Context, all_extractors, language_names
-from .model import Model, address
+from .extractors.facts import Facts
+from .extractors.match import run_all as match_all
+from .keys import ChangeKey, Commit
+from .model import Key, Model, address
 from .progress import Progress, Quiet
-from .scene import DEFAULT_BUDGET
-from .store import Change, Commit, ModelStore, Sources
+from .scene import MapStore, Overlay, Scene, make_base_overlays
+from .sources import Sources
+from .sources.git import export_commit, find_head, list_file_changes, list_tracked_files
+from .store import ModelStore
+from .transform.merge import merge
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
+Maps = dict[str, dict[Key, dict]]
 Run = Callable[..., Any]  # run(fn, *args, progress=…): fn(*args, progress=…), here or elsewhere
 
 
@@ -33,125 +42,50 @@ def run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
     return fn(*args, progress=progress)
 
 
-def tracked_files(repo: Path) -> list[Path]:
-    try:
-        out = subprocess.run(["git", "-C", str(repo), "ls-files", "-z"], check=True, capture_output=True).stdout
-        files = [Path(p.decode("utf-8", "surrogateescape")) for p in out.split(b"\0") if p]
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        files = [p.relative_to(repo) for p in repo.rglob("*") if p.is_file() and ".git" not in p.parts]
-    return [f for f in files if (repo / f).is_file()]
-
-
-def git_head(repo: Path) -> str | None:
-    try:
-        return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
-
-
-def extract(repo: Path, config: dict | None = None, progress: Progress | None = None) -> tuple[Model, Context]:
-    """The model of the files under ``repo`` as they are (a working tree, or a checkout)."""
-    m = Model()
+def extract(repo: Path, config: dict | None = None, progress: Progress | None = None, key: str = "") -> tuple[Model, Maps]:
+    """The model of the files under ``repo`` as they are (a working tree, or a checkout), and
+    what each extractor said about its nodes and edges."""
+    facts = Facts()
     progress = progress or Quiet()
-    ctx = Context(repo=repo, model=m, files=tracked_files(repo), config=config or {}, progress=progress)
+    ctx = Context(repo=repo, model=facts, files=list_tracked_files(repo), config=config or {}, progress=progress)
     timings = {}
     for name, fn in all_extractors():
         t0 = time.time()
+        facts.current = name
         with progress.step("file tree" if name == "fs" else name.replace("-", " ")):
             fn(ctx)
         timings[name] = round(time.time() - t0, 3)
     t0 = time.time()
+    facts.current = "match"
     with progress.step("matching references"):
-        match.run_all(ctx)
+        match_all(ctx)
     timings["match"] = round(time.time() - t0, 3)
-    head = git_head(repo)
-    m.meta = {"repo": str(repo), "commit": head[:7] if head else None, "files": len(ctx.files), "languages": language_names(),
-              "timings": timings, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-              "notes": {k: v for k, v in ctx.notes.items() if k not in WORKING_NOTES}, "nolli": version()}
-    return m, ctx
+    head = find_head(repo)
+    facts.meta = {"repo": str(repo), "commit": head[:7] if head else None, "files": len(ctx.files), "languages": language_names(),
+                  "timings": timings, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                  "notes": {k: v for k, v in ctx.notes.items() if k not in WORKING_NOTES}, "nolli": version()}
+    return facts.split(key)
 
 
-def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> Model:
+def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple[Model, Maps]:
     """The model of commit ``sha`` of the git repository ``repo`` (its files, not a working
     tree), its root named ``name``."""
-    from .diff import materialise
-
     with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
         with progress.step("checking out the commit"):
-            materialise(repo, sha, Path(tmp))
-        m, _ctx = extract(Path(tmp), progress=progress)
-    if m.has(address.REPO_ROOT):  # the root is the temporary directory
-        m.entities[address.REPO_ROOT].name = name
+            export_commit(repo, sha, Path(tmp))
+        m, maps = extract(Path(tmp), progress=progress)
+    for values in maps.values():  # the root is the temporary directory
+        if address.REPO_ROOT in values and "name" in values[address.REPO_ROOT]:
+            values[address.REPO_ROOT]["name"] = name
     m.meta.update({"repo": name, "commit": sha[:7]})
-    return m
+    return m, maps
 
 
-def diff_commits(repo: Path, base: Model, head: Model, base_sha: str, head_sha: str, progress: Progress) -> Model:
-    """The model of the change from ``base_sha`` to ``head_sha``: their models merged, with what
-    git says changed in each file (nolli/diff.py)."""
-    from .diff import diff_models
-
-    with progress.step("comparing the sides"):
-        return diff_models(repo, base, head, base_sha, head_sha)
-
-
-def is_fresh(m: Model) -> bool:
-    """Built by this version of nolli (an older model is built again when it is asked for)."""
-    return m.meta.get("nolli") == version()
-
-
-def fetch_commit_model(store: ModelStore, clone: Path, commit: Commit, *, run: Run = run_here,
-                       progress: Progress | None = None) -> Model:
-    """The model of one commit: from the store, or extracted from ``clone`` (which has the
-    commit) and kept there."""
-    progress = progress or Quiet()
-    m = store.load_model(commit)
-    if m is not None and is_fresh(m):
-        return m
-    name = commit.repo.url.rstrip("/").split("/")[-1]
-    m = run(extract_commit, clone, commit.sha, name, progress=progress)
-    store.save_model(commit, m)
-    return m
-
-
-def fetch_change_model(store: ModelStore, sources: Sources, change: Change, *, about: dict | None = None,
-                       run: Run = run_here, progress: Progress | None = None, rebuild: bool = False) -> Model:
-    """The model of a change: from the store, or merged from its two commits' models and git's
-    diff between them, and kept there. ``about``: what the model says about the change when
-    it is built (``pr``, ``title``, ``description``; not part of its key), and ``budget``."""
-    progress = progress or Quiet()
-    m = None if rebuild else store.load_model(change)
-    if m is not None and is_fresh(m):
-        return m
-    with sources.open_commits(change.repo, change.base, change.head) as clone:
-        base, head = (fetch_commit_model(store, clone, c, run=run, progress=progress.under(side))
-                      for c, side in zip(change.list_sides(), ("base", "head"), strict=True))
-        m = run(diff_commits, clone, base, head, change.base, change.head, progress=progress)
-    about = dict(about or {})
-    if about.get("budget"):
-        m.meta["budget"] = about.pop("budget")
-    m.meta["diff"]["remote"] = change.repo.format_remote()
-    m.meta["diff"].update({k: v for k, v in about.items() if v})
-    m.meta["nolli"] = version()
-    with progress.step("keeping the model"):
-        store.save_model(change, m)
-    return m
-
-
-def fetch_whole_model(store: ModelStore, sources: Sources, commit: Commit, *, budget: int | None = None,
-                      run: Run = run_here, progress: Progress | None = None, rebuild: bool = False) -> Model:
-    """The model of a repository at one commit, as the viewer shows a repository as a whole."""
-    progress = progress or Quiet()
-    m = None if rebuild else store.load_model(commit)
-    if m is not None and is_fresh(m) and (budget is None or m.meta.get("budget", DEFAULT_BUDGET) == budget):
-        return m
-    with sources.open_commits(commit.repo, commit.sha) as clone:
-        name = commit.repo.url.rstrip("/").split("/")[-1]
-        m = run(extract_commit, clone, commit.sha, name, progress=progress)
-    if budget:
-        m.meta["budget"] = budget
-    store.save_model(commit, m)
-    return m
+def list_content(repo: Path, base: str, head: str, progress: Progress) -> dict[Key, dict]:
+    """The ``content`` map of a change: what git says changed in each file, by the file's
+    address (its head path; base path for a deletion)."""
+    with progress.step("comparing the commits"):
+        return {address.repo(path): c.to_dict() for path, c in list_file_changes(repo, base, head).items()}
 
 
 def version() -> str:
@@ -162,3 +96,122 @@ def version() -> str:
         return pkg_version("nolli-review")
     except PackageNotFoundError:
         return "unknown"
+
+
+def is_fresh(m: Model | dict | None) -> bool:
+    """Built by this version of nolli (an older model is built again when it is asked for)."""
+    meta = m.meta if isinstance(m, Model) else (m or {})
+    return meta.get("nolli") == version()
+
+
+# -- from the store, or built ---------------------------------------------------------
+
+
+def load_maps(store: MapStore, m: Model) -> Maps:
+    return {n: dict(store.open_maps(n).load(m.key)) for n in m.meta.get("overlays") or []}
+
+
+def fetch_commit_model(store: ModelStore, clone: Path, commit: Commit, *, run: Run = run_here,
+                       progress: Progress | None = None, rebuild: bool = False) -> tuple[Model, Maps]:
+    """The model of one commit and its extractors' maps: from the store, or extracted from
+    ``clone`` (which has the commit)."""
+    progress = progress or Quiet()
+    m = None if rebuild else store.load_model(commit)
+    if m is not None and is_fresh(m):
+        return m, load_maps(store, m)
+    m, maps = run(extract_commit, clone, commit.sha, commit.repo.format_name(), progress=progress)
+    m.key = commit.format_key()
+    return m, maps
+
+
+def fetch_whole_model(store: ModelStore, sources: Sources, commit: Commit, *, run: Run = run_here,
+                      progress: Progress | None = None, rebuild: bool = False) -> Model:
+    """A repository at one commit, as the viewer shows a repository as a whole: kept in the store."""
+    progress = progress or Quiet()
+    m = None if rebuild else store.load_model(commit)
+    if m is not None and is_fresh(m):
+        return m
+    with sources.open_commits(commit.repo, commit.sha) as clone:
+        m, maps = fetch_commit_model(store, clone, commit, run=run, progress=progress, rebuild=True)
+    with progress.step("keeping the model"):
+        store.save_model(commit, m, maps)
+    return m
+
+
+def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, about: dict | None = None,
+                 run: Run = run_here, progress: Progress | None = None, rebuild: bool = False) -> dict:
+    """A change: from the store, or built from its two commits (their models, from the store
+    if it has them) and git's hunks between them, and kept there. ``about``: what the change
+    says about itself (``pr``, ``title``, ``description``, ``budget``), kept with it."""
+    progress = progress or Quiet()
+    kept = None if rebuild else store.load_change(change)
+    if kept is not None and is_fresh(kept):
+        return kept
+    with sources.open_commits(change.repo, change.base, change.head) as clone:
+        sides = {side: fetch_commit_model(store, clone, c, run=run, progress=progress.under(side), rebuild=rebuild)
+                 for c, side in zip(change.list_sides(), ("base", "head"), strict=True)}
+        content = run(list_content, clone, change.base, change.head, progress=progress)
+    record = {k: v for k, v in (about or {}).items() if v}
+    record.update({"base": change.base, "head": change.head, "remote": change.repo.format_remote(), "nolli": version()})
+    with progress.step("keeping the change"):
+        store.save_change(change, record, sides, {"content": content})
+    return record
+
+
+# -- scenes ----------------------------------------------------------------------------
+
+
+def make_overlays(maps: MapStore) -> list[Overlay]:
+    """The overlays nolli shows on any scene, on top of the extractors' (``nolli/overlays/``)."""
+    from .overlays import make_overlays as make
+
+    return make(maps)
+
+
+def open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
+    """An extracted model with its extractors' overlays and nolli's (or ``overlays``)."""
+    return Scene(model, [*make_base_overlays(model, maps), *(make_overlays(maps) if overlays is None else overlays)])
+
+
+def open_commit_scene(store: ModelStore, commit: Commit, overlays: list[Overlay] | None = None) -> Scene | None:
+    m = store.load_model(commit)
+    return None if m is None else open_scene(m, store, overlays)
+
+
+def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
+    """The change merged from its two stored commits, with what it says about itself in its
+    model's ``meta["change"]``."""
+    about = store.load_change(change)
+    if about is None:
+        return None
+    base, head = (open_commit_scene(store, c, overlays) for c in change.list_sides())
+    if base is None or head is None:
+        return None
+    meta = {"repo": head.model.meta.get("repo"), "commit": change.head[:7], "files": head.model.meta.get("files"),
+            "languages": {**base.model.meta.get("languages", {}), **head.model.meta.get("languages", {})},
+            "change": dict(about)}
+    return merge(base, head, change.format_key(), meta)
+
+
+def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
+    """A model just extracted, not kept anywhere, as a scene."""
+    from .scene import MemoryMaps
+
+    store = MemoryMaps({n: {model.key: v} for n, v in maps.items()})
+    return open_scene(model, store, overlays)
+
+
+def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, about: dict, content: Mapping[Key, dict],
+                overlays: list[Overlay] | None = None) -> Scene:
+    """A change of two models just extracted, not kept anywhere (``nolli diff``, tests)."""
+    from .scene import MemoryMaps
+
+    store = MemoryMaps()
+    for m, maps in (base, head):
+        for n, v in maps.items():
+            store.open_maps(n).save(m.key, v)
+    store.open_maps("content").save(key, content)
+    bs, hs = (open_scene(m, store, overlays) for m, _ in (base, head))
+    meta = {"repo": hs.model.meta.get("repo"), "commit": about.get("head", "")[:7], "files": hs.model.meta.get("files"),
+            "languages": {**bs.model.meta.get("languages", {}), **hs.model.meta.get("languages", {})}, "change": dict(about)}
+    return merge(bs, hs, key, meta)

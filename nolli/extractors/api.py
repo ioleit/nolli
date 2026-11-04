@@ -25,7 +25,7 @@ an operation by its verb and the path below its step, usually nothing (``GET``).
 steps without an operation of their own and with one step below are merged with it
 (``conversations/{project_name}``); a step with one operation and nothing below is no
 box: the operation takes its place (``GET setup/status``). The entity's ``name`` is the
-whole text (``GET setup/status``), ``attrs["name"]`` the part after the verb.
+whole text (``GET setup/status``), ``attrs["short"]`` the part after the verb.
 
 Relations: ``provide(handler file, endpoint)`` and, after matching,
 ``use(caller file, endpoint)``. Unmatched calls stay ``unresolved:<protocol>:...``.
@@ -36,7 +36,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from ..model import CONTAIN, PROVIDE, USE, Entity, Provenance, Relation, address
+from ..model import CONTAIN, PROVIDE, USE, address
+from .facts import Entity, Provenance, Relation
 from . import Context
 
 
@@ -155,7 +156,7 @@ def build(ctx: Context) -> None:
             eid = address.api_operation(aid, segments(protocol, op.path), op.verb)
             if not m.has(eid):
                 m.add_entity(Entity(eid, "endpoint", f"{op.verb} {name}".rstrip(),
-                                    {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "name": name},
+                                    {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "short": name},
                                     Provenance(op.extractor, op.file, op.line)))
                 m.add_relation(Relation(CONTAIN, parent, eid, provenance=prov))
             m.add_relation(Relation(PROVIDE, address.repo(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",

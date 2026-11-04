@@ -29,9 +29,9 @@ from collections import defaultdict
 from functools import lru_cache
 from dataclasses import dataclass, field
 
-from .model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, Model, address
+from ..model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, address
+from .graph import CONF_RANK, Graph
 
-CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "data", "asset", "other")
 
 
@@ -53,6 +53,7 @@ class RolledEdge:
     changed: dict[str, str] = field(default_factory=dict)
     # the drawn nodes a lifted line stands for at each end (lift()); empty: the ends themselves
     ends: dict[str, set[str]] = field(default_factory=lambda: {"src": set(), "dst": set()})
+    members: set = field(default_factory=set)  # the edges of the source it stands for
 
     @property
     def status(self) -> str | None:
@@ -81,6 +82,7 @@ class RolledEdge:
         self.base += other.base
         self.head += other.head
         self.changed.update(other.changed)
+        self.members |= other.members
         for side in ("src", "dst"):
             self.ends[side] |= other.ends[side] or {getattr(other, side)}
         if CONF_RANK[other.confidence] > CONF_RANK[self.confidence]:
@@ -105,110 +107,109 @@ class RolledUp:
                 "hidden_relations": self.hidden_relations, "unresolved": self.unresolved}
 
 
-def image_aliases(m: Model) -> dict[str, str]:
+def image_aliases(g: Graph) -> dict[str, str]:
     """image -> service, for images that run as exactly one service (drawn as that service)."""
     runs: dict[str, list[str]] = defaultdict(list)
-    for r in m.relations:
+    for r in g.relations:
         if r.kind == ALLOCATE and r.subkind == "runs_as":
             runs[r.src].append(r.dst)
     return {img: svcs[0] for img, svcs in runs.items() if len(svcs) == 1}
 
 
-def hidden_by_role(m: Model, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
+def hidden_by_role(g: Graph, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
     """Files whose role is hidden, and directories whose role is hidden unless a file with a
     shown role is somewhere inside: a directory's role is by bytes, so ``evals/`` full of
     result files is "config" while its Python modules are source, and those must stay."""
     rs = set(roles)
     keep: set[str] = set()
-    for e in m.entities.values():
-        if e.kind == "file" and e.attrs.get("role") not in rs:
-            p = m.parent(e.id)
+    for x, kind in g.nodes.items():
+        if kind == "file" and g.attrs(x).get("role") not in rs:
+            p = g.parent(x)
             while p is not None and p not in keep:
                 keep.add(p)
-                p = m.parent(p)
-    return {e.id for e in m.entities.values() if e.kind in ("file", "directory") and e.attrs.get("role") in rs
-            and not e.attrs.get("root") and e.id not in keep}
+                p = g.parent(p)
+    return {x for x, kind in g.nodes.items() if kind in ("file", "directory") and g.attrs(x).get("role") in rs
+            and not g.attrs(x).get("root") and x not in keep}
 
 
-def chain_end(m: Model, n: str, hidden: set[str]) -> str:
+def chain_end(g: Graph, n: str, hidden: set[str]) -> str:
     """Follow single-child directory chains (``frontend/playground/src``) to their end.
 
     A directory whose only non-hidden content is one subdirectory adds a level without
     adding structure; the chain is drawn as one node labelled with the joined path.
     """
-    while m.entities[n].kind == "directory":
-        kids = [c for c in m.children(n) if c not in hidden and not is_init(m, c)]
-        if len(kids) == 1 and m.entities[kids[0]].kind == "directory":
+    while g.kind(n) == "directory":
+        kids = [c for c in g.children(n) if c not in hidden and not is_init(g, c)]
+        if len(kids) == 1 and g.kind(kids[0]) == "directory":
             n = kids[0]
         else:
             break
     return n
 
 
-def is_file(m: Model, x: str) -> bool:
-    return m.entities[x].kind == "file"
+def is_file(g: Graph, x: str) -> bool:
+    return g.kind(x) == "file"
 
 
-def is_init(m: Model, x: str) -> bool:
+def is_init(g: Graph, x: str) -> bool:
     """A package body (Python's ``__init__.py``, a TypeScript ``index.ts``; the file tree
     marks it ``body``): the folder's own code, not a module of its own."""
-    e = m.entities.get(x)
-    return e is not None and e.kind == "file" and bool(e.attrs.get("body"))
+    return g.has(x) and g.kind(x) == "file" and bool(g.attrs(x).get("body"))
 
 
-def under(m: Model, x: str, d: str) -> bool:
+def under(g: Graph, x: str, d: str) -> bool:
     """x (or the file owning x) lies in directory d's subtree."""
     cur: str | None = x
     while cur is not None:
         if cur == d:
             return True
-        cur = m.parent(cur)
+        cur = g.parent(cur)
     return False
 
 
-def default_init_edge(m: Model, r) -> bool:
+def default_init_edge(g: Graph, r) -> bool:
     """An edge from a package body to something inside its own package: the re-export /
     submodule import every ``__init__`` has. Not a dependency; dropped from the picture."""
-    if not is_init(m, r.src):
+    if not is_init(g, r.src):
         return False
-    d = m.parent(r.src)
-    return d is not None and under(m, r.dst, d)
+    d = g.parent(r.src)
+    return d is not None and under(g, r.dst, d)
 
 
-def init_anchor_dirs(m: Model, hidden: set[str]) -> set[str]:
+def init_anchor_dirs(g: Graph, hidden: set[str]) -> set[str]:
     """Directories whose ``__init__`` body still has edges after the default ones are
     dropped: these get an anchor node when unfolded, the others get nothing."""
     out: set[str] = set()
     drawn_kinds = ("directory", "file", *SYMBOL_KINDS, "service", "image")  # badge targets (externals, env, endpoints) don't count
-    for r in m.relations:
-        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(m, r):
+    for r in g.relations:
+        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(g, r):
             continue
         for end, other in ((r.src, r.dst), (r.dst, r.src)):
-            if is_init(m, end) and end not in hidden and m.has(other) and m.entities[other].kind in drawn_kinds:
-                d = m.parent(end)
+            if is_init(g, end) and end not in hidden and g.has(other) and g.kind(other) in drawn_kinds:
+                d = g.parent(end)
                 if d is not None:
                     out.add(d)
     return out
 
 
-def file_degree(m: Model, hidden: set[str]) -> dict[str, int]:
+def file_degree(g: Graph, hidden: set[str]) -> dict[str, int]:
     """Relations touching each leaf entity, for ranking which files to show first."""
     deg: dict[str, int] = defaultdict(int)
-    for r in m.relations:
+    for r in g.relations:
         if r.kind in (USE, PROVIDE, ALLOCATE) and r.src not in hidden and r.dst not in hidden:
             deg[r.src] += r.count
             deg[r.dst] += r.count
     return dict(deg)
 
 
-def shown_files(m: Model, d: str, hidden: set[str], k: int, degree: dict[str, int]) -> tuple[list[str], list[str]]:
+def shown_files(g: Graph, d: str, hidden: set[str], k: int, degree: dict[str, int]) -> tuple[list[str], list[str]]:
     """The k most connected files of d (ties by name), and the rest."""
-    loose = sorted((c for c in m.children(d) if c not in hidden and is_file(m, c)),
+    loose = sorted((c for c in g.children(d) if c not in hidden and is_file(g, c)),
                    key=lambda c: (-degree.get(c, 0), c))
     return loose[:k], loose[k:]
 
 
-def visible_from_expanded(m: Model, expanded: set[str], hidden: set[str], show_files=None, degree=None,
+def visible_from_expanded(g: Graph, expanded: set[str], hidden: set[str], show_files=None, degree=None,
                           walked: set[str] | None = None) -> set[str]:
     """The cut for a set of unfolded containers.
 
@@ -222,50 +223,50 @@ def visible_from_expanded(m: Model, expanded: set[str], hidden: set[str], show_f
     if given, receives the unfolded containers actually reached (the effective unfold set).
     """
     visible: set[str] = set()
-    anchors = init_anchor_dirs(m, hidden)
+    anchors = init_anchor_dirs(g, hidden)
 
     def walk(n: str) -> None:
         if walked is not None:
             walked.add(n)
-        kind = m.entities[n].kind
+        kind = g.kind(n)
         if kind == "file":
             visible.add(address.own_code(n))
         if kind == "directory" and n in anchors:
             visible.add(address.own_code(n))
-        for c in m.children(n):
+        for c in g.children(n):
             if c in hidden:
                 continue
-            if kind == "directory" and is_init(m, c):
-                visible.update(cc for cc in m.children(c) if cc not in hidden)  # the package's own classes
+            if kind == "directory" and is_init(g, c):
+                visible.update(cc for cc in g.children(c) if cc not in hidden)  # the package's own classes
                 continue
-            if kind == "directory" and m.entities[c].kind == "directory":
-                c = chain_end(m, c, hidden)
-            if c in expanded and m.children(c):
+            if kind == "directory" and g.kind(c) == "directory":
+                c = chain_end(g, c, hidden)
+            if c in expanded and g.children(c):
                 walk(c)
             else:
                 visible.add(c)
 
-    for r in m.roots():
+    for r in g.roots():
         if r in hidden:
             continue
-        if r in expanded and m.children(r):
+        if r in expanded and g.children(r):
             walk(r)
         else:
             visible.add(r)
     return visible
 
 
-def display_path(m: Model, eid: str, expanded: set[str]) -> str:
+def display_path(g: Graph, eid: str, expanded: set[str]) -> str:
     """A directory's path relative to its nearest unfolded ancestor (chains show their full run)."""
-    parts = [m.entities[eid].name]
-    p = m.parent(eid)
-    while p is not None and p not in expanded and not m.entities[p].attrs.get("root"):
-        parts.append(m.entities[p].name)
-        p = m.parent(p)
+    parts = [g.name(eid)]
+    p = g.parent(eid)
+    while p is not None and p not in expanded and not g.attrs(p).get("root"):
+        parts.append(g.name(p))
+        p = g.parent(p)
     return "/".join(reversed(parts))
 
 
-def representative(m: Model, visible: set[str], hidden: set[str], alias: dict[str, str] | None = None):
+def representative(g: Graph, visible: set[str], hidden: set[str], alias: dict[str, str] | None = None):
     cache: dict[str, str | None] = {}
     alias = alias or {}
 
@@ -281,15 +282,15 @@ def representative(m: Model, visible: set[str], hidden: set[str], alias: dict[st
             if cur in visible:
                 result = cur
                 break
-            if m.entities[cur].kind == "file" and address.own_code(cur) in visible:
+            if g.kind(cur) == "file" and address.own_code(cur) in visible:
                 result = address.own_code(cur)  # the module is unfolded: its own code
                 break
-            if is_init(m, cur):
-                p = m.parent(cur)
+            if is_init(g, cur):
+                p = g.parent(cur)
                 if p is not None and address.own_code(p) in visible:
                     result = address.own_code(p)  # the package is unfolded: its own code
                     break
-            cur = m.parent(cur)
+            cur = g.parent(cur)
         cache[x] = result
         return result
 
@@ -297,25 +298,25 @@ def representative(m: Model, visible: set[str], hidden: set[str], alias: dict[st
 
 
 def fact_key(r) -> str:
-    """A stored relation's id: unique per (kind, src, dst, subkind) in a diff model."""
-    return f"{r.kind}|{r.src}|{r.dst}|{r.subkind}"
+    """An edge's id: ``kind|src|dst|subkind``."""
+    return r.key.format()
 
 
 def owner_of(node: str) -> str:
     return address.owner(node)
 
 
-def top_of(m: Model, node: str, expanded: set[str]) -> str:
+def top_of(g: Graph, node: str, expanded: set[str]) -> str:
     """The outermost drawn ancestor of a drawn node (the top-level component it belongs to)."""
     cur = node
     while True:
-        p = drawn_parent(m, cur, expanded)
+        p = drawn_parent(g, cur, expanded)
         if p is None:
             return cur
         cur = p
 
 
-def utility_badges(m: Model, rolled: "RolledUp", min_in: int = 6) -> set[str]:
+def utility_badges(g: Graph, rolled: "RolledUp", min_in: int = 6) -> set[str]:
     """Boxes with more than ``min_in`` incoming dependency edges in the picture are
     utilities: all those edges become badges on their sources ("→ observability"), like
     externals, since a box that many arrows point at mostly adds clutter. Edges are counted
@@ -323,10 +324,10 @@ def utility_badges(m: Model, rolled: "RolledUp", min_in: int = 6) -> set[str]:
     utilities, so a shown group keeps its edges. Returns the utility nodes."""
     def in_group(x: str) -> bool:
         cur: str | None = owner_of(x)
-        while cur is not None and m.has(cur):
-            if m.entities[cur].kind == "group":
+        while cur is not None and g.has(cur):
+            if g.kind(cur) == "group":
                 return True
-            cur = m.parent(cur)
+            cur = g.parent(cur)
         return False
 
     incoming: dict[str, int] = defaultdict(int)
@@ -347,7 +348,7 @@ def utility_badges(m: Model, rolled: "RolledUp", min_in: int = 6) -> set[str]:
     return utilities
 
 
-def reveal_scores(m: Model, hidden: set[str]) -> tuple[dict[str, int], dict[str, int]]:
+def reveal_scores(g: Graph, hidden: set[str]) -> tuple[dict[str, int], dict[str, int]]:
     """What unfolding reveals, per container.
 
     ``lca[C]`` counts relations whose endpoints lie in different children of C (their
@@ -356,7 +357,7 @@ def reveal_scores(m: Model, hidden: set[str]) -> tuple[dict[str, int], dict[str,
     when C's files node is opened. Relations touching hidden entities, or crossing
     between roots (code to an interface), do not count.
     """
-    alias = image_aliases(m)
+    alias = image_aliases(g)
     lca: dict[str, int] = defaultdict(int)
     loose: dict[str, int] = defaultdict(int)
     anc_cache: dict[str, list[str] | None] = {}
@@ -370,7 +371,7 @@ def reveal_scores(m: Model, hidden: set[str]) -> tuple[dict[str, int], dict[str,
             if cur in hidden:
                 anc_cache[x] = None
                 return None
-            p = m.parent(cur)
+            p = g.parent(cur)
             if p is None:
                 break
             out.append(p)
@@ -378,11 +379,11 @@ def reveal_scores(m: Model, hidden: set[str]) -> tuple[dict[str, int], dict[str,
         anc_cache[x] = out
         return out
 
-    for r in m.relations:
-        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(m, r):
+    for r in g.relations:
+        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(g, r):
             continue
         s, d = alias.get(r.src, r.src), alias.get(r.dst, r.dst)
-        if s == d or not m.has(s) or not m.has(d):
+        if s == d or not g.has(s) or not g.has(d):
             continue
         cs, cd = chain(s), chain(d)
         if cs is None or cd is None:
@@ -392,24 +393,24 @@ def reveal_scores(m: Model, hidden: set[str]) -> tuple[dict[str, int], dict[str,
         if common is None or common in (s, d):
             continue
         lca[common] += r.count
-        if m.parent(s) == common and m.parent(d) == common and is_file(m, s) and is_file(m, d):
+        if g.parent(s) == common and g.parent(d) == common and is_file(g, s) and is_file(g, d):
             loose[common] += r.count
     return dict(lca), dict(loose)
 
 
-def drawn_parent(m: Model, node: str, expanded: set[str]) -> str | None:
+def drawn_parent(g: Graph, node: str, expanded: set[str]) -> str | None:
     """The unfolded container a drawn node sits in (the own code ``F#`` sits in F)."""
     if address.is_own_code(node):
         return owner_of(node)
-    p = m.parent(node)
+    p = g.parent(node)
     while p is not None:
         if p in expanded:
-            return None if m.entities[p].attrs.get("root") else p
-        p = m.parent(p)
+            return None if g.attrs(p).get("root") else p
+        p = g.parent(p)
     return None
 
 
-def lift(m: Model, edges: list[RolledEdge], expanded: set[str], max_lines: int = 4) -> list[RolledEdge]:
+def lift(g: Graph, edges: list[RolledEdge], expanded: set[str], max_lines: int = 4) -> list[RolledEdge]:
     """Edge lifting: between any two drawn boxes A and B that are not one inside the other,
     at most ``max_lines`` lines are drawn, counting every line whose ends lie in A (or are A)
     and in B. A pair with more is fixed, finest pair first: its lines are lifted at the end
@@ -424,10 +425,10 @@ def lift(m: Model, edges: list[RolledEdge], expanded: set[str], max_lines: int =
     @lru_cache(maxsize=None)
     def above(x: str) -> tuple[str, ...]:
         """x and its drawn containers, nearest first (own code sits in its module)."""
-        out, p = [x], drawn_parent(m, x, expanded)
+        out, p = [x], drawn_parent(g, x, expanded)
         while p is not None:
             out.append(p)
-            p = drawn_parent(m, p, expanded)
+            p = drawn_parent(g, p, expanded)
         return tuple(out)
 
     lines = list(edges)
@@ -482,15 +483,15 @@ def lift(m: Model, edges: list[RolledEdge], expanded: set[str], max_lines: int =
     return sorted(lines, key=lambda e: (e.src, e.dst, e.kind, e.subkind))
 
 
-def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
+def rollup(g: Graph, visible: set[str], hidden: set[str] = frozenset(),
          shown_groups=frozenset(), side: str = "both") -> RolledUp:
     """``shown_groups``: root groups the viewer draws as boxes (folded or not); edges to them
     are drawn. Other root groups are filtered out of the picture: their edges become
     annotations on the other end, and an edge between two of them is left out.
     ``side``: in a diff model, "base" or "head" draws one commit only; "both" draws the
     merged picture, with removed facts counted on their base side."""
-    alias = image_aliases(m)
-    rep = representative(m, visible, hidden, alias)
+    alias = image_aliases(g)
+    rep = representative(g, visible, hidden, alias)
     edges: dict[tuple, RolledEdge] = {}
     internal: dict[str, int] = defaultdict(int)
     hidden_count = 0
@@ -498,9 +499,9 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
 
     internal_changes: dict[str, dict[str, str]] = defaultdict(dict)
 
-    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, name: str | None = None,
+    def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, names: dict[str, int] | None = None,
             base: int | None = None, head: int | None = None, changed: dict[str, str] | None = None,
-            types: bool = False) -> None:
+            types: int = 0, member=None) -> None:
         if kind == PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
         if a == b or owner_of(a) == owner_of(b):
@@ -514,12 +515,12 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
         e = edges.get(key)
         if e is None:
             e = edges[key] = RolledEdge(kind, a, b, sub, 0, conf)
-        e.absorb(RolledEdge(kind, a, b, sub, count, conf, names={name: count} if name else {}, types=count if types else 0,
+        e.absorb(RolledEdge(kind, a, b, sub, count, conf, names=dict(names or {}), types=types, members={member} if member else set(),
                             base=count if base is None else base, head=count if head is None else head, changed=changed or {}))
 
     def sides(r) -> tuple[int, int, str | None]:
-        """(references before, after, change status) of a fact; status None when unchanged."""
-        d = r.attrs.get("diff")
+        """(references before, after, change status) of an edge; status None when unchanged."""
+        d = r.diff
         if not d:
             return r.count, r.count, None
         return d.get("base", 0), d.get("head", 0), d["status"]
@@ -528,16 +529,15 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
         return b if side == "base" else h if side == "head" else (h or b)
 
     def on_side(r) -> bool:
-        st = (r.attrs.get("diff") or {}).get("status")
+        st = (r.diff or {}).get("status")
         return not ((side == "base" and st == "added") or (side == "head" and st == "removed"))
 
-    for r in m.relations:
-        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(m, r) or not on_side(r):
+    for r in g.relations:
+        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(g, r) or not on_side(r):
             continue
-        dst_ent = m.entities[r.dst]
-        if dst_ent.kind == "unresolved":
+        if g.kind(r.dst) == "unresolved":
             if rep(r.src) is not None:
-                unresolved[dst_ent.attrs.get("language") or dst_ent.id.split(":")[1]] += r.count
+                unresolved[g.attrs(r.dst).get("language") or r.dst.split(":")[1]] += r.count
             continue
         if r.subkind == "runs_as" and r.src in alias:
             continue
@@ -546,8 +546,14 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
             hidden_count += r.count
             continue
         rb, rh, st = sides(r)
-        add(r.kind, a, b, r.subkind, drawn_count(rb, rh), r.confidence, r.attrs.get("name"), rb, rh,
-            {fact_key(r): st} if st else None, bool(r.attrs.get("type_only")))
+        names: dict[str, int] = {}
+        for f in r.facts:
+            if f.get("name"):
+                names[f["name"]] = names.get(f["name"], 0) + f.get("count", 1)
+        types = sum(f.get("count", 1) for f in r.facts if f.get("type_only"))
+        n = drawn_count(rb, rh)
+        add(r.kind, a, b, r.subkind, n, r.confidence, names, rb, rh, {fact_key(r): st} if st else None,
+            min(types, n) if types and types >= r.count else types, r.key)
 
     # Edges touching a filtered-out group become annotations on the other end (or are left out
     # when both ends are such groups, e.g. environment set by deployment); a code node copied
@@ -557,7 +563,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
     allocations: dict[str, list[str]] = defaultdict(list)
     kept: list[RolledEdge] = []
     def root_group(x: str) -> bool:
-        return m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None and x not in shown_groups
+        return g.has(x) and g.kind(x) == "group" and g.parent(x) is None and x not in shown_groups
 
     for e in edges.values():
         sg, dg = root_group(e.src), root_group(e.dst)
@@ -568,7 +574,7 @@ def rollup(m: Model, visible: set[str], hidden: set[str] = frozenset(),
             annotations[node][group] += e.count
             if e.changed:
                 annotation_changes[node][group].update(e.changed)
-        elif e.kind == ALLOCATE and e.subkind == "copies" and m.has(e.dst) and m.entities[e.dst].kind == "service":
+        elif e.kind == ALLOCATE and e.subkind == "copies" and g.has(e.dst) and g.kind(e.dst) == "service":
             allocations[e.src].append(e.dst)
         else:
             kept.append(e)

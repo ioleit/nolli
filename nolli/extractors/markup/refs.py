@@ -22,7 +22,8 @@ from __future__ import annotations
 import posixpath
 import re
 
-from ...model import USE, Provenance, Relation, address
+from ...model import USE, address
+from ..facts import Provenance, Relation
 from .. import Context
 from ..interfaces import CDN, ensure_ext, package_name
 

@@ -15,7 +15,8 @@ import re
 import shlex
 from pathlib import PurePosixPath
 
-from ...model import ALLOCATE, CONTAIN, USE, Entity, Provenance, Relation, address
+from ...model import ALLOCATE, CONTAIN, USE, address
+from ..facts import Entity, Provenance, Relation
 from .. import Context
 
 PY_MODULE = re.compile(r"(?:python[\d.]*\s+-m\s+|uvicorn\s+|gunicorn\s+)([A-Za-z_][\w.]*)(?::\w+)?")

@@ -9,19 +9,12 @@ renders (viewer/js/md.js) and GitHub shows as it is:
 - ``[problem](verdict:problem)``, a link to the made-up scheme ``verdict:``, for a verdict's mark,
 - backslash escapes; nothing else is interpreted.
 
-Text from the repository goes in through ``code`` or ``esc``, never as it is. Ctx carries
-what a description may look at: the model, the roll-up, the view's unfolded and hidden
-sets, and how the picture names things.
+Text from the repository goes in through ``code`` or ``esc``, never as it is.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-
-from .model import Model, address
-from .rollup import RolledUp, chain_end, is_init
-from .labels import label_of
 
 
 def code(value) -> str:
@@ -97,67 +90,3 @@ def listing(template: str, values: list[str], more_noun: str = "more", limit: in
         return say(template, items[0])
     head, tail = template.split("{}", 1)
     return head + "".join((" and " if i == len(items) - 1 else ", " if i else "") + code(v) for i, v in enumerate(items)) + tail
-
-
-@dataclass
-class Ctx:
-    m: Model
-    rolled: RolledUp
-    expanded: set[str]
-    hidden: set[str]
-    utilities: set[str] = field(default_factory=set)
-
-    def name(self, x: str) -> str:
-        """A box as the picture names it: directories end in "/", a module's own code says so."""
-        m = self.m
-        if address.is_own_code(x):
-            return f"{self.name(address.owner(x))} (own code)"
-        e = m.entities[x]
-        if e.kind in ("service", "image"):
-            return e.name.removesuffix("/Dockerfile")  # no "svc " / "img " prefix in prose
-        if e.kind == "endpoint":
-            return f"{e.attrs.get('method', '')} {e.attrs.get('path', e.name)}".strip()
-        label = label_of(m, x, self.expanded)
-        return label + "/" if e.kind == "directory" and not label.endswith("/") else label
-
-    def shown_children(self, x: str) -> list[str]:
-        """What unfolding x draws: children not hidden, a package's __init__ replaced by its
-        classes, single-child folder chains collapsed (rollup.visible_from_expanded)."""
-        m, out = self.m, []
-        kind = m.entities[x].kind
-        for c in m.children(x):
-            if c in self.hidden:
-                continue
-            if kind == "directory" and is_init(m, c):
-                out.extend(cc for cc in m.children(c) if cc not in self.hidden)
-                continue
-            out.append(chain_end(m, c, self.hidden) if kind == "directory" and m.entities[c].kind == "directory" else c)
-        return out
-
-    def files_below(self, x: str) -> list[str]:
-        """Files under x that the view shows (not hidden by their role)."""
-        m, out, stack = self.m, [], [x]
-        while stack:
-            c = stack.pop()
-            for k in m.children(c):
-                if k in self.hidden:
-                    continue
-                if m.entities[k].kind == "file":
-                    out.append(k)
-                elif m.entities[k].kind == "directory":
-                    stack.append(k)
-        return out
-
-
-def by_use(ctx: Ctx, file_id: str, names: list[str]) -> list[str]:
-    """Names defined in a module, most referenced from elsewhere first (references carry
-    the name they use), then in source order."""
-    uses: dict[str, int] = {}
-    wanted = set(names)
-    for r in ctx.m.relations:
-        if r.dst == file_id and r.subkind == "ref":
-            n = r.attrs.get("name")
-            if n in wanted:
-                uses[n] = uses.get(n, 0) + r.count
-    order = {n: i for i, n in enumerate(names)}
-    return sorted(names, key=lambda n: (-uses.get(n, 0), order[n]))

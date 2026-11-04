@@ -27,7 +27,8 @@ import re
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import USE, Entity, Provenance, Relation, address
+from ...model import USE, address
+from ..facts import Entity, Provenance, Relation
 from .. import Context
 from ..interfaces import ensure_ext, ensure_host, is_url, package_name
 

@@ -8,7 +8,8 @@ import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import SYMBOL_KINDS, USE, Relation, address
+from ...model import SYMBOL_KINDS, USE, address
+from ..facts import Relation
 from .. import Context
 from ..interfaces import ensure_ext
 

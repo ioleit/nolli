@@ -1,6 +1,7 @@
 """Mermaid of a scene: the second renderer, for READMEs, PR comments and agents.
 
-It draws the scene the viewer draws (``scene.py``): the same boxes, containers and edges,
+It draws a projected scene (``nolli/transform/project.py``) as the viewer draws it: the same
+boxes, containers and edges, named by the ``label`` overlay and marked by ``change``,
 with Mermaid's own layout, top to bottom. Only what plain Mermaid can say, so that the text
 renders anywhere (GitHub included) and stays readable as text: no click handlers, no
 layout engines beyond the default, styles through ``classDef`` and ``linkStyle`` only.
@@ -11,6 +12,8 @@ uses one keeps it below that box.
 from __future__ import annotations
 
 import re
+
+from ..scene import Scene
 
 STYLE_ARROW = {"import": "-->", "http": "==>", "env": "-.->", "deploy": "-.->", "provide": "-.->"}
 KIND_CLASS = {"package": "ext", "service": "deploy", "image": "deploy", "host": "deploy", "group": "group",
@@ -32,7 +35,7 @@ CLASS_DEF = {
 STATUS_STROKE = {"added": "#2e9b4f", "removed": "#c94040", "changed": "#d08a1a"}
 
 
-def nid(eid: str) -> str:
+def make_node_id(eid: str) -> str:
     return "n_" + re.sub(r"[^A-Za-z0-9]", "_", eid)
 
 
@@ -53,21 +56,50 @@ def label(n: dict) -> str:
     return out
 
 
-def ids(sc: dict) -> dict[str, str]:
+def read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
+    """A projected scene's boxes (drawing order) and edges, as the drawing needs them."""
+    order = scene.model.meta.get("projection", {}).get("order") or sorted(scene.model.kinds)
+    nodes = []
+    for x in order:
+        el = scene.find_element(x)
+        p, lab = el.get("projection") or {}, el.get("label") or {}
+        nodes.append({"id": x, "kind": el.kind, "parent": scene.model.find_parent(x), "container": p.get("container"),
+                      "label": lab.get("text", ""), "icons": lab.get("icons", []), "chips": p.get("chips", []),
+                      "badge": p.get("badge", ""), "utility": p.get("utility"), "utilities_used": p.get("utilities_used", []),
+                      "diff": el.get("change")})
+    edges = []
+    for el in scene.list_edges():
+        p = el.get("projection") or {}
+        edges.append({"src": el.key.src, "dst": el.key.dst, "subkind": el.key.subkind, "count": p.get("count", 0),
+                      "style": p.get("style"), "types": p.get("types"), "local": p.get("local"), "weak": p.get("weak"),
+                      "diff": el.get("change")})
+    return nodes, edges, "base" in (find_root(scene).sources if find_root(scene) else {})
+
+
+def find_root(scene: Scene) -> Scene | None:
+    """The scene a projection was made from, all the way down to a change or a commit."""
+    cur = scene.sources.get("source")
+    while cur is not None and "source" in cur.sources:
+        cur = cur.sources["source"]
+    return cur
+
+
+def list_ids(scene: Scene) -> dict[str, str]:
     """The Mermaid id of each box ``render`` draws (an unfolded one is a subgraph, ``<id>_g``),
     to the scene id it stands for: how a client maps a click on the drawing back to the scene."""
-    return {nid(n["id"]) + ("_g" if n.get("container") else ""): n["id"] for n in sc["nodes"]}
+    nodes, _, _ = read_scene(scene)
+    return {make_node_id(n["id"]) + ("_g" if n.get("container") else ""): n["id"] for n in nodes}
 
 
-def render(sc: dict, fade: bool = True) -> str:
+def render(scene: Scene, fade: bool = True) -> str:
     """The scene as a Mermaid flowchart. ``fade``: in a change's scene, draw what did not
     change faint (the viewer's "fade unchanged")."""
-    review = "diff" in sc
-    nodes = {n["id"]: n for n in sc["nodes"]}
+    node_list, edge_list, review = read_scene(scene)
+    nodes = {n["id"]: n for n in node_list}
     kids: dict[str | None, list[dict]] = {}
-    for n in sc["nodes"]:
+    for n in node_list:
         kids.setdefault(n["parent"], []).append(n)
-    ref = lambda x: nid(x) + "_g" if nodes[x].get("container") else nid(x)  # noqa: E731
+    ref = lambda x: make_node_id(x) + "_g" if nodes[x].get("container") else make_node_id(x)  # noqa: E731
     status = lambda x: (x.get("diff") or {}).get("status")  # noqa: E731
     out = ["flowchart TD"]
     classes: list[tuple[str, str]] = []  # given after the nodes: subgraphs take them only that way
@@ -85,16 +117,16 @@ def render(sc: dict, fade: bool = True) -> str:
             return
         cls = st or KIND_CLASS.get(n["kind"])
         shape = '(("{}"))' if n["kind"] == "anchor" else '["{}"]'
-        out.append(pad + nid(n["id"]) + shape.format(label(n)) + (f":::{cls}" if cls else ""))
+        out.append(pad + make_node_id(n["id"]) + shape.format(label(n)) + (f":::{cls}" if cls else ""))
         if n.get("utility"):
-            classes.append((nid(n["id"]), "utility"))
+            classes.append((make_node_id(n["id"]), "utility"))
 
     for n in kids.get(None, []):
         emit(n, 1)
 
     styles: dict[str, list[int]] = {}
     links = 0
-    for e in sc["edges"]:
+    for e in edge_list:
         if e["src"] not in nodes or e["dst"] not in nodes:
             continue
         d = e.get("diff")
@@ -118,11 +150,11 @@ def render(sc: dict, fade: bool = True) -> str:
     # a utility below a box that uses it: its incoming edges are not drawn, and Mermaid would
     # put a box without them at the top. One link each, from the first box that uses it.
     below = set()
-    for n in sc["nodes"]:
+    for n in node_list:
         if not n.get("container"):
             for u in n.get("utilities_used") or []:
                 if u in nodes and u != n["id"] and u not in below:
-                    out.append(f"  {nid(n['id'])} ~~~ {ref(u)}")
+                    out.append(f"  {make_node_id(n['id'])} ~~~ {ref(u)}")
                     below.add(u)
 
     used = sorted({c for _, c in classes} | {m.group(1) for line in out if (m := re.search(r":::(\w+)$", line))})

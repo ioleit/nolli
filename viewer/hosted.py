@@ -71,14 +71,14 @@ HERE = Path(__file__).resolve().parent
 if not __package__:
     sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
-from nolli import github, retention  # noqa: E402
-from nolli.build import fetch_change_model, fetch_whole_model, is_fresh  # noqa: E402
-from nolli.change import ChangeError, merge_base  # noqa: E402
-from nolli.model import Model  # noqa: E402
+from nolli import retention  # noqa: E402
+from nolli.build import fetch_change, fetch_whole_model, is_fresh, open_change_scene, open_commit_scene  # noqa: E402
+from nolli.keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: E402
 from nolli.progress import Progress  # noqa: E402
-from nolli.store import (  # noqa: E402
-    Change, CloneCache, Commit, DirectoryStore, FetchError, ModelKey, ModelStore, NotAllowed, Repo, Sources,
-)
+from nolli.scene import Scene  # noqa: E402
+from nolli.sources import CloneCache, FetchError, Sources, github  # noqa: E402
+from nolli.sources.spec import ChangeError, merge_base  # noqa: E402
+from nolli.store import DirectoryStore, ModelStore  # noqa: E402
 
 try:  # installed: nolli.viewer.hosted next to nolli.viewer.serve; from a checkout, serve.py beside this file
     from .reviews import Reviews, ci_pull, from_ci
@@ -304,15 +304,21 @@ class Site:
         head = self.api(owner, repo, f"/branches/{quote(branch, safe='')}")["commit"]["sha"]
         return Plan(f"{name}_{head[:7]}", f"{owner}/{repo} at {branch}", r, key=r.make_commit(head))
 
-    def find_built(self, plan: Plan) -> tuple[ModelKey, Model] | None:
-        """The model ``plan`` shows if it is built, else None. Raises NotAllowed as the store does."""
+    def find_built(self, plan: Plan) -> tuple[ModelKey, Scene] | None:
+        """The scene ``plan`` shows if it is built, else None. Raises NotAllowed as the store does."""
         key = plan.key or self.built.get(plan.name)
         if key is None:
             return None
-        m = self.store.load_model(key)
-        return (key, m) if m is not None and is_fresh(m) else None
+        if isinstance(key, ChangeKey):
+            if not is_fresh(self.store.load_change(key)):
+                return None
+            sc = open_change_scene(self.store, key)
+        else:
+            m = self.store.load_model(key)
+            sc = open_commit_scene(self.store, key) if m is not None and is_fresh(m) else None
+        return (key, sc) if sc is not None else None
 
-    def ci_review(self, key: ModelKey, m: Model) -> dict:
+    def ci_review(self, key: ModelKey, m: Scene) -> dict:
         """What nolli's CI left for a pull request model's head commit (reviews.from_ci), from the
         PR's comments, read at most once per LOOKUP_TTL."""
         name = key.format_name()
@@ -352,11 +358,11 @@ class Site:
                     base_tip, head = plan.pull
                     with progress.step("fetching the pull request"), self.sources.open_commits(plan.repo, base_tip, head) as clone:
                         key = plan.repo.make_change(merge_base(clone, base_tip, head), head)
-                if isinstance(key, Change):
-                    fetch_change_model(self.store, self.sources, key, about={**plan.about, "budget": self.budget},
-                                       run=self.run_step, progress=progress)
+                if isinstance(key, ChangeKey):
+                    fetch_change(self.store, self.sources, key, about={**plan.about, "budget": self.budget},
+                                 run=self.run_step, progress=progress)
                 elif isinstance(key, Commit):
-                    fetch_whole_model(self.store, self.sources, key, budget=self.budget, run=self.run_step, progress=progress)
+                    fetch_whole_model(self.store, self.sources, key, run=self.run_step, progress=progress)
                 job.key = key
                 if key is not None:
                     self.built[plan.name] = key
@@ -453,7 +459,7 @@ class HostedHandler(Handler):
     def site(self) -> Site:
         return self.services.site  # type: ignore[attr-defined, return-value]
 
-    def review_status(self, name: str, key: ModelKey, m: Model) -> dict:
+    def review_status(self, name: str, key: ModelKey, m: Scene) -> dict:
         return {**super().review_status(name, key, m), "ci": self.site.ci_review(key, m), "server": "serve"}
 
     def send_page(self, body: bytes, status: int = 200) -> None:
@@ -509,7 +515,7 @@ class HostedHandler(Handler):
             key, model = found
             name = key.format_name()
             preload(self.site.store, name)
-            if (model.meta.get("diff") or {}).get("pr"):
+            if (model.model.meta.get("change") or {}).get("pr"):
                 self.site.ci_review(key, model)  # before the page: a review found opens on its worst verdict
             self.send_page(viewer_page(name, plan.title))
             return

@@ -5,11 +5,12 @@
 
 Static files come from this directory. Models are named as the store names them (for nolli
 view, the directories under --data; nolli/store.py): ``/api/list`` lists them, newest first;
-``/api/scene?d=<name>&...`` returns the scene for a scene state (``nolli/scene.py``; the
-parameters are the viewer's location-hash keys), ``/api/mermaid?d=<name>&...`` the same
-scene as Mermaid (``nolli/mermaid.py``; ``nodim=1``: unchanged not faded; ``format=json``:
-``{mermaid, ids}``, ids mapping each Mermaid node id to its scene id); ``/api/node?d=<name>&id=<entity>``
-returns the details of one box in a change's model (``nolli/changes.py``), ``/api/changes?d=``
+``/api/scene?d=<name>&...`` returns the scene a scene state projects (``parse_state`` here
+reads the viewer's location-hash keys; ``nolli/transform/project.py``), as JSON with every
+overlay (``nolli/export/viewer.py``), ``/api/mermaid?d=<name>&...`` the same scene as Mermaid
+(``nolli/export/mermaid.py``; ``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid,
+ids}``, ids mapping each Mermaid node id to its scene id); ``/api/node?d=<name>&id=<node>``
+returns the details of one box in a change (``nolli/overlays/change.py``), ``/api/changes?d=``
 its numbered changes and the review's verdicts, ``/api/brief?d=`` what a review agent gets
 (Markdown), and ``POST /api/verdicts?d=`` stores a review's verdicts. ``/api/review?d=`` says
 where the verdicts came from and whether a review agent can run here; ``POST /api/review?d=``
@@ -41,13 +42,17 @@ HERE = Path(__file__).resolve().parent
 if not __package__:
     sys.path.insert(0, str(HERE.parent))  # run as a script: the nolli package of this checkout
 
-from nolli.derived import make_review_brief  # noqa: E402
-from nolli.changes import change_items, details  # noqa: E402
-from nolli.mermaid import ids as mermaid_ids, render  # noqa: E402
-from nolli.model import Model  # noqa: E402
-from nolli.review import read_verdicts, resolve_verdicts  # noqa: E402
-from nolli.scene import scene, state_from_query  # noqa: E402
-from nolli.store import Change, DirectoryStore, LocalRepository, ModelKey, ModelStore, NotAllowed, Sources  # noqa: E402
+from nolli.build import open_change_scene, open_commit_scene  # noqa: E402
+from nolli.export.brief import make_review_brief  # noqa: E402
+from nolli.export.mermaid import list_ids, render  # noqa: E402
+from nolli.export.viewer import export_scene  # noqa: E402
+from nolli.keys import ChangeKey, ModelKey, NotAllowed  # noqa: E402
+from nolli.overlays.change import detail_box, list_changes  # noqa: E402
+from nolli.overlays.verdicts import Verdicts, describe_verdicts, find_diagram_ids, read_verdicts  # noqa: E402
+from nolli.scene import Scene  # noqa: E402
+from nolli.sources import LocalRepository, Sources  # noqa: E402
+from nolli.store import DirectoryStore, ModelStore  # noqa: E402
+from nolli.transform.project import parse_state, project  # noqa: E402
 
 try:  # installed: nolli.viewer.reviews; from a checkout, reviews.py beside this file
     from .reviews import Reviews, provenance, save_verdicts
@@ -77,28 +82,28 @@ class Server(ThreadingHTTPServer):
         self.services = services
 
 
+def open_stored(store: ModelStore, key: ModelKey) -> Scene | None:
+    """The scene of a stored model: a change merged from its commits, or one commit."""
+    return open_change_scene(store, key) if isinstance(key, ChangeKey) else open_commit_scene(store, key)
+
+
 def preload(store: ModelStore, name: str) -> None:
     """Start reading a model in the background, for the viewer's first request."""
     def load() -> None:
         try:
             key = store.find_key(name)
             if key:
-                store.load_model(key)
+                open_stored(store, key)
         except (NotAllowed, OSError, ValueError):
             pass
 
     threading.Thread(target=load, daemon=True).start()
 
 
-def load_verdicts(store: ModelStore, key: ModelKey) -> list[dict]:
-    """The model's verdicts, if it has valid ones."""
-    review = store.load_review(key)
-    if review is None:
-        return []
-    try:
-        return read_verdicts(json.dumps(review.verdicts))
-    except ValueError:
-        return []
+def load_verdicts(scene: Scene) -> list[dict]:
+    """A change's kept verdicts."""
+    v = scene.overlays.get("verdicts")
+    return v.load(scene) if isinstance(v, Verdicts) else []
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -111,22 +116,23 @@ class Handler(SimpleHTTPRequestHandler):
     def query(self) -> dict:
         return dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
 
-    def open_model(self, name: str | None) -> tuple[ModelKey, Model] | None:
-        """The model ``name``, through the store; None if there is none, or the store refuses it."""
+    def open_model(self, name: str | None) -> tuple[ModelKey, Scene] | None:
+        """The scene of the model ``name``, through the store; None if there is none, or the store
+        refuses it."""
         store = self.services.store
         try:
             key = store.find_key(name or "")
-            m = store.load_model(key) if key else None
+            sc = open_stored(store, key) if key else None
         except NotAllowed:
             return None
-        return (key, m) if key and m is not None else None
+        return (key, sc) if key and sc is not None else None
 
-    def review_status(self, name: str, key: ModelKey, m: Model) -> dict:
+    def review_status(self, name: str, key: ModelKey, m: Scene) -> dict:
         """What the review panel shows: the verdicts' origin, the run under way or the last one,
         and whether (and why not) a run can be started here."""
         reviews = self.services.reviews
         why = reviews.reviewer.available()
-        if why is None and not isinstance(key, Change):
+        if why is None and not isinstance(key, ChangeKey):
             why = "dataset"
         if why is None and self.services.find_sources(name) is None:
             why = "repo"
@@ -137,7 +143,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def start_review(self, name: str, key: ModelKey) -> None:
         sources = self.services.find_sources(name)
-        if isinstance(key, Change) and sources is not None:
+        if isinstance(key, ChangeKey) and sources is not None:
             self.services.reviews.start(name, self.services.store, key, sources)
 
     def send_json(self, obj, status: int = 200) -> None:
@@ -162,48 +168,47 @@ class Handler(SimpleHTTPRequestHandler):
         if found is None:
             self.send_json({"error": f"no dataset {q.get('d')!r}"}, 404)
             return
-        key, m = found
-        store = self.services.store
+        key, sc = found
         t1 = time.perf_counter()
+        change = isinstance(key, ChangeKey)
         if path == "/api/scene":
             try:
-                out = scene(m, state_from_query(q), load_verdicts(store, key))
+                out = export_scene(project(sc, parse_state(q)))
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
-            meta = m.meta or {}
+            meta = sc.model.meta or {}
             out["dataset"] = {"name": q["d"], "repo": meta.get("repo"), "commit": meta.get("commit"), "files": meta.get("files"),
-                              "entities": len(m.entities), "relations": len(m.relations)}
+                              "entities": len(sc.model.kinds), "relations": len(sc.model.edges)}
             out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
             self.send_json(out)
         elif path == "/api/mermaid":
             try:
-                sc = scene(m, state_from_query(q))
-                text = render(sc, fade=q.get("nodim") != "1")
+                ps = project(sc, parse_state(q))
+                text = render(ps, fade=q.get("nodim") != "1")
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
             if q.get("format") == "json":
-                self.send_json({"mermaid": text, "ids": mermaid_ids(sc)})
+                self.send_json({"mermaid": text, "ids": list_ids(ps)})
             else:
                 self.send_text(text)
         elif path == "/api/changes":
-            diff = bool(m.meta.get("diff"))
-            self.send_json({"items": change_items(m) if diff else [],
-                            "verdicts": resolve_verdicts(m, load_verdicts(store, key)) if diff else []})
+            self.send_json({"items": list_changes(sc) if change else [],
+                            "verdicts": describe_verdicts(sc, load_verdicts(sc)) if change else []})
         elif path == "/api/node":
-            d = details(m, q.get("id", ""))
+            d = detail_box(sc, q.get("id", "")) if change else None
             if d is None:
                 self.send_json({"error": f"no entity {q.get('id', '')!r}"}, 404)
                 return
             self.send_json(d)
         elif path == "/api/brief":
-            if not m.meta.get("diff"):
+            if not change:
                 self.send_json({"error": "not a change"}, 404)
                 return
-            self.send_text(make_review_brief(m), "text/markdown; charset=utf-8")
+            self.send_text(make_review_brief(sc), "text/markdown; charset=utf-8")
         elif path == "/api/review":
-            self.send_json(self.review_status(q["d"], key, m))
+            self.send_json(self.review_status(q["d"], key, sc))
         else:
             self.send_json({"error": f"no {path}"}, 404)
 
@@ -231,9 +236,12 @@ class Handler(SimpleHTTPRequestHandler):
                            404 if uploads else 405)
             return
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
+        if not isinstance(found[0], ChangeKey):
+            self.send_json({"error": "not a change"}, 400)
+            return
         try:
-            v = read_verdicts(body)
-        except ValueError as exc:
+            v = read_verdicts(body, find_diagram_ids(found[1]))
+        except (ValueError, KeyError, TypeError) as exc:
             self.send_json({"error": str(exc)}, 400)
             return
         save_verdicts(self.services.store, found[0], v, {"by": "upload"})

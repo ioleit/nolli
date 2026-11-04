@@ -26,9 +26,13 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from .change import ChangeError
-from .model import Model, address
-from .store import ModelKey, ModelStore
+from .keys import ModelKey
+from .model import address
+from .scene import Scene
+from .sources.spec import ChangeError
+from .store import ModelStore
+
+FORMAT = 1  # of the result a comment carries; one of another format is not read
 
 KEY = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)@([0-9a-f]{7,40})$")
 MARKER = "<!-- nolli -->"
@@ -51,8 +55,8 @@ def artifact_name(pr: int | str, head: str) -> str:
 
 
 def key_of(meta: dict) -> str:
-    """A PR dataset's key, from what its model records (remote, PR number, head)."""
-    d = meta.get("diff") or {}
+    """A PR dataset's key, from what its change records (remote, PR number, head)."""
+    d = meta.get("change") or {}
     m = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
     if not m or not d.get("pr"):
         raise ValueError("not the dataset of a GitHub pull request (no remote or PR number in its model)")
@@ -64,20 +68,23 @@ def comment(store: ModelStore, model_key: ModelKey, skipped: str | None = None) 
     each kind, the worst ones (not fine) with their reasons, and how to open the result.
     ``skipped`` says why no review agent ran: "no-key" (the repository has no API key for
     one) or "fork" (a PR from a fork, which gets no secrets)."""
-    from .derived import make_review_diagram
-    from .changes import change_items
-    from .review import check_verdicts, diagram_changes, resolve_verdicts
+    from .build import open_change_scene
+    from .export.brief import make_review_scene
+    from .export.mermaid import render
+    from .overlays.change import list_changes
+    from .overlays.verdicts import check_verdicts, describe_verdicts, parse_verdicts
 
-    m = store.load_model(model_key)
-    if m is None:
+    scene = open_change_scene(store, model_key)
+    if scene is None:
         raise ValueError(f"no model of {model_key.format_name()}")
-    key = key_of(m.meta)
-    d = m.meta["diff"]
+    key = key_of(scene.model.meta)
+    d = scene.model.meta["change"]
     repo = key.split("#")[0]
-    n = len(change_items(m))
-    mmd = make_review_diagram(m)
-    review = store.load_review(model_key)
-    verdicts, errors = check_verdicts(m, mmd, json.dumps(review.verdicts)) if review else (None, [])
+    n = len(list_changes(scene))
+    review = make_review_scene(scene)
+    mmd = render(review)
+    kept = parse_verdicts(store.open_maps("verdicts").load(scene.model.key))
+    verdicts, errors = check_verdicts(scene, mmd, json.dumps(kept)) if kept else (None, [])
     commit = f"[`{d['head'][:7]}`](https://github.com/{repo}/pull/{d['pr']}/commits/{d['head']})"
     lines = [MARKER, f"**Nolli** found {n} structural change{'' if n == 1 else 's'} in this PR (at {commit})."]
     after: list[str] = []  # why there is no review, after everything else
@@ -92,15 +99,15 @@ def comment(store: ModelStore, model_key: ModelKey, skipped: str | None = None) 
         after = [f"No review: {'the review agent wrote no verdicts' if verdicts is None else 'the review agent’s verdicts failed nolli’s check'}."]
         verdicts = None
     else:
-        verdicts = resolve_verdicts(m, verdicts)
-        status = diagram_changes(mmd)
+        verdicts = describe_verdicts(scene, verdicts)
+        status = list_statuses(review)
         total = len(verdicts)
         counts = " &nbsp; ".join(f"{mark(k)} {c}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in verdicts)))
         lines[-1] += f" The review agent's {total} verdict{'' if total == 1 else 's'}: {counts}"
         listed = sorted((v for v in verdicts if v["verdict"] != "fine"), key=lambda v: WORST_FIRST.index(v["verdict"]))
         if listed:
             lines.append("")
-            lines += [f"- {mark(v['verdict'])} **{what(m, v, status)}**. {' '.join(v['reason'].split())}" for v in listed[:LISTED]]
+            lines += [f"- {mark(v['verdict'])} **{what(scene, v, status)}**. {' '.join(v['reason'].split())}" for v in listed[:LISTED]]
             if len(listed) > LISTED:
                 lines.append(f"- {len(listed) - LISTED} more")
     lines += ["", "Run these commands for the interactive viewer:", "",
@@ -110,7 +117,7 @@ def comment(store: ModelStore, model_key: ModelKey, skipped: str | None = None) 
                   mmd.rstrip(), "```", "", "</details>"]
     if after:
         lines += ["", *after]
-    result = {"key": key, "base": d["base"], "head": d["head"], "nolli": m.meta.get("nolli"),
+    result = {"format": FORMAT, "key": key, "base": d["base"], "head": d["head"], "nolli": d.get("nolli"),
               "verdicts": [{k: v[k] for k in ("target", "verdict", "reason")} for v in verdicts or []]}
     packed = base64.b64encode(zlib.compress(json.dumps(result, separators=(",", ":")).encode(), 9)).decode()
     lines += ["", f"<!-- nolli-result {packed} -->"]
@@ -125,15 +132,30 @@ def mark(verdict: str) -> str:
     return f'<img src="{base}/{verdict}.svg" height="18" alt="{GLYPH[verdict]}" title="{verdict}" align="top">'
 
 
-def what(m: Model, v: dict, status: dict[str, str]) -> str:
-    """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
-    from .changes import short
-    from .labels import is_module
+def list_statuses(review: Scene) -> dict[str, str]:
+    """What the review diagram draws as changed: a node id (a subgraph's without ``_g``), or
+    ``"<src> <dst>"`` for an edge, to added, removed or changed."""
+    from .export.mermaid import make_node_id
 
+    out = {}
+    for el in [*review.list_nodes(), *review.list_edges()]:
+        st = (el.get("change") or {}).get("status")
+        if st in NEW:
+            out[f"{make_node_id(el.key.src)} {make_node_id(el.key.dst)}" if el.is_edge else make_node_id(el.key)] = st
+    return out
+
+
+def what(scene: Scene, v: dict, status: dict[str, str]) -> str:
+    """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
+    from .overlays.change import format_name
+    from .overlays.label import is_module
+    from .transform.graph import Graph
+
+    g = scene.memo(Graph)
     ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]
     st = NEW.get(status.get(" ".join(ids), ""), "")
     def name(x: str) -> str:
-        return f"`{short(m, address.owner(x))}`"
+        return f"`{format_name(g, address.owner(x))}`"
     if v["edge"]:
         a, b = v["ends"]
         return f"{st} dependency from {name(a)} to {name(b)}" if st else f"Dependency from {name(a)} to {name(b)}"
@@ -142,8 +164,7 @@ def what(m: Model, v: dict, status: dict[str, str]) -> str:
     x = v["ends"][0]
     if address.is_own_code(x):
         return f"Own code of {name(x)}"
-    e = m.entities[x]
-    kind = "module" if is_module(e) else "package" if e.kind == "directory" else e.kind
+    kind = "module" if is_module(g, x) else "package" if g.kind(x) == "directory" else g.kind(x)
     return f"{st} {kind} {name(x)}" if st else f"{kind.capitalize()} {name(x)}"
 
 
@@ -170,36 +191,19 @@ def results(comments: list[dict]) -> list[dict]:
             r = read_result(body)
         except (ValueError, zlib.error):
             continue
-        if r and r.get("head"):
+        if r and r.get("head") and r.get("format") == FORMAT:
             out.append({**r, "link": c.get("html_url"), "at": c.get("updated_at") or c.get("created_at")})
     return out[::-1]
 
 
-def upgrade(verdicts: list[dict], made_by: str | None) -> list[dict]:
-    """Verdicts made by an earlier nolli, with their targets in today's node ids: before 0.4,
-    files and folders were ``fs:`` and Python symbols ``py:`` (node ids ``n_fs_…``, ``n_py_…``),
-    a module's own code ``n_body_fs_…``; since, all are ``repo:`` addresses (``n_repo_…``, own
-    code ``n_repo_<file>_``). Others are left as they are."""
-    try:
-        old = tuple(int(x) for x in (made_by or "").split(".")[:2]) < (0, 4)
-    except ValueError:
-        old = False
-    if not old:
-        return verdicts
-    def new(target: str) -> str:
-        target = re.sub(r"\bn_body_fs_(\w+)", r"n_repo_\1_", target)
-        return re.sub(r"\bn_(?:fs|py)_", "n_repo_", target)
-    return [{**v, "target": new(v.get("target") or "")} for v in verdicts]
-
-
 def fetch(key: str, data: Path) -> Path:
     """The dataset a CI run stored under ``key``, downloaded into ``data`` (once)."""
-    from .github import api, download, token
+    from .sources.github import api, download, token
 
     owner, repo, pr, head = KEY.match(key).groups()
     name = artifact_name(pr, head)
     out = data / f"{repo}-ci-pr{pr}-{head[:7]}"
-    if (out / "model.json").is_file():
+    if (out / "key.json").is_file():
         return out
     t = token()
     if not t:
@@ -216,7 +220,7 @@ def fetch(key: str, data: Path) -> Path:
                 if p.is_absolute() or ".." in p.parts:
                     raise ChangeError(f"{key}: the artifact has a file outside its directory: {info.filename}")
             z.extractall(tmp)
-        if not (Path(tmp) / "model.json").is_file():
+        if not (Path(tmp) / "key.json").is_file():
             raise ChangeError(f"{key}: artifact {name} holds no nolli dataset")
         data.mkdir(parents=True, exist_ok=True)
         shutil.move(tmp, out)

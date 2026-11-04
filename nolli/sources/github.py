@@ -1,5 +1,5 @@
 """A GitHub pull request as a change for ``nolli view``: the layer on top of plain git
-(``nolli/change.py``) that knows one host.
+(``spec.py``) that knows one host.
 
 ``nolli view <url>`` (https://github.com/<owner>/<repo>/pull/<n>) or ``nolli view '#<n>'``
 (on the repository's GitHub remote) asks GitHub's REST API for the PR's title,
@@ -21,7 +21,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .change import Change, ChangeError, git, merge_base
+from .git import has_commit
+from .spec import ChangeError, ChangeSpec, git, merge_base
 
 URL = re.compile(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/pulls?/(\d+)(?:[/?#].*)?$")
 NUMBER = re.compile(r"^(?:#|pr:|pr/)(\d+)$", re.IGNORECASE)
@@ -46,7 +47,7 @@ def remotes(repo: Path) -> dict[str, tuple[str, str]]:
 AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (token())
 
 
-def resolve(repo: Path, spec: str, tok: str | None | object = AMBIENT) -> tuple[Change, dict]:
+def resolve(repo: Path, spec: str, tok: str | None | object = AMBIENT) -> tuple[ChangeSpec, dict]:
     """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``. ``tok`` as for api()."""
     m = URL.match(spec)
     gh = remotes(repo)
@@ -61,7 +62,7 @@ def resolve(repo: Path, spec: str, tok: str | None | object = AMBIENT) -> tuple[
     return fetch_pull(repo, owner, name, number, api(f"repos/{owner}/{name}/pulls/{number}", tok))
 
 
-def fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tuple[Change, dict]:
+def fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tuple[ChangeSpec, dict]:
     """resolve() for a PR whose answer from GitHub's API (``pr``: its head, base, title, body) is
     at hand: fetch its commits into ``repo``, asking GitHub nothing more."""
     gh = remotes(repo)
@@ -75,9 +76,9 @@ def fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tupl
         raise ChangeError(f"could not fetch PR #{number} from {remote}: {exc}") from None
     head, base_tip = pr["head"]["sha"], pr["base"]["sha"]
     for sha in (head, base_tip):
-        if subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{sha}^{{commit}}"], capture_output=True, check=False).returncode:
+        if not has_commit(repo, sha):
             raise ChangeError(f"commit {sha[:7]} of PR #{number} is not in {repo} after fetching it")
-    ch = Change(head=head, base=merge_base(repo, base_tip, head), title=pr.get("title") or f"PR #{number}",
+    ch = ChangeSpec(head=head, base=merge_base(repo, base_tip, head), title=pr.get("title") or f"PR #{number}",
                 description=(pr.get("body") or "").replace("\r\n", "\n").strip())
     return ch, {"pr": number, "remote": f"https://github.com/{owner}/{name}"}
 

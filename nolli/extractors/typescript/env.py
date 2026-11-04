@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import re
 
-from ...model import USE, Provenance, Relation, address
+from ...model import USE, address
+from ..facts import Provenance, Relation
 from .. import Context
 from ..interfaces import ensure_env
 

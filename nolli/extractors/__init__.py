@@ -26,14 +26,15 @@ from functools import cache
 from pathlib import Path
 from typing import Callable, Iterator
 
-from ..model import Model, address
+from ..model import address
+from .facts import Facts
 from ..progress import Progress, Quiet
 
 
 @dataclass
 class Context:
     repo: Path
-    model: Model
+    model: Facts
     files: list[Path]  # tracked, non-ignored files, relative to repo
     config: dict = field(default_factory=dict)
     notes: dict = field(default_factory=dict)  # scratch space shared between extractors and matchers

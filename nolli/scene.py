@@ -1,384 +1,303 @@
-"""The scene: everything a renderer draws for one scene state, computed in one place.
+"""Scenes, elements and overlays: how anything is known about a model's nodes and edges.
 
-A scene state is the set of unfolded containers (or a preset that names one) plus the
-filters and options. ``scene`` turns it into a graph: the entities filtered by the state,
-contracted onto the cut through the containment tree that the unfolded containers make,
-and simplified by the roll-up rules (``rollup.md``). Each node and edge stands for the
-entities and relations under it. ``scene``
-turns it into a flat list of nodes (in drawing order, each naming its drawn parent) and
-a list of edges, with labels, badges, emphasis flags and hover descriptions (info.py) already decided. The
-viewer lays this out (ELK) and draws it, ``mermaid.py`` writes it as Mermaid; ``nolli
-extract`` writes the scene of the default cut. Ids are stable across states (entity ids, ``<id>#`` for a module's own
-code (address.own_code), ``kind|src|dst|subkind`` for edges), so a client can diff two scenes to animate
-the step between them.
+- An *overlay* is code that says something about one element: ``compute(element)`` returns
+  its properties (a dict) or None. The file tree's overlay says a file's role and size, a
+  language's says which names a module defines, the change overlay what a change did to a
+  box, the verdicts overlay what a review said about it. An overlay decides for itself where
+  its knowledge comes from: a map it keeps in the store (``StoredMaps``, by model key, as an
+  extractor saved it), other overlays (``element.get``), or what the element stands for in
+  the models it was made from (``element.sources``).
+- An *element* is a node or an edge as an overlay sees it: its key and kind, and for an
+  edge its two ends; its place in the structure; what it stands for (``sources``: role ->
+  elements of the source scenes: ``source`` for a projection, ``base`` and ``head`` for a
+  change); and ``get(overlay)``, any overlay's properties of it.
+- A *scene* is a model, the overlays that apply to it, and the scenes its references point
+  into. It hands out elements and keeps what overlays answered (once per scene and element;
+  an overlay asking for itself about the same element is an error, not a loop).
+
+Transformations (``nolli/transform/``) take a scene and return one; exporters
+(``nolli/export/``) take a scene.
 """
 
 from __future__ import annotations
 
-from collections import defaultdict
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable, Iterable, Mapping
+from functools import cached_property
+from typing import Any, Protocol
 
-from .model import USE, Model, address, metamodel
-from .rollup import (
-    HIDDEN_ROLES_DEFAULT, fact_key, hidden_by_role, RolledUp, lift, chain_end, display_path, drawn_parent, image_aliases, is_init, owner_of,
-    representative, rollup, utility_badges, visible_from_expanded,
-)
-from .changes import Links, change_items, diff_index, fact_change, is_diff, node_diff
-from .review import VERDICT_RANK, edge_review_info, node_review_info, resolve_verdicts, review_expanded
-from .view import default_view
-from .labels import icons_of, label_of, leaf_count, name_of
-from .info import Dependencies, edge_info, node_info
-from .prose import Ctx
-
-ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
-DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
-DEFAULT_BUDGET = 34
-DEFAULT_UTILITY_IN = 4  # more incoming edges than this: a utility, drawn as badges
-DEFAULT_MAX_LINES = 4  # lines between two drawn boxes at most; more are lifted to a box they are inside (rollup.lift)
-DEFAULT_GROUPS = (address.root(address.API),)  # root groups drawn as boxes; the others are badges on their users
+from .model import CONTAIN, EdgeKey, Key, Model
 
 
-PRESETS = ("default", "folded", "changes", "unfolded")
+class Overlay(Protocol):
+    name: str
+
+    def compute(self, element: "Element") -> dict | None: ...
 
 
-@dataclass
-class SceneState:
-    """What a renderer asks for. ``expanded=None`` means: the preset's cut, ``default`` the
-    default cut for ``budget``, ``folded`` the top level, ``changes`` (a change's dataset)
-    every area that changed in source code unfolded, ``unfolded`` everything."""
-    expanded: list[str] | None = None
-    preset: str = "default"
-    roles: list[str] = field(default_factory=lambda: list(DEFAULT_ROLES))  # shown roles
-    budget: int = DEFAULT_BUDGET
-    groups: list[str] = field(default_factory=lambda: list(DEFAULT_GROUPS))  # shown root groups
-    utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
-    side: str = "both"  # diff models: "base" or "head" draws one commit, "both" the merged picture
-    max_lines: int = DEFAULT_MAX_LINES  # lines drawn between two boxes at most (rollup.lift)
+class OverlayCycle(Exception):
+    pass
 
 
-def hidden_for(m: Model, roles, side: str = "both") -> set[str]:
-    """Files and directories whose role is not shown, plus images drawn as their service; in a
-    diff model drawn for one side, what does not exist on that side."""
-    shown = set(roles)
-    out = hidden_by_role(m, {e.attrs["role"] for e in m.entities.values() if e.attrs.get("role")} - shown)
-    if side in ("base", "head"):
-        gone = "added" if side == "base" else "removed"
-        out |= {e.id for e in m.entities.values() if (e.attrs.get("diff") or {}).get("status") == gone}
-    return out | set(image_aliases(m))
+class StoredMaps(Protocol):
+    """One overlay's maps in a store, by model key (``MapStore.open_maps(name)``): an overlay
+    sees only the maps saved under its name."""
+
+    def load(self, model_key: str) -> Mapping[Key, dict]: ...
+
+    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None: ...
+
+    def load_about(self, model_key: str) -> dict | None: ...
 
 
-def is_root_group(m: Model, x: str) -> bool:
-    return m.has(x) and m.entities[x].kind == "group" and m.parent(x) is None
+class MapStore(Protocol):
+    def open_maps(self, name: str) -> StoredMaps: ...
 
 
-def preset_expanded(m: Model, st: SceneState, hidden: set[str]) -> set[str]:
-    """The containers a preset unfolds (a change's preset on a plain dataset: the default cut)."""
-    if st.preset == "folded":
-        return {address.REPO_ROOT}
-    if st.preset == "changes" and is_diff(m):
-        return set(review_expanded(m))
-    if st.preset == "unfolded":
-        return {x for x in m.entities if x not in hidden and m.children(x)}
-    hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
-    return set(default_view(m, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
+class Element:
+    """A node or an edge of a scene."""
 
+    __slots__ = ("_scene", "key", "__dict__")
 
-def compute(m: Model, st: SceneState) -> tuple[set[str], set[str], set[str], RolledUp, set[str]]:
-    """(expanded, hidden, visible, rolled, utilities) for a state; expanded is normalised to
-    the containers actually reached, so folding a box also folds everything inside it."""
-    hidden = hidden_for(m, st.roles, st.side)
-    shown_groups = set(st.groups)
-    if st.expanded is None:
-        expanded = preset_expanded(m, st, hidden)
-    else:
-        expanded = {x for x in st.expanded if m.has(x)}
-    expanded = {x for x in expanded if not (is_root_group(m, x) and x not in shown_groups)}  # filtered out: stays folded
-    walked: set[str] = set()
-    visible = visible_from_expanded(m, expanded, hidden, walked=walked)
-    expanded = walked
-    rolled = rollup(m, visible, hidden, shown_groups=shown_groups, side=st.side)
-    rolled.edges = lift(m, rolled.edges, expanded, st.max_lines)  # at most max_lines lines between two boxes
-    utilities = utility_badges(m, rolled, st.utilities) if st.utilities > 0 else set()
-    return expanded, hidden, visible, rolled, utilities
+    def __init__(self, scene: "Scene", key: Key) -> None:
+        self._scene = scene
+        self.key = key
 
+    @property
+    def model_key(self) -> str:
+        return self._scene.model.key
 
-# ---------- labels ----------
+    @property
+    def kind(self) -> str:
+        return self._scene.model.find_kind(self.key)
 
-def badge_text(used_by: int = 0) -> str:
-    """For a utility, how many boxes use it. What a box itself depends on outside the
-    picture (external packages, environment, deployment, utilities) is not drawn on it:
-    the hover text says it (info.py)."""
-    return f"used by {used_by}" if used_by else ""
+    @property
+    def is_edge(self) -> bool:
+        return isinstance(self.key, EdgeKey)
 
+    @property
+    def id(self) -> str:
+        """The key as text: a node's address, an edge's ``kind|src|dst|subkind``."""
+        return self.key.format() if isinstance(self.key, EdgeKey) else self.key
 
-def edge_style(e) -> str:
-    s = e.subkind
-    if e.kind == "provide":
-        return "provide"
-    if s == "import":
-        return "import"
-    if s == "http":
-        return "http"
-    if s == "env":
-        return "env"
-    return "deploy"
+    @property
+    def scene(self) -> "Scene":
+        """The scene, for what an overlay computes once for all of its elements (``scene.memo``)."""
+        return self._scene
 
+    # -- what it stands for ----------------------------------------------------
 
+    @cached_property
+    def sources(self) -> dict[str, tuple["Element", ...]]:
+        return {role: tuple(src.find_element(k) for k in self._scene.list_refs(role, self.key) if src.model.has(k))
+                for role, src in self._scene.sources.items()}
 
-
-# ---------- the scene ----------
-
-def scene(m: Model, st: SceneState, verdicts: list[dict] | None = None) -> dict:
-    """``verdicts``: a review's verdicts (review.read_verdicts), shown on the drawn box or
-    edge that stands for each one's target."""
-    expanded, hidden, visible, rolled, utilities = compute(m, st)
-    diff = is_diff(m)
-    links = Links(m) if diff else None
-    by_fact = {fact_key(r): r for r in m.relations if r.attrs.get("diff")} if diff else {}
-    shown_groups = set(st.groups)
-    # a root group is drawn when the filter shows it and it has something to unfold (rollup
-    # leaves no edge on one the filter hides)
-    root_group = lambda x: is_root_group(m, x) and (x not in shown_groups or not m.children(x))  # noqa: E731
-
-    def local(e) -> bool:
-        ps = drawn_parent(m, e.src, expanded)
-        return ps is not None and ps == drawn_parent(m, e.dst, expanded)
-
-    edges = rolled.edges
-    out_total: dict[str, int] = defaultdict(int)
-    for e in edges:
-        if e.kind == USE:
-            out_total[e.src] += e.count
-    touched = {e.src for e in edges} | {e.dst for e in edges}
-    drawn = sorted(v for v in visible if not (root_group(v) and v not in touched))
-
-    used_by: dict[str, int] = defaultdict(int)  # utility -> boxes whose edges into it became badges
-    for ann in rolled.annotations.values():
-        for g in ann:
-            if g.startswith("util:"):
-                used_by[g[5:]] += 1
-    services = [c for c in m.children("deploy") if m.entities[c].kind == "service"] if m.has("deploy") else []
-    nodes: list[dict] = []
-    ctx = Ctx(m, rolled, expanded, hidden, utilities)
-    deps = Dependencies(ctx, set(visible) | expanded)
-
-    def used_utils(x: str) -> list[str]:
-        return sorted(g[5:] for g in (rolled.annotations.get(x) or {}) if g.startswith("util:"))
-
-    def node(x: str, parent: str | None, container: bool) -> dict:
-        if address.is_own_code(x):
-            return {"id": x, "kind": "anchor", "parent": parent, "utilities_used": used_utils(x), "info": node_info(ctx, deps, x)}
-        e = m.entities[x]
-        badge = badge_text(used_by.get(x, 0))
-        kids = bool(m.children(x))
-        return {
-            "id": x, "kind": e.kind, "parent": parent, "container": container, "label": name_of(m, x, expanded),
-            "icons": icons_of(m, x), "foldable": kids, "leaves": leaf_count(m, x) if kids and not container else None,
-            "badge": badge, "utility": x in utilities,
-            "chips": [{"id": s, "name": m.entities[s].name, "color": services.index(s) if s in services else -1}
-                      for s in rolled.allocations.get(x, [])],
-            "service_color": services.index(x) if x in services else None,
-            "uses": [],  # kept for the viewer; empty: utilities used are in the hover text (info.py)
-            "utilities_used": used_utils(x),  # ids of the utilities whose edges from this box became badges
-            "info": node_info(ctx, deps, x, used_by.get(x, 0)),
-            "diff": node_diff(m, x, rolled.internal_changes.get(x)) if diff else None,
-        }
-
-    def build(x: str, parent: str | None) -> bool:
-        e = m.entities[x]
-        if x in expanded and m.children(x):
-            rec = node(x, parent, True)
-            if x == address.REPO_ROOT:
-                rec = None  # the repository root is the canvas, not a box
-            else:
-                nodes.append(rec)
-            me = None if rec is None else x
-            ch: list[str] = []
-            for c in m.children(x):
-                if c in hidden:
-                    continue
-                if e.kind == "directory" and is_init(m, c):
-                    ch.extend(m.children(c))  # a package's __init__ classes are its children
-                    continue
-                ch.append(chain_end(m, c, hidden) if e.kind == "directory" and m.entities[c].kind == "directory" else c)
-            n = 0
-            if address.own_code(x) in visible:
-                nodes.append(node(address.own_code(x), me or parent, False))
-                n += 1
-            for c in ch:
-                if c in visible or (c in expanded and m.children(c)):
-                    n += build(c, me or parent)
-            if rec is not None and n == 0:
-                rec["container"] = False
-            return True
-        if x not in visible or (root_group(x) and x not in touched):
-            return False
-        nodes.append(node(x, parent, False))
-        return True
-
-    for r in m.roots():
-        if r not in hidden:
-            build(r, None)
-
-    # what a box uses outside the picture (utilities among it) is in its hover text, not
-    # drawn in it: "uses" stays empty, so the layout reserves no room for a list
-
-    edge_out = []
-    for e in edges:
-        ot = out_total.get(e.src, 0)
-        weak = bool(ot) and e.kind == USE and e.count / ot < 0.05 and e.count < 3
-        edge_out.append({
-            "key": f"{e.kind}|{e.src}|{e.dst}|{e.subkind}", "kind": e.kind, "subkind": e.subkind, "src": e.src, "dst": e.dst,
-            "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": edge_style(e),
-            "local": local(e), "single": e.count == 1,
-            "weak": weak,
-            "heuristic": e.confidence == "heuristic",
-            "types": e.count > 0 and e.types == e.count,  # references only to types (``type_only``): no run-time dependency
-            "info": edge_info(ctx, e),
-            # a lifted line: the drawn nodes it stands for at each end (the viewer's ports lead there)
-            "ends": ({"src": sorted(e.ends["src"]), "dst": sorted(e.ends["dst"])}
-                     if e.ends["src"] - {e.src} or e.ends["dst"] - {e.dst} else None),
-            "diff": ({"status": e.status, "base": e.base, "head": e.head, "facts": sorted(e.changed),
-                      "changes": [fact_change(m, by_fact[f], links) for f in sorted(e.changed)[:40] if f in by_fact],
-                      "more": max(0, len(e.changed) - 40)} if diff and e.status else None),
-        })
-
-    if diff:
-        attach_items(m, nodes, edge_out, visible, hidden, resolve_verdicts(m, verdicts or []))
-
-    residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
-    residue += [f"{v} unresolved {k} references" for k, v in sorted(rolled.unresolved.items())]
-    if utilities:
-        residue.append("utilities: " + ", ".join(label_of(m, u, expanded) for u in sorted(utilities)))
-
-    groups = [{"id": r, "namespace": address.scheme_of(r), "name": m.entities[r].name, "size": len(m.children(r)), "shown": r in shown_groups}
-              for r in m.roots() if m.entities[r].kind == "group" and metamodel.NAMESPACES[address.scheme_of(r)].structural and m.children(r)]
-    # files and directories per role, for the Show filter ("mixed" is a directory role only)
-    by_role: dict[str, dict[str, int]] = {r: {"files": 0, "dirs": 0} for r in ALL_ROLES}
-    for e in m.entities.values():
-        r = e.attrs.get("role")
-        if r in by_role and e.kind in ("file", "directory") and not e.attrs.get("root"):
-            by_role[r]["files" if e.kind == "file" else "dirs"] += 1
-    roles = [{"id": r, **n} for r, n in by_role.items()]
-    state = asdict(st) | {"expanded": sorted(expanded), "preset": None if st.expanded is not None else "default" if st.preset == "changes" and not diff else st.preset}
-    out = {"state": state, "nodes": nodes, "edges": edge_out, "groups": groups, "roles": roles, "residue": residue,
-           "stats": {"nodes": len(drawn), "edges": len(edge_out)}}
-    if diff:
-        meta = m.meta["diff"]
-        statuses = defaultdict(int)
-        for e in edge_out:
-            if e["diff"]:
-                statuses[e["diff"]["status"]] += 1
-        idx = diff_index(m)
-        out["diff"] = {**{k: meta.get(k) for k in ("base", "head", "base_short", "head_short", "remote", "pr", "files_changed", "added", "removed", "title")},
-                       "link": links.change(), "drawn": dict(statuses), "changed_entities": len(idx)}
-    return out
-
-
-def attach_items(m: Model, nodes: list[dict], edges: list[dict], visible: set[str], hidden: set[str],
-                 verdicts: list[dict]) -> None:
-    """Which review items each drawn box and edge shows, and which verdicts (resolved, see
-    review.resolve_verdicts) are on it, with the worst of them.
-    An item about facts lands on the edges carrying those facts; an item about entities (or
-    facts that fell inside one box) on the box that stands for them."""
-    rep = representative(m, visible, hidden, image_aliases(m))
-    drawn = {n["id"] for n in nodes}
-    by_fact: dict[str, list[str]] = defaultdict(list)
-    for it in change_items(m):
-        for f in it["facts"]:
-            by_fact[f].append(it["id"])
-    node_items: dict[str, set[str]] = defaultdict(set)
-    placed: set[str] = set()
-    for e in edges:
-        ids = sorted({i for f in (e["diff"] or {}).get("facts", []) for i in by_fact.get(f, [])}, key=lambda i: int(i[1:]))
-        e["items"] = ids
-        placed.update(ids)
-    for it in change_items(m):
-        if it["id"] in placed and it["category"] == "dependency":
-            continue
-        for x in it["focus"]:
-            r = x if x in drawn else rep(x)  # an unfolded module is its box, not its own-code dot
-            if r is not None and r in drawn:
-                node_items[r].add(it["id"])
-                break
-    # verdicts: on the drawn box that stands for their target, or on the drawn edge that carries
-    # the edge between its two ends. Roll-up and fan bundling both draw an edge between boxes
-    # that contain its ends (a folded box, or the unfolded box a bundle ends at), so that is the
-    # drawn edge between the boxes around the two ends, the innermost there is. An edge that
-    # fell inside one box lands on that box; one drawn as a badge, on its source.
-    def drawn_box(x: str) -> str | None:
-        r = x if x in drawn else rep(address.owner(x))
-        return r if r in drawn else None
-
-    parent = {n["id"]: n.get("parent") for n in nodes}
-
-    def around(x: str) -> list[str]:
-        """x and the drawn boxes around it, innermost first."""
-        out = [x]
-        while parent.get(out[-1]) in drawn:
-            out.append(parent[out[-1]])
-        return out
-
-    edge_at: dict[tuple[str, str], dict] = {}
-    for e in edges:
-        edge_at.setdefault((e["src"], e["dst"]), e)
-
-    def carrier(a: str, b: str) -> dict | None:
-        """The drawn edge that carries an edge from a to b (drawn boxes), or from b to a."""
-        for s, d in ((a, b), (b, a)):
-            found = [(i + j, edge_at[(x, y)]) for i, x in enumerate(around(s)) for j, y in enumerate(around(d)) if (x, y) in edge_at]
-            if found:
-                return min(found, key=lambda f: f[0])[1]
+    def find_same(self, *roles: str) -> "Element | None":
+        """The element with this key in the first of ``roles`` (default: head, base, source)
+        that has one: a projection's box that is a node of its source, a change's node as one
+        side has it."""
+        for role in roles or ("head", "base", "source"):
+            for s in self.sources.get(role, ()):
+                if s.key == self.key:
+                    return s
         return None
 
-    on_node: dict[str, list[dict]] = defaultdict(list)
-    on_edge: dict[str, list[dict]] = defaultdict(list)
-    for v in verdicts:
-        ends = [drawn_box(x) for x in v["ends"]]
-        if not ends or None in ends:
-            continue
-        if len(ends) == 2 and ends[0] != ends[1]:
-            e = carrier(ends[0], ends[1])
-            if e is not None:
-                on_edge[e["key"]].append(v)
-                continue
-        on_node[ends[0]].append(v)
-    worst = lambda vs: max((v["verdict"] for v in vs), key=VERDICT_RANK.get, default=None)  # noqa: E731
-    # a verdict is the box's or edge's own when it names that box (or its own code) or that edge;
-    # the others were rolled up from inside, and the card sums them up
-    own = lambda v, ends: [address.owner(x) for x in v["ends"]] == ends  # noqa: E731
-    split = lambda vs, ends: ([v for v in vs if own(v, ends)], [v for v in vs if not own(v, ends)])  # noqa: E731
-    for n in nodes:
-        n["items"] = sorted(node_items.get(n["id"], ()), key=lambda i: int(i[1:]))
-        vs = on_node.get(n["id"], [])
-        n["verdicts"] = [v["id"] for v in vs]
-        n["verdict"] = worst(vs)
-        kind = m.entities[n["id"]].kind if m.has(n["id"]) else "box"
-        # the card's second part, under a line
-        n["review"] = node_review_info(n.get("diff"), *split(vs, [n["id"]]), len(n["items"]), kind.replace("_", " "))
-    for e in edges:
-        vs = on_edge.get(e["key"], [])
-        e["verdicts"] = [v["id"] for v in vs]
-        e["verdict"] = worst(vs)
-        e["review"] = edge_review_info(m, e.get("diff"), *split(vs, [e["src"], e["dst"]]), len(e["items"]))
+    # -- structure -----------------------------------------------------------
+
+    @property
+    def src(self) -> "Element":
+        return self._scene.find_element(self.key.src)  # type: ignore[union-attr]
+
+    @property
+    def dst(self) -> "Element":
+        return self._scene.find_element(self.key.dst)  # type: ignore[union-attr]
+
+    @property
+    def parent(self) -> "Element | None":
+        p = self._scene.model.find_parent(self.key)  # type: ignore[arg-type]
+        return None if p is None else self._scene.find_element(p)
+
+    @property
+    def children(self) -> list["Element"]:
+        return [self._scene.find_element(c) for c in self._scene.model.list_children(self.key)]  # type: ignore[arg-type]
+
+    @property
+    def out_edges(self) -> list["Element"]:
+        return [self._scene.find_element(e) for e in self._scene.model.list_out(self.key)]  # type: ignore[arg-type]
+
+    @property
+    def in_edges(self) -> list["Element"]:
+        return [self._scene.find_element(e) for e in self._scene.model.list_in(self.key)]  # type: ignore[arg-type]
+
+    def iter_ancestors(self):
+        p = self.parent
+        while p is not None:
+            yield p
+            p = p.parent
+
+    # -- what is known about it --------------------------------------------------
+
+    def get(self, overlay: str) -> dict | None:
+        return self._scene._compute(self, overlay)
+
+    def __repr__(self) -> str:
+        return f"Element({self.id!r} in {self.model_key!r})"
 
 
-def state_from_query(q: dict[str, str]) -> SceneState:
-    """Parse the viewer's URL parameters (the same keys as its location hash)."""
-    st = SceneState()
-    if q.get("x"):
-        st.expanded = [x for x in q["x"].split(",") if x]
-    elif q.get("p") in PRESETS:
-        st.preset = q["p"]
-    if q.get("r") is not None:
-        st.roles = [r for r in q["r"].split(",") if r]
-    if q.get("b"):
-        st.budget = int(q["b"])
-    if q.get("g") is not None:
-        st.groups = [g for g in q["g"].split(",") if g]
-    st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
-    if q.get("s") in ("base", "head"):
-        st.side = q["s"]
-    if q.get("ml"):
-        st.max_lines = max(1, int(q["ml"]))
-    return st
+class Scene:
+    def __init__(self, model: Model, overlays: Iterable[Overlay], sources: Mapping[str, "Scene"] | None = None) -> None:
+        self.model = model
+        self.overlays: dict[str, Overlay] = {}
+        for o in overlays:
+            self.overlays[o.name] = o
+        self.sources = dict(sources or {})
+        self._elements: dict[Key, Element] = {}
+        self._cache: dict[tuple[str, Key], dict | None] = {}
+        self._busy: set[tuple[str, Key]] = set()
+        self._memo: dict[Any, Any] = {}
+
+    def with_overlays(self, *more: Overlay) -> "Scene":
+        """The same model and sources with more overlays (one of the same name replaces it)."""
+        return Scene(self.model, [*self.overlays.values(), *more], self.sources)
+
+    def has(self, key: Key) -> bool:
+        return self.model.has(key)
+
+    def find_element(self, key: Key) -> Element:
+        el = self._elements.get(key)
+        if el is None:
+            if not self.model.has(key):
+                raise KeyError(key)
+            el = self._elements[key] = Element(self, key)
+        return el
+
+    def list_nodes(self) -> list[Element]:
+        return [self.find_element(x) for x in sorted(self.model.kinds)]
+
+    def list_edges(self, kinds: Iterable[str] | None = None) -> list[Element]:
+        return [self.find_element(e) for e in self.model.list_edges(kinds)]
+
+    def list_roots(self) -> list[Element]:
+        return [self.find_element(x) for x in self.model.list_roots()]
+
+    def list_refs(self, role: str, key: Key) -> tuple[Key, ...]:
+        refs = self.model.refs.get(role)
+        if refs is None:  # the same key on that side (a change's sides)
+            return (key,) if role in self.model.refs else ()
+        return refs.get(key, ())
+
+    def memo(self, fn: Callable[["Scene"], Any]) -> Any:
+        """``fn(scene)``, computed once per scene: for an overlay that needs all of a scene's
+        elements at once (the numbered changes, where verdicts land)."""
+        if fn not in self._memo:
+            self._memo[fn] = fn(self)
+        return self._memo[fn]
+
+    def _compute(self, element: Element, overlay: str) -> dict | None:
+        k = (overlay, element.key)
+        if k in self._cache:
+            return self._cache[k]
+        if k in self._busy:
+            raise OverlayCycle(f"{overlay} needs itself for {element.id}")
+        o = self.overlays.get(overlay)
+        if o is None:
+            return None
+        self._busy.add(k)
+        try:
+            value = o.compute(element)
+        finally:
+            self._busy.discard(k)
+        self._cache[k] = value
+        return value
+
+
+# --- overlays every scene has ------------------------------------------------------------
+
+
+class FixedOverlay:
+    """Properties a transformation decided for the elements it made, as an extractor's
+    are saved: ``projection`` (what is a container, which lines were lifted)."""
+
+    def __init__(self, name: str, values: Mapping[Key, dict]) -> None:
+        self.name, self.values = name, values
+
+    def compute(self, element: Element) -> dict | None:
+        return self.values.get(element.key)
+
+
+class StoredOverlay:
+    """What the store keeps under this name for the element's model. ``follow``: an element
+    with nothing stored takes what its namesake in a source has (a projected box what the
+    node it is says; a change's node what head, else base, says)."""
+
+    export = False  # an extractor's word: read by other overlays, not shown as it is
+
+    def __init__(self, name: str, stored: StoredMaps, follow: bool = True) -> None:
+        self.name, self.stored, self.follow = name, stored, follow
+
+    def compute(self, element: Element) -> dict | None:
+        own = self.stored.load(element.model_key).get(element.key)
+        if own is not None or not self.follow:
+            return own
+        same = element.find_same()
+        return same.get(self.name) if same is not None else None
+
+
+class FactsOverlay:
+    """``facts``: what all extractors said, together (each wrote different attributes; an
+    edge's facts and counts add up), for code that does not care which one said it."""
+
+    name = "facts"
+    export = False
+
+    def __init__(self, names: Iterable[str]) -> None:
+        self.names = tuple(names)
+
+    def compute(self, element: Element) -> dict | None:
+        parts = [v for n in self.names if (v := element.get(n))]
+        if not parts:
+            same = element.find_same()
+            return same.get(self.name) if same is not None else None
+        if not element.is_edge:
+            out: dict = {}
+            for p in parts:
+                out.update(p)
+            return out
+        return {"count": sum(p.get("count", 0) for p in parts), "facts": [f for p in parts for f in p.get("facts", [])]}
+
+
+class MemoryMaps:
+    """Maps in memory (a model just extracted, tests)."""
+
+    def __init__(self, maps: dict[str, dict[str, dict[Key, dict]]] | None = None) -> None:
+        self.maps = maps if maps is not None else {}  # name -> model key -> values
+        self.about: dict[tuple[str, str], dict] = {}
+
+    def open_maps(self, name: str) -> "_MemoryHandle":
+        return _MemoryHandle(self, name)
+
+
+class _MemoryHandle:
+    def __init__(self, store: MemoryMaps, name: str) -> None:
+        self.store, self.name = store, name
+
+    def load(self, model_key: str) -> Mapping[Key, dict]:
+        return self.store.maps.get(self.name, {}).get(model_key, {})
+
+    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None:
+        self.store.maps.setdefault(self.name, {})[model_key] = dict(values)
+        if about is not None:
+            self.store.about[(self.name, model_key)] = about
+
+    def load_about(self, model_key: str) -> dict | None:
+        return self.store.about.get((self.name, model_key))
+
+
+def make_base_overlays(model: Model, maps: MapStore) -> list[Overlay]:
+    """The overlays of an extracted model: one per extractor that said something (the model
+    names them, ``meta["overlays"]``), and ``facts`` over all of them."""
+    names = model.meta.get("overlays") or []
+    return [*(StoredOverlay(n, maps.open_maps(n)) for n in names), FactsOverlay(names)]
+
+
+__all__ = ["CONTAIN", "Element", "FactsOverlay", "FixedOverlay", "MapStore", "MemoryMaps", "Overlay", "OverlayCycle",
+           "Scene", "StoredMaps", "StoredOverlay", "make_base_overlays"]
