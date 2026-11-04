@@ -14,7 +14,7 @@ from typing import Protocol
 from ..model import EdgeKey, FormatError, Key
 from ..model.scene import Element
 
-FORMAT = 1  # of a map as JSON
+FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
 
 
 class StoredMaps(Protocol):

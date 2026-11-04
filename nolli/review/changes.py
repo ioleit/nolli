@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from ..model import SYMBOL_KINDS, address
 from ..model.scene import Scene
-from ..transformations.graph import Graph
+from .reading import Reader
 from ..transformations.merge import TOTALS, Links
 
 
@@ -22,7 +22,7 @@ def detail_box(scene: Scene, x: str) -> dict | None:
     target = address.owner(x)
     if not scene.has(target):
         return None
-    g = Graph(scene)
+    g = Reader(scene)
     links = Links(scene.model.meta.get("change") or {})
     sub = {target} | set(g.descendants(target))
     files, classes, entities = [], [], []
@@ -82,7 +82,7 @@ def sum_subtree(scene: Scene, x: str) -> dict | None:
 
 # ---------- the numbered changes a reviewer (person or agent) goes through ----------
 
-def find_module(g: Graph, x: str) -> str:
+def find_module(g: Reader, x: str) -> str:
     """The module (file) a fact end belongs to; anything outside files stays itself."""
     cur: str | None = x
     while cur is not None:
@@ -92,7 +92,7 @@ def find_module(g: Graph, x: str) -> str:
     return x
 
 
-def find_area(g: Graph, x: str) -> str:
+def find_area(g: Reader, x: str) -> str:
     """The top-level box a node sits in: a top-level directory, or a group."""
     cur, last = x, x
     while cur is not None:
@@ -103,7 +103,7 @@ def find_area(g: Graph, x: str) -> str:
     return last
 
 
-def format_name(g: Graph, x: str) -> str:
+def format_name(g: Reader, x: str) -> str:
     """A readable name: the path for files and directories, path#Name for classes (and
     the other symbols)."""
     if not g.has(x):
@@ -116,7 +116,7 @@ def format_name(g: Graph, x: str) -> str:
     return g.name(x)
 
 
-def find_role(g: Graph, x: str) -> str:
+def find_role(g: Reader, x: str) -> str:
     """The role of the file or directory a node belongs to (source, test, docs, …); nodes
     outside the file tree (services, endpoints, packages) count as source."""
     cur: str | None = x
@@ -128,7 +128,7 @@ def find_role(g: Graph, x: str) -> str:
     return "source"
 
 
-def list_ancestors_to_unfold(g: Graph, x: str) -> list[str]:
+def list_ancestors_to_unfold(g: Reader, x: str) -> list[str]:
     """The boxes to unfold so that x itself is drawn."""
     return list(g.ancestors(x))[::-1]
 
@@ -142,7 +142,7 @@ def list_changes(scene: Scene) -> list[dict]:
 
 
 def _list_changes(scene: Scene) -> list[dict]:
-    g = Graph(scene)
+    g = Reader(scene)
     links = Links(scene.model.meta.get("change") or {})
     comps, deps, content = [], [], []
     for x in sorted(g.nodes):

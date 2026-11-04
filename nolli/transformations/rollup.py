@@ -30,7 +30,7 @@ from functools import lru_cache
 from dataclasses import dataclass, field
 
 from ..model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, address
-from .graph import CONF_RANK, Graph
+from .reading import CONF_RANK, Reading
 
 HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "data", "asset", "other")
 
@@ -107,7 +107,7 @@ class RolledUp:
                 "hidden_relations": self.hidden_relations, "unresolved": self.unresolved}
 
 
-def image_aliases(g: Graph) -> dict[str, str]:
+def image_aliases(g: Reading) -> dict[str, str]:
     """image -> service, for images that run as exactly one service (drawn as that service)."""
     runs: dict[str, list[str]] = defaultdict(list)
     for r in g.relations:
@@ -116,23 +116,23 @@ def image_aliases(g: Graph) -> dict[str, str]:
     return {img: svcs[0] for img, svcs in runs.items() if len(svcs) == 1}
 
 
-def hidden_by_role(g: Graph, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
+def hidden_by_role(g: Reading, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
     """Files whose role is hidden, and directories whose role is hidden unless a file with a
     shown role is somewhere inside: a directory's role is by bytes, so ``evals/`` full of
     result files is "config" while its Python modules are source, and those must stay."""
     rs = set(roles)
     keep: set[str] = set()
     for x, kind in g.nodes.items():
-        if kind == "file" and g.attrs(x).get("role") not in rs:
+        if kind == "file" and g.file(x).get("role") not in rs:
             p = g.parent(x)
             while p is not None and p not in keep:
                 keep.add(p)
                 p = g.parent(p)
-    return {x for x, kind in g.nodes.items() if kind in ("file", "directory") and g.attrs(x).get("role") in rs
-            and not g.attrs(x).get("root") and x not in keep}
+    return {x for x, kind in g.nodes.items() if kind in ("file", "directory") and g.file(x).get("role") in rs
+            and not g.file(x).get("root") and x not in keep}
 
 
-def chain_end(g: Graph, n: str, hidden: set[str]) -> str:
+def chain_end(g: Reading, n: str, hidden: set[str]) -> str:
     """Follow single-child directory chains (``frontend/playground/src``) to their end.
 
     A directory whose only non-hidden content is one subdirectory adds a level without
@@ -147,17 +147,17 @@ def chain_end(g: Graph, n: str, hidden: set[str]) -> str:
     return n
 
 
-def is_file(g: Graph, x: str) -> bool:
+def is_file(g: Reading, x: str) -> bool:
     return g.kind(x) == "file"
 
 
-def is_init(g: Graph, x: str) -> bool:
+def is_init(g: Reading, x: str) -> bool:
     """A package body (Python's ``__init__.py``, a TypeScript ``index.ts``; the file tree
     marks it ``body``): the folder's own code, not a module of its own."""
-    return g.has(x) and g.kind(x) == "file" and bool(g.attrs(x).get("body"))
+    return g.has(x) and g.kind(x) == "file" and bool(g.file(x).get("body"))
 
 
-def under(g: Graph, x: str, d: str) -> bool:
+def under(g: Reading, x: str, d: str) -> bool:
     """x (or the file owning x) lies in directory d's subtree."""
     cur: str | None = x
     while cur is not None:
@@ -167,7 +167,7 @@ def under(g: Graph, x: str, d: str) -> bool:
     return False
 
 
-def default_init_edge(g: Graph, r) -> bool:
+def default_init_edge(g: Reading, r) -> bool:
     """An edge from a package body to something inside its own package: the re-export /
     submodule import every ``__init__`` has. Not a dependency; dropped from the picture."""
     if not is_init(g, r.src):
@@ -176,7 +176,7 @@ def default_init_edge(g: Graph, r) -> bool:
     return d is not None and under(g, r.dst, d)
 
 
-def init_anchor_dirs(g: Graph, hidden: set[str]) -> set[str]:
+def init_anchor_dirs(g: Reading, hidden: set[str]) -> set[str]:
     """Directories whose ``__init__`` body still has edges after the default ones are
     dropped: these get an anchor node when unfolded, the others get nothing."""
     out: set[str] = set()
@@ -192,7 +192,7 @@ def init_anchor_dirs(g: Graph, hidden: set[str]) -> set[str]:
     return out
 
 
-def file_degree(g: Graph, hidden: set[str]) -> dict[str, int]:
+def file_degree(g: Reading, hidden: set[str]) -> dict[str, int]:
     """Relations touching each leaf entity, for ranking which files to show first."""
     deg: dict[str, int] = defaultdict(int)
     for r in g.relations:
@@ -202,14 +202,14 @@ def file_degree(g: Graph, hidden: set[str]) -> dict[str, int]:
     return dict(deg)
 
 
-def shown_files(g: Graph, d: str, hidden: set[str], k: int, degree: dict[str, int]) -> tuple[list[str], list[str]]:
+def shown_files(g: Reading, d: str, hidden: set[str], k: int, degree: dict[str, int]) -> tuple[list[str], list[str]]:
     """The k most connected files of d (ties by name), and the rest."""
     loose = sorted((c for c in g.children(d) if c not in hidden and is_file(g, c)),
                    key=lambda c: (-degree.get(c, 0), c))
     return loose[:k], loose[k:]
 
 
-def visible_from_expanded(g: Graph, expanded: set[str], hidden: set[str], show_files=None, degree=None,
+def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show_files=None, degree=None,
                           walked: set[str] | None = None) -> set[str]:
     """The cut for a set of unfolded containers.
 
@@ -256,17 +256,17 @@ def visible_from_expanded(g: Graph, expanded: set[str], hidden: set[str], show_f
     return visible
 
 
-def display_path(g: Graph, eid: str, expanded: set[str]) -> str:
+def display_path(g: Reading, eid: str, expanded: set[str]) -> str:
     """A directory's path relative to its nearest unfolded ancestor (chains show their full run)."""
-    parts = [g.name(eid)]
+    parts = [g.segment(eid)]
     p = g.parent(eid)
-    while p is not None and p not in expanded and not g.attrs(p).get("root"):
-        parts.append(g.name(p))
+    while p is not None and p not in expanded and not g.file(p).get("root"):
+        parts.append(g.segment(p))
         p = g.parent(p)
     return "/".join(reversed(parts))
 
 
-def representative(g: Graph, visible: set[str], hidden: set[str], alias: dict[str, str] | None = None):
+def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[str, str] | None = None):
     cache: dict[str, str | None] = {}
     alias = alias or {}
 
@@ -306,7 +306,7 @@ def owner_of(node: str) -> str:
     return address.owner(node)
 
 
-def top_of(g: Graph, node: str, expanded: set[str]) -> str:
+def top_of(g: Reading, node: str, expanded: set[str]) -> str:
     """The outermost drawn ancestor of a drawn node (the top-level component it belongs to)."""
     cur = node
     while True:
@@ -316,7 +316,7 @@ def top_of(g: Graph, node: str, expanded: set[str]) -> str:
         cur = p
 
 
-def utility_badges(g: Graph, rolled: "RolledUp", min_in: int = 6) -> set[str]:
+def utility_badges(g: Reading, rolled: "RolledUp", min_in: int = 6) -> set[str]:
     """Boxes with more than ``min_in`` incoming dependency edges in the picture are
     utilities: all those edges become badges on their sources ("→ observability"), like
     externals, since a box that many arrows point at mostly adds clutter. Edges are counted
@@ -348,7 +348,7 @@ def utility_badges(g: Graph, rolled: "RolledUp", min_in: int = 6) -> set[str]:
     return utilities
 
 
-def reveal_scores(g: Graph, hidden: set[str]) -> tuple[dict[str, int], dict[str, int]]:
+def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[str, int]]:
     """What unfolding reveals, per container.
 
     ``lca[C]`` counts relations whose endpoints lie in different children of C (their
@@ -398,19 +398,19 @@ def reveal_scores(g: Graph, hidden: set[str]) -> tuple[dict[str, int], dict[str,
     return dict(lca), dict(loose)
 
 
-def drawn_parent(g: Graph, node: str, expanded: set[str]) -> str | None:
+def drawn_parent(g: Reading, node: str, expanded: set[str]) -> str | None:
     """The unfolded container a drawn node sits in (the own code ``F#`` sits in F)."""
     if address.is_own_code(node):
         return owner_of(node)
     p = g.parent(node)
     while p is not None:
         if p in expanded:
-            return None if g.attrs(p).get("root") else p
+            return None if g.file(p).get("root") else p
         p = g.parent(p)
     return None
 
 
-def lift(g: Graph, edges: list[RolledEdge], expanded: set[str], max_lines: int = 4) -> list[RolledEdge]:
+def lift(g: Reading, edges: list[RolledEdge], expanded: set[str], max_lines: int = 4) -> list[RolledEdge]:
     """Edge lifting: between any two drawn boxes A and B that are not one inside the other,
     at most ``max_lines`` lines are drawn, counting every line whose ends lie in A (or are A)
     and in B. A pair with more is fixed, finest pair first: its lines are lifted at the end
@@ -485,7 +485,7 @@ def lift(g: Graph, edges: list[RolledEdge], expanded: set[str], max_lines: int =
     return sorted(lines, key=lambda e: (e.src, e.dst, e.kind, e.subkind))
 
 
-def rollup(g: Graph, visible: set[str], hidden: set[str] = frozenset(),
+def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
          shown_groups=frozenset(), side: str = "both") -> RolledUp:
     """``shown_groups``: root groups the viewer draws as boxes (folded or not); edges to them
     are drawn. Other root groups are filtered out of the picture: their edges become
@@ -539,7 +539,7 @@ def rollup(g: Graph, visible: set[str], hidden: set[str] = frozenset(),
             continue
         if g.kind(r.dst) == "unresolved":
             if rep(r.src) is not None:
-                unresolved[g.attrs(r.dst).get("language") or r.dst.split(":")[1]] += r.count
+                unresolved[g.find_unresolved_language(r.dst)] += r.count
             continue
         if r.subkind == "runs_as" and r.src in alias:
             continue
@@ -549,10 +549,10 @@ def rollup(g: Graph, visible: set[str], hidden: set[str] = frozenset(),
             continue
         rb, rh, st = sides(r)
         names: dict[str, int] = {}
-        for f in r.facts:
+        for f in r.references:
             if f.get("name"):
                 names[f["name"]] = names.get(f["name"], 0) + f.get("count", 1)
-        types = sum(f.get("count", 1) for f in r.facts if f.get("type_only"))
+        types = sum(f["count"] for f in r.references if f.get("type_only"))
         n = drawn_count(rb, rh)
         add(r.kind, a, b, r.subkind, n, r.confidence, names, rb, rh, {fact_key(r): st} if st else None,
             min(types, n) if types and types >= r.count else types, r.key)

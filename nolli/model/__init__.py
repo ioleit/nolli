@@ -39,7 +39,7 @@ from .metamodel import (  # noqa: F401 (the vocabulary, as callers import it)
     USE,
 )
 
-FORMAT = 1  # of model.json; a model of another format is built again, never read
+FORMAT = 2  # of model.json; a model of another format is built again, never read (2: meta names the symbols overlays)
 
 
 class FormatError(ValueError):

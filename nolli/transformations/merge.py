@@ -22,7 +22,7 @@ from collections import defaultdict
 from ..model import CONTAIN, SYMBOL_KINDS, EdgeKey, Model, address
 from ..model.scene import Element, Overlay, Scene
 from ..store.maps import StoredMaps
-from .graph import Graph
+from ..model.vocabulary import count_references, read_references, read_symbols
 
 
 def is_change(scene: Scene) -> bool:
@@ -47,8 +47,8 @@ class Change:
     def compare(self, el: Element) -> dict | None:
         b, h = el.find_same("base"), el.find_same("head")
         if el.is_edge:
-            nb = (b.get("facts") or {}).get("count", 0) if b else 0
-            nh = (h.get("facts") or {}).get("count", 0) if h else 0
+            nb = count_references(b) if b else 0
+            nh = count_references(h) if h else 0
             if b is None:
                 rec = {"status": "added", "base": 0, "head": nh}
             elif h is None:
@@ -92,7 +92,7 @@ class Change:
             c = next((v for k, v in content.items() if isinstance(k, str) and v.get("old_path") == address.path_of(f)), None)
         if c is None:
             return None
-        hf, bf = (h.get("facts") or {}) if h else {}, (b.get("facts") or {}) if b else {}
+        hf, bf = read_symbols(h) if h else {}, read_symbols(b) if b else {}
         old_path = c.get("old_path") or address.path_of(f)
         added = [n for hk in c.get("hunks", []) for n in hk["added"] if hf and hf.get("line", 0) <= n <= (hf.get("end_line") or 0)]
         removed = [n for hk in c.get("hunks", []) for n in hk["removed"]
@@ -203,14 +203,13 @@ def sum_box(el: Element) -> dict | None:
 def describe_fact(el: Element, rec: dict, b: Element | None, h: Element | None) -> dict:
     """A changed edge of a change for a tooltip or details panel, with a link to where it changed."""
     side = b if rec["status"] == "removed" else h
-    facts = ((side.get("facts") or {}).get("facts") or []) if side else []
-    first = facts[0] if facts else {}
-    path = first.get("path") or (el.src.get("facts") or {}).get("path")
+    refs = read_references(side) if side else []
+    first = refs[0] if refs else {}
+    path = first.get("path")
     line = first.get("line")
     key = el.key
     links = Links(el.meta.get("change") or {})
     return {"fact": key.format(), "status": rec["status"], "kind": key.kind, "subkind": key.subkind, "src": key.src, "dst": key.dst,
-            "dst_name": (el.dst.get("facts") or {}).get("name", key.dst),
             "base": rec.get("base", 0), "head": rec.get("head", 0), "path": path, "line": line,
             "link": links.diff(path, line, "base" if rec["status"] == "removed" else "head") if path else None}
 

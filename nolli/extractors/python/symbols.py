@@ -240,4 +240,4 @@ def run(ctx: Context) -> None:
         uid = address.unresolved("pyref", key)
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", key, {"language": "python", "ref": True}, Provenance("python-symbols")))
-        m.add_relation(Relation(USE, src, uid, "ref", n, "exact", Provenance("python-symbols"), {"name": name}))
+        m.add_relation(Relation(USE, src, uid, "ref", n, "exact", Provenance("python-symbols", address.path_of(src)), {"name": name}))

@@ -21,6 +21,7 @@ LANGUAGE = Language(
                 ("python-fastapi", fastapi.run), ("python-env", env.run)],
     resolvers=[("python-imports", resolve.resolve_imports), ("python-refs", resolve.resolve_refs)],
     names={"python": "Python"},
+    symbols="python-symbols",
     package_body=("__init__.py",),
     package="package",
     keep_trees=False,

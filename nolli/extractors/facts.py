@@ -199,10 +199,22 @@ class Facts:
             if r.kind == CONTAIN:
                 continue
             p = r.provenance
-            rec = maps[p.extractor if p else "unknown"].setdefault(k, {"count": 0, "facts": []})
-            rec["count"] += r.count
-            rec["facts"].append({"count": r.count, "confidence": r.confidence, "path": p.path if p else None,
-                                 "line": p.line if p else None, **r.attrs})
+            ref = {"count": r.count, "confidence": r.confidence, "path": p.path if p else None, **r.attrs}
+            if p and p.line is not None:
+                ref["line"] = p.line
+            check_reference(ref, p.extractor if p else "unknown", k)
+            maps[p.extractor if p else "unknown"].setdefault(k, {"references": []})["references"].append(ref)
         model = Model(key, {x: e.kind for x, e in self.entities.items()}, edges, meta=dict(self.meta))
         model.meta["overlays"] = sorted(maps)
         return model, {name: dict(v) for name, v in sorted(maps.items())}
+
+
+def check_reference(ref: dict, extractor: str, key: EdgeKey) -> None:
+    """Raises unless ``ref`` is a ``Reference`` (``nolli/model/vocabulary.py``): every extractor says it
+    in the same words, so code that works with any language can count on them."""
+    for k in ("count", "confidence", "path"):
+        if ref.get(k) is None:
+            raise ValueError(f"{extractor}: a reference of {key.format()} without {k}")
+    if not isinstance(ref["count"], int) or ("line" in ref and not isinstance(ref["line"], int)):
+        raise ValueError(f"{extractor}: a reference of {key.format()} with a count or line that is no number")
+

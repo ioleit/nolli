@@ -150,7 +150,7 @@ def test_items_verdicts_and_export(repo):
 
     path, base, head = repo
     sc = open_change(path, base, head)
-    assert sc.find_element("repo:").get("facts")["name"] == path.name
+    assert sc.find_element("repo:").get("fs")["name"] == path.name
     items = list_changes(sc)
     by_title = {it["title"]: it for it in items}
     assert [it["id"] for it in items] == [f"C{i}" for i in range(1, len(items) + 1)]

@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, field
 
 from ..model import CONTAIN, USE, EdgeKey, Key, Model, address, metamodel
 from ..model.scene import FixedOverlay, Scene
-from .graph import Graph
+from .reading import Reading
 from .rollup import (
     HIDDEN_ROLES_DEFAULT, RolledUp, chain_end, drawn_parent, hidden_by_role, image_aliases, is_init, lift,
     representative, rollup, utility_badges, visible_from_expanded,
@@ -67,22 +67,22 @@ class Cut:
     utilities: set[str]
 
 
-def hide_for(g: Graph, roles, side: str = "both") -> set[str]:
+def hide_for(g: Reading, roles, side: str = "both") -> set[str]:
     """Files and directories whose role is not shown, plus images drawn as their service; in a
     change drawn for one side, what does not exist on that side."""
     shown = set(roles)
-    out = hidden_by_role(g, {g.attrs(x)["role"] for x in g.nodes if g.attrs(x).get("role")} - shown)
+    out = hidden_by_role(g, {g.file(x)["role"] for x in g.nodes if g.file(x).get("role")} - shown)
     if side in ("base", "head"):
         gone = "added" if side == "base" else "removed"
         out |= {x for x in g.nodes if g.diff(x).get("status") == gone}
     return out | set(image_aliases(g))
 
 
-def is_root_group(g: Graph, x: str) -> bool:
+def is_root_group(g: Reading, x: str) -> bool:
     return g.has(x) and g.kind(x) == "group" and g.parent(x) is None
 
 
-def find_preset_cut(g: Graph, st: SceneState, hidden: set[str]) -> set[str]:
+def find_preset_cut(g: Reading, st: SceneState, hidden: set[str]) -> set[str]:
     """The containers a preset unfolds (a change's preset on a plain scene: the default cut)."""
     if st.preset == "folded":
         return {address.REPO_ROOT}
@@ -97,7 +97,7 @@ def find_preset_cut(g: Graph, st: SceneState, hidden: set[str]) -> set[str]:
 def cut(scene: Scene, st: SceneState) -> Cut:
     """``expanded`` is normalised to the containers actually reached, so folding a box also
     folds everything inside it."""
-    g = Graph(scene)
+    g = Reading(scene)
     hidden = hide_for(g, st.roles, st.side)
     shown_groups = set(st.groups)
     expanded = find_preset_cut(g, st, hidden) if st.expanded is None else {x for x in st.expanded if g.has(x)}
@@ -117,7 +117,7 @@ def edge_style(e) -> str:
     return e.subkind if e.subkind in ("import", "http", "env") else "deploy"
 
 
-def leaf_count(g: Graph, x: str) -> int:
+def leaf_count(g: Reading, x: str) -> int:
     """Files below a directory; leaves below anything else."""
     is_dir = g.kind(x) == "directory"
     n, stack = 0, list(g.children(x))
@@ -138,7 +138,7 @@ def leaf_count(g: Graph, x: str) -> int:
 
 def project(scene: Scene, st: SceneState) -> Scene:
     """The scene of the picture ``st`` draws of ``scene``."""
-    g = Graph(scene)
+    g = Reading(scene)
     c = cut(scene, st)
     expanded, hidden, visible, rolled, utilities = c.expanded, c.hidden, c.visible, c.rolled, c.utilities
     shown_groups = set(st.groups)
@@ -175,7 +175,7 @@ def project(scene: Scene, st: SceneState) -> Scene:
         values[x] = {
             "container": container, "foldable": kids, "leaves": leaf_count(g, x) if kids and not container else None,
             "badge": f"used by {used_by[x]}" if used_by.get(x) else "", "used_by": used_by.get(x, 0), "utility": x in utilities,
-            "chips": [{"id": s, "name": g.name(s), "color": services.index(s) if s in services else -1}
+            "chips": [{"id": s, "name": g.segment(s), "color": services.index(s) if s in services else -1}
                       for s in rolled.allocations.get(x, [])],
             "service_color": services.index(x) if x in services else None,
             "utilities_used": used_utils(x),  # ids of the utilities whose edges from this box became badges
@@ -258,12 +258,12 @@ def project(scene: Scene, st: SceneState) -> Scene:
     contain = [EdgeKey(CONTAIN, p, x) for x, p in parent_of.items() if p is not None]
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
     residue += [f"{v} unresolved {k} references" for k, v in sorted(rolled.unresolved.items())]
-    groups = [{"id": r, "namespace": address.scheme_of(r), "name": g.name(r), "size": len(g.children(r)), "shown": r in shown_groups}
+    groups = [{"id": r, "namespace": address.scheme_of(r), "name": metamodel.NAMESPACES[address.scheme_of(r)].title, "size": len(g.children(r)), "shown": r in shown_groups}
               for r in g.roots() if g.kind(r) == "group" and metamodel.NAMESPACES[address.scheme_of(r)].structural and g.children(r)]
     by_role: dict[str, dict[str, int]] = {r: {"files": 0, "dirs": 0} for r in ALL_ROLES}  # for the Show filter ("mixed" is a directory role only)
     for x, kind in g.nodes.items():
-        r = g.attrs(x).get("role")
-        if r in by_role and kind in ("file", "directory") and not g.attrs(x).get("root"):
+        r = g.file(x).get("role")
+        if r in by_role and kind in ("file", "directory") and not g.file(x).get("root"):
             by_role[r]["files" if kind == "file" else "dirs"] += 1
     state = {k: v for k, v in asdict(st).items() if k != "focus"} | {"expanded": sorted(expanded),
              "preset": None if st.expanded is not None else "default" if st.preset == "changes" and st.focus is None else st.preset}

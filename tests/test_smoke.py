@@ -15,7 +15,7 @@ import pytest
 
 from helpers import draw, extract_facts, find_node, open_dir
 
-from nolli.transformations.graph import Graph
+from nolli.transformations.reading import Reading as Graph
 from nolli.transformations.projection import SceneState, project
 from nolli.transformations.rollup import hidden_by_role, image_aliases, lift, rollup
 from nolli.transformations.unfold import find_default_cut
@@ -276,9 +276,9 @@ def test_directory_with_source_inside_stays_shown():
     m = Facts()
     for eid, kind, role in [("repo:", "directory", "mixed"), ("repo:evals", "directory", "config"), ("repo:evals/probe.py", "file", "source"),
                             ("repo:evals/runs.json", "file", "config"), ("repo:docs", "directory", "docs"), ("repo:docs/a.md", "file", "docs")]:
-        m.add_entity(Entity(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("t")))
+        m.add_entity(Entity(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("fs")))
     for parent, child in [("repo:", "repo:evals"), ("repo:evals", "repo:evals/probe.py"), ("repo:evals", "repo:evals/runs.json"), ("repo:", "repo:docs"), ("repo:docs", "repo:docs/a.md")]:
-        m.contain(parent, child, "t")
+        m.contain(parent, child, "fs")
     assert hidden_by_role(Graph(open_built(*m.split("test@0")))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
 
 

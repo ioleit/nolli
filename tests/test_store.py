@@ -186,4 +186,4 @@ def test_extract_commit_names_the_root(src):
     assert m.meta["commit"] == shas[0][:7] and m.meta["repo"] == "shop" and not m.has("repo:shop/cache.py")
     assert m.has("repo:shop/store.py")
     m.key = "shop@0"
-    assert open_built(m, maps).find_element("repo:").get("facts")["name"] == "shop"
+    assert open_built(m, maps).find_element("repo:").get("fs")["name"] == "shop"

@@ -17,6 +17,7 @@ LANGUAGE = Language(
                 ("typescript-fetch", fetch.run), ("typescript-env", env.run)],
     resolvers=[("typescript-imports", resolve.resolve_imports), ("typescript-refs", resolve.resolve_refs)],
     names={"typescript": "TypeScript", "javascript": "JavaScript"},
+    symbols="typescript-symbols",
     package_body=("index.ts", "index.tsx", "index.mts", "index.js", "index.jsx", "index.mjs"),
     package="folder module",
 )

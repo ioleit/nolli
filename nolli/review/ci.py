@@ -139,10 +139,9 @@ def list_statuses(review: Scene) -> dict[str, str]:
 def what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
     from .changes import format_name
-    from ..formats.descriptions.label import is_module
-    from ..transformations.graph import Graph
+    from .reading import Reader
 
-    g = scene.memo(Graph)
+    g = scene.memo(Reader)
     ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]
     st = NEW.get(status.get(" ".join(ids), ""), "")
     def name(x: str) -> str:
@@ -155,7 +154,7 @@ def what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     x = v["ends"][0]
     if address.is_own_code(x):
         return f"Own code of {name(x)}"
-    kind = "module" if is_module(g, x) else "package" if g.kind(x) == "directory" else g.kind(x)
+    kind = "module" if g.kind(x) == "file" and g.attrs(x).get("module") else "package" if g.kind(x) == "directory" else g.kind(x)
     return f"{st} {kind} {name(x)}" if st else f"{kind.capitalize()} {name(x)}"
 
 

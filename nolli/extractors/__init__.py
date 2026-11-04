@@ -102,6 +102,7 @@ class Language:
     package_body: tuple[str, ...] = ()
     package: str = "package"
     keep_trees: bool = True
+    symbols: str = ""  # the extractor whose overlay says what this language's modules and classes define (model.vocabulary)
 
 
 LANGUAGE_PACKAGES = ("python", "typescript")
@@ -124,6 +125,12 @@ def ext_of(rel: str) -> str:
 def language_of(rel: str) -> Language | None:
     ext = ext_of(rel)
     return next((lang for lang in languages() if ext in lang.extensions), None)
+
+
+def list_symbols_overlays() -> dict[str, str]:
+    """``language`` value -> the overlay that says what its modules and classes define, for
+    ``meta["symbols"]``."""
+    return {k: lang.symbols for lang in languages() for k in lang.names if lang.symbols}
 
 
 def language_names() -> dict[str, str]:

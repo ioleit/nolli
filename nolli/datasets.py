@@ -195,8 +195,15 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
         return None
     meta = {"repo": head.model.meta.get("repo"), "commit": change.head[:7], "files": head.model.meta.get("files"),
             "languages": {**base.model.meta.get("languages", {}), **head.model.meta.get("languages", {})},
+            **join_readers(base.model.meta, head.model.meta),
             "change": describe_change(about, store.open_maps("content").load(change.format_key()))}
     return merge(base, head, change.format_key(), meta)
+
+
+def join_readers(base: dict, head: dict) -> dict:
+    """Who says what in a change: the overlays both sides' extractors wrote, each language's symbols."""
+    return {"overlays": sorted(set(base.get("overlays") or []) | set(head.get("overlays") or [])),
+            "symbols": {**(base.get("symbols") or {}), **(head.get("symbols") or {})}}
 
 
 def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
@@ -220,7 +227,7 @@ def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, ab
     bs, hs = (open_scene(m, store, overlays) for m, _ in (base, head))
     meta = {"repo": hs.model.meta.get("repo"), "commit": about.get("head", "")[:7], "files": hs.model.meta.get("files"),
             "languages": {**bs.model.meta.get("languages", {}), **hs.model.meta.get("languages", {})},
-            "change": describe_change(about, content)}
+            **join_readers(bs.model.meta, hs.model.meta), "change": describe_change(about, content)}
     return merge(bs, hs, key, meta)
 
 

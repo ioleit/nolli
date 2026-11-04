@@ -18,7 +18,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from .extractors import Context, all_extractors, language_names
+from .extractors import Context, all_extractors, language_names, list_symbols_overlays
 from .extractors.facts import Facts
 from .extractors.match import run_all as match_all
 from .keys import ChangeKey, Commit
@@ -65,6 +65,7 @@ def extract_facts(repo: Path, config: dict | None = None, progress: Progress | N
     timings["match"] = round(time.time() - t0, 3)
     head = find_head(repo)
     facts.meta = {"repo": str(repo), "commit": head[:7] if head else None, "files": len(ctx.files), "languages": language_names(),
+                  "symbols": list_symbols_overlays(),
                   "timings": timings, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                   "notes": {k: v for k, v in ctx.notes.items() if k not in WORKING_NOTES}, "nolli": version()}
     return facts

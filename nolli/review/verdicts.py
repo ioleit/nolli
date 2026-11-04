@@ -19,7 +19,7 @@ from ..model import address
 from ..model.scene import Element, Scene
 from ..store.maps import MapStore, StoredMaps
 from .changes import find_review_cut, format_name, list_ancestors_to_unfold
-from ..transformations.graph import Graph
+from .reading import Reader
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
 # shows the mark of a box's highest-ranked verdict). The brief offers fine / good / question / problem;
@@ -135,7 +135,7 @@ def parse_verdicts(values) -> list[dict]:
 def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
     """Each verdict with what the viewer says about it: ``edge``, ``reveal`` (what to unfold
     to see its target) and ``label`` (how the diagram names it)."""
-    g = scene.memo(Graph)
+    g = scene.memo(Reader)
     out = []
     for v in verdicts:
         ends = v.get("ends") or []

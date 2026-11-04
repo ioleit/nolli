@@ -22,9 +22,65 @@ from dataclasses import dataclass, field
 from ...model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, EdgeKey, address
 from .prose import count, listing, paragraphs, quote, say
 from ...model.scene import Element, Scene
-from ...transformations.graph import Graph
-from ...transformations.rollup import chain_end, is_init
-from .label import find_source, format_prose, is_module
+from ...model.vocabulary import read_file, read_references, read_symbols
+from .label import format_prose
+from .names import format_name, read_api
+
+
+class Source:
+    """What the hover text reads off the scene a picture was drawn from: the structure from the
+    model, what a file is from the file tree, what a module or class defines from its language,
+    what an API is from its extractor, the references behind an edge."""
+
+    def __init__(self, scene: Scene) -> None:
+        self.scene, self.model = scene, scene.model
+        self._attrs: dict[str, dict] = {}
+
+    def has(self, x: str) -> bool:
+        return x in self.model.kinds
+
+    def kind(self, x: str) -> str:
+        return self.model.kinds[x]
+
+    def children(self, x: str) -> list[str]:
+        return self.model.list_children(x)
+
+    def parent(self, x: str) -> str | None:
+        return self.model.find_parent(x)
+
+    def element(self, x: str) -> Element:
+        return self.scene.find_element(x)
+
+    def attrs(self, x: str) -> dict:
+        a = self._attrs.get(x)
+        if a is None:
+            el = self.element(x)
+            a = self._attrs[x] = {**read_file(el), **read_symbols(el), **read_api(el)}
+        return a
+
+    def name(self, x: str) -> str:
+        return format_name(self.element(x))
+
+    def is_module(self, x: str) -> bool:
+        return self.kind(x) == "file" and bool(self.attrs(x).get("module"))
+
+    def is_init(self, x: str) -> bool:
+        """A package body: the folder's own code (``__init__.py``, ``index.ts``)."""
+        return self.has(x) and self.kind(x) == "file" and bool(self.attrs(x).get("body"))
+
+    def chain_end(self, x: str, hidden: set[str]) -> str:
+        """A run of folders each holding one folder, drawn as one box: its last folder."""
+        while self.kind(x) == "directory":
+            kids = [c for c in self.children(x) if c not in hidden and not self.is_init(c)]
+            if len(kids) == 1 and self.kind(kids[0]) == "directory":
+                x = kids[0]
+            else:
+                break
+        return x
+
+    def list_relations(self):
+        for e in self.model.list_edges():
+            yield e, sum(r["count"] for r in read_references(self.element(e)))
 
 @dataclass
 class NodeView:
@@ -39,7 +95,7 @@ class NodeView:
 class Ctx:
     """What a description may look at: the scene drawn from (``g``), the projected scene, its
     unfolded and hidden nodes and utilities, and how the picture names things."""
-    g: Graph
+    g: Source
     scene: Scene
     expanded: set[str]
     hidden: set[str]
@@ -63,7 +119,8 @@ class Ctx:
             return e.name.removesuffix("/Dockerfile")  # no "svc " / "img " prefix in prose
         if e.kind == "endpoint":
             return f"{e.attrs.get('method', '')} {e.attrs.get('path', e.name)}".strip()
-        label = format_prose(self.g, x, self.expanded)
+        drawn = self.scene.find_element(x) if self.scene.has(x) else None
+        label = format_prose(self.g.element(x), drawn)
         return label + "/" if e.kind == "directory" and not label.endswith("/") else label
 
     def shown_children(self, x: str) -> list[str]:
@@ -74,10 +131,10 @@ class Ctx:
         for c in g.children(x):
             if c in self.hidden:
                 continue
-            if kind == "directory" and is_init(g, c):
+            if kind == "directory" and g.is_init(c):
                 out.extend(cc for cc in g.children(c) if cc not in self.hidden)
                 continue
-            out.append(chain_end(g, c, self.hidden) if kind == "directory" and g.kind(c) == "directory" else c)
+            out.append(g.chain_end(c, self.hidden) if kind == "directory" and g.kind(c) == "directory" else c)
         return out
 
     def files_below(self, x: str) -> list[str]:
@@ -103,10 +160,10 @@ def by_use(ctx: Ctx, file_id: str, names: list[str]) -> list[str]:
     for e in ctx.g.model.list_in(file_id):
         if e.subkind != "ref":
             continue
-        for f in (ctx.g.scene.find_element(e).get("facts") or {}).get("facts", []):
+        for f in read_references(ctx.g.element(e)):
             n = f.get("name")
             if n in wanted:
-                uses[n] = uses.get(n, 0) + f.get("count", 1)
+                uses[n] = uses.get(n, 0) + f["count"]
     order = {n: i for i, n in enumerate(names)}
     return sorted(names, key=lambda n: (-uses.get(n, 0), order[n]))
 
@@ -129,7 +186,7 @@ def language(ctx: Ctx, x: str) -> str | None:
 def body_of(ctx: Ctx, x: str) -> str | None:
     """A folder's package body (``__init__.py``, ``index.ts``)."""
     m = ctx.g
-    return next((c for c in m.children(x) if is_init(m, c)), None) if m.kind(x) == "directory" else None
+    return next((c for c in m.children(x) if m.is_init(c)), None) if m.kind(x) == "directory" else None
 
 
 def is_symbol(ctx: Ctx, x: str) -> bool:
@@ -143,7 +200,7 @@ def noun(ctx: Ctx, x: str) -> str:
     if body:
         what = ctx.g.attrs(body)["body"]
         return "sub" + what if what == "package" else what
-    if is_module(ctx.g, x) and language(ctx, x):
+    if ctx.g.is_module(x) and language(ctx, x):
         return "module" if e.attrs.get("role") in ("source", None) else language(ctx, x) + " file"
     return GENERIC_NOUN.get(e.kind, e.kind)
 
@@ -158,7 +215,7 @@ def describe(ctx: Ctx, x: str) -> list[str] | None:
     """The first sentence for a module or a class or type."""
     e = ctx.node(x)
     lang = language(ctx, x)
-    if is_module(ctx.g, x) and lang:
+    if ctx.g.is_module(x) and lang:
         facts = [count(e.attrs["lines"], "line")] if e.attrs.get("lines") is not None else []
         inner: dict[str, int] = defaultdict(int)
         for c in ctx.g.children(x):
@@ -179,7 +236,7 @@ def describe(ctx: Ctx, x: str) -> list[str] | None:
 def doc(ctx: Ctx, x: str) -> str | None:
     """The doc comment's summary: a package's from its package body."""
     body = body_of(ctx, x)
-    if body or is_module(ctx.g, x) or is_symbol(ctx, x):
+    if body or ctx.g.is_module(x) or is_symbol(ctx, x):
         return ctx.node(body or x).attrs.get("doc")
     return None
 
@@ -188,7 +245,7 @@ def own_code(ctx: Ctx, owner: str) -> list[str] | None:
     """The own-code dot of a module (what it holds outside its classes and types) or of a
     package (what its package body defines and re-exports)."""
     body = body_of(ctx, owner)
-    if not body and not is_module(ctx.g, owner):
+    if not body and not ctx.g.is_module(owner):
         return None
     f = body or owner
     a = ctx.node(f).attrs
@@ -269,13 +326,13 @@ class Dependencies:
                 cur = m.parent(cur)
             return chain
 
-        for r in m.relations:
+        for r, n in m.list_relations():
             if r.kind not in (USE, PROVIDE, ALLOCATE) or not m.has(r.dst) or not m.has(r.src):
                 continue
             d, s = ctx.node(r.dst), ctx.node(r.src)
             if d.kind == "package" and r.kind == USE:
                 for b in boxes(r.src):
-                    self.ext[b][d.name] += r.count
+                    self.ext[b][d.name] += n
             elif d.kind == "env" and r.kind == USE:
                 for b in boxes(r.src):
                     self.env[b].add(d.name)
@@ -324,7 +381,7 @@ def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[s
             return said
         owner = ctx.name(address.owner(x))
         if ctx.node(address.owner(x)).kind == "directory":
-            body = next((ctx.node(c).name for c in m.children(address.owner(x)) if is_init(m, c)), "package")
+            body = next((ctx.node(c).name for c in m.children(address.owner(x)) if m.is_init(c)), "package")
             return [say("The code in {}'s {} beyond re-exporting its modules", owner, body)]
         return [say("The code in {} outside its classes and types", owner)]
     e = ctx.node(x)
@@ -414,7 +471,7 @@ def make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
     """What every description of one projected scene shares, made once (``scene.memo``)."""
     src = scene.sources["source"]
     meta = scene.model.meta.get("projection", {})
-    ctx = Ctx(src.memo(Graph), scene, set(meta.get("expanded", [])), set(meta.get("hidden_nodes", [])),
+    ctx = Ctx(Source(src), scene, set(meta.get("expanded", [])), set(meta.get("hidden_nodes", [])),
               set(meta.get("utilities", [])), src.model.meta.get("languages") or {})
     return ctx, Dependencies(ctx, set(scene.model.kinds))
 
@@ -423,7 +480,7 @@ class Hover:
     name = "hover"
 
     def compute(self, el: Element) -> dict | None:
-        if find_source(el) is None:
+        if "source" not in el.scene.sources:
             return None
         ctx, deps = el.scene.memo(make_ctx)
         if el.is_edge:

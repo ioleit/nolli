@@ -14,11 +14,11 @@ from collections import defaultdict
 
 from ..model import address
 from ..model.scene import Scene
-from .graph import Graph
+from .reading import Reading
 from .rollup import hidden_by_role, image_aliases, init_anchor_dirs, is_init, reveal_scores, visible_from_expanded
 
 
-def unfold_cost(g: Graph, v: str, hidden: set[str], anchors: set[str] = frozenset()) -> int:
+def unfold_cost(g: Reading, v: str, hidden: set[str], anchors: set[str] = frozenset()) -> int:
     """Nodes added by unfolding v, minus v itself. A module adds its anchor; a package's
     ``__init__`` is no node but contributes its classes and, if it has edges, an anchor."""
     kids = [c for c in g.children(v) if c not in hidden]
@@ -33,7 +33,7 @@ def unfold_cost(g: Graph, v: str, hidden: set[str], anchors: set[str] = frozense
     return n + (1 if v in anchors else 0) - 1
 
 
-def find_default_cut(g: Graph, budget: int = 34, hidden_roles=None, always_expand=(address.REPO_ROOT,), hidden: set[str] | None = None) -> dict:
+def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_expand=(address.REPO_ROOT,), hidden: set[str] | None = None) -> dict:
     """In a diff model the budget goes to the changes first (``changes.change_scores``),
     then whatever is left to structure as usual."""
 
@@ -87,7 +87,7 @@ def index_changes(scene: Scene) -> dict[str, dict]:
 
 
 def _index_changes(scene: Scene) -> dict[str, dict]:
-    g = Graph(scene)
+    g = Reading(scene)
     idx: dict[str, dict] = defaultdict(lambda: {"added": 0, "removed": 0, "files": 0, "new": 0, "gone": 0})
     for x in g.nodes:
         d = g.diff(x)
@@ -112,7 +112,7 @@ def _index_changes(scene: Scene) -> dict[str, dict]:
 def score_changes(scene: Scene, hidden: set[str]) -> dict[str, float]:
     """Per container, how much unfolding it shows about the change: changed relations that
     run between its children (weighted), plus children that contain changes."""
-    g = Graph(scene)
+    g = Reading(scene)
     idx = index_changes(scene)
     score: dict[str, float] = defaultdict(float)
     chain_cache: dict[str, list[str] | None] = {}

@@ -11,7 +11,7 @@ import pytest
 
 from nolli.build import extract_facts
 from nolli.datasets import open_built
-from nolli.transformations.graph import Graph
+from nolli.transformations.reading import Reading as Graph
 from nolli.transformations.rollup import hidden_by_role
 
 FILES = {

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from ..formats.descriptions.names import format_name
 from ..formats.descriptions.prose import code, count, listing, mark, one_line, paragraphs, say
 from ..model.scene import Element
 from .changes import list_changes
@@ -84,7 +85,8 @@ def describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = (),
     return paragraphs(lines + list_verdict_lines(verdicts, inside, items, f"in this {kind}"))
 
 
-def describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0) -> str:
+def describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0,
+                  names: dict[str, str] | None = None) -> str:
     """Sentences on top of an edge's hover card in a review: how its references changed, which
     names came or went, and the verdicts on it and on the dependencies it bundles."""
     lines: list[str] = []
@@ -95,8 +97,9 @@ def describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = ()
             lines.append(say("Removed in this change: {} gone", count(ed["base"], "reference")))
         else:
             lines.append(say("Changed: {} → {} references", ed["base"], ed["head"]))
-        came = sorted({c.get("dst_name", c["dst"]) for c in ed.get("changes", []) if c["status"] == "added"})
-        went = sorted({c.get("dst_name", c["dst"]) for c in ed.get("changes", []) if c["status"] == "removed"})
+        names = names or {}
+        came = sorted({names.get(c["dst"], c["dst"]) for c in ed.get("changes", []) if c["status"] == "added"})
+        went = sorted({names.get(c["dst"], c["dst"]) for c in ed.get("changes", []) if c["status"] == "removed"})
         if came:
             lines.append(listing("Now uses {}", came, "more", limit=4))
         if went:
@@ -120,7 +123,8 @@ class Review:
         own, inside = v.get("own", []), v.get("inside", [])
         ed = el.get("change")
         if el.is_edge:
-            card = describe_edge(ed, own, inside, len(items))
+            names = {s.key.dst: format_name(s.dst) for s in el.sources.get("source", ()) if s.is_edge}
+            card = describe_edge(ed, own, inside, len(items), names)
         else:
             kind = el.kind if el.kind != "anchor" else "box"
             card = describe_box(ed, own, inside, len(items), kind.replace("_", " "))

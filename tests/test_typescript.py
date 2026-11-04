@@ -12,9 +12,9 @@ import pytest
 
 from nolli.build import extract_facts
 from nolli.datasets import open_built
-from nolli.formats.descriptions.hover import Ctx, edge_info
+from nolli.formats.descriptions.hover import Source, Ctx, edge_info
 from nolli.formats.descriptions.label import module_stem
-from nolli.transformations.graph import Graph
+from nolli.transformations.reading import Reading as Graph
 from nolli.transformations.rollup import RolledEdge, is_init
 
 FILES = {
@@ -125,7 +125,7 @@ def test_type_only_dependencies(model):
     assert refs[("repo:app/src/lib/format.ts", "repo:app/src/model/task.ts#Task")].attrs["type_only"], "used in type positions only"
     assert not refs[("repo:app/src/store/store.ts#Store", "repo:app/src/model/task.ts#Priority")].attrs["type_only"]
     g = open_graph(m)
-    ctx = Ctx(g, g.scene, set(), set())
+    ctx = Ctx(Source(g.scene), g.scene, set(), set())
     e = RolledEdge("use", "repo:app/src/lib/format.ts", "repo:app/src/model/task.ts#Task", "import", 1, types=1)
     assert "no dependency at run time" in str(edge_info(ctx, e))
 
