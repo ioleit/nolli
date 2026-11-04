@@ -39,17 +39,12 @@ import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 
 HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 
-from nolli.datasets import Datasets  # noqa: E402
-from nolli.formats.mermaid import list_ids, render  # noqa: E402
-from nolli.formats.viewer import export_scene  # noqa: E402
-from nolli.model.keys import ChangeKey, ModelKey, NotAllowed  # noqa: E402
-from nolli.model.scene import Scene  # noqa: E402
-from nolli.review.brief import make_review_brief  # noqa: E402
-from nolli.review.changes import detail_box, list_changes  # noqa: E402
-from nolli.review.verdicts import describe_verdicts, find_diagram_ids, read_verdicts  # noqa: E402
-from nolli.sources import LocalRepository, Sources  # noqa: E402
-from nolli.store import DirectoryStore, ModelStore  # noqa: E402
-from nolli.transformations.projection import DEFAULT_UTILITY_IN, PRESETS, SceneState  # noqa: E402
+from ..datasets import Datasets  # noqa: E402
+from ..keys import ChangeKey, ModelKey, NotAllowed  # noqa: E402
+from ..model.scene import Scene  # noqa: E402
+from ..sources import LocalRepository, Sources  # noqa: E402
+from ..store import DirectoryStore, ModelStore  # noqa: E402
+from ..transformations.projection import DEFAULT_UTILITY_IN, PRESETS, SceneState  # noqa: E402
 
 from .reviews import Reviews  # noqa: E402
 
@@ -181,7 +176,7 @@ class Handler(SimpleHTTPRequestHandler):
         change = isinstance(key, ChangeKey)
         if path == "/api/scene":
             try:
-                out = export_scene(self.services.datasets.draw(sc, parse_state(q)))
+                out = self.services.datasets.draw_json(sc, parse_state(q))
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
@@ -192,20 +187,19 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(out)
         elif path == "/api/mermaid":
             try:
-                ps = self.services.datasets.draw(sc, parse_state(q))
-                text = render(ps, fade=q.get("nodim") != "1")
+                text, ids = self.services.datasets.draw_mermaid(sc, parse_state(q), fade=q.get("nodim") != "1")
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
             if q.get("format") == "json":
-                self.send_json({"mermaid": text, "ids": list_ids(ps)})
+                self.send_json({"mermaid": text, "ids": ids})
             else:
                 self.send_text(text)
         elif path == "/api/changes":
-            self.send_json({"items": list_changes(sc) if change else [],
-                            "verdicts": describe_verdicts(sc, self.services.datasets.load_verdicts(sc)) if change else []})
+            datasets = self.services.datasets
+            self.send_json({"items": datasets.list_changes(sc), "verdicts": datasets.describe_verdicts(sc)})
         elif path == "/api/node":
-            d = detail_box(sc, q.get("id", "")) if change else None
+            d = self.services.datasets.detail_box(sc, q.get("id", ""))
             if d is None:
                 self.send_json({"error": f"no entity {q.get('id', '')!r}"}, 404)
                 return
@@ -214,7 +208,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not change:
                 self.send_json({"error": "not a change"}, 404)
                 return
-            self.send_text(make_review_brief(sc), "text/markdown; charset=utf-8")
+            self.send_text(self.services.datasets.make_review_brief(sc), "text/markdown; charset=utf-8")
         elif path == "/api/review":
             self.send_json(self.review_status(q["d"], key, sc))
         else:
@@ -248,7 +242,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"error": "not a change"}, 400)
             return
         try:
-            v = read_verdicts(body, find_diagram_ids(found[1]))
+            v = self.services.datasets.read_verdicts(found[1], body)
         except (ValueError, KeyError, TypeError) as exc:
             self.send_json({"error": str(exc)}, 400)
             return

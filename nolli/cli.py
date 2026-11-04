@@ -48,52 +48,15 @@ import sys
 import time
 from pathlib import Path
 
-from .model.keys import ChangeKey, ModelKey, Repo
+from .keys import ChangeKey, ModelKey
 from .progress import Progress
 from .store import DirectoryStore
 
 
-def find_repo(repo: Path) -> Repo:
-    """A local repository's key: its GitHub remote if it has one (the same commits there are
-    the same models), else its path."""
-    from .sources.git import find_remote
-
-    remote = find_remote(repo)
-    found = Repo.from_remote(remote) if remote else None
-    return found if found and found.format_remote() else Repo(str(repo.resolve()))
-
-
-def write_extras(scene, out: Path) -> dict:
-    """What extract and diff -o write beside the dataset: report.json, and for a change what a
-    review agent reads (changes.json, review.mmd, review.md). Returns the report."""
-    from .formats.report import make_report
-
-    report = make_report(scene)
-    (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
-    if "base" in scene.sources:
-        from .review.brief import make_review_brief, make_review_diagram
-        from .review.changes import list_changes
-
-        (out / "changes.json").write_text(json.dumps(list_changes(scene), indent=1))
-        mmd = make_review_diagram(scene)
-        (out / "review.mmd").write_text(mmd)
-        (out / "review.md").write_text(make_review_brief(scene, mmd))
-    return report
-
-
 def cmd_extract(args: argparse.Namespace) -> int:
-    from .build import extract
-    from .datasets import open_built
-    from .sources.git import find_head
-    from .store import write_commit
+    from .datasets import extract_dataset
 
-    repo, out = Path(args.repo).resolve(), Path(args.out)
-    key = find_repo(repo).make_commit(find_head(repo) or "worktree")
-    m, maps = extract(repo, key=key.format_key())
-    m.meta["budget"] = args.budget
-    out.mkdir(parents=True, exist_ok=True)
-    write_commit(out, key, m, maps)
-    report = write_extras(open_built(m, maps), out)
+    report = extract_dataset(Path(args.repo).resolve(), Path(args.out), args.budget)
     print(json.dumps({"entities": report["summary"]["entities"], "relations": report["summary"]["relations"],
                       "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]},
                       "unresolved": len(report["unresolved"])}, indent=1))
@@ -101,30 +64,13 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
-    from .build import extract_commit, list_content, version
-    from .datasets import merge_built
-    from .progress import Quiet
-    from .sources.git import find_commit
-    from .store import write_change
+    from .datasets import diff_dataset
 
-    repo, out = Path(args.repo).resolve(), Path(args.out)
+    out = Path(args.out)
     desc = Path(args.description) if args.description else out / "pr.md"
-    base, head = find_commit(repo, args.base), find_commit(repo, args.head)
-    key = find_repo(repo).make_change(base, head)
-    sides = {}
-    for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
-        m, maps = extract_commit(repo, commit.sha, repo.name, Quiet())
-        m.key = commit.format_key()
-        sides[side] = (m, maps)
-    content = list_content(repo, base, head, Quiet())
-    about = {k: v for k, v in {"pr": args.pr, "title": args.title, "description": desc.read_text() if desc.is_file() else None,
-                               "budget": args.budget}.items() if v}
-    about.update({"base": base, "head": head, "remote": key.repo.format_remote(), "nolli": version()})
-    out.mkdir(parents=True, exist_ok=True)
-    write_change(out, key, about, sides, {"content": content})
-    scene = merge_built(sides["base"], sides["head"], key.format_key(), about, content)
-    report = write_extras(scene, out)
-    print(json.dumps({"diff": {k: v for k, v in about.items() if k not in ("description",)} | {"base": base[:7], "head": head[:7]},
+    about, report = diff_dataset(Path(args.repo).resolve(), args.base, args.head, out, {
+        "pr": args.pr, "title": args.title, "description": desc.read_text() if desc.is_file() else None, "budget": args.budget})
+    print(json.dumps({"diff": {k: v for k, v in about.items() if k not in ("description",)} | {"base": about["base"][:7], "head": about["head"][:7]},
                       "changes": report.get("diff"), "view": {"visible": report["view"]["visible"], "edges": report["view"]["edges"]}},
                      indent=1))
     return 0
@@ -154,25 +100,15 @@ class Built:
 def build(args: argparse.Namespace, cmd: str) -> Built | None:
     """Resolve args.change in args.repo and build it unless a fresh one is stored. Progress goes
     to stderr; None (after saying why) if the change cannot be resolved."""
-    from .datasets import Datasets
-    from .sources import FetchError, LocalRepository, github
-    from .sources.git import GitError
-    from .sources.spec import ChangeError, find_toplevel, resolve, whole
+    from .datasets import BUILD_ERRORS, Datasets, resolve_change
+    from .sources import LocalRepository
 
-    host: dict = {}
     try:
-        repo = find_toplevel(Path(args.repo).resolve())
-        if getattr(args, "whole", False):
-            spec = whole(repo, args.change or "HEAD")
-        elif github.is_pull_request(args.change):
-            spec, host = github.resolve(repo, args.change)
-        else:
-            spec = resolve(repo, args.change)
-    except ChangeError as exc:
+        asked = resolve_change(Path(args.repo), args.change, getattr(args, "whole", False))
+    except BUILD_ERRORS as exc:
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
-    key_repo = Repo.from_remote(host["remote"]) if host.get("remote") else find_repo(repo)
-    key: ModelKey = key_repo.make_change(spec.base, spec.head) if spec.is_diff else key_repo.make_commit(spec.head)
+    repo, key, spec = asked.repo, asked.key, asked.spec
     store = DirectoryStore(find_data_dir(args.data))
     datasets = Datasets(store, LocalRepository(repo))
     b = Built(repo, spec, store, key)
@@ -182,10 +118,9 @@ def build(args: argparse.Namespace, cmd: str) -> Built | None:
         print(f"building {b.out}", file=sys.stderr, flush=True)
         t0 = time.time()
         try:
-            datasets.build(key, rebuild=args.rebuild, progress=Progress(), about={
-                "pr": host.get("pr"), "title": spec.title, "description": spec.description, "budget": args.budget})
+            datasets.build(key, rebuild=args.rebuild, progress=Progress(), about={**asked.about, "budget": args.budget})
             m = store.load_model(key.list_sides()[1] if isinstance(key, ChangeKey) else key)
-        except (ChangeError, FetchError, GitError) as exc:
+        except BUILD_ERRORS as exc:
             print(f"nolli {cmd}: {exc}", file=sys.stderr)
             return None
         print(f"built in {time.time() - t0:.1f} s: {count_found(m)}", file=sys.stderr)
@@ -205,13 +140,12 @@ def cmd_view(args: argparse.Namespace) -> int:
     ds = Path(args.change).expanduser() if args.change else None
     if ds and (ds / "key.json").is_file():  # a dataset directory, as nolli agent brief prints it
         return serve(DirectoryStore(ds.resolve().parent), ds.resolve().name, args.host, args.port, not args.no_open)
-    from .review import ci
-    from .sources.spec import ChangeError
+    from .datasets import BUILD_ERRORS, fetch_ci_result, is_ci_key
 
-    if ci.is_key(args.change):  # a CI run's result, as its PR comment names it
+    if is_ci_key(args.change):  # a CI run's result, as its PR comment names it
         try:
-            ds = ci.fetch(args.change, find_data_dir(args.data))
-        except ChangeError as exc:
+            ds = fetch_ci_result(args.change, find_data_dir(args.data))
+        except BUILD_ERRORS as exc:
             print(f"nolli view: {exc}", file=sys.stderr)
             return 2
         return serve(DirectoryStore(ds.parent), ds.name, args.host, args.port, not args.no_open)
@@ -245,7 +179,6 @@ def find_agent_dir(store: DirectoryStore, name: str) -> Path:
 def cmd_brief(args: argparse.Namespace) -> int:
     """nolli agent brief: build the change and say, as JSON on stdout, where the brief is, where
     the verdicts go and how to check them."""
-    from .review.brief import make_review_brief
 
     b = build(args, "agent brief")
     if b is None:
@@ -257,7 +190,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
         return 2
     work = find_agent_dir(b.store, b.name)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "review.md").write_text(make_review_brief(b.datasets.open_scene(b.key)))
+    (work / "review.md").write_text(b.datasets.make_review_brief(b.datasets.open_scene(b.key)))
     verdicts = work / "verdicts.json"
     print(json.dumps({
         "repository": str(b.repo), "base": spec.base, "head": spec.head, "title": spec.title, "dataset": str(b.out),
@@ -273,8 +206,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
 def cmd_check(args: argparse.Namespace) -> int:
     """nolli agent check: the verdicts against the diagram they answer; problems on stderr. Verdicts
     that pass become the change's review."""
-    from .datasets import Datasets
-    from .review.verdicts import VERDICTS
+    from .datasets import VERDICTS, Datasets
 
     target = Path(args.dataset).expanduser().resolve()
     vf: Path | None = None
@@ -310,7 +242,6 @@ def cmd_check(args: argparse.Namespace) -> int:
 def cmd_ci_comment(args: argparse.Namespace) -> int:
     """nolli ci comment: the PR comment for a CI run's dataset, on stdout."""
     from .datasets import Datasets
-    from .review.ci import comment
 
     ds = Path(args.dataset).expanduser().resolve()
     datasets = Datasets(DirectoryStore(ds.parent))
@@ -319,7 +250,7 @@ def cmd_ci_comment(args: argparse.Namespace) -> int:
         scene = datasets.open_scene(key) if isinstance(key, ChangeKey) else None
         if scene is None:
             raise ValueError(f"{ds} is not a change's dataset")
-        print(comment(scene, datasets.load_verdicts(scene), args.skipped), end="")
+        print(datasets.make_ci_comment(scene, args.skipped), end="")
     except (OSError, ValueError) as exc:
         print(f"nolli ci comment: {exc}", file=sys.stderr)
         return 2

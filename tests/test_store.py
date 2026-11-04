@@ -1,4 +1,4 @@
-"""Where models are kept (nolli/store/, nolli/model/keys.py) and where commits come from
+"""Where models are kept (nolli/store/, nolli/keys.py) and where commits come from
 (nolli/sources/), and building through them (nolli/build.py): keys, the directory store, clones fetched from a remote, and a change's model
 built once, its commits' models reused."""
 
@@ -12,7 +12,7 @@ import pytest
 
 from nolli.build import extract_commit, fetch_change, run_here
 from nolli.datasets import open_built, open_change_scene
-from nolli.model.keys import Repo
+from nolli.keys import Repo
 from nolli.model import Model
 from nolli.progress import Quiet
 from nolli.sources import CloneCache, FetchError, LocalRepository

@@ -22,7 +22,7 @@ from nolli.review import agent as reviewer
 from nolli.build import fetch_change
 from nolli.datasets import open_change_scene
 from nolli.review.ci import comment as ci_comment
-from nolli.model.keys import Repo
+from nolli.keys import Repo
 from nolli.review.verdicts import find_provenance, keep_verdicts_file, parse_verdicts, save_verdicts
 from nolli.sources import LocalRepository
 from nolli.datasets import Datasets
@@ -72,12 +72,12 @@ def comment(ds: Path, verdicts: str | None = None) -> str:
     given; the dataset itself is left as it was."""
     if verdicts is None:
         store, _key, sc = open_dataset(ds)
-        return ci_comment(sc, Datasets(store).load_verdicts(sc))
+        return ci_comment(sc, Datasets(store).draw_review(sc), Datasets(store).load_verdicts(sc))
     with tempfile.TemporaryDirectory() as tmp:
         shutil.copytree(ds, Path(tmp) / ds.name)
         store, key, sc = open_dataset(Path(tmp) / ds.name)
         keep_verdicts_file(store, key, sc, verdicts, {"by": "agent"})
-        return ci_comment(sc, Datasets(store).load_verdicts(sc))
+        return ci_comment(sc, Datasets(store).draw_review(sc), Datasets(store).load_verdicts(sc))
 
 
 def bot_comment(text: str, login: str = "nolli-review[bot]", n: int = 1) -> dict:

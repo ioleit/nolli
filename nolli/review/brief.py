@@ -1,43 +1,23 @@
 """What a review agent gets (``review.md``): the change's title, the diagram of everything that
 changed (the reviewer looks at the same picture), how to answer, and the change's
 description; and the diagram itself (``review.mmd``), the change with every area that
-changed in source code unfolded. Verdicts come back as JSON on the diagram's node ids
-(``nolli/review/verdicts.py``)."""
+changed in source code unfolded (``changes.find_review_cut``; ``nolli.datasets`` draws it).
+Verdicts come back as JSON on the diagram's node ids (``nolli/review/verdicts.py``)."""
 
 from __future__ import annotations
 
 import re
 
-from ..transformations.merge import Links, summarize_change
-from .changes import find_review_cut
+from ..transformations.merge import Links
 from ..model.scene import Scene
-from ..transformations.projection import DEFAULT_BUDGET, SceneState, project
-from ..formats.mermaid import render
-
-
-def make_review_scene(scene: Scene) -> Scene:
-    """The change as the review diagram draws it: every area that changed unfolded. The same
-    for the same change and version of nolli, so verdicts on its ids stay valid."""
-    budget = (scene.model.meta.get("change") or {}).get("budget") or DEFAULT_BUDGET
-    return project(scene, SceneState(budget=budget, preset="changes", focus=find_review_cut(scene)))
-
-
-def make_review_diagram(scene: Scene) -> str:
-    return render(make_review_scene(scene))
-
-
-def make_review_brief(scene: Scene, diagram: str | None = None) -> str:
-    """What a review agent gets (Markdown): the diagram, how to answer, the change's description."""
-    return make_brief(scene, diagram if diagram is not None else make_review_diagram(scene),
-                      (scene.model.meta.get("change") or {}).get("description"))
 
 
 def make_brief(scene: Scene, mermaid: str, description: str | None = None) -> str:
     """What a review agent gets: the change's title, the diagram of everything that changed
     (the reviewer looks at the same picture), how to answer, and the PR's description.
     Verdicts come back as JSON on the diagram's nodes and edges and are shown in the viewer."""
-    d = summarize_change(scene)
-    links = Links(scene)
+    d = scene.model.meta["change"]
+    links = Links(d)
     head = f"# Architecture review: {d.get('title') or 'change'}\n\n"
     head += (f"{d['base_short']} → {d['head_short']}" + (f", PR #{d['pr']}" if d.get("pr") else "")
              + f": {d['files_changed']} files, +{d['added']} −{d['removed']} lines"

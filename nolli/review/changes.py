@@ -23,7 +23,7 @@ def detail_box(scene: Scene, x: str) -> dict | None:
     if not scene.has(target):
         return None
     g = Graph(scene)
-    links = Links(scene)
+    links = Links(scene.model.meta.get("change") or {})
     sub = {target} | set(g.descendants(target))
     files, classes, entities = [], [], []
     for eid in sorted(sub):
@@ -123,7 +123,7 @@ def list_changes(scene: Scene) -> list[dict]:
 
 def _list_changes(scene: Scene) -> list[dict]:
     g = Graph(scene)
-    links = Links(scene)
+    links = Links(scene.model.meta.get("change") or {})
     comps, deps, content = [], [], []
     for x in sorted(g.nodes):
         d = g.diff(x)

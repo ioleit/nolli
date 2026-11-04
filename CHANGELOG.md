@@ -11,7 +11,7 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   edge comes from an overlay: one per extractor, plus `change`, `verdicts`, `label`,
   `hover` and `review`. Merge and projection take a scene and return one, whose elements
   refer to what they stand for. The packages:
-  - `nolli/model` (with `scene.py` and `keys.py`);
+  - `nolli/model` (with `scene.py`), `nolli/keys.py`;
   - `nolli/extractors` (with `facts.py`, the builder extraction writes into);
   - `nolli/transformations` (merge with the overlay that says what changed, projection);
   - `nolli/formats` (viewer JSON, Mermaid, the report; `descriptions/`: label, hover text);

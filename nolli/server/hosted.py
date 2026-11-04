@@ -71,14 +71,14 @@ import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 
 HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 
-from nolli.server import retention  # noqa: E402
-from nolli.datasets import Datasets  # noqa: E402
-from nolli.model.keys import ModelKey, NotAllowed, Repo  # noqa: E402
-from nolli.progress import Progress  # noqa: E402
-from nolli.model.scene import Scene  # noqa: E402
-from nolli.sources import CloneCache, FetchError, Sources, github  # noqa: E402
-from nolli.sources.spec import ChangeError, merge_base  # noqa: E402
-from nolli.store import DirectoryStore, ModelStore  # noqa: E402
+from . import retention  # noqa: E402
+from ..datasets import Datasets  # noqa: E402
+from ..keys import ModelKey, NotAllowed, Repo  # noqa: E402
+from ..progress import Progress  # noqa: E402
+from ..model.scene import Scene  # noqa: E402
+from ..sources import CloneCache, FetchError, Sources, github  # noqa: E402
+from ..sources.spec import ChangeError, merge_base  # noqa: E402
+from ..store import DirectoryStore, ModelStore  # noqa: E402
 
 from .reviews import Reviews, ci_pull, from_ci  # noqa: E402
 from .serve import Handler, Server, Services, preload  # noqa: E402

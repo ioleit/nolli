@@ -23,10 +23,10 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from nolli.model.keys import ChangeKey, ModelKey
-from nolli.model.scene import Scene
-from nolli.sources import Sources
-from nolli.store import ModelStore
+from ..keys import ChangeKey, ModelKey
+from ..model.scene import Scene
+from ..sources import Sources
+from ..store import ModelStore
 
 RUNS = threading.BoundedSemaphore(2)  # agent runs at the same time; the rest wait their turn
 STEPS_KEPT = 6  # the latest steps a page shows under the one under way
@@ -48,11 +48,10 @@ def from_ci(store: ModelStore, key: ModelKey, scene: Scene, comments: list | dic
     commit: ``{"found": "verdicts" | "no-review" | "earlier" | None, "applies": True, ...}``. Its
     verdicts, checked against this change's diagram, become the change's, unless it has some
     already. A result of another format (an earlier nolli) is not read."""
-    from nolli.datasets import Datasets
-    from nolli.review.ci import results
+    from ..datasets import Datasets
 
     head = scene.model.meta["change"]["head"]
-    found = results(comments if isinstance(comments, list) else [])
+    found = Datasets(store).read_ci_results(comments if isinstance(comments, list) else [])
     info: dict = {"found": None, "applies": True}
     mine = [r for r in found if r["head"] == head]
     if not mine:
@@ -97,7 +96,7 @@ class Reviews:
         """``reviewer``: what runs a review (nolli.reviewer.Reviewer, the default, or a service's
         own). ``work``: where runs keep their files (default: a temporary directory)."""
         if reviewer is None:
-            from nolli.review.agent import Reviewer
+            from ..review.agent import Reviewer
 
             reviewer = Reviewer()
         self.reviewer = reviewer
@@ -130,10 +129,9 @@ class Reviews:
         return job
 
     def _run(self, job: Job, name: str, store: ModelStore, key: ChangeKey, sources: Sources) -> None:
-        from nolli.review import agent as reviewer
-        from nolli.datasets import Datasets
-        from nolli.review.brief import make_review_brief, make_review_diagram
-        from nolli.review.verdicts import check_verdicts
+        from ..review import agent as reviewer
+        from ..datasets import Datasets
+
         datasets = Datasets(store)
 
         def on_step(s: str, run: reviewer.Run) -> None:
@@ -156,12 +154,12 @@ class Reviews:
                     raise ValueError(f"no model of {name}")
                 out = work / "out"  # what the reviewer writes; its brief, as it read it, beside
                 out.mkdir(parents=True)
-                diagram = make_review_diagram(scene)
-                brief = make_review_brief(scene, diagram)
+                diagram = datasets.make_review_diagram(scene)
+                brief = datasets.make_review_brief(scene, diagram)
                 (work / "review.md").write_text(brief)
 
                 def check(text: str):
-                    return check_verdicts(scene, diagram, text)
+                    return datasets.check_verdicts(scene, text)
 
                 job.step = "fetching the change's commits"
                 with sources.open_commits(key.repo, key.base, key.head) as repo:

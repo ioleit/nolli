@@ -21,7 +21,7 @@ from typing import Any
 from .extractors import Context, all_extractors, language_names
 from .extractors.facts import Facts
 from .extractors.match import run_all as match_all
-from .model.keys import ChangeKey, Commit
+from .keys import ChangeKey, Commit
 from .model import Key, Model, address
 from .progress import Progress, Quiet
 from .store.maps import MapStore

@@ -1,4 +1,4 @@
-"""Where nolli keeps what it builds: models, by key (``nolli/model/keys.py``), and the maps
+"""Where nolli keeps what it builds: models, by key (``nolli/keys.py``), and the maps
 overlays keep for them (``maps.py``).
 
 ``ModelStore`` is the interface: a commit's model with the maps its extractors saved
@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from ..model import Key, Model
-from ..model.keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
+from ..keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
 from .maps import MapStore, MemoryMaps, StoredMaps, StoredOverlay  # noqa: F401
 
 FORMAT = 1  # of key.json and change.json

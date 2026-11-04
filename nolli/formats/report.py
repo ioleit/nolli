@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from ..model import SYMBOL_KINDS
 from ..model.scene import Scene
-from ..transformations.projection import DEFAULT_BUDGET, SceneState, project
 
 
 def summarize(scene: Scene) -> dict:
@@ -20,17 +20,33 @@ def summarize(scene: Scene) -> dict:
     return {"entities": dict(sorted(by_kind.items())), "relations": dict(sorted(rel.items()))}
 
 
-def make_report(scene: Scene) -> dict:
+def make_report(scene: Scene, picture: Scene) -> dict:
+    """``picture``: the scene's default picture, whose size the report gives."""
     meta = scene.model.meta
-    budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or DEFAULT_BUDGET
-    p = project(scene, SceneState(budget=budget)).model.meta["projection"]
+    p = picture.model.meta["projection"]
     report = {"meta": meta, "summary": summarize(scene),
               "view": {"visible": p["stats"]["nodes"], "edges": p["stats"]["edges"], "internal": p["internal"],
                        "hidden_relations": p["hidden_relations"], "unresolved": p["unresolved"]},
               "unresolved": sorted(x for x, k in scene.model.kinds.items() if k == "unresolved"),
               "notes": meta.get("notes", {})}
-    if "base" in scene.sources:
-        from ..transformations.merge import count_changes
-
+    if "change" in meta:
         report["diff"] = count_changes(scene)
     return report
+
+
+def count_changes(scene: Scene) -> dict:
+    """How many nodes and edges changed, by kind and status (the ``change`` overlay's word)."""
+    by: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for el in scene.list_nodes():
+        d = el.get("change")
+        if d:
+            by["entities"][f"{el.kind}/{d['status']}"] += 1
+            if (el.kind == "file" or el.kind in SYMBOL_KINDS) and (d.get("added") or d.get("removed")):
+                by["content"][el.kind] += 1
+    for el in scene.list_edges():
+        d = el.get("change")
+        if d:
+            by["relations"][d["status"]] += 1
+    out = {k: dict(sorted(v.items())) for k, v in sorted(by.items())}
+    out["files_changed"] = (scene.model.meta.get("change") or {}).get("files_changed", 0)
+    return out

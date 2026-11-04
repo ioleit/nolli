@@ -11,7 +11,6 @@ from __future__ import annotations
 from collections import defaultdict
 
 from ..model.scene import Element, Scene
-from .mermaid import find_root
 
 FORMAT = 1
 
@@ -51,16 +50,8 @@ def export_scene(scene: Scene) -> dict:
     out = {"format": FORMAT, "state": meta.get("state"), "nodes": nodes, "edges": edges, "groups": meta.get("groups", []),
            "roles": meta.get("roles", []), "residue": residue, "stats": dict(meta.get("stats", {})),
            "overlays": names}
-    root = find_root(scene)
-    if root is not None and "base" in root.sources:
-        from ..transformations.merge import Links, index_changes, summarize_change
-
-        statuses: dict[str, int] = defaultdict(int)
-        for e in edges:
-            if e.get("change"):
-                statuses[e["change"]["status"]] += 1
-        d = summarize_change(root)
-        out["diff"] = {**{k: d.get(k) for k in ("base", "head", "base_short", "head_short", "remote", "pr", "files_changed", "added",
-                                                "removed", "title")},
-                       "link": Links(root).change(), "drawn": dict(statuses), "changed_entities": len(index_changes(root))}
+    d = scene.model.meta.get("change")
+    if d:  # a picture of a change: what the change says about itself (``meta["change"]``)
+        out["diff"] = {k: d.get(k) for k in ("base", "head", "base_short", "head_short", "remote", "pr", "files_changed", "added",
+                                            "removed", "title", "link")}
     return out

@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from ..model import Key, Model
-from ..model.keys import ChangeKey, Commit, ModelKey, Repo, dump_key, parse_key
+from ..keys import ChangeKey, Commit, ModelKey, Repo, dump_key, parse_key
 from .maps import dump_map, parse_map
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)

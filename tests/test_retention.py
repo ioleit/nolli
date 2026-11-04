@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
-from nolli.model.keys import Repo
+from nolli.keys import Repo
 from nolli.server.hosted import KINDS, Job, Plan, Site
 
 from nolli.server import retention

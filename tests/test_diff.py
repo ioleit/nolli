@@ -73,7 +73,6 @@ def keep(sc, verdicts):
 
 
 def test_structure_and_content(repo):
-    from nolli.transformations.merge import summarize_change
 
     path, base, head = repo
     sc = open_change(path, base, head)
@@ -96,7 +95,7 @@ def test_structure_and_content(repo):
     added = {(e.key.src, e.key.dst) for e in sc.list_edges() if (e.get("change") or {}).get("status") == "added"}
     assert ("repo:app/api.py", "repo:app/store.py#Index") in added
     # links need both commits and the change count
-    d = summarize_change(sc)
+    d = sc.model.meta["change"]
     assert d["base"] == base and d["head"] == head and d["files_changed"] == 4
 
 
@@ -108,7 +107,7 @@ def test_repository_untouched(repo):
 
 
 def test_scene_review(repo):
-    from nolli.cli import find_repo
+    from nolli.datasets import find_repo
     from nolli.transformations.merge import Links
     from nolli.review.changes import detail_box
 

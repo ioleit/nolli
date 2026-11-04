@@ -73,15 +73,7 @@ def read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
         edges.append({"src": el.key.src, "dst": el.key.dst, "subkind": el.key.subkind, "count": p.get("count", 0),
                       "style": p.get("style"), "types": p.get("types"), "local": p.get("local"), "weak": p.get("weak"),
                       "diff": el.get("change")})
-    return nodes, edges, "base" in (find_root(scene).sources if find_root(scene) else {})
-
-
-def find_root(scene: Scene) -> Scene | None:
-    """The scene a projection was made from, all the way down to a change or a commit."""
-    cur = scene.sources.get("source")
-    while cur is not None and "source" in cur.sources:
-        cur = cur.sources["source"]
-    return cur
+    return nodes, edges, "change" in scene.model.meta  # a picture of a change
 
 
 def list_ids(scene: Scene) -> dict[str, str]:

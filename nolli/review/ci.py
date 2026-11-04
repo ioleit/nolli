@@ -61,13 +61,13 @@ def key_of(meta: dict) -> str:
     return f"{m.group(1)}/{m.group(2)}#{d['pr']}@{d['head'][:7]}"
 
 
-def comment(scene: Scene, kept: list[dict], skipped: str | None = None) -> str:
+def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None = None) -> str:
     """The PR comment for a run's change: how many structural changes, how many verdicts of
     each kind (``kept``: the change's verdicts, checked again here against its diagram), the
-    worst ones (not fine) with their reasons, and how to open the result. ``skipped`` says
+    worst ones (not fine) with their reasons, and how to open the result; ``review``: the
+    change's review diagram as a scene (``Datasets.draw_review``). ``skipped`` says
     why no review agent ran: "no-key" (the repository has no API key for one) or "fork" (a PR
     from a fork, which gets no secrets)."""
-    from .brief import make_review_scene
     from ..formats.mermaid import render
     from .changes import list_changes
     from .verdicts import check_verdicts, describe_verdicts
@@ -76,7 +76,6 @@ def comment(scene: Scene, kept: list[dict], skipped: str | None = None) -> str:
     d = scene.model.meta["change"]
     repo = key.split("#")[0]
     n = len(list_changes(scene))
-    review = make_review_scene(scene)
     mmd = render(review)
     verdicts, errors = check_verdicts(scene, mmd, json.dumps(kept)) if kept else (None, [])
     commit = f"[`{d['head'][:7]}`](https://github.com/{repo}/pull/{d['pr']}/commits/{d['head']})"

@@ -14,6 +14,8 @@ the PR and the change's totals are here too.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import hashlib
 from collections import defaultdict
 
@@ -113,8 +115,9 @@ def list_renames(scene: Scene) -> dict[str, str]:
 class Links:
     """GitHub URLs for a change; every method returns None when the remote is unknown."""
 
-    def __init__(self, scene: Scene) -> None:
-        d = (scene.model.meta or {}).get("change") or {}
+    def __init__(self, change: dict) -> None:
+        """``change``: what the change says about itself (``meta["change"]``)."""
+        d = change or {}
         self.remote: str | None = d.get("remote")
         self.base: str | None = d.get("base")
         self.head: str | None = d.get("head")
@@ -149,32 +152,15 @@ class Links:
 
 # ---------- the change in numbers ----------
 
-def summarize_change(scene: Scene) -> dict:
-    """What the change says about itself, with git's totals: files changed, lines added and removed."""
-    change = scene.overlays.get("change")
-    content = change.content.load(scene.model.key) if isinstance(change, Change) else {}
-    d = dict(scene.model.meta.get("change") or {})
+def describe_change(about: dict, content: Mapping[Key, dict]) -> dict:
+    """What a change says about itself (title, pr, description, base, head, remote, …), with
+    git's totals (files changed, lines added and removed) and the link to it: its model's
+    ``meta["change"]``, which every picture of it carries along."""
+    d = dict(about)
     d.update({"base_short": (d.get("base") or "")[:7], "head_short": (d.get("head") or "")[:7], "files_changed": len(content),
               "added": sum(c.get("added", 0) for c in content.values()), "removed": sum(c.get("removed", 0) for c in content.values())})
+    d["link"] = Links(d).change()
     return d
-
-
-def count_changes(scene: Scene) -> dict:
-    """How many entities and relations changed, by kind and status (a report's numbers)."""
-    g = Graph(scene)
-    by: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for x in g.nodes:
-        d = g.diff(x)
-        if d:
-            by["entities"][f"{g.kind(x)}/{d['status']}"] += 1
-            if (g.kind(x) == "file" or g.kind(x) in SYMBOL_KINDS) and (d.get("added") or d.get("removed")):
-                by["content"][g.kind(x)] += 1
-    for r in g.relations:
-        if r.diff:
-            by["relations"][r.diff["status"]] += 1
-    out = {k: dict(sorted(v.items())) for k, v in sorted(by.items())}
-    out["files_changed"] = summarize_change(scene)["files_changed"]
-    return out
 
 
 def describe_node(scene: Scene, x: str, internal: int = 0) -> dict | None:
@@ -230,7 +216,7 @@ def describe_edge(el: Element) -> dict | None:
     change = find_change_scene(el)
     if not status or change is None:
         return None
-    links = Links(change)
+    links = Links(change.model.meta.get("change") or {})
     changed = sorted(p.get("changed") or [])
     facts = [c for f in changed[:40] for c in describe_fact(change, EdgeKey.parse(f), links) if change.has(EdgeKey.parse(f))]
     return {"status": status, "base": p.get("base", 0), "head": p.get("head", 0), "facts": changed,

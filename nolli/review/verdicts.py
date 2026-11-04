@@ -155,7 +155,7 @@ def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
 
 def find_provenance(maps: MapStore, key) -> dict | None:
     """Who made a change's verdicts (its ``verdicts`` map's ``about``); None without verdicts.
-    ``key``: the change's key (``nolli/model/keys.py``)."""
+    ``key``: the change's key (``nolli/keys.py``)."""
     stored = maps.open_maps("verdicts")
     return (stored.load_about(key.format_key()) or {"by": "unknown"}) if stored.load(key.format_key()) else None
 
