@@ -56,12 +56,12 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
     def cost_of_unfolding(v: str) -> float:
         if not diff:
             return _unfold_cost(g, v, hidden, anchors)
-        after = rollup.visible_from_expanded(g, expanded | {v}, hidden)
+        after = rollup.visible_from_expanded(g, expanded | {v}, hidden, anchors=anchors)
         return sum(weight(x) for x in after) - sum(weight(x) for x in visible)
 
     for scores in phases:
         while True:
-            visible = rollup.visible_from_expanded(g, expanded, hidden)
+            visible = rollup.visible_from_expanded(g, expanded, hidden, anchors=anchors)
             room = budget - sum(weight(x) for x in visible)
             best, best_key = None, (0.0, 0.0)
             for v in visible:
@@ -78,7 +78,7 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
             if best is None:
                 break
             expanded.add(best)
-    visible = rollup.visible_from_expanded(g, expanded, hidden)
+    visible = rollup.visible_from_expanded(g, expanded, hidden, anchors=anchors)
     return {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible), "hidden_roles": list(roles)}
 
 

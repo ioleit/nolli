@@ -12,7 +12,7 @@ Nothing is a settled design.
   Structure is what a sound graph needs: addresses (their namespace is in them), node
   kinds and edge kinds, the metamodel's checks. Everything else goes in overlays: names,
   roles, sizes, docstrings, an import's lines, a review's verdict.
-- An overlay is code that answers for one element (`compute(element)`, `nolli/model/scene.py`).
+- An overlay is code that answers for one element (`compute(element)`, `nolli/model/scene.py`), and for every element of a scene at once (`compute_all(scene)`, by default `compute` asked about each; a stored overlay answers with its map). Code that reads a whole model (the fold's `Reading`, the descriptions, the review) reads maps (`scene.read_all(name)`, `vocabulary.read_all_*`), not element by element: that is what keeps a request cheap.
   The element carries what the overlay needs: its key and kind, what it stands for
   (`sources`), and a way to ask other overlays. Where an overlay's knowledge comes from is
   its own business. It may use a map it keeps in the store, by model key, through a handle

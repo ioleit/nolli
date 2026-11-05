@@ -4,12 +4,12 @@ Folding a scene reads nothing else, so anything new to read off a scene for it b
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
 from urllib.parse import unquote
 
-from nolli.model import EdgeKey, address, metamodel, vocabulary
+from nolli.model import EdgeKey, Key, address, metamodel, vocabulary
 from nolli.model.scene import Scene
 from nolli.model.vocabulary import FileFacts, Reference
 
@@ -53,7 +53,6 @@ class Reading:
         self.scene = scene
         self.model = scene.model
         self.is_change = "base" in scene.sources
-        self._files: dict[str, dict] = {}
 
     # -- structure ---------------------------------------------------------------
 
@@ -90,32 +89,36 @@ class Reading:
 
     # -- what the file tree says ---------------------------------------------------
 
+    @cached_property
+    def files(self) -> Mapping[str, FileFacts]:
+        return vocabulary.read_all_files(self.scene)
+
     def file(self, x: str) -> FileFacts | dict:
-        f = self._files.get(x)
-        if f is None:
-            f = self._files[x] = vocabulary.read_file(self.scene.find_element(x))
-        return f
+        return self.files.get(x) or {}
 
     # -- what changed ------------------------------------------------------------
 
+    @cached_property
+    def changes(self) -> Mapping[Key, dict]:
+        """What the change did to each node and edge (the ``change`` overlay); {} outside a change."""
+        return self.scene.read_all("change") if self.is_change else {}
+
     def diff(self, x: str) -> dict:
-        """What the change did to a node (the ``change`` overlay); {} outside a change."""
-        if not self.is_change:
-            return {}
-        return self.scene.find_element(x).get("change") or {}
+        """What the change did to a node; {} outside a change."""
+        return self.changes.get(x) or {}
 
     # -- edges -------------------------------------------------------------------
 
     @cached_property
     def relations(self) -> list[Rel]:
+        references = vocabulary.read_all_references(self.scene)
         out = []
         for e in self.model.edges:
             if e.kind == metamodel.CONTAIN:
                 continue
-            el = self.scene.find_element(e)
-            refs = vocabulary.read_references(el)
+            refs = references.get(e, [])
             conf = max((r["confidence"] for r in refs), key=lambda c: CONF_RANK.get(c, 0), default="exact")
-            d = el.get("change") if self.is_change else None
+            d = self.changes.get(e)
             out.append(Rel(e, sum(r["count"] for r in refs), conf, refs,
                            d if d and d.get("status") in ("added", "removed", "changed") else None))
         return out

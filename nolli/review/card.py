@@ -3,22 +3,30 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 
 from nolli.formats.descriptions import names as names_lib
 from nolli.formats.descriptions import prose
-from nolli.model.scene import Element
+from nolli.model import EdgeKey, Key
+from nolli.model.scene import Element, Overlay, Scene
 from nolli.review import changes
 from nolli.review import verdicts as verdicts_lib
 
 FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside
 
 
-def _list_items(el: Element) -> dict[str, dict]:
-    """Which numbered changes a change's node or edge is about (a node those that focus on it, an
-    edge those whose facts it is), by id, with what placing them needs."""
-    items = changes.list_changes(el.scene)
-    mine = [it for it in items if (el.id in it["facts"] if el.is_edge else el.key in it["focus"])]
-    return {it["id"]: {"category": it["category"], "focus": it["focus"]} for it in mine}
+def _index_items(scene: Scene) -> dict[Key, dict]:
+    """Which numbered changes each node or edge of a change is about (a node those that focus on
+    it, an edge those whose facts it is), by id, with what placing them needs; as the ``review``
+    overlay says on the change itself."""
+    about: dict[Key, dict[str, dict]] = {}
+    for it in changes.list_changes(scene):
+        what = {"category": it["category"], "focus": it["focus"]}
+        for x in it["focus"]:
+            about.setdefault(x, {})[it["id"]] = what
+        for f in it["facts"]:
+            about.setdefault(EdgeKey.parse(f), {})[it["id"]] = what
+    return {k: {"items": sorted(v, key=lambda i: int(i[1:])), "about": v} for k, v in about.items()}
 
 
 def _place_items(el: Element) -> list[str]:
@@ -105,7 +113,7 @@ def _describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (
     return prose.paragraphs(lines + _list_verdict_lines(verdicts, inside, items, "on this edge"))
 
 
-class Review:
+class Review(Overlay):
     """The ``review`` overlay. On a change's node or edge: the numbered changes about it
     (``items``, ``about``). On a drawn box or edge of a change: which of the numbered changes it
     carries (``items``), and the second part of its hover card, under a line: what happened to
@@ -113,14 +121,16 @@ class Review:
 
     name = "review"
 
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        return _index_items(scene) if "source" not in scene.sources else Overlay.compute_all(self, scene)
+
     def compute(self, el: Element) -> dict | None:
         if el.is_edge and el.kind == "contain":
             return None
         if "change" not in el.meta:
             return None
         if "source" not in el.scene.sources:  # the change itself: which numbered changes are about it
-            about = _list_items(el)
-            return {"items": sorted(about, key=lambda i: int(i[1:])), "about": about} if about else None
+            return el.scene.read_all(self.name).get(el.key)
         items = _place_items(el)
         v = el.get("verdicts") or {}
         own, inside = v.get("own", []), v.get("inside", [])

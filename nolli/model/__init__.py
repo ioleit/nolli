@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from nolli.model import address, metamodel
@@ -29,6 +29,13 @@ class EdgeKey:
     src: str
     dst: str
     subkind: str = ""
+    _hash: int = field(init=False, repr=False, compare=False, default=0)  # computed once: a key is hashed on every lookup
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_hash", hash((self.kind, self.src, self.dst, self.subkind)))
+
+    def __hash__(self) -> int:
+        return self._hash
 
     def format(self) -> str:
         """``kind|src|dst|subkind``: how the viewer, verdicts and changes name an edge."""

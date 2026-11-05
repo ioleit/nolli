@@ -6,10 +6,13 @@ language knows belongs in that language's own subclass of it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
+from nolli.model import EdgeKey
+
 if TYPE_CHECKING:
-    from nolli.model.scene import Element
+    from nolli.model.scene import Element, Scene
 
 
 # At run time these are plain dicts (stored as maps, sent as JSON); a language's overlay
@@ -80,14 +83,38 @@ def read_references(el: Element) -> list[Reference]:
     return []
 
 
-def count_references(el: Element) -> int:
-    return sum(r["count"] for r in read_references(el))
+def read_all_files(scene: Scene) -> Mapping[str, FileFacts]:
+    """What the file tree says about every file and directory of a scene, by address."""
+    return scene.read_all("fs")  # type: ignore[return-value]
 
 
-def read_symbols(el: Element) -> ModuleFacts | SymbolFacts | dict:
-    """What its language says a module, or a class (type, …) in one, defines ({} for anything
-    else), from the symbols overlay the model's ``meta["symbols"]`` names for that language."""
-    f = el if el.kind == "file" else el.parent
-    language = read_file(f).get("language") if f is not None else None
-    name = (el.meta.get("symbols") or {}).get(language or "")
-    return (el.get(name) or {}) if name else {}
+def read_all_references(scene: Scene) -> Mapping[EdgeKey, list[Reference]]:
+    """The references every edge of a scene stands for, by edge (edges no extractor found
+    references for are left out), as ``read_references`` reads them one by one; merged once
+    per scene from the extractors' maps."""
+    return scene.memo(_merge_references)
+
+
+def _merge_references(scene: Scene) -> dict[EdgeKey, list[Reference]]:
+    out: dict[EdgeKey, list[Reference]] = {}
+    for name in scene.model.meta.get("overlays") or []:
+        for k, v in scene.read_all(name).items():
+            if isinstance(k, EdgeKey) and "references" in v and k not in out:
+                out[k] = v["references"]
+    return out
+
+
+def read_all_symbols(scene: Scene) -> dict[str, ModuleFacts | SymbolFacts]:
+    """What every module, class or type of a scene defines, by address, each from the symbols
+    overlay of its language."""
+    files = read_all_files(scene)
+    model = scene.model
+    out: dict[str, ModuleFacts | SymbolFacts] = {}
+    for language, name in (model.meta.get("symbols") or {}).items():
+        for k, v in scene.read_all(name).items():
+            if isinstance(k, EdgeKey) or not model.has(k):
+                continue
+            f = k if model.find_kind(k) == "file" else model.find_parent(k)
+            if f is not None and files.get(f, {}).get("language") == language:
+                out[k] = v  # type: ignore[assignment]
+    return out

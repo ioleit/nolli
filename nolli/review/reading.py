@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 
 from nolli.formats.descriptions import names
-from nolli.model import EdgeKey, metamodel, vocabulary
+from nolli.model import EdgeKey, Key, metamodel, vocabulary
 from nolli.model.scene import Scene
 
 
@@ -68,24 +68,36 @@ class Reader:
     def name(self, x: str) -> str:
         return names.format_name(self.scene.find_element(x))
 
+    @cached_property
+    def files(self) -> Mapping[str, dict]:
+        return vocabulary.read_all_files(self.scene)
+
+    @cached_property
+    def symbols(self) -> Mapping[str, dict]:
+        return vocabulary.read_all_symbols(self.scene)
+
+    @cached_property
+    def changes(self) -> Mapping[Key, dict]:
+        return self.scene.read_all("change")
+
     def attrs(self, x: str) -> dict:
         """Where it is (path, line range) and what role it plays: the file tree's and its language's word."""
         a = self._attrs.get(x)
         if a is None:
-            el = self.scene.find_element(x)
-            a = self._attrs[x] = {**vocabulary.read_file(el), **vocabulary.read_symbols(el)}
+            a = self._attrs[x] = {**self.files.get(x, {}), **self.symbols.get(x, {})}
         return a
 
     def diff(self, x: str) -> dict:
-        return self.scene.find_element(x).get("change") or {}
+        return self.changes.get(x) or {}
 
     @cached_property
     def relations(self) -> list[ChangedEdge]:
+        references = vocabulary.read_all_references(self.scene)
         out = []
         for e in self.model.edges:
             if e.kind == metamodel.CONTAIN:
                 continue
-            el = self.scene.find_element(e)
-            d = el.get("change")
-            out.append(ChangedEdge(e, vocabulary.count_references(el), d if d and d.get("status") in ("added", "removed", "changed") else None))
+            d = self.changes.get(e)
+            out.append(ChangedEdge(e, sum(r["count"] for r in references.get(e, ())),
+                                   d if d and d.get("status") in ("added", "removed", "changed") else None))
         return out

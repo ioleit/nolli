@@ -192,7 +192,7 @@ def _shown_files(g: Reading, d: str, hidden: set[str], k: int, degree: dict[str,
 
 
 def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show_files=None, degree=None,
-                          walked: set[str] | None = None) -> set[str]:
+                          walked: set[str] | None = None, anchors: set[str] | None = None) -> set[str]:
     """The cut for a set of unfolded containers.
 
     An unfolded container shows *all* its non-hidden children (a partially opened
@@ -203,9 +203,11 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
     body is the package's anchor ``<dir>#``, present only if it has edges.
     ``show_files`` and ``degree`` are accepted for compatibility and ignored. ``walked``,
     if given, receives the unfolded containers actually reached (the effective unfold set).
+    ``anchors``: ``init_anchor_dirs(g, hidden)``, by a caller that tries many cuts.
     """
     visible: set[str] = set()
-    anchors = init_anchor_dirs(g, hidden)
+    if anchors is None:
+        anchors = init_anchor_dirs(g, hidden)
 
     def walk(n: str) -> None:
         if walked is not None:

@@ -13,9 +13,13 @@ from typing import Any, Protocol
 from nolli.model import EdgeKey, Key, Model
 
 
-class Overlay(Protocol):
+class Overlay:
     """Code that says something about one element: ``compute(element)`` returns its properties
     (a dict) or None. The file tree's overlay, for one, says a file's role and size.
+    ``compute_all(scene)`` says it about every element of a scene at once, for the code that
+    reads a whole model (the fold, the descriptions, the review); by default by asking
+    ``compute`` about each, an overlay that has everything at hand (a stored map) answers
+    with that.
 
     An overlay decides for itself where its knowledge comes from: maps it keeps in a store
     (``StoredMaps``, by model key, as an extractor saved them), other overlays
@@ -24,7 +28,18 @@ class Overlay(Protocol):
 
     name: str
 
-    def compute(self, element: Element) -> dict | None: ...
+    def compute(self, element: Element) -> dict | None:
+        raise NotImplementedError
+
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        """What it says about every node and edge of the scene's model, by key; those it says
+        nothing about are left out."""
+        out: dict[Key, dict] = {}
+        for key in [*scene.model.kinds, *scene.model.edges]:
+            v = scene.find_element(key).get(self.name)
+            if v is not None:
+                out[key] = v
+        return out
 
 
 class StoredMaps(Protocol):
@@ -209,6 +224,16 @@ class Scene:
                     held[x] = k
         return held.get(key)
 
+    def read_all(self, overlay: str) -> Mapping[Key, dict]:
+        """Everything ``overlay`` says about this scene's elements, by key ({} if the scene has
+        no such overlay); computed once per scene, as the answers about one element are."""
+        k = ("all", overlay)
+        got = self._memo.get(k)
+        if got is None:
+            o = self.overlays.get(overlay)
+            got = self._memo[k] = {} if o is None else o.compute_all(self)
+        return got
+
     def memo(self, fn: Callable[[Scene], Any]) -> Any:
         """``fn(scene)``, computed once per scene: for an overlay that needs all of a scene's
         elements at once (the numbered changes, where verdicts land)."""
@@ -220,6 +245,9 @@ class Scene:
         k = (overlay, element.key)
         if k in self._cache:
             return self._cache[k]
+        whole = self._memo.get(("all", overlay))
+        if whole is not None:  # the overlay has answered for the whole model: the same answer
+            return whole.get(element.key)
         if k in self._busy:
             raise OverlayCycle(f"{overlay} needs itself for {element.id}")
         o = self.overlays.get(overlay)
@@ -237,7 +265,7 @@ class Scene:
 # --- overlays every scene has ------------------------------------------------------------
 
 
-class FixedOverlay:
+class FixedOverlay(Overlay):
     """Properties a transformation decided for the elements it made, as an extractor's
     are saved: ``projection`` (what is a container, which lines were lifted)."""
 
@@ -246,3 +274,6 @@ class FixedOverlay:
 
     def compute(self, element: Element) -> dict | None:
         return self.values.get(element.key)
+
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        return self.values

@@ -7,17 +7,17 @@ whole in the change's totals and its links on GitHub.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
-from nolli.model import Key, Model, address, metamodel, vocabulary
-from nolli.model.scene import Element, Scene, StoredMaps
+from nolli.model import EdgeKey, Key, Model, address, metamodel, vocabulary
+from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 
 
 def is_change(scene: Scene) -> bool:
     return "base" in scene.sources
 
 
-class Change:
+class Change(Overlay):
     """The ``change`` overlay. It says what a change did to each node and edge.
 
     On a change's own nodes and edges it compares the two sides: a node or edge on one side
@@ -46,64 +46,112 @@ class Change:
             return _sum_edge(el) if el.is_edge else _sum_box(el)
         return None
 
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        """On a change: its nodes one by one, its edges all at once from both sides' references."""
+        if not is_change(scene):
+            return Overlay.compute_all(self, scene)
+        out: dict[Key, dict] = {}
+        sides = {role: _Side(scene.sources[role]) for role in ("base", "head")}
+        content = self.load_content(scene.model.key)
+        renames = scene.memo(_list_renames)
+        for x, kind in scene.model.kinds.items():
+            rec = _compare_node(x, kind, sides, content, renames, scene.memo(_index_old_paths))
+            if rec is not None:
+                out[x] = rec
+        for e in scene.model.edges:
+            rec = _compare_edge(e, scene.model.meta, {role: s.model.has(e) and s.references.get(e, []) for role, s in sides.items()})
+            if rec is not None:
+                out[e] = rec
+        return out
+
     # -- on a change's own elements --------------------------------------------------
 
     def compare(self, el: Element) -> dict | None:
-        b, h = el.find_same("base"), el.find_same("head")
+        sides = {role: el.scene.memo(_Side.of(role)) for role in ("base", "head")}
         if el.is_edge:
-            nb = vocabulary.count_references(b) if b else 0
-            nh = vocabulary.count_references(h) if h else 0
-            if b is None:
-                rec = {"status": "added", "base": 0, "head": nh}
-            elif h is None:
-                rec = {"status": "removed", "base": nb, "head": 0}
-            elif nb != nh:
-                rec = {"status": "changed", "base": nb, "head": nh}
-            else:
-                return None
-            return rec | {"fact": _describe_fact(el, rec, b, h)}
-        content = self.load_content(el.model_key)
-        rec: dict = {}
-        if b is None:
-            rec["status"] = "added"
-        elif h is None:
-            rec["status"] = "removed"
-        c = content.get(el.key)
-        if c is not None and el.kind == "file":
-            rec.setdefault("status", "same")
-            rec.update(c)
-        if el.kind == "file" and rec.get("status") == "removed":
-            gone = el.scene.memo(_list_renames).get(el.key)
-            if gone:
-                rec["renamed_to"] = gone
-        if el.kind in metamodel.SYMBOL_KINDS:
-            lines = self.list_class_lines(el, b, h, content)
-            if lines:
-                rec.setdefault("status", "same")
-                rec.update(lines)
-        if not rec:
-            return None
-        files = el.kind == "file" and "git" in rec  # lines are counted by files, so a class's are not counted twice
-        rec["totals"] = {"added": rec.get("added", 0) if files else 0, "removed": rec.get("removed", 0) if files else 0,
-                         "files": int(files), "new": int(rec["status"] == "added" and el.kind != "group"),
-                         "gone": int(rec["status"] == "removed" and el.kind != "group")}
-        return rec
+            return _compare_edge(el.key, el.meta, {role: s.model.has(el.key) and s.references.get(el.key, []) for role, s in sides.items()})
+        return _compare_node(el.key, el.kind, sides, self.load_content(el.model_key), el.scene.memo(_list_renames),
+                             el.scene.memo(_index_old_paths))
 
-    def list_class_lines(self, el: Element, b: Element | None, h: Element | None, content) -> dict | None:
-        f = address.file_of(el.key)
-        c = content.get(f)
-        if c is None:  # a class of a renamed file, by its old path
-            c = next((v for k, v in content.items() if isinstance(k, str) and v.get("old_path") == address.path_of(f)), None)
-        if c is None:
-            return None
-        hf, bf = vocabulary.read_symbols(h) if h else {}, vocabulary.read_symbols(b) if b else {}
-        old_path = c.get("old_path") or address.path_of(f)
-        added = [n for hk in c.get("hunks", []) for n in hk["added"] if hf and hf.get("line", 0) <= n <= (hf.get("end_line") or 0)]
-        removed = [n for hk in c.get("hunks", []) for n in hk["removed"]
-                   if bf and bf.get("path") == old_path and bf.get("line", 0) <= n <= (bf.get("end_line") or 0)]
-        if not (added or removed):
-            return None
-        return {"added": len(added), "removed": len(removed), "added_lines": added, "removed_lines": removed}
+
+class _Side:
+    """One side of a change as the comparison reads it: its model and its maps, all at once."""
+
+    def __init__(self, scene: Scene) -> None:
+        self.model = scene.model
+        self.references = vocabulary.read_all_references(scene)
+        self.symbols = vocabulary.read_all_symbols(scene)
+
+    @staticmethod
+    def of(role: str) -> Callable[[Scene], _Side]:
+        """The side ``role`` of a change scene, read once per scene (``scene.memo``)."""
+        return _read_base if role == "base" else _read_head
+
+
+def _read_base(scene: Scene) -> _Side:
+    return _Side(scene.sources["base"])
+
+
+def _read_head(scene: Scene) -> _Side:
+    return _Side(scene.sources["head"])
+
+
+def _index_old_paths(scene: Scene) -> dict[str, dict]:
+    """git's per-file content of a renamed file, by its old path."""
+    change = scene.overlays.get("change")
+    content = change.load_content(scene.model.key) if isinstance(change, Change) else {}
+    return {v["old_path"]: v for k, v in content.items() if isinstance(k, str) and v.get("old_path")}
+
+
+def _compare_node(x: str, kind: str, sides: Mapping[str, _Side], content: Mapping[Key, dict], renames: Mapping[str, str],
+                  by_old_path: Mapping[str, dict]) -> dict | None:
+    """What the change did to a node: added or removed when one side has no such node, and
+    what git says changed inside a file, or inside a class's lines."""
+    b, h = sides["base"].model.has(x), sides["head"].model.has(x)
+    rec: dict = {}
+    if not b:
+        rec["status"] = "added"
+    elif not h:
+        rec["status"] = "removed"
+    c = content.get(x)
+    if c is not None and kind == "file":
+        rec.setdefault("status", "same")
+        rec.update(c)
+    if kind == "file" and rec.get("status") == "removed":
+        gone = renames.get(x)
+        if gone:
+            rec["renamed_to"] = gone
+    if kind in metamodel.SYMBOL_KINDS:
+        lines = _list_class_lines(x, sides["base"].symbols.get(x, {}) if b else {}, sides["head"].symbols.get(x, {}) if h else {},
+                                  content, by_old_path)
+        if lines:
+            rec.setdefault("status", "same")
+            rec.update(lines)
+    if not rec:
+        return None
+    files = kind == "file" and "git" in rec  # lines are counted by files, so a class's are not counted twice
+    rec["totals"] = {"added": rec.get("added", 0) if files else 0, "removed": rec.get("removed", 0) if files else 0,
+                     "files": int(files), "new": int(rec["status"] == "added" and kind != "group"),
+                     "gone": int(rec["status"] == "removed" and kind != "group")}
+    return rec
+
+
+def _list_class_lines(x: str, bf: Mapping, hf: Mapping, content: Mapping[Key, dict], by_old_path: Mapping[str, dict]) -> dict | None:
+    """git's changed lines inside a class's line range, on each side (``bf``, ``hf``: what the
+    class's language says about it there)."""
+    f = address.file_of(x)
+    c = content.get(f)
+    if c is None:  # a class of a renamed file, by its old path
+        c = by_old_path.get(address.path_of(f))
+    if c is None:
+        return None
+    old_path = c.get("old_path") or address.path_of(f)
+    added = [n for hk in c.get("hunks", []) for n in hk["added"] if hf and hf.get("line", 0) <= n <= (hf.get("end_line") or 0)]
+    removed = [n for hk in c.get("hunks", []) for n in hk["removed"]
+               if bf and bf.get("path") == old_path and bf.get("line", 0) <= n <= (bf.get("end_line") or 0)]
+    if not (added or removed):
+        return None
+    return {"added": len(added), "removed": len(removed), "added_lines": added, "removed_lines": removed}
 
 
 def _list_renames(scene: Scene) -> dict[str, str]:
@@ -204,15 +252,30 @@ def _sum_box(el: Element) -> dict | None:
     return out
 
 
-def _describe_fact(el: Element, rec: dict, b: Element | None, h: Element | None) -> dict:
+def _compare_edge(key: EdgeKey, meta: dict, refs: Mapping[str, list | bool]) -> dict | None:
+    """What the change did to an edge, from the references on each side (``refs``: by side, the
+    references there, False where that side has no such edge): added, removed, or changed when
+    the number of references differs; None when the same."""
+    b, h = refs["base"], refs["head"]
+    nb = sum(r["count"] for r in b) if b is not False else 0
+    nh = sum(r["count"] for r in h) if h is not False else 0
+    if b is False:
+        rec = {"status": "added", "base": 0, "head": nh}
+    elif h is False:
+        rec = {"status": "removed", "base": nb, "head": 0}
+    elif nb != nh:
+        rec = {"status": "changed", "base": nb, "head": nh}
+    else:
+        return None
+    return rec | {"fact": _describe_fact(key, meta, rec, b if rec["status"] == "removed" else h)}
+
+
+def _describe_fact(key: EdgeKey, meta: dict, rec: dict, refs: list | bool) -> dict:
     """A changed edge of a change for a tooltip or details panel, with a link to where it changed."""
-    side = b if rec["status"] == "removed" else h
-    refs = vocabulary.read_references(side) if side else []
     first = refs[0] if refs else {}
     path = first.get("path")
     line = first.get("line")
-    key = el.key
-    links = Links(el.meta.get("change") or {})
+    links = Links(meta.get("change") or {})
     return {"fact": key.format(), "status": rec["status"], "kind": key.kind, "subkind": key.subkind, "src": key.src, "dst": key.dst,
             "base": rec.get("base", 0), "head": rec.get("head", 0), "path": path, "line": line,
             "link": links.diff(path, line, "base" if rec["status"] == "removed" else "head") if path else None}

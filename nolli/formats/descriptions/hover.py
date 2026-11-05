@@ -6,12 +6,14 @@ It computes the ``hover`` overlay from the facts in the model a picture was draw
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from functools import cached_property
 
 from nolli.formats.descriptions import label, prose
 from nolli.formats.descriptions import names as names_lib
 from nolli.model import EdgeKey, address, metamodel, vocabulary
-from nolli.model.scene import Element, Scene
+from nolli.model.scene import Element, Overlay, Scene
 
 
 class Source:
@@ -38,11 +40,18 @@ class Source:
     def element(self, x: str) -> Element:
         return self.scene.find_element(x)
 
+    @cached_property
+    def files(self) -> Mapping[str, dict]:
+        return vocabulary.read_all_files(self.scene)
+
+    @cached_property
+    def symbols(self) -> Mapping[str, dict]:
+        return vocabulary.read_all_symbols(self.scene)
+
     def attrs(self, x: str) -> dict:
         a = self._attrs.get(x)
         if a is None:
-            el = self.element(x)
-            a = self._attrs[x] = {**vocabulary.read_file(el), **vocabulary.read_symbols(el), **names_lib.read_api(el)}
+            a = self._attrs[x] = {**self.files.get(x, {}), **self.symbols.get(x, {}), **names_lib.read_api(self.element(x))}
         return a
 
     def name(self, x: str) -> str:
@@ -66,8 +75,9 @@ class Source:
         return x
 
     def list_relations(self):
+        references = vocabulary.read_all_references(self.scene)
         for e in self.model.list_edges():
-            yield e, sum(r["count"] for r in vocabulary.read_references(self.element(e)))
+            yield e, sum(r["count"] for r in references.get(e, ()))
 
 @dataclass
 class NodeView:
@@ -316,24 +326,24 @@ class Dependencies:
         for r, n in m.list_relations():
             if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or not m.has(r.dst) or not m.has(r.src):
                 continue
-            d, s = ctx.node(r.dst), ctx.node(r.src)
-            if d.kind == "package" and r.kind == metamodel.USE:
+            dk = m.kind(r.dst)
+            if dk == "package" and r.kind == metamodel.USE:
                 for b in boxes(r.src):
-                    self.ext[b][d.name] += n
-            elif d.kind == "env" and r.kind == metamodel.USE:
+                    self.ext[b][m.name(r.dst)] += n
+            elif dk == "env" and r.kind == metamodel.USE:
                 for b in boxes(r.src):
-                    self.env[b].add(d.name)
-            elif d.kind == "endpoint":
+                    self.env[b].add(m.name(r.dst))
+            elif dk == "endpoint":
                 target = self.serves if r.kind == metamodel.PROVIDE else self.calls if r.kind == metamodel.USE else None
                 if target is not None:
                     for b in boxes(r.src):
-                        target[b].add(d.id)
-            elif d.kind in ("service", "image") and r.kind == metamodel.ALLOCATE:
+                        target[b].add(r.dst)
+            elif dk in ("service", "image") and r.kind == metamodel.ALLOCATE:
                 for b in boxes(r.src):
-                    self.deployed[b].add(d.name.removesuffix("/Dockerfile"))
-            elif s.kind in ("service", "image") and r.subkind == "entrypoint":
+                    self.deployed[b].add(m.name(r.dst).removesuffix("/Dockerfile"))
+            elif m.kind(r.src) in ("service", "image") and r.subkind == "entrypoint":
                 for b in boxes(r.dst):
-                    self.deployed[b].add(s.name.removesuffix("/Dockerfile"))
+                    self.deployed[b].add(m.name(r.src).removesuffix("/Dockerfile"))
 
     def lines(self, ctx: Ctx, x: str) -> list[str]:
         out = []
@@ -463,7 +473,7 @@ def _make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
     return ctx, Dependencies(ctx, set(scene.model.kinds))
 
 
-class Hover:
+class Hover(Overlay):
     """The ``hover`` overlay: ``{"text": ...}`` for each drawn box and edge, a description in
     Markdown (see ``prose``), one paragraph per sentence, with code spans for the data in it
     ("`api-mock` references `1 name` in `lib/`") and a quoted paragraph for what the code says

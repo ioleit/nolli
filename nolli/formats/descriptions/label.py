@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from nolli.formats.descriptions import names
 from nolli.model import address, vocabulary
-from nolli.model.scene import Element
+from nolli.model.scene import Element, Overlay
 
 SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "function": "f"}  # metamodel.SYMBOL_KINDS
 VERB_ICON = {"WEBSOCKET": "WS", "DELETE": "DEL", "OPTIONS": "OPT"}
@@ -71,7 +71,7 @@ def format_prose(el: Element, drawn: Element | None = None) -> str:
     return " ".join(icons + ([name] if name else []))
 
 
-class Label:
+class Label(Overlay):
     """The ``label`` overlay: how the picture names a drawn box. Zero or more small icons
     (``icons``) say what it is: ``D`` directory, ``m`` module, the language's symbol icons
     (``C`` class, ``I`` interface, ``T`` type, ``E`` enum), ``svc``/``img`` deployment, ``API``,

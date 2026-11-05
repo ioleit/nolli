@@ -7,7 +7,7 @@ import re
 from collections import defaultdict
 
 from nolli.model import address
-from nolli.model.scene import Element, Scene, StoredMaps
+from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 from nolli.review import changes
 from nolli.review.reading import Reader
 from nolli.store.maps import MapStore
@@ -169,7 +169,7 @@ def _keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) 
     return verdicts
 
 
-class Verdicts:
+class Verdicts(Overlay):
     """On a change's node: the verdicts that start there (on the node, on its own code, or on an
     edge from it), as kept. On a drawn box or edge: the verdicts that land on it, from what it
     and what it holds stand for (``land``), and the worst of them. Any projection of the change
