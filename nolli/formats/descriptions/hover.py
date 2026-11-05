@@ -12,7 +12,7 @@ from functools import cached_property
 
 from nolli.formats.descriptions import label, prose
 from nolli.formats.descriptions import names as names_lib
-from nolli.model import EdgeKey, address, metamodel, vocabulary
+from nolli.model import EdgeKey, Key, address, metamodel, vocabulary
 from nolli.model.scene import Element, Overlay, Scene
 
 
@@ -302,7 +302,7 @@ def _size(ctx: Ctx, x: str) -> str | None:
 class Dependencies:
     """What each drawn box uses outside the picture, from the facts (not the badges): the
     external packages, environment variables, endpoints and deployment its code touches,
-    collected once per scene for every drawn box."""
+    collected once per picture for every drawn box."""
 
     def __init__(self, ctx: Ctx, drawn: set[str]):
         m = ctx.g
@@ -465,7 +465,7 @@ class EdgeFacts:
 
 
 def _make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
-    """What every description of one projected scene shares, made once (``scene.memo``)."""
+    """What every description of one projected scene shares."""
     src = scene.sources["source"]
     meta = scene.model.meta.get("projection", {})
     ctx = Ctx(Source(src), scene, set(meta.get("expanded", [])), set(meta.get("hidden_nodes", [])),
@@ -491,12 +491,18 @@ class Hover(Overlay):
     name = "hover"
 
     def compute(self, el: Element) -> dict | None:
-        if "source" not in el.scene.sources:
-            return None
-        ctx, deps = el.scene.memo(_make_ctx)
-        if el.is_edge:
-            if el.kind == "contain":
-                return None
-            return {"text": _edge_info(ctx, EdgeFacts(el.key, el.get("projection") or {}))}
-        used_by = (el.get("projection") or {}).get("used_by", 0)
-        return {"text": _node_info(ctx, deps, el.key, used_by)}
+        return el.scene.read_all(self.name).get(el.key)  # described as a whole (compute_all)
+
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        """Every box and edge of a picture described, from one reading of what it was drawn from."""
+        if "source" not in scene.sources:
+            return {}
+        ctx, deps = _make_ctx(scene)
+        out: dict[Key, dict] = {}
+        for x in scene.model.kinds:
+            p = scene.find_element(x).get("projection") or {}
+            out[x] = {"text": _node_info(ctx, deps, x, p.get("used_by", 0))}
+        for e in scene.model.list_edges():
+            p = scene.find_element(e).get("projection") or {}
+            out[e] = {"text": _edge_info(ctx, EdgeFacts(e, p))}
+        return out

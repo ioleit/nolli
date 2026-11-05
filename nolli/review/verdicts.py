@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from collections.abc import Mapping
 
-from nolli.model import address
+from nolli.model import Key, address
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 from nolli.review import changes
 from nolli.review.reading import Reader
@@ -126,7 +127,7 @@ def parse_verdicts(values) -> list[dict]:
 def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
     """Each verdict with what the viewer says about it: ``edge``, ``reveal`` (what to unfold
     to see its target) and ``label`` (how the diagram names it)."""
-    g = scene.memo(Reader)
+    g = Reader(scene)
     out = []
     for v in verdicts:
         ends = v.get("ends") or []
@@ -188,17 +189,22 @@ class Verdicts(Overlay):
         return self.stored.load_about(scene.model.key)
 
     def group(self, scene: Scene) -> dict[str, list[dict]]:
-        """A change's verdicts by the node their first end belongs to (once per scene)."""
+        """A change's verdicts by the node their first end belongs to."""
         out: dict[str, list[dict]] = defaultdict(list)
         for v in self.load(scene):
             if v.get("ends"):
                 out[address.owner(v["ends"][0])].append(v)
         return dict(out)
 
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        """On the change itself: the verdicts starting at each node, all at once."""
+        if "source" in scene.sources:
+            return Overlay.compute_all(self, scene)
+        return {x: {"starting": vs} for x, vs in self.group(scene).items()}
+
     def compute(self, el: Element) -> dict | None:
         if "source" not in el.scene.sources:
-            vs = [] if el.is_edge else el.scene.memo(self.group).get(el.key, [])
-            return {"starting": vs} if vs else None
+            return el.scene.read_all(self.name).get(el.key)
         if el.is_edge and el.kind == "contain":
             return None
         roots = [el.src, el.dst] if el.is_edge else [el.parent or el] if el.kind == "anchor" else [el]

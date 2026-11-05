@@ -203,7 +203,7 @@ def test_utilities_by_incoming_edges(repo: Path):
 
     scene = open_dir(repo)
     g = Graph(scene)
-    rolled = _cut(scene, ProjectionSpec(utilities=0)).rolled
+    rolled = _cut(Graph(scene), ProjectionSpec(utilities=0)).rolled
     before = list(rolled.edges)
     utilities = utility_badges(g, rolled, min_in=0)  # every used box outside a group
     targets = {e.dst for e in before if e.kind == USE}
@@ -211,7 +211,7 @@ def test_utilities_by_incoming_edges(repo: Path):
     assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
     src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
     assert any(k.startswith("util:") for k in rolled.annotations[src])
-    rolled = _cut(scene, ProjectionSpec(utilities=0)).rolled
+    rolled = _cut(Graph(scene), ProjectionSpec(utilities=0)).rolled
     assert utility_badges(g, rolled, min_in=1) == set()  # nothing has more than one
 
 

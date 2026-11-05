@@ -7,7 +7,7 @@ whole in the change's totals and its links on GitHub.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 
 from nolli.model import EdgeKey, Key, Model, address, metamodel, vocabulary
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
@@ -31,31 +31,24 @@ class Change(Overlay):
 
     def __init__(self, content: StoredMaps) -> None:
         self.content = content
-        self._loaded: dict[str, Mapping[Key, dict]] = {}
-
-    def load_content(self, model_key: str) -> Mapping[Key, dict]:
-        """git's per-file content of a change, loaded once and kept as long as this overlay."""
-        if model_key not in self._loaded:
-            self._loaded[model_key] = self.content.load(model_key)
-        return self._loaded[model_key]
 
     def compute(self, el: Element) -> dict | None:
-        if is_change(el.scene):
-            return self.compare(el)
+        if is_change(el.scene):  # compared as a whole (compute_all)
+            return el.scene.read_all(self.name).get(el.key)
         if "source" in el.scene.sources:  # a picture: what changed underneath, from what it stands for
             return _sum_edge(el) if el.is_edge else _sum_box(el)
         return None
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """On a change: its nodes one by one, its edges all at once from both sides' references."""
+        """On a change: every node and edge compared between the two sides' maps."""
         if not is_change(scene):
             return Overlay.compute_all(self, scene)
         out: dict[Key, dict] = {}
         sides = {role: _Side(scene.sources[role]) for role in ("base", "head")}
-        content = self.load_content(scene.model.key)
-        renames = scene.memo(_list_renames)
+        content = self.content.load(scene.model.key)
+        renames, by_old_path = _list_renames(content), _index_old_paths(content)
         for x, kind in scene.model.kinds.items():
-            rec = _compare_node(x, kind, sides, content, renames, scene.memo(_index_old_paths))
+            rec = _compare_node(x, kind, sides, content, renames, by_old_path)
             if rec is not None:
                 out[x] = rec
         for e in scene.model.edges:
@@ -63,15 +56,6 @@ class Change(Overlay):
             if rec is not None:
                 out[e] = rec
         return out
-
-    # -- on a change's own elements --------------------------------------------------
-
-    def compare(self, el: Element) -> dict | None:
-        sides = {role: el.scene.memo(_Side.of(role)) for role in ("base", "head")}
-        if el.is_edge:
-            return _compare_edge(el.key, el.meta, {role: s.model.has(el.key) and s.references.get(el.key, []) for role, s in sides.items()})
-        return _compare_node(el.key, el.kind, sides, self.load_content(el.model_key), el.scene.memo(_list_renames),
-                             el.scene.memo(_index_old_paths))
 
 
 class _Side:
@@ -82,24 +66,9 @@ class _Side:
         self.references = vocabulary.read_all_references(scene)
         self.symbols = vocabulary.read_all_symbols(scene)
 
-    @staticmethod
-    def of(role: str) -> Callable[[Scene], _Side]:
-        """The side ``role`` of a change scene, read once per scene (``scene.memo``)."""
-        return _read_base if role == "base" else _read_head
 
-
-def _read_base(scene: Scene) -> _Side:
-    return _Side(scene.sources["base"])
-
-
-def _read_head(scene: Scene) -> _Side:
-    return _Side(scene.sources["head"])
-
-
-def _index_old_paths(scene: Scene) -> dict[str, dict]:
+def _index_old_paths(content: Mapping[Key, dict]) -> dict[str, dict]:
     """git's per-file content of a renamed file, by its old path."""
-    change = scene.overlays.get("change")
-    content = change.load_content(scene.model.key) if isinstance(change, Change) else {}
     return {v["old_path"]: v for k, v in content.items() if isinstance(k, str) and v.get("old_path")}
 
 
@@ -154,10 +123,8 @@ def _list_class_lines(x: str, bf: Mapping, hf: Mapping, content: Mapping[Key, di
     return {"added": len(added), "removed": len(removed), "added_lines": added, "removed_lines": removed}
 
 
-def _list_renames(scene: Scene) -> dict[str, str]:
-    """old file -> its new path, for the files git saw renamed."""
-    change = scene.overlays.get("change")
-    content = change.load_content(scene.model.key) if isinstance(change, Change) else {}
+def _list_renames(content: Mapping[Key, dict]) -> dict[str, str]:
+    """old file -> its new path, for the files git saw renamed (git's per-file content)."""
     return {address.repo(v["old_path"]): address.path_of(k) for k, v in content.items() if isinstance(k, str) and v.get("old_path")}
 
 

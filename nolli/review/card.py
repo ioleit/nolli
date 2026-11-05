@@ -29,18 +29,20 @@ def _index_items(scene: Scene) -> dict[Key, dict]:
     return {k: {"items": sorted(v, key=lambda i: int(i[1:])), "about": v} for k, v in about.items()}
 
 
-def _place_items(el: Element) -> list[str]:
-    """Which numbered changes a drawn box or edge shows. An item about facts lands on the edges
-    carrying those facts; an item about nodes (or facts that fell inside one box, or became a
-    badge) on the box that stands for the first of them that is drawn."""
-    src = el.sources.get("source", ())
-    if el.is_edge:
-        return sorted({i for s in src for i in (s.get("review") or {}).get("about", {})}, key=lambda i: int(i[1:]))
+def _place_edge_items(el: Element, about: Mapping[Key, dict]) -> list[str]:
+    """Which numbered changes a drawn edge shows: those about the facts it carries (``about``:
+    the ``review`` overlay of the change drawn)."""
+    return sorted({i for s in el.sources.get("source", ()) for i in (about.get(s.key) or {}).get("about", {})}, key=lambda i: int(i[1:]))
+
+
+def _place_box_items(el: Element, about: Mapping[Key, dict], on_edges: Mapping[Key, list[str]]) -> list[str]:
+    """Which numbered changes a drawn box shows: those about nodes it stands for, and facts that
+    fell inside it or became a badge, unless an edge around it carries them (``on_edges``)."""
     near = [*verdicts_lib.iter_boxes(el), *el.iter_ancestors()]  # a line lifted to a box around it carries what is inside too
-    carried = {i for b in near for e in [*b.out_edges, *b.in_edges] for i in (e.get("review") or {}).get("items", [])}
+    carried = {i for b in near for e in [*b.out_edges, *b.in_edges] for i in on_edges.get(e.key, ())}
     out = set()
-    for s in src:
-        for i, it in (s.get("review") or {}).get("about", {}).items():
+    for s in el.sources.get("source", ()):
+        for i, it in (about.get(s.key) or {}).get("about", {}).items():
             if it["category"] == "dependency" and i in carried:
                 continue
             first = next((f for f in it["focus"] if verdicts_lib.find_box(el.scene, f) is not None), None)
@@ -121,24 +123,30 @@ class Review(Overlay):
 
     name = "review"
 
-    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        return _index_items(scene) if "source" not in scene.sources else Overlay.compute_all(self, scene)
-
     def compute(self, el: Element) -> dict | None:
-        if el.is_edge and el.kind == "contain":
-            return None
-        if "change" not in el.meta:
-            return None
-        if "source" not in el.scene.sources:  # the change itself: which numbered changes are about it
-            return el.scene.read_all(self.name).get(el.key)
-        items = _place_items(el)
-        v = el.get("verdicts") or {}
-        own, inside = v.get("own", []), v.get("inside", [])
-        ed = el.get("change")
-        if el.is_edge:
+        return el.scene.read_all(self.name).get(el.key)  # answered as a whole (compute_all)
+
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        """On the change itself, which numbered changes each node and edge is about. On a picture
+        of it, what each drawn edge carries first, then what each box shows, and the cards; it
+        reads the picture's verdicts and changes whole."""
+        if "change" not in scene.model.meta:
+            return {}
+        if "source" not in scene.sources:
+            return _index_items(scene)
+        about = scene.sources["source"].read_all(self.name)
+        verdicts, changed = scene.read_all("verdicts"), scene.read_all("change")
+        out: dict[Key, dict] = {}
+        on_edges = {e: _place_edge_items(scene.find_element(e), about) for e in scene.model.list_edges()}
+        for e, items in on_edges.items():
+            el = scene.find_element(e)
+            v = verdicts.get(e) or {}
             names = {s.key.dst: names_lib.format_name(s.dst) for s in el.sources.get("source", ()) if s.is_edge}
-            card = _describe_edge(ed, own, inside, len(items), names)
-        else:
-            kind = el.kind if el.kind != "anchor" else "box"
-            card = _describe_box(ed, own, inside, len(items), kind.replace("_", " "))
-        return {"items": items, "card": card}
+            out[e] = {"items": items, "card": _describe_edge(changed.get(e), v.get("own", []), v.get("inside", []), len(items), names)}
+        for x, kind in scene.model.kinds.items():
+            el = scene.find_element(x)
+            items = _place_box_items(el, about, on_edges)
+            v = verdicts.get(x) or {}
+            kind = kind if kind != "anchor" else "box"
+            out[x] = {"items": items, "card": _describe_box(changed.get(x), v.get("own", []), v.get("inside", []), len(items), kind.replace("_", " "))}
+        return out

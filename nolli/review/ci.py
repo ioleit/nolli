@@ -136,7 +136,7 @@ def _what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     from nolli.review import changes
     from nolli.review.reading import Reader
 
-    g = scene.memo(Reader)
+    g = Reader(scene)
     ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]
     st = NEW.get(status.get(" ".join(ids), ""), "")
     def name(x: str) -> str:

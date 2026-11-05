@@ -139,10 +139,6 @@ def list_changes(scene: Scene) -> list[dict]:
     module once, with its classes, not once per class), then dependencies between modules,
     then edited files. Each item names the nodes and facts it is about, so a verdict on it can
     be shown on whatever box or edge contains them."""
-    return scene.memo(_list_changes)
-
-
-def _list_changes(scene: Scene) -> list[dict]:
     g = Reader(scene)
     links = Links(scene.model.meta.get("change") or {})
     comps, deps, content = [], [], []

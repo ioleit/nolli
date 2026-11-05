@@ -90,12 +90,7 @@ def read_all_files(scene: Scene) -> Mapping[str, FileFacts]:
 
 def read_all_references(scene: Scene) -> Mapping[EdgeKey, list[Reference]]:
     """The references every edge of a scene stands for, by edge (edges no extractor found
-    references for are left out), as ``read_references`` reads them one by one; merged once
-    per scene from the extractors' maps."""
-    return scene.memo(_merge_references)
-
-
-def _merge_references(scene: Scene) -> dict[EdgeKey, list[Reference]]:
+    references for are left out), as ``read_references`` reads them one by one."""
     out: dict[EdgeKey, list[Reference]] = {}
     for name in scene.model.meta.get("overlays") or []:
         for k, v in scene.read_all(name).items():

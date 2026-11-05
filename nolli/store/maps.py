@@ -68,19 +68,10 @@ class StoredOverlay(Overlay):
 
     def __init__(self, name: str, stored: StoredMaps, follow: bool = True) -> None:
         self.name, self.stored, self.follow = name, stored, follow
-        self._loaded: dict[str, Mapping[Key, dict]] = {}
-
-    def load(self, model_key: str) -> Mapping[Key, dict]:
-        """The model's map, loaded once, on first use, and kept as long as this overlay: an
-        overlay made for a scene sees the map as it was then."""
-        loaded = self._loaded.get(model_key)
-        if loaded is None:
-            loaded = self._loaded[model_key] = self.stored.load(model_key)
-        return loaded
 
     def compute(self, element: Element) -> dict | None:
         """What is stored for the element, else (``follow``) for its namesake in a source."""
-        own = self.load(element.model_key).get(element.key)
+        own = self.stored.load(element.model_key).get(element.key)
         if own is not None or not self.follow:
             return own
         same = element.find_same()
@@ -90,7 +81,7 @@ class StoredOverlay(Overlay):
         """The model's map; with ``follow``, filled in from the sources' maps for the elements
         it has nothing for, as ``compute`` does one by one (head's word, else base's, else the
         source's)."""
-        own = self.load(scene.model.key)
+        own = self.stored.load(scene.model.key)
         if not self.follow or not scene.sources:
             return own
         out = dict(own)

@@ -90,14 +90,13 @@ def _find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[st
     return set(unfold_lib.find_default_cut(g, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
 
 
-def _cut(scene: Scene, st: ProjectionSpec) -> Cut:
+def _cut(g: Reading, st: ProjectionSpec) -> Cut:
     """``expanded`` is normalised to the containers actually reached, so folding a box also
     folds everything inside it."""
-    g = scene.memo(Reading)
     hidden = _hide_for(g, st.roles, st.side)
     shown_groups = set(st.groups)
     if st.unfold is not None:
-        expanded = {x for x in g.nodes if g.children(x) and st.unfold(scene.find_element(x))}
+        expanded = {x for x in g.nodes if g.children(x) and st.unfold(g.scene.find_element(x))}
     else:
         expanded = _find_preset_cut(g, st, hidden) if st.expanded is None else {x for x in st.expanded if g.has(x)}
     expanded = {x for x in expanded if not (_is_root_group(g, x) and x not in shown_groups)}  # filtered out: stays folded
@@ -156,8 +155,8 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     """The folded model: its nodes the boxes drawn, each keeping its address and referring to
     what it stands for, its edges the lines drawn, each referring to the edges it bundles; and
     the projection's overlay, what it decided about them."""
-    g = scene.memo(Reading)
-    c = _cut(scene, st)
+    g = Reading(scene)
+    c = _cut(g, st)
     expanded, hidden, visible, rolled, utilities = c.expanded, c.hidden, c.visible, c.rolled, c.utilities
     shown_groups = set(st.groups)
     # a root group is drawn when the filter shows it and it has something to unfold (rollup

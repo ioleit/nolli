@@ -6,9 +6,9 @@ overlay; this module holds how overlays are asked, not what any one overlay know
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from functools import cached_property
-from typing import Any, Protocol
+from typing import Protocol
 
 from nolli.model import EdgeKey, Key, Model
 
@@ -99,7 +99,7 @@ class Element:
 
     @property
     def scene(self) -> Scene:
-        """The scene, for what an overlay computes once for all of its elements (``scene.memo``)."""
+        """The scene, for an overlay that answers for all of its elements at once (``scene.read_all``)."""
         return self._scene
 
     # -- what it stands for ----------------------------------------------------
@@ -169,8 +169,10 @@ class Scene:
     """A model, the overlays that apply to it, and the scenes its references point into
     (``sources``, by role).
 
-    It hands out elements and keeps what overlays answered, once per scene and element; an
-    overlay asking for itself about the same element raises ``OverlayCycle`` rather than loop."""
+    It hands out elements. An element asks an overlay through it (``get``); once an overlay
+    has answered for the whole model (``read_all``), the scene keeps that and answers elements
+    from it. An overlay asking for itself about the same element raises ``OverlayCycle``
+    rather than loop."""
 
     def __init__(self, model: Model, overlays: Iterable[Overlay], sources: Mapping[str, Scene] | None = None) -> None:
         self.model = model
@@ -179,9 +181,9 @@ class Scene:
             self.overlays[o.name] = o
         self.sources = dict(sources or {})
         self._elements: dict[Key, Element] = {}
-        self._cache: dict[tuple[str, Key], dict | None] = {}
-        self._busy: set[tuple[str, Key]] = set()
-        self._memo: dict[Any, Any] = {}
+        self._whole: dict[str, Mapping[Key, dict]] = {}  # what an overlay said about the whole model, by overlay name
+        self._holders: dict[str, dict[Key, Key]] = {}  # by role: a source's key -> the element here that refers to it
+        self._busy: set[tuple[str, Key]] = set()  # (overlay, key) being computed, to catch a cycle
 
     def with_overlays(self, *more: Overlay) -> Scene:
         """The same model and sources with more overlays (one of the same name replaces it)."""
@@ -216,9 +218,9 @@ class Scene:
     def find_holder(self, key: Key, role: str = "source") -> Key | None:
         """The key of the element that refers to ``key`` of its ``role`` source (the innermost,
         when several do)."""
-        held = self._memo.get(("holders", role))
+        held = self._holders.get(role)
         if held is None:
-            held = self._memo[("holders", role)] = {}
+            held = self._holders[role] = {}
             for k, ks in (self.model.refs.get(role) or {}).items():
                 for x in ks:
                     held[x] = k
@@ -226,40 +228,28 @@ class Scene:
 
     def read_all(self, overlay: str) -> Mapping[Key, dict]:
         """Everything ``overlay`` says about this scene's elements, by key ({} if the scene has
-        no such overlay); computed once per scene, as the answers about one element are."""
-        k = ("all", overlay)
-        got = self._memo.get(k)
+        no such overlay). Computed once per scene; from then on elements are answered from it."""
+        got = self._whole.get(overlay)
         if got is None:
             o = self.overlays.get(overlay)
-            got = self._memo[k] = {} if o is None else o.compute_all(self)
+            got = self._whole[overlay] = {} if o is None else o.compute_all(self)
         return got
 
-    def memo(self, fn: Callable[[Scene], Any]) -> Any:
-        """``fn(scene)``, computed once per scene: for an overlay that needs all of a scene's
-        elements at once (the numbered changes, where verdicts land)."""
-        if fn not in self._memo:
-            self._memo[fn] = fn(self)
-        return self._memo[fn]
-
     def _compute(self, element: Element, overlay: str) -> dict | None:
-        k = (overlay, element.key)
-        if k in self._cache:
-            return self._cache[k]
-        whole = self._memo.get(("all", overlay))
-        if whole is not None:  # the overlay has answered for the whole model: the same answer
+        whole = self._whole.get(overlay)
+        if whole is not None:
             return whole.get(element.key)
-        if k in self._busy:
-            raise OverlayCycle(f"{overlay} needs itself for {element.id}")
         o = self.overlays.get(overlay)
         if o is None:
             return None
+        k = (overlay, element.key)
+        if k in self._busy:
+            raise OverlayCycle(f"{overlay} needs itself for {element.id}")
         self._busy.add(k)
         try:
-            value = o.compute(element)
+            return o.compute(element)
         finally:
             self._busy.discard(k)
-        self._cache[k] = value
-        return value
 
 
 # --- overlays every scene has ------------------------------------------------------------

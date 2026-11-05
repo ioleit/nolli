@@ -48,9 +48,9 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
     anchors = rollup.init_anchor_dirs(g, hidden)
     expanded: set[str] = {e for e in always_expand if g.has(e)}
     diff = g.is_change
-    phases = [_score_changes(g.scene, hidden), lca] if diff else [lca]
     # in a review, boxes where nothing changed are faded and cost half a box of attention
-    changed = _index_changes(g.scene) if diff else {}
+    changed = _index_changes(g) if diff else {}
+    phases = [_score_changes(g, hidden, changed), lca] if diff else [lca]
     weight = (lambda x: 1.0 if x in changed or address.is_own_code(x) else 0.5) if diff else (lambda x: 1.0)
 
     def cost_of_unfolding(v: str) -> float:
@@ -84,14 +84,9 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
 
 # ---------- unfolding towards a change ----------
 
-def _index_changes(scene: Scene) -> dict[str, dict]:
+def _index_changes(g: Reading) -> dict[str, dict]:
     """Per node of a change, the changes in its subtree (itself included): changed lines and
     files (from file records, so class lines are not counted twice), nodes added and removed."""
-    return scene.memo(_index_changes)
-
-
-def _index_changes(scene: Scene) -> dict[str, dict]:
-    g = scene.memo(Reading)
     idx: dict[str, dict] = defaultdict(lambda: {"added": 0, "removed": 0, "files": 0, "new": 0, "gone": 0})
     for x in g.nodes:
         d = g.diff(x)
@@ -113,11 +108,10 @@ def _index_changes(scene: Scene) -> dict[str, dict]:
     return dict(idx)
 
 
-def _score_changes(scene: Scene, hidden: set[str]) -> dict[str, float]:
+def _score_changes(g: Reading, hidden: set[str], idx: dict[str, dict]) -> dict[str, float]:
     """Per container, how much unfolding it shows about the change: changed relations that
-    run between its children (weighted), plus children that contain changes."""
-    g = scene.memo(Reading)
-    idx = _index_changes(scene)
+    run between its children (weighted), plus children that contain changes
+    (``idx``: ``_index_changes``)."""
     score: dict[str, float] = defaultdict(float)
     chain_cache: dict[str, list[str] | None] = {}
 
