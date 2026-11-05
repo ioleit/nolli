@@ -1,8 +1,6 @@
-"""What a model is the model of: its key. A repository at one commit (``Commit``), or the
-change between two commits of one repository (``ChangeKey``). Stores keep models by key
-(``nolli/store/``), sources fetch the commits a key names (``nolli/sources/``), and a
-model's ``key`` (``Model.key``) is its key as text, which stored overlays are kept by."""
+"""The keys that identify a model."""
 
+#? Can this move into model/ ?
 from __future__ import annotations
 
 import re
@@ -85,9 +83,11 @@ class ChangeKey:
         return f"{self.repo.url}@{self.base}..{self.head}"
 
 
+#? Seems like Commit should be called CommitKey.
 ModelKey = Commit | ChangeKey
 
 
+#? Seems like ModelKey can be a real base class that has as_dict and from_dict classmethod, and then CommitKey and ChangeKey can be subclasses. Then the dump_key and parse_key functions can be methods of ModelKey.
 def dump_key(key: ModelKey) -> dict:
     """The key as JSON (``key.json``)."""
     return {"repo": key.repo.url, "head": key.head, "base": key.base} if isinstance(key, ChangeKey) else \

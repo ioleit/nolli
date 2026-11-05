@@ -1,14 +1,4 @@
-"""A GitHub pull request as a change for ``nolli view``: the layer on top of plain git
-(``spec.py``) that knows one host.
-
-``nolli view <url>`` (https://github.com/<owner>/<repo>/pull/<n>) or ``nolli view '#<n>'``
-(on the repository's GitHub remote) asks GitHub's REST API for the PR's title,
-description, base and head, fetches the head (``pull/<n>/head``) and the base branch into
-the clone, and gives the change GitHub's "Files changed" tab shows: from where the head
-left the base branch to the head. The fetch stores no branch or tag, only objects (and
-FETCH_HEAD). A token, if one is needed (a private repository, or more than 60 requests an
-hour), comes from $GH_TOKEN or $GITHUB_TOKEN, else from the gh CLI if it is logged in.
-"""
+"""Utils for GitHub repos and PRs"""
 
 from __future__ import annotations
 

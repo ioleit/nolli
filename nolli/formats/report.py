@@ -1,6 +1,4 @@
-"""What a model is, in numbers (``report.json``): its meta, how many nodes and edges of each
-kind, the default picture's size, the unresolved references, and for a change how many
-things changed."""
+"""Summarizes a scene in JSON. Might be deprecated."""
 
 from __future__ import annotations
 

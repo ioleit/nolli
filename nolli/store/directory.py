@@ -1,5 +1,4 @@
-"""nolli's own store: models in directories (``DirectoryStore``), and their maps beside them."""
-
+"""A storage that keeps models and changes in directories with JSON files."""
 from __future__ import annotations
 
 import json

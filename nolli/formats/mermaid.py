@@ -1,13 +1,4 @@
-"""Mermaid of a scene: the second renderer, for READMEs, PR comments and agents.
-
-It draws a projected scene (``nolli/transformations/projection.py``) as the viewer draws it: the same
-boxes, containers and edges, named by the ``label`` overlay and marked by ``change``,
-with Mermaid's own layout, top to bottom. Only what plain Mermaid can say, so that the text
-renders anywhere (GitHub included) and stays readable as text: no click handlers, no
-layout engines beyond the default, styles through ``classDef`` and ``linkStyle`` only.
-Where the viewer pins utilities to the bottom, an invisible link (``~~~``) from a box that
-uses one keeps it below that box.
-"""
+"""Exports a scene as Mermaid."""
 
 from __future__ import annotations
 

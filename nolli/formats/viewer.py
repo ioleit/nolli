@@ -1,10 +1,4 @@
-"""A projected scene as JSON, as the viewer reads it (``/api/scene``): every drawn box and
-edge with the properties every overlay gives it, under the overlay's name (``projection``,
-``label``, ``hover``, ``change``, ``verdicts``, ``review``, and whatever else the scene has).
-The extractors' overlays (read by the others) are left out.
-Boxes come in drawing order, each naming its drawn parent; ids are stable across states
-(addresses, ``<id>#`` for a module's own code, ``kind|src|dst|subkind`` for edges), so a
-client can diff two scenes to animate the step between them."""
+"""Exports a scene as JSON for the Nolli viewer."""
 
 from __future__ import annotations
 
@@ -13,7 +7,7 @@ from nolli.model.scene import Element, Scene
 
 FORMAT = 1
 
-
+#? is this internal? can it start with _?
 def list_extracted(scene: Scene) -> set[str]:
     """The overlays the extractors wrote (each extracted model names its own), all the way down."""
     out, stack = {"facts"}, [scene]
@@ -24,6 +18,7 @@ def list_extracted(scene: Scene) -> set[str]:
     return out
 
 
+#? is this internal? can it start with _?
 def list_exported(scene: Scene) -> list[str]:
     """Every overlay but the extractors': they are read by the others, not shown as they are."""
     left_out = list_extracted(scene)

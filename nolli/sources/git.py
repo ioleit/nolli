@@ -1,5 +1,4 @@
-"""Plain git, the only place nolli runs it: reading commits, their files and the diff
-between two of them. Every call raises ``GitError`` with what git said."""
+"""Utilities to deal with plain git repositories and their changes."""
 
 from __future__ import annotations
 

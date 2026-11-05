@@ -16,6 +16,11 @@ The default branch is ``origin/HEAD`` if the clone has it, else ``main`` or ``ma
 (remote-tracking first). Only commits count: changes in the working tree are not seen.
 """
 
+
+#? This entire file looks like it can be merged into nolli.sources.git, 
+# ith the ChangeSpec class and the resolve() function. The rest is just a 
+# thin wrapper around git commands, which are already in nolli.sources.git.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -41,6 +46,7 @@ class ChangeSpec:
         return self.base is not None
 
 
+#? Can this be in "git"?
 def run_git(repo: Path, *args: str) -> str:
     """``git.run_git``, failing with a ChangeError: what the user named is not in the repository."""
     try:
@@ -49,6 +55,7 @@ def run_git(repo: Path, *args: str) -> str:
         raise ChangeError(str(exc)) from None
 
 
+#? Move to git
 def find_toplevel(path: Path) -> Path:
     """The root of the git working tree that ``path`` is in."""
     try:
@@ -57,13 +64,14 @@ def find_toplevel(path: Path) -> Path:
         raise ChangeError(f"{path} is not in a git repository") from None
 
 
+#? Move to git
 def find_commit(repo: Path, rev: str) -> str:
     try:
         return run_git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
     except ChangeError:
         raise ChangeError(f"no commit {rev!r} in {repo}") from None
 
-
+#? Move to git
 def default_branch(repo: Path) -> str | None:
     """The default branch as a revision (``origin/main``, ``main``, …), or None."""
     try:
@@ -80,14 +88,14 @@ def default_branch(repo: Path) -> str | None:
             continue
     return None
 
-
+#? Move to git
 def merge_base(repo: Path, a: str, b: str) -> str:
     out = run_git(repo, "merge-base", a, b).strip()
     if not out:
         raise ChangeError(f"{a} and {b} have no common ancestor; name both ends: nolli view <base>..<head>")
     return out
 
-
+#? Move to git
 def first_parent(repo: Path, sha: str) -> str | None:
     parents = run_git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
     return parents[0] if parents else None

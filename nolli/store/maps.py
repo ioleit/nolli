@@ -1,4 +1,4 @@
-"""The maps overlays keep in a store, and the overlay for anything kept as a map.
+"""Utitlies to store and retrieve overlays as maps.
 
 A store gives each overlay a handle restricted to the maps saved under the overlay's name
 (``MapStore.open_maps(name)``, a ``StoredMaps``, ``nolli/model/scene.py``): the overlay never sees the store itself. A
