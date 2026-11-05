@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..keys import ChangeKey, ModelKey
+from ..model.keys import ChangeKey, ModelKey
 from ..model.scene import Scene
 from ..sources import Sources
 from ..store import ModelStore

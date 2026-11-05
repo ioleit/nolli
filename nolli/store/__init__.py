@@ -1,4 +1,4 @@
-"""Where nolli keeps what it builds: models, by key (``nolli/keys.py``), and the maps
+"""Where nolli keeps what it builds: models, by key (``nolli/model/keys.py``), and the maps
 overlays keep for them (``maps.py``).
 
 ``ModelStore`` is the interface: a commit's model with the maps its extractors saved
@@ -20,8 +20,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from nolli.keys import ChangeKey, Commit, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
 from nolli.model import Key, Model
+from nolli.model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
 from nolli.store.maps import MapStore, MemoryMaps, StoredMaps, StoredOverlay  # noqa: F401
 
 FORMAT = 1  # of key.json and change.json
@@ -38,11 +38,11 @@ class ModelStore(MapStore, Protocol):
     def list_names(self) -> list[str]:
         """The names of the stored models this request may read, newest first."""
 
-    def load_model(self, key: Commit) -> Model | None:
+    def load_model(self, key: CommitKey) -> Model | None:
         """A commit's model, None if there is none (or of another format). Raises NotAllowed if
         this request may not read ``key.repo``."""
 
-    def save_model(self, key: Commit, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
+    def save_model(self, key: CommitKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         """Keep a commit's model and the maps its extractors made, replacing what was kept."""
 
     def load_change(self, key: ChangeKey) -> dict | None:

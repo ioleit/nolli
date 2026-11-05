@@ -14,7 +14,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Protocol
 
-from nolli.keys import NotAllowed, Repo  # noqa: F401 (part of the protocol)
+from nolli.model.keys import NotAllowed, Repo  # noqa: F401 (part of the protocol)
 from nolli.sources import git
 from nolli.sources.git import GitError
 

@@ -21,8 +21,8 @@ from typing import Any
 from nolli import extractors
 from nolli.extractors import Context, match
 from nolli.extractors.facts import Facts
-from nolli.keys import ChangeKey, Commit
 from nolli.model import Key, Model, address
+from nolli.model.keys import ChangeKey, CommitKey
 from nolli.progress import Progress, Quiet
 from nolli.sources import Sources, git
 from nolli.store import ModelStore
@@ -113,7 +113,7 @@ def load_maps(store: MapStore, m: Model) -> Maps:
     return {n: dict(store.open_maps(n).load(m.key)) for n in m.meta.get("overlays") or []}
 
 
-def fetch_commit_model(store: ModelStore, clone: Path, commit: Commit, *, run: Run = run_here,
+def fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = run_here,
                        progress: Progress | None = None, rebuild: bool = False) -> tuple[Model, Maps]:
     """The model of one commit and its extractors' maps: from the store, or extracted from
     ``clone`` (which has the commit)."""
@@ -126,7 +126,7 @@ def fetch_commit_model(store: ModelStore, clone: Path, commit: Commit, *, run: R
     return m, maps
 
 
-def fetch_whole_model(store: ModelStore, sources: Sources, commit: Commit, *, run: Run = run_here,
+def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *, run: Run = run_here,
                       progress: Progress | None = None, rebuild: bool = False) -> Model:
     """A repository at one commit, as the viewer shows a repository as a whole: kept in the store."""
     progress = progress or Quiet()

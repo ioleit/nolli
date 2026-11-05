@@ -1,6 +1,5 @@
 """The keys that identify a model."""
 
-#? Can this move into model/ ?
 from __future__ import annotations
 
 import re
@@ -27,8 +26,8 @@ class Repo:
         m = GITHUB_REMOTE.match(remote)
         return cls(f"{m.group(1)}/{m.group(2)}/{m.group(3)}") if m else cls(remote)
 
-    def make_commit(self, sha: str) -> Commit:
-        return Commit(self, sha)
+    def make_commit(self, sha: str) -> CommitKey:
+        return CommitKey(self, sha)
 
     def make_change(self, base: str, head: str) -> ChangeKey:
         return ChangeKey(self, base, head)
@@ -47,8 +46,31 @@ class Repo:
         return self.url.rstrip("/").split("/")[-1]
 
 
+class ModelKey:
+    """What a model is the model of: a repository at one commit (``CommitKey``) or the change
+    between two of its commits (``ChangeKey``)."""
+
+    repo: Repo
+
+    def format_name(self) -> str:
+        raise NotImplementedError
+
+    def format_key(self) -> str:
+        """The key as text: ``Model.key``, which stored overlays are kept by."""
+        raise NotImplementedError
+
+    def to_dict(self) -> dict:
+        """The key as JSON (``key.json``)."""
+        raise NotImplementedError
+
+    @classmethod
+    def from_dict(cls, d: dict) -> ModelKey:
+        repo = Repo(d["repo"])
+        return repo.make_change(d["base"], d["head"]) if d.get("base") else repo.make_commit(d["head"])
+
+
 @dataclass(frozen=True)
-class Commit:
+class CommitKey(ModelKey):
     """A repository at one commit."""
 
     repo: Repo
@@ -64,16 +86,19 @@ class Commit:
     def format_key(self) -> str:
         return f"{self.repo.url}@{self.sha}"
 
+    def to_dict(self) -> dict:
+        return {"repo": self.repo.url, "head": self.sha}
+
 
 @dataclass(frozen=True)
-class ChangeKey:
+class ChangeKey(ModelKey):
     """The change between two commits of one repository."""
 
     repo: Repo
     base: str  # full
     head: str  # full
 
-    def list_sides(self) -> tuple[Commit, Commit]:
+    def list_sides(self) -> tuple[CommitKey, CommitKey]:
         return self.repo.make_commit(self.base), self.repo.make_commit(self.head)
 
     def format_name(self) -> str:
@@ -82,18 +107,5 @@ class ChangeKey:
     def format_key(self) -> str:
         return f"{self.repo.url}@{self.base}..{self.head}"
 
-
-#? Seems like Commit should be called CommitKey.
-ModelKey = Commit | ChangeKey
-
-
-#? Seems like ModelKey can be a real base class that has as_dict and from_dict classmethod, and then CommitKey and ChangeKey can be subclasses. Then the dump_key and parse_key functions can be methods of ModelKey.
-def dump_key(key: ModelKey) -> dict:
-    """The key as JSON (``key.json``)."""
-    return {"repo": key.repo.url, "head": key.head, "base": key.base} if isinstance(key, ChangeKey) else \
-        {"repo": key.repo.url, "head": key.sha}
-
-
-def parse_key(d: dict) -> ModelKey:
-    repo = Repo(d["repo"])
-    return repo.make_change(d["base"], d["head"]) if d.get("base") else repo.make_commit(d["head"])
+    def to_dict(self) -> dict:
+        return {"repo": self.repo.url, "head": self.head, "base": self.base}

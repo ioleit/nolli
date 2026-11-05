@@ -22,7 +22,7 @@ from nolli.review import agent as reviewer
 from nolli.build import fetch_change
 from nolli.scenes import open_change_scene
 from nolli.review.ci import comment as ci_comment
-from nolli.keys import Repo
+from nolli.model.keys import Repo
 from nolli.review.verdicts import find_provenance, keep_verdicts_file, parse_verdicts, save_verdicts
 from nolli.sources import LocalRepository
 from nolli.datasets import Datasets

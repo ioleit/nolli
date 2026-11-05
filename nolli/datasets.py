@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .build import Run, extract, extract_commit, fetch_change, fetch_whole_model, is_fresh, list_content, run_here, version
 from .model import Key, Model
-from .keys import ChangeKey, Commit, ModelKey, Repo
+from .model.keys import ChangeKey, CommitKey, ModelKey, Repo
 from .model.scene import Overlay, Scene
 from .progress import Progress, Quiet
 from .review.changes import detail_box, find_review_cut, list_changes

@@ -8,8 +8,8 @@ from collections.abc import Mapping
 
 from nolli import transformations
 from nolli.extractors import overlays as overlays_lib
-from nolli.keys import ChangeKey, Commit, ModelKey
 from nolli.model import Key, Model
+from nolli.model.keys import ChangeKey, CommitKey, ModelKey
 from nolli.model.scene import Overlay, Scene
 from nolli.store import ModelStore
 from nolli.store.maps import Maps, MapStore, MemoryMaps
@@ -32,7 +32,7 @@ def open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = No
     return Scene(model, [*overlays_lib.make_base_overlays(model, maps), *(make_overlays(maps) if overlays is None else overlays)])
 
 
-def open_commit_scene(store: ModelStore, commit: Commit, overlays: list[Overlay] | None = None) -> Scene | None:
+def open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:
     m = store.load_model(commit)
     return None if m is None else open_scene(m, store, overlays)
 

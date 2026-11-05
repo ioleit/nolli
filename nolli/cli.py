@@ -48,7 +48,7 @@ import sys
 import time
 from pathlib import Path
 
-from .keys import ChangeKey, ModelKey
+from .model.keys import ChangeKey, ModelKey
 from .progress import Progress
 from .store import DirectoryStore
 

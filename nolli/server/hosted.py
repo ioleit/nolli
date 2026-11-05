@@ -73,7 +73,7 @@ HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 
 from . import retention  # noqa: E402
 from ..datasets import Datasets  # noqa: E402
-from ..keys import ModelKey, NotAllowed, Repo  # noqa: E402
+from ..model.keys import ModelKey, NotAllowed, Repo  # noqa: E402
 from ..progress import Progress  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..sources import CloneCache, FetchError, Sources, github  # noqa: E402

@@ -40,7 +40,7 @@ import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 
 from ..datasets import Datasets  # noqa: E402
-from ..keys import ChangeKey, ModelKey, NotAllowed  # noqa: E402
+from ..model.keys import ChangeKey, ModelKey, NotAllowed  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..sources import LocalRepository, Sources  # noqa: E402
 from ..store import DirectoryStore, ModelStore  # noqa: E402

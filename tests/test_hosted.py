@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.keys import Repo
+from nolli.model.keys import Repo
 from nolli.progress import SHORT, Progress
 from nolli.sources import LocalRepository
 from nolli.sources.spec import ChangeError

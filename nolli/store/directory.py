@@ -8,9 +8,8 @@ import threading
 from collections.abc import Mapping
 from pathlib import Path
 
-from nolli import keys
-from nolli.keys import ChangeKey, Commit, ModelKey, Repo
-from nolli.model import Key, Model
+from nolli.model import Key, Model, keys
+from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo
 from nolli.store import maps as maps_lib
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
@@ -111,7 +110,7 @@ class DirectoryStore:
         self.cache[f] = (version, value)
         return value
 
-    def load_model(self, key: Commit) -> Model | None:
+    def load_model(self, key: CommitKey) -> Model | None:
         self.check(key.repo)
         self.scan()
         d = self.places.get(key.format_key())
@@ -131,7 +130,7 @@ class DirectoryStore:
         sides = all(self.load_model(c) is not None for c in key.list_sides())
         return about if sides else None
 
-    def save_model(self, key: Commit, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
+    def save_model(self, key: CommitKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         out = self.locate(key)
         self.swap(out, lambda tmp: write_commit(tmp, key, model, maps))
         with self.lock:
@@ -212,16 +211,16 @@ def write_maps(d: Path, model_key: str, maps: Mapping[str, Mapping[Key, dict]]) 
         (d / "overlays" / f"{name}.json").write_text(json.dumps(maps_lib.dump_map(model_key, values, None)))
 
 
-def write_commit(d: Path, key: Commit, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
+def write_commit(d: Path, key: CommitKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
     model.key = key.format_key()
-    (d / "key.json").write_text(json.dumps({"format": FORMAT, **keys.dump_key(key)}))
+    (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
     model.save(d / "model.json")
     write_maps(d, model.key, maps)
 
 
 def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]]) -> None:
     """A change's directory (``DirectoryStore``) at ``d``, which exists."""
-    (d / "key.json").write_text(json.dumps({"format": FORMAT, **keys.dump_key(key)}))
+    (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
     (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": about}, indent=1))
     for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
         (d / side).mkdir(exist_ok=True)
@@ -234,6 +233,6 @@ def read_key(d: Path) -> ModelKey | None:
     included)."""
     try:
         j = json.loads((d / "key.json").read_text())
-        return keys.parse_key(j) if j.get("format") == FORMAT else None
+        return keys.ModelKey.from_dict(j) if j.get("format") == FORMAT else None
     except (OSError, ValueError, KeyError, TypeError):
         return None
