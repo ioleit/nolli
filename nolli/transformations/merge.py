@@ -18,8 +18,7 @@ import hashlib
 from collections.abc import Mapping
 
 from nolli.model import Key, Model, address, metamodel, vocabulary
-from nolli.model.scene import Element, Scene
-from nolli.store.maps import StoredMaps
+from nolli.model.scene import Element, Scene, StoredMaps
 
 
 def is_change(scene: Scene) -> bool:

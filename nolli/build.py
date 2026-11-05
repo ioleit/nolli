@@ -26,11 +26,10 @@ from nolli.model import Key, Model, address
 from nolli.progress import Progress, Quiet
 from nolli.sources import Sources, git
 from nolli.store import ModelStore
-from nolli.store.maps import MapStore
+from nolli.store.maps import Maps, MapStore
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
-Maps = dict[str, dict[Key, dict]]
 Run = Callable[..., Any]  # run(fn, *args, progress=…): fn(*args, progress=…), here or elsewhere
 
 

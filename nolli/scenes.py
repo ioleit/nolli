@@ -7,13 +7,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nolli import transformations
-from nolli.build import Maps
 from nolli.extractors import overlays as overlays_lib
 from nolli.keys import ChangeKey, Commit, ModelKey
 from nolli.model import Key, Model
 from nolli.model.scene import Overlay, Scene
 from nolli.store import ModelStore
-from nolli.store.maps import MapStore, MemoryMaps
+from nolli.store.maps import Maps, MapStore, MemoryMaps
 from nolli.transformations import merge
 
 

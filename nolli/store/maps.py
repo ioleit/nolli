@@ -1,7 +1,7 @@
 """The maps overlays keep in a store, and the overlay for anything kept as a map.
 
 A store gives each overlay a handle restricted to the maps saved under the overlay's name
-(``MapStore.open_maps(name)``, a ``StoredMaps``): the overlay never sees the store itself. A
+(``MapStore.open_maps(name)``, a ``StoredMaps``, ``nolli/model/scene.py``): the overlay never sees the store itself. A
 map is kept by model key (``Model.key``) and holds, per node or edge, what the overlay says
 about it, with ``about`` (who made it, when).
 """
@@ -12,20 +12,12 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from nolli.model import EdgeKey, FormatError, Key
-from nolli.model.scene import Element
+from nolli.model.scene import Element, StoredMaps
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
 
 
-class StoredMaps(Protocol):
-    """One overlay's maps in a store, by model key (``MapStore.open_maps(name)``): an overlay
-    sees only the maps saved under its name."""
-
-    def load(self, model_key: str) -> Mapping[Key, dict]: ...
-
-    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None: ...
-
-    def load_about(self, model_key: str) -> dict | None: ...
+Maps = dict[str, dict[Key, dict]]  # overlay name -> what it says per node and edge of one model
 
 
 class MapStore(Protocol):

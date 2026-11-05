@@ -34,6 +34,17 @@ class Overlay(Protocol):
     def compute(self, element: Element) -> dict | None: ...
 
 
+class StoredMaps(Protocol):
+    """What an overlay that keeps maps reads them from: its own maps in a store, by model key
+    (``nolli/store/``, ``MapStore.open_maps(name)``), and nothing else of the store."""
+
+    def load(self, model_key: str) -> Mapping[Key, dict]: ...
+
+    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None: ...
+
+    def load_about(self, model_key: str) -> dict | None: ...
+
+
 class OverlayCycle(Exception):
     pass
 
