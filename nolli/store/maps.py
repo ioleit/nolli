@@ -68,9 +68,15 @@ class StoredOverlay:
 
     def __init__(self, name: str, stored: StoredMaps, follow: bool = True) -> None:
         self.name, self.stored, self.follow = name, stored, follow
+        self._loaded: dict[str, Mapping[Key, dict]] = {}
 
     def compute(self, element: Element) -> dict | None:
-        own = self.stored.load(element.model_key).get(element.key)
+        """What is stored for the element. A model's map is loaded once, on first use, and kept
+        as long as this overlay: an overlay made for a scene sees the map as it was then."""
+        loaded = self._loaded.get(element.model_key)
+        if loaded is None:
+            loaded = self._loaded[element.model_key] = self.stored.load(element.model_key)
+        own = loaded.get(element.key)
         if own is not None or not self.follow:
             return own
         same = element.find_same()

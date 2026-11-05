@@ -93,7 +93,7 @@ def _find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[st
 def _cut(scene: Scene, st: ProjectionSpec) -> Cut:
     """``expanded`` is normalised to the containers actually reached, so folding a box also
     folds everything inside it."""
-    g = Reading(scene)
+    g = scene.memo(Reading)
     hidden = _hide_for(g, st.roles, st.side)
     shown_groups = set(st.groups)
     if st.unfold is not None:
@@ -156,7 +156,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     """The folded model: its nodes the boxes drawn, each keeping its address and referring to
     what it stands for, its edges the lines drawn, each referring to the edges it bundles; and
     the projection's overlay, what it decided about them."""
-    g = Reading(scene)
+    g = scene.memo(Reading)
     c = _cut(scene, st)
     expanded, hidden, visible, rolled, utilities = c.expanded, c.hidden, c.visible, c.rolled, c.utilities
     shown_groups = set(st.groups)

@@ -91,7 +91,7 @@ def _index_changes(scene: Scene) -> dict[str, dict]:
 
 
 def _index_changes(scene: Scene) -> dict[str, dict]:
-    g = Reading(scene)
+    g = scene.memo(Reading)
     idx: dict[str, dict] = defaultdict(lambda: {"added": 0, "removed": 0, "files": 0, "new": 0, "gone": 0})
     for x in g.nodes:
         d = g.diff(x)
@@ -116,7 +116,7 @@ def _index_changes(scene: Scene) -> dict[str, dict]:
 def _score_changes(scene: Scene, hidden: set[str]) -> dict[str, float]:
     """Per container, how much unfolding it shows about the change: changed relations that
     run between its children (weighted), plus children that contain changes."""
-    g = Reading(scene)
+    g = scene.memo(Reading)
     idx = _index_changes(scene)
     score: dict[str, float] = defaultdict(float)
     chain_cache: dict[str, list[str] | None] = {}

@@ -31,6 +31,13 @@ class Change:
 
     def __init__(self, content: StoredMaps) -> None:
         self.content = content
+        self._loaded: dict[str, Mapping[Key, dict]] = {}
+
+    def load_content(self, model_key: str) -> Mapping[Key, dict]:
+        """git's per-file content of a change, loaded once and kept as long as this overlay."""
+        if model_key not in self._loaded:
+            self._loaded[model_key] = self.content.load(model_key)
+        return self._loaded[model_key]
 
     def compute(self, el: Element) -> dict | None:
         if is_change(el.scene):
@@ -55,7 +62,7 @@ class Change:
             else:
                 return None
             return rec | {"fact": _describe_fact(el, rec, b, h)}
-        content = self.content.load(el.model_key)
+        content = self.load_content(el.model_key)
         rec: dict = {}
         if b is None:
             rec["status"] = "added"
@@ -102,7 +109,7 @@ class Change:
 def _list_renames(scene: Scene) -> dict[str, str]:
     """old file -> its new path, for the files git saw renamed."""
     change = scene.overlays.get("change")
-    content = change.content.load(scene.model.key) if isinstance(change, Change) else {}
+    content = change.load_content(scene.model.key) if isinstance(change, Change) else {}
     return {address.repo(v["old_path"]): address.path_of(k) for k, v in content.items() if isinstance(k, str) and v.get("old_path")}
 
 
