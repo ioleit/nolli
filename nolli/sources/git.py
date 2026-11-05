@@ -16,6 +16,10 @@ class GitError(Exception):
     """git failed; the message is what it said."""
 
 
+class ChangeError(GitError):
+    """What the user named is no change or commit of the repository; the message says what to type instead."""
+
+
 def run_git(repo: Path, *args: str, env: dict | None = None) -> str:
     r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, env=env, check=False)
     if r.returncode:
@@ -29,12 +33,19 @@ def has_commit(repo: Path, sha: str) -> bool:
 
 
 def find_toplevel(path: Path) -> Path:
-    return Path(run_git(path, "rev-parse", "--show-toplevel").strip())
+    """The root of the git working tree that ``path`` is in."""
+    try:
+        return Path(run_git(path, "rev-parse", "--show-toplevel").strip())
+    except GitError:
+        raise ChangeError(f"{path} is not in a git repository") from None
 
 
 def find_commit(repo: Path, rev: str) -> str:
     """The full sha of a revision that names a commit."""
-    return run_git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
+    try:
+        return run_git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
+    except GitError:
+        raise ChangeError(f"no commit {rev!r} in {repo}") from None
 
 
 def find_head(repo: Path) -> str | None:
@@ -139,3 +150,123 @@ def list_file_changes(repo: Path, base: str, head: str) -> dict[str, FileChange]
             hunk["added"].append(new_line)
             new_line += 1
     return changes
+
+
+# -- a change, as the user names it ---------------------------------------------
+
+
+@dataclass
+class ChangeSpec:
+    head: str                  # full sha
+    base: str | None = None    # full sha; None: the head commit as a whole, no change
+    title: str = ""            # what the viewer's header calls it
+    description: str = ""      # what review.md quotes as the change's description (markdown)
+
+    @property
+    def is_diff(self) -> bool:
+        return self.base is not None
+
+
+def default_branch(repo: Path) -> str | None:
+    """The default branch as a revision (``origin/main``, ``main``, …), or None."""
+    try:
+        ref = run_git(repo, "symbolic-ref", "-q", "refs/remotes/origin/HEAD").strip()
+        if ref:
+            return ref.removeprefix("refs/remotes/")
+    except GitError:
+        pass
+    for rev in ("origin/main", "origin/master", "main", "master"):
+        try:
+            run_git(repo, "rev-parse", "--verify", "-q", f"refs/{'remotes' if '/' in rev else 'heads'}/{rev}")
+            return rev
+        except GitError:
+            continue
+    return None
+
+
+def merge_base(repo: Path, a: str, b: str) -> str:
+    try:
+        out = run_git(repo, "merge-base", a, b).strip()
+    except GitError:
+        out = ""
+    if not out:
+        raise ChangeError(f"{a} and {b} have no common ancestor; name both ends: nolli view <base>..<head>")
+    return out
+
+
+def first_parent(repo: Path, sha: str) -> str | None:
+    parents = run_git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
+    return parents[0] if parents else None
+
+
+def resolve(repo: Path, spec: str | None) -> ChangeSpec:
+    """The change that ``spec`` names in ``repo`` (what ``nolli view`` shows):
+
+    - nothing: the current branch against the default branch (from where they diverged to
+      HEAD); on the default branch itself, or with nothing new on the branch, HEAD as a whole;
+    - ``A..B``: exactly from A to B;
+    - ``A...B``: from where A and B diverged to B (what B adds, as a pull request shows it);
+    - ``--whole`` (a separate option): HEAD, or the commit given, as a whole;
+    - one revision R: what R adds to the default branch, from where they diverged to R; if R
+      is already on the default branch (a commit, or a merged pull request's merge commit),
+      R's own change against its first parent.
+
+    The default branch is ``origin/HEAD`` if the clone has it, else ``main`` or ``master``
+    (remote-tracking first). Only commits count: changes in the working tree are not seen.
+    """
+    if spec and "..." in spec:
+        a, _, b = spec.partition("...")
+        head = find_commit(repo, b or "HEAD")
+        return describe(repo, ChangeSpec(head=head, base=merge_base(repo, find_commit(repo, a or "HEAD"), head)), b or "HEAD")
+    if spec and ".." in spec:
+        a, _, b = spec.partition("..")
+        return describe(repo, ChangeSpec(head=find_commit(repo, b or "HEAD"), base=find_commit(repo, a or "HEAD")), b or "HEAD")
+    rev = spec or "HEAD"
+    head = find_commit(repo, rev)
+    main = default_branch(repo)
+    if main is None:
+        if spec is None:
+            return describe(repo, ChangeSpec(head=head), rev)
+        raise ChangeError(f"no default branch (origin/HEAD, main or master) to compare {spec!r} with; "
+                          f"name both ends: nolli view <base>..{spec}")
+    base = merge_base(repo, find_commit(repo, main), head)
+    if base != head:
+        return describe(repo, ChangeSpec(head=head, base=base), rev)
+    if spec is None:  # on the default branch, or nothing new on this one: the whole of HEAD
+        return describe(repo, ChangeSpec(head=head), rev)
+    parent = first_parent(repo, head)
+    if parent is None:
+        return describe(repo, ChangeSpec(head=head), rev)
+    return describe(repo, ChangeSpec(head=head, base=parent), rev)
+
+
+def whole(repo: Path, rev: str = "HEAD") -> ChangeSpec:
+    """One commit as a whole, no change: ``nolli view --whole [<commit>]``."""
+    return describe(repo, ChangeSpec(head=find_commit(repo, rev)), rev)
+
+
+def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
+    """Title and description from the commits: one commit gives its subject and body; several
+    give the branch's name (or the range) and the list of their subjects."""
+    if not ch.is_diff:
+        ch.title = run_git(repo, "log", "-1", "--format=%s", ch.head).strip()
+        return ch
+    log = run_git(repo, "log", "--first-parent", "--format=%H%x00%s%x00%b%x1e", f"{ch.base}..{ch.head}")
+    commits = [c.strip("\n").split("\0") for c in log.split("\x1e") if c.strip()]
+    if len(commits) == 1:
+        _sha, subject, body = commits[0]
+        ch.title, ch.description = subject, body.strip()
+        return ch
+    name = rev if rev not in ("HEAD", "") and not looks_like_sha(rev) else None
+    if name is None:
+        branch = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() if rev in ("HEAD", "") else ""
+        name = branch if branch and branch != "HEAD" else None
+    ch.title = name or f"{ch.base[:7]}..{ch.head[:7]}"
+    ch.description = "\n".join(f"- {subject} ({sha[:7]})" for sha, subject, _ in reversed(commits))
+    if ch.description:
+        ch.description = f"{len(commits)} commits:\n\n{ch.description}"
+    return ch
+
+
+def looks_like_sha(rev: str) -> bool:
+    return 4 <= len(rev) <= 40 and all(c in "0123456789abcdef" for c in rev.lower())

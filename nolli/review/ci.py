@@ -28,7 +28,7 @@ from pathlib import Path
 
 from nolli.model import address
 from nolli.model.scene import Scene
-from nolli.sources.spec import ChangeError
+from nolli.sources.git import ChangeError
 
 FORMAT = 1  # of the result a comment carries; one of another format is not read
 

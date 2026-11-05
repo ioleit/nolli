@@ -9,7 +9,7 @@
 
 view shows a change of the git repository you are in, or of --repo: by default the
 current branch against the default branch; <change> can be a branch or commit (what it
-adds to the default branch), <base>..<head> or <base>...<head> (see nolli/sources/spec.py), or
+adds to the default branch), <base>..<head> or <base>...<head> (see nolli/sources/git.py), or
 a GitHub pull request: its URL, or '#<n>' on the repository's GitHub remote (nolli/sources/github.py),
 or the key a CI run's PR comment gives, <owner>/<repo>#<n>@<head> (nolli/review/ci.py): that run's
 dataset, downloaded from GitHub, verdicts and all.

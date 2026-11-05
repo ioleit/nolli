@@ -1,4 +1,4 @@
-"""What nolli view shows for what the user typed (nolli/sources/spec.py), on a small git history:
+"""What nolli view shows for what the user typed (nolli/sources/git.py), on a small git history:
 
     main:    c1 - c2 ------- m (merge of feature, --no-ff)
                     \\       /
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.sources.spec import ChangeError, default_branch, resolve, whole
+from nolli.sources.git import ChangeError, default_branch, resolve, whole
 
 
 def git(repo: Path, *args: str) -> str:

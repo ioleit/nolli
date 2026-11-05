@@ -11,8 +11,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from nolli.sources import git, spec
-from nolli.sources.spec import ChangeError, ChangeSpec
+from nolli.sources import git
+from nolli.sources.git import ChangeError, ChangeSpec
 
 URL = re.compile(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/pulls?/(\d+)(?:[/?#].*)?$")
 NUMBER = re.compile(r"^(?:#|pr:|pr/)(\d+)$", re.IGNORECASE)
@@ -26,7 +26,7 @@ def is_pull_request(change: str | None) -> bool:
 def remotes(repo: Path) -> dict[str, tuple[str, str]]:
     """The repository's GitHub remotes: name -> (owner, repo)."""
     out = {}
-    for line in spec.run_git(repo, "remote", "-v").splitlines():
+    for line in git.run_git(repo, "remote", "-v").splitlines():
         name, url, *_ = line.split()
         m = REMOTE.match(url)
         if m:
@@ -60,7 +60,7 @@ def fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tupl
     remote = next((r for r, (o, n) in gh.items() if (o.lower(), n.lower()) == (owner.lower(), name.lower())),
                   f"https://github.com/{owner}/{name}")
     try:
-        spec.run_git(repo, "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote,
+        git.run_git(repo, "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote,
             f"pull/{number}/head", pr["base"]["ref"])
     except ChangeError as exc:
         raise ChangeError(f"could not fetch PR #{number} from {remote}: {exc}") from None
@@ -68,7 +68,7 @@ def fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tupl
     for sha in (head, base_tip):
         if not git.has_commit(repo, sha):
             raise ChangeError(f"commit {sha[:7]} of PR #{number} is not in {repo} after fetching it")
-    ch = ChangeSpec(head=head, base=spec.merge_base(repo, base_tip, head), title=pr.get("title") or f"PR #{number}",
+    ch = ChangeSpec(head=head, base=git.merge_base(repo, base_tip, head), title=pr.get("title") or f"PR #{number}",
                 description=(pr.get("body") or "").replace("\r\n", "\n").strip())
     return ch, {"pr": number, "remote": f"https://github.com/{owner}/{name}"}
 

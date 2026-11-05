@@ -77,7 +77,7 @@ from ..model.keys import ModelKey, NotAllowed, Repo  # noqa: E402
 from ..progress import Progress  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..sources import CloneCache, FetchError, Sources, github  # noqa: E402
-from ..sources.spec import ChangeError, merge_base  # noqa: E402
+from ..sources.git import ChangeError, GitError, merge_base  # noqa: E402
 from ..store import DirectoryStore, ModelStore  # noqa: E402
 
 from .reviews import Reviews, ci_pull, from_ci  # noqa: E402
@@ -357,7 +357,7 @@ class Site:
                     self.built[plan.name] = key
                 job.state = "done"
             except Exception as exc:  # noqa: BLE001  # shown on the page; the server goes on
-                job.state, job.error = "error", str(exc) if isinstance(exc, (ChangeError, FetchError)) else f"{type(exc).__name__}: {exc}"
+                job.state, job.error = "error", str(exc) if isinstance(exc, (GitError, FetchError)) else f"{type(exc).__name__}: {exc}"
             finally:
                 job.ended = time.time()
         self.tidy()

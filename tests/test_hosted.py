@@ -16,7 +16,7 @@ import pytest
 from nolli.model.keys import Repo
 from nolli.progress import SHORT, Progress
 from nolli.sources import LocalRepository
-from nolli.sources.spec import ChangeError
+from nolli.sources.git import ChangeError
 from nolli.server.hosted import ROUTE, Board, Plan, Site, TooLarge, viewer_page
 
 
