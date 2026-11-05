@@ -1,13 +1,4 @@
-"""HTML pages: the files of the repository a page loads, as ``use`` edges (see
-``refs.py``): ``<script src>`` (via ``script``), ``<link href>`` (``stylesheet``,
-``preload`` for module preloads, ``link`` for icons and the rest), and ``src`` of
-``img``, ``source``, ``video``, ``audio``, ``iframe``, ``embed`` (``image``, ``media``,
-``frame``). A page's ``<style>`` blocks are read as stylesheets (``css.py``). Links
-between pages (``<a href>``) are navigation, not dependencies, and are not drawn.
-
-Not read (yet): ``import`` statements inside inline ``<script type="module">``, and
-``srcset``. Parsed with the standard library's tolerant ``html.parser``.
-"""
+"""Reads which files and packages an HTML page loads."""
 
 from __future__ import annotations
 
@@ -23,6 +14,16 @@ SRC = {"script": "script", "img": "image", "source": "media", "video": "media", 
 
 
 class Page(HTMLParser):
+    """Reads what one page loads, as ``use`` edges (``refs.link``): ``<script src>``
+    (via ``script``), ``<link href>`` (``stylesheet``, ``preload`` for module preloads,
+    ``link`` for icons and the rest), and ``src`` of ``img``, ``source``, ``video``,
+    ``audio``, ``iframe``, ``embed`` (``image``, ``media``, ``frame``). ``<style>``
+    blocks are read as stylesheets (``css.scan``). Links between pages (``<a href>``)
+    are navigation, not dependencies, and are left out.
+
+    Not read (yet): ``import`` statements inside inline ``<script type="module">``, and
+    ``srcset``. Built on the standard library's tolerant ``html.parser``."""
+
     def __init__(self, ctx: Context, rel: str) -> None:
         super().__init__(convert_charrefs=True)
         self.ctx, self.rel = ctx, rel

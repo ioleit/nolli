@@ -1,16 +1,4 @@
-"""What extraction builds: entities and relations with their attributes, as the extractors
-write them. ``Facts`` is mutable and checked against the metamodel as it grows; when
-extraction is done, ``split()`` turns it into the structure (``nolli.model.Model``) and, per
-extractor, what that extractor said about each node and edge (its overlay's stored map,
-``nolli/model/scene.py``).
-
-Which extractor said what: an entity's attributes are recorded under the extractor that
-wrote each of them (``Facts.current`` while it runs, so a language's symbols extractor
-adding ``doc`` to a file the file tree made is the symbols extractor's word), a relation
-under the extractor its provenance names. Every tuple carries provenance (extractor,
-path, line) and a confidence class: ``exact`` (resolved by construction), ``heuristic``
-(matched by name or pattern) or ``statistical`` (inferred from history).
-"""
+"""Entities and relations as extractors write them, and who said what."""
 
 from __future__ import annotations
 
@@ -23,6 +11,7 @@ from nolli.model import EdgeKey, Key, Model, address, metamodel
 
 @dataclass
 class Provenance:
+    """Where a fact comes from: the extractor, and the path and line it was found at."""
     extractor: str
     path: str | None = None
     line: int | None = None
@@ -69,6 +58,9 @@ class Entity:
 
 @dataclass
 class Relation:
+    """A relation between two entities. ``confidence`` is ``exact`` (resolved by
+    construction), ``heuristic`` (matched by name or pattern) or ``statistical``
+    (inferred from history)."""
     kind: str
     src: str
     dst: str
@@ -84,6 +76,14 @@ class Relation:
 
 
 class Facts:
+    """Entities and relations as the extractors write them, checked against the metamodel
+    as they grow; ``split()`` turns them into a ``Model`` and, per extractor, what it said.
+
+    An entity's attributes are recorded under the extractor that wrote each of them
+    (``current`` while it runs, so a symbols extractor adding ``doc`` to a file the file
+    tree made is the symbols extractor's word), a relation under the extractor its
+    provenance names."""
+
     def __init__(self) -> None:
         self.entities: dict[str, Entity] = {}
         self.relations: list[Relation] = []
@@ -184,7 +184,8 @@ class Facts:
     def split(self, key: str = "") -> tuple[Model, dict[str, dict[Key, dict]]]:
         """The structure, and per extractor what it said: for a node its attributes (``name``
         among them), for an edge its facts (one per relation: count, confidence, where it
-        was found, the relation's attributes) and their total ``count``."""
+        was found, the relation's attributes) and their total ``count``. Each extractor's
+        map is what its overlay stores (``nolli/model/scene.py``)."""
         maps: dict[str, dict[Key, dict]] = defaultdict(dict)
         for e in self.entities.values():
             by = getattr(e.attrs, "by", {})

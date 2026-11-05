@@ -1,23 +1,4 @@
-"""TypeScript/JavaScript resolution, run by ``nolli.match``.
-
-``resolve_imports``: module specifiers (``unresolved:js:``) to files, external packages
-or nothing (Node built-ins, dropped like the Python stdlib). A specifier is tried as
-
-- a path relative to the importing file (``./x.js`` also finds ``x.ts``, as TypeScript's
-  NodeNext resolution does; a folder finds its ``index``), or from the repository root
-  (``/x``);
-- a tsconfig/jsconfig ``paths`` alias of a config above the importing file (``@/lib``),
-  then that config's ``baseUrl`` (``src/lib``); ``extends`` of a config in the
-  repository is followed for both;
-- a package of the repository's own (a ``package.json`` with that ``name``, as in npm,
-  pnpm or yarn workspaces): its source entry, or the subpath inside it;
-- else an external package, also from a CDN URL (``https://esm.sh/react@18``).
-
-``resolve_refs``: symbol references (``unresolved:tsref:``) to the class or type they
-name, following re-exports (``export { X } from``, ``export * from``) through barrels,
-else to the file that defines the name. References into external packages are dropped:
-the import edge covers them. Import edges between two files are dropped where
-references between them exist, so an edge count means references, as in Python.
+"""Resolves TypeScript/JavaScript imports and references to targets.
 """
 
 from __future__ import annotations
@@ -193,6 +174,18 @@ class Resolver:
 
 
 def resolve_imports(ctx: Context) -> None:
+    """Bind module specifiers (``unresolved:js:``) to files, external packages or
+    nothing (Node built-ins, dropped like the Python stdlib). A specifier is tried as
+
+    - a path relative to the importing file (``./x.js`` also finds ``x.ts``, as
+      TypeScript's NodeNext resolution does; a folder finds its ``index``), or from the
+      repository root (``/x``);
+    - a tsconfig/jsconfig ``paths`` alias of a config above the importing file
+      (``@/lib``), then that config's ``baseUrl`` (``src/lib``); ``extends`` of a config
+      in the repository is followed for both;
+    - a package of the repository's own (a ``package.json`` with that ``name``, as in
+      npm, pnpm or yarn workspaces): its source entry, or the subpath inside it;
+    - else an external package, also from a CDN URL (``https://esm.sh/react@18``)."""
     m = ctx.model
     res = Resolver(ctx)
     stats: dict[str, int] = defaultdict(int)
@@ -222,6 +215,12 @@ def resolve_imports(ctx: Context) -> None:
 
 
 def resolve_refs(ctx: Context) -> None:
+    """Bind symbol references (``unresolved:tsref:``) to the class or type they name,
+    following re-exports (``export { X } from``, ``export * from``) through barrels,
+    else to the file that defines the name. References into external packages are
+    dropped: the import edge covers them. Import edges between two files are dropped
+    where references between them exist, so an edge count means references, as in
+    Python."""
     m = ctx.model
     res = Resolver(ctx)
     exports = ctx.notes.get("ts-exports", {})

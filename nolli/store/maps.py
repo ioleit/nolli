@@ -1,10 +1,4 @@
-"""Utitlies to store and retrieve overlays as maps.
-
-A store gives each overlay a handle restricted to the maps saved under the overlay's name
-(``MapStore.open_maps(name)``, a ``StoredMaps``, ``nolli/model/scene.py``): the overlay never sees the store itself. A
-map is kept by model key (``Model.key``) and holds, per node or edge, what the overlay says
-about it, with ``about`` (who made it, when).
-"""
+"""Utilities to store and retrieve overlays as maps."""
 
 from __future__ import annotations
 
@@ -21,7 +15,13 @@ Maps = dict[str, dict[Key, dict]]  # overlay name -> what it says per node and e
 
 
 class MapStore(Protocol):
-    def open_maps(self, name: str) -> StoredMaps: ...
+    """Keeps maps. A map is kept by model key (``Model.key``) and holds, per node or edge, what
+    an overlay says about it, with ``about`` (who made it, when)."""
+
+    def open_maps(self, name: str) -> StoredMaps:
+        """A handle restricted to the maps saved under the overlay ``name``, so the overlay
+        never sees the store itself."""
+        ...
 
 
 

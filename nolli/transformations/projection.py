@@ -1,19 +1,7 @@
-"""Projection: a scene folded to what one picture draws.
+"""Folds a scene down to the boxes and lines of one picture.
 
-A scene state (``ProjectionSpec``) is the set of unfolded containers (or a preset that names
-one) plus the filters and options. ``project`` turns a scene into the scene of that
-picture: the nodes filtered by the state, contracted onto the cut through the containment
-tree that the unfolded containers make, and simplified by the roll-up rules (``rollup.py``,
-``rollup.md``). Each drawn node keeps the address of what it is (a module's own code is
-``<id>#``, ``address.own_code``) and refers to every node it stands for (``source``), each
-drawn edge to the edges it bundles, so any overlay can say something about a drawn box from
-what it says about what is inside.
-
-What the projection itself decided is its own overlay, ``projection``: which boxes are
-containers, which lines were lifted, utilities drawn as badges, deployment chips, how the
-drawn edges count. What the picture shows besides is other overlays' (``label``, ``hover``,
-``change``, ``review``). The scene's ``meta["projection"]`` keeps the state, the drawing
-order, the filter's groups and roles, and what was left out (``residue``).
+A ``ProjectionSpec`` says what to unfold, which nodes to show and how to simplify the edges;
+``fold`` makes the folded scene.
 """
 
 from __future__ import annotations
@@ -148,7 +136,19 @@ def _leaf_count(g: Reading, x: str) -> int:
 
 
 def fold(st: ProjectionSpec) -> Callable[[Scene], tuple[Model, FixedOverlay]]:
-    """The projection as a transformation: what ``st`` asks for, of the scene it is given."""
+    """The projection as a transformation: what ``st`` asks for, of the scene it is given.
+
+    The nodes are filtered by ``st``, contracted onto the cut through the containment tree
+    that the unfolded containers make, and simplified by the roll-up rules (``rollup``).
+    Each drawn node keeps the address of what it is (a module's own code is ``<id>#``,
+    ``address.own_code``) and refers to every node it stands for (role ``source``), each
+    drawn edge to the edges it bundles, so any overlay can say something about a drawn box
+    from what it says about what is inside.
+
+    What the projection itself decided is its own overlay, ``projection``: which boxes are
+    containers, which lines were lifted, utilities drawn as badges, deployment chips, how the
+    drawn edges count. The model's ``meta["projection"]`` keeps the state, the drawing
+    order, the filter's groups and roles, and what was left out (``residue``)."""
     return lambda scene: _fold_model(scene, st)
 
 

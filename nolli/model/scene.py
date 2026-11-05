@@ -1,22 +1,7 @@
-"""Scenes, elements and overlays: how anything is known about a model's nodes and edges.
+"""Scenes join a model with the overlays that say what is known about it.
 
-- An *overlay* is code that says something about one element: ``compute(element)`` returns
-  its properties (a dict) or None. The file tree's overlay says a file's role and size, a
-  language's says which names a module defines, the change overlay what a change did to a
-  box, the verdicts overlay what a review said about it. An overlay decides for itself where
-  its knowledge comes from: a map it keeps in the store (``nolli.store.StoredOverlay``, by
-  model key, as an extractor saved it), other overlays (``element.get``), or what the element
-  stands for in the models it was made from (``element.sources``).
-- An *element* is a node or an edge as an overlay sees it: its key and kind, and for an
-  edge its two ends; its place in the structure; what it stands for (``sources``: role ->
-  elements of the source scenes: ``source`` for a projection, ``base`` and ``head`` for a
-  change); and ``get(overlay)``, any overlay's properties of it.
-- A *scene* is a model, the overlays that apply to it, and the scenes its references point
-  into. It hands out elements and keeps what overlays answered (once per scene and element;
-  an overlay asking for itself about the same element is an error, not a loop).
-
-Transformations (``nolli/transformations/``) take a scene and return one; formats
-(``nolli/formats/``) take a scene.
+Anything known about a node or an edge besides its place in the structure comes from an
+overlay; this module holds how overlays are asked, not what any one overlay knows.
 """
 
 from __future__ import annotations
@@ -29,6 +14,14 @@ from nolli.model import EdgeKey, Key, Model
 
 
 class Overlay(Protocol):
+    """Code that says something about one element: ``compute(element)`` returns its properties
+    (a dict) or None. The file tree's overlay, for one, says a file's role and size.
+
+    An overlay decides for itself where its knowledge comes from: maps it keeps in a store
+    (``StoredMaps``, by model key, as an extractor saved them), other overlays
+    (``element.get``), or what the element stands for in the models it was made from
+    (``element.sources``)."""
+
     name: str
 
     def compute(self, element: Element) -> dict | None: ...
@@ -50,7 +43,9 @@ class OverlayCycle(Exception):
 
 
 class Element:
-    """A node or an edge of a scene."""
+    """A node or an edge of a scene, as an overlay sees it: its key and kind, and for an edge
+    its two ends; its place in the structure; what it stands for (``sources``); and
+    ``get(overlay)``, any overlay's properties of it."""
 
     __slots__ = ("__dict__", "_scene", "key")
 
@@ -96,6 +91,8 @@ class Element:
 
     @cached_property
     def sources(self) -> dict[str, tuple[Element, ...]]:
+        """What it stands for, by role: the elements of the source scenes (``source`` for a
+        projection, ``base`` and ``head`` for a change)."""
         return {role: tuple(src.find_element(k) for k in self._scene.list_refs(role, self.key) if src.model.has(k))
                 for role, src in self._scene.sources.items()}
 
@@ -145,6 +142,8 @@ class Element:
     # -- what is known about it --------------------------------------------------
 
     def get(self, overlay: str) -> dict | None:
+        """The properties ``overlay`` gives this element, None if it gives none or the scene
+        has no such overlay."""
         return self._scene._compute(self, overlay)
 
     def __repr__(self) -> str:
@@ -152,6 +151,12 @@ class Element:
 
 
 class Scene:
+    """A model, the overlays that apply to it, and the scenes its references point into
+    (``sources``, by role).
+
+    It hands out elements and keeps what overlays answered, once per scene and element; an
+    overlay asking for itself about the same element raises ``OverlayCycle`` rather than loop."""
+
     def __init__(self, model: Model, overlays: Iterable[Overlay], sources: Mapping[str, Scene] | None = None) -> None:
         self.model = model
         self.overlays: dict[str, Overlay] = {}

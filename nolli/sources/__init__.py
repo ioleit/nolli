@@ -1,7 +1,7 @@
-"""Where nolli gets the commits it builds from: a local git repository that has them.
-``LocalRepository`` is a checkout you have (``nolli view``), ``CloneCache`` bare clones
-fetched from their remotes (``nolli serve``). A service built on nolli can bring its own, one
-that decides per request who may read what (and raises ``NotAllowed`` for the rest)."""
+"""Gives access to a repository's commits, as local git clones.
+
+It defines the interface, ``Sources``, and two kinds of it: a checkout you have, and bare
+clones fetched from their remotes."""
 
 from __future__ import annotations
 
@@ -24,7 +24,8 @@ class FetchError(GitError):
 
 
 class Sources(Protocol):
-    """Local git repositories to build from."""
+    """Local git repositories to build from. An implementation may decide per request who may
+    read what, and raise ``NotAllowed`` for the rest."""
 
     def open_commits(self, repo: Repo, *shas: str) -> AbstractContextManager[Path]:
         """A local repository of ``repo`` that has ``shas`` (fetching what is missing), held

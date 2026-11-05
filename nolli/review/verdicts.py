@@ -1,13 +1,4 @@
-"""``verdicts``: what a review said about a change's boxes and edges.
-
-A review agent answers on the review diagram (``nolli/review/brief.py``): each verdict
-targets a node id of that Mermaid diagram (``n_…``), or an edge ``n_a --> n_b``. Read, a
-verdict names what it is about by address (``ends``: one node, or the two ends of an edge),
-and that is how it is kept: the ``verdicts`` map of the change (``StoredMaps``), by target
-(a node's address, or ``"<a> --> <b>"``), with who made them (``about``: ``{"by": "agent" |
-"ci" | "upload", …}``). Any projection of the change then shows each verdict on the drawn box
-that stands for its target, or on the drawn edge that carries the edge between its two ends.
-"""
+"""Reads, checks, keeps and places a review's verdicts on a change."""
 
 from __future__ import annotations
 
@@ -160,7 +151,11 @@ def find_provenance(maps: MapStore, key) -> dict | None:
 
 
 def save_verdicts(maps: MapStore, key, verdicts: list[dict], by: dict) -> None:
-    """Make ``verdicts`` (read, so with their ``ends``) the change's, with where they came from."""
+    """Make ``verdicts`` (read, so with their ``ends``) the change's, with where they came from.
+
+    They are kept in the change's ``verdicts`` map (``StoredMaps``), by target (a node's
+    address, or ``"<a> --> <b>"``), with who made them as its ``about``
+    (``{"by": "agent" | "ci" | "upload", …}``)."""
     import time
 
     at = by.get("at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -177,7 +172,9 @@ def _keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) 
 class Verdicts:
     """On a change's node: the verdicts that start there (on the node, on its own code, or on an
     edge from it), as kept. On a drawn box or edge: the verdicts that land on it, from what it
-    and what it holds stand for (``land``), and the worst of them."""
+    and what it holds stand for (``land``), and the worst of them. Any projection of the change
+    shows each verdict on the drawn box that stands for its target, or on the drawn edge that
+    carries the edge between its two ends."""
 
     name = "verdicts"
 

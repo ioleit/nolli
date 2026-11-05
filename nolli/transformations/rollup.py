@@ -1,26 +1,7 @@
-"""Roll-up: derive the dependency graph at a chosen level of detail.
+"""Rolls a dependency graph up to the nodes a cut leaves visible.
 
-A *cut* is the set of visible entities. Every entity is represented by itself
-if visible, else by its nearest visible ancestor, else it is hidden. A
-relation between two entities becomes a relation between their
-representatives; relations that land on one node are *internal* to it and
-counted separately (they measure the structure a folded node hides).
-
-Two conventions keep the picture readable:
-
-- Loose files of an unfolded directory are drawn as one pseudo node
-  ``files:<dir>`` inside it rather than one box per file (a directory's own
-  files are its "body"; its subdirectories are its parts). Groups (externals,
-  interfaces, deployment) unfold to individual children.
-- Groups (the namespaces' roots: Artifacts, Configuration, Runtime, APIs) are a filter:
-  a group the viewer shows is a box like any other, folded or unfolded; edges to
-  a group it doesn't show are not drawn and become annotations on the other node
-  ("uses 42 external packages"). Cross-cutting things are omnipresent; drawn,
-  they hide the structure.
-
-Interfaces (endpoints, env variables) are boxes in their group like anything else: a
-call or a read ends on the endpoint or variable when its group is shown, and becomes an
-annotation on the caller or reader when it is not.
+It decides which nodes are visible, which visible node stands for each hidden one, and which
+edges are drawn between visible nodes and how they are counted.
 """
 
 from __future__ import annotations
@@ -47,7 +28,7 @@ class RolledEdge:
     via: set[str] = field(default_factory=set)
     names: dict[str, int] = field(default_factory=dict)  # referenced names (Python refs) -> references
     types: int = 0  # of count, references only to types (``type_only``): no dependency at run time
-    # in a diff model (nolli/diff.py): references before and after, and the changed facts
+    # in a change: references before and after, and the changed facts
     # underneath (fact key -> added / removed / changed); in a plain model base == head == count
     base: int = 0
     head: int = 0
@@ -258,6 +239,9 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
 
 
 def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[str, str] | None = None):
+    """A function from a node to the node that stands for it: itself if visible, else its
+    nearest visible ancestor (or the own code of its unfolded module or package), else None
+    when it is hidden."""
     cache: dict[str, str | None] = {}
     alias = alias or {}
 
@@ -478,9 +462,19 @@ def lift(g: Reading, edges: list[RolledEdge], expanded: set[str], max_lines: int
 
 def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
          shown_groups=frozenset(), side: str = "both") -> RolledUp:
-    """``shown_groups``: root groups the viewer draws as boxes (folded or not); edges to them
-    are drawn. Other root groups are filtered out of the picture: their edges become
-    annotations on the other end, and an edge between two of them is left out.
+    """The edges drawn for a cut (``visible``). A relation between two nodes becomes a
+    relation between their representatives (``representative``); relations that land on one
+    node are *internal* to it and counted separately (they measure the structure a folded
+    node hides).
+
+    ``shown_groups``: root groups (the namespaces' roots: Artifacts, Configuration, Runtime,
+    APIs) drawn as boxes, folded or not, like any other box; edges to them are drawn. Other
+    root groups are filtered out of the picture: their edges become annotations on the other
+    end ("uses 42 external packages"), and an edge between two of them is left out.
+    Cross-cutting things are omnipresent; drawn, they hide the structure. Interfaces
+    (endpoints, env variables) are boxes in their group like anything else: a call or a read
+    ends on the endpoint or variable when its group is shown, and becomes an annotation on
+    the caller or reader when it is not.
     ``side``: in a diff model, "base" or "head" draws one commit only; "both" draws the
     merged picture, with removed facts counted on their base side."""
     alias = image_aliases(g)

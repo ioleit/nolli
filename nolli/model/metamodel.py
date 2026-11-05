@@ -1,45 +1,16 @@
-"""What any model may contain: the kinds of entities and relations, the namespaces entities
-live in, and which relations connect which namespaces.
+"""Defines which entities and relations a model may contain.
 
-A model is the structure of one codebase (a ``Model``, a dataset's ``model.json``); this module
-is its metamodel. nolli is opinionated about structure: an extractor's job is to put what
-it finds into these namespaces, and a new domain (data stores, queues) is a new namespace
-here first. ``Model.add_entity`` and ``add_relation`` check every fact against it; how an
-entity's id is spelled in its namespace is ``address.py``.
-
-The vocabulary is the UML 2 component/deployment subset: entities are artifacts
-(directory, file), components (service, image), interfaces (endpoint, env, host) or
-external packages; relations are ``contain`` (ownership, a tree), ``use`` (Parnas's uses),
-``provide`` (interface realization) and ``allocate`` (software element to environment
-element: a directory copied into an image, an image run as a service).
-
-The namespaces:
-
-``repo``
-    The repository: its directories and files, and the parts of files the language
-    extractors find (classes, interfaces, types, enums).
-``api``
-    Operations that code in scope serves or calls, and their groupings: the app serving
-    them, the steps of their paths.
-``pkg``
-    Artifacts: built units that are immutable and versioned, third-party packages and the
-    images built in the repository.
-``runtime``
-    What executes and is reachable at runtime: compose services, hosts outside.
-``config``
-    Names the code reads at runtime to steer its behaviour, wherever their values come from.
-``unresolved``
-    Not structure: references an extractor saw but could not bind yet. The matchers bind
-    them (``nolli/extractors/match.py``); those left are gathered under its root.
-
-Each namespace has a root holding its top-level entities: a group, or for ``repo`` the
-repository's directory. ``contain`` never crosses namespaces.
+A new domain (data stores, queues) becomes a new namespace here before any model holds it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+# The kinds are the UML 2 component/deployment subset. Relations: ``contain`` (ownership, a
+# tree), ``use`` (Parnas's uses), ``provide`` (interface realization) and ``allocate`` (a
+# software element to an environment element: a directory copied into an image, an image run
+# as a service).
 CONTAIN, USE, PROVIDE, ALLOCATE = "contain", "use", "provide", "allocate"
 RELATION_KINDS = (CONTAIN, USE, PROVIDE, ALLOCATE)
 
@@ -57,6 +28,29 @@ REPO, API, PKG, RUNTIME, CONFIG, UNRESOLVED = "repo", "api", "pkg", "runtime", "
 
 @dataclass(frozen=True)
 class Namespace:
+    """A part of a model that entities live in, its name also the scheme of their addresses.
+
+    Each namespace has a root holding its top-level entities: a group, or for ``repo`` the
+    repository's directory. The namespaces (``NAMESPACES``):
+
+    ``repo``
+        The repository: its directories and files, and the parts of files the language
+        extractors find (classes, interfaces, types, enums).
+    ``api``
+        Operations that code in scope serves or calls, and their groupings: the app serving
+        them, the steps of their paths.
+    ``pkg``
+        Artifacts: built units that are immutable and versioned, third-party packages and the
+        images built in the repository.
+    ``runtime``
+        What executes and is reachable at runtime: compose services, hosts outside.
+    ``config``
+        Names the code reads at runtime to steer its behaviour, wherever their values come from.
+    ``unresolved``
+        Not structure: references an extractor saw but could not bind yet. Those never bound
+        are gathered under its root.
+    """
+
     name: str  # also its scheme in addresses
     title: str  # the name of its root group
     kinds: tuple[str, ...]  # what its entities may be (its root aside)
@@ -100,7 +94,8 @@ def check_entity(eid: str, namespace: str, root: bool, kind: str) -> None:
 
 
 def check_relation(kind: str, src: str, dst: str, src_namespace: str, dst_namespace: str) -> None:
-    """Raises unless a ``kind`` relation may connect entities in these namespaces."""
+    """Raises unless a ``kind`` relation may connect entities in these namespaces
+    (``contain`` never crosses namespaces; the others are in ``RELATIONS``)."""
     if kind not in RELATION_KINDS:
         raise ValueError(f"unknown relation kind {kind!r}")
     ends = (src_namespace, dst_namespace)

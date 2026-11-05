@@ -1,30 +1,4 @@
-"""TypeScript/JavaScript: classes and types as entities inside modules, and the
-references between them.
-
-Each top-level ``class``, ``interface``, ``type`` alias and ``enum`` (exported or not;
-``abstract``, ``const enum`` and ``declare`` forms included) becomes an entity
-``repo:<file>#<Name>`` of that kind, contained in its module. In TypeScript the interfaces
-and type aliases are what Python's data classes are: the shapes modules agree on, so
-they are atoms like classes. Functions are not entities, components included: a
-module's functions and its top-level code are the module's own body, as in Python (the
-picture is about architecture, not call graphs). A declaration merged from several
-statements (an interface declared twice, a class and an interface of one name) is one
-entity, at its first statement.
-
-References are ``use`` relations with subkind ``ref`` (attrs ``name``: the name used),
-from the symbol whose statement mentions a name (or from the module, for anything
-else at the top level) to what the name is bound to: a symbol of the same file, or an
-import, recorded against ``unresolved:tsref:<specifier>@<file>|<name>`` for
-``resolve.resolve_refs`` (``<name>`` is ``default`` for a default import and empty
-for a namespace used whole). ``ns.Name`` through a namespace import (``import * as ns``,
-``const ns = require(...)``) refers to ``Name``. A reference is ``type_only`` when
-every mention is in a type position or the import is ``import type``: TypeScript
-erases it, so it is no dependency at run time (and a cycle through it none either).
-
-For the hover text a module also gets ``functions``, ``constants`` (UPPER_CASE),
-``own_lines`` and, for a package body (``index.ts``), ``reexports``; its leading JSDoc
-comment is its ``doc``, as a symbol's is. ``ts-exports`` in the notes holds each
-file's re-exports for the resolver to follow.
+"""Finds the classes and types in TS/JS modules and references to them.
 """
 
 from __future__ import annotations
@@ -185,6 +159,33 @@ def _own_code(root, is_body: bool, symbol_lines: int, total_lines: int | None, r
 
 
 def run(ctx: Context) -> None:
+    """Add each module's classes and types as entities, and the references to them.
+
+    Each top-level ``class``, ``interface``, ``type`` alias and ``enum`` (exported or
+    not; ``abstract``, ``const enum`` and ``declare`` forms included) becomes an entity
+    ``repo:<file>#<Name>`` of that kind, contained in its module. In TypeScript the
+    interfaces and type aliases are what Python's data classes are: the shapes modules
+    agree on, so they are atoms like classes. Functions are not entities, components
+    included: a module's functions and its top-level code are the module's own body, as
+    in Python (the picture is about architecture, not call graphs). A declaration merged
+    from several statements (an interface declared twice, a class and an interface of
+    one name) is one entity, at its first statement.
+
+    References are ``use`` relations with subkind ``ref`` (attrs ``name``: the name
+    used), from the symbol whose statement mentions a name (or from the module, for
+    anything else at the top level) to what the name is bound to: a symbol of the same
+    file, or an import, recorded against ``unresolved:tsref:<specifier>@<file>|<name>``
+    for ``resolve.resolve_refs`` (``<name>`` is ``default`` for a default import and
+    empty for a namespace used whole). ``ns.Name`` through a namespace import (``import
+    * as ns``, ``const ns = require(...)``) refers to ``Name``. A reference is
+    ``type_only`` when every mention is in a type position or the import is ``import
+    type``: TypeScript erases it, so it is no dependency at run time (and a cycle
+    through it none either).
+
+    A module also gets ``functions``, ``constants`` (UPPER_CASE), ``own_lines`` and, for
+    a package body (``index.ts``), ``reexports``; its leading JSDoc comment is its
+    ``doc``, as a symbol's is. ``ts-exports`` in the notes holds each file's re-exports
+    for ``resolve.resolve_refs`` to follow."""
     m = ctx.model
     exports: dict[str, dict] = {}
     pending: Counter[tuple[str, tuple]] = Counter()  # (src entity, binding) -> mentions

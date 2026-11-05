@@ -1,9 +1,4 @@
-"""Artifacts: the directory tree of tracked files, as the ``contain`` hierarchy.
-
-Files get a ``language`` (by extension) and a ``role``: ``source``, ``test``,
-``config``, ``docs``, ``data`` or ``asset``. Roles are attributes, not
-filters: views decide what to hide, and report what they hid.
-"""
+"""Builds the directory tree of tracked files, with languages and roles."""
 
 from __future__ import annotations
 
@@ -106,6 +101,10 @@ def _classify(rel: str) -> tuple[str | None, str]:
 
 
 def run(ctx: Context) -> None:
+    """Adds the directory tree of tracked files as the ``contain`` hierarchy. Files get a
+    ``language`` (by extension) and a ``role``: ``source``, ``test``, ``config``,
+    ``docs``, ``data``, ``asset``, ``markup`` or ``other``. Roles are attributes: a file
+    is left out only when it sits in a generated directory (``GENERATED_DIRS``)."""
     m = ctx.model
     root = m.add_entity(Entity(address.repo(""), "directory", ctx.repo.name, {"path": ".", "root": True}, Provenance("fs")))
     seen_dirs = {".": root.id}

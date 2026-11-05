@@ -1,10 +1,4 @@
-"""TypeScript/JavaScript: ``use`` relations from import/require/export-from, marked
-``type_only`` for ``import type`` (and imports of types only), ``dynamic`` for ``import()``.
-
-Specifiers are recorded against ``unresolved:js:<specifier>@<file>`` for
-relative paths (resolution needs the importing file) and
-``unresolved:js:<package>`` for bare specifiers; ``nolli.match`` resolves
-them to files (exact) or external packages.
+"""Parses TypeScript/JavaScript and records the imports of its modules.
 """
 
 from __future__ import annotations
@@ -161,6 +155,14 @@ def read(tree) -> list[Import]:
 
 
 def run(ctx: Context) -> None:
+    """Add a ``use`` relation for each import, ``require`` and ``export ... from``,
+    marked ``type_only`` for ``import type`` (and imports of types only) and
+    ``dynamic`` for ``import()``.
+
+    Specifiers are recorded against ``unresolved:js:<specifier>@<file>`` for
+    relative paths (resolution needs the importing file) and
+    ``unresolved:js:<package>`` for bare specifiers; ``resolve.resolve_imports``
+    later binds them to files (exact) or external packages."""
     m = ctx.model
     pending: list[tuple[str, str, int]] = []
     for rel in ctx.sources("typescript"):

@@ -1,19 +1,6 @@
-"""Where nolli keeps what it builds: models, by key (``nolli/model/keys.py``), and the maps
-overlays keep for them (``maps.py``).
+"""The interface of a storage for models, changes and their maps.
 
-``ModelStore`` is the interface: a commit's model with the maps its extractors saved
-(``save_model``), a change's own record (``save_change``: what it says about itself, its two
-sides and the maps kept for the change, git's hunks and a review's verdicts among them), and
-per overlay a handle on its maps (``open_maps``). nolli's own is ``DirectoryStore``
-(``directory.py``).
-
-Who may read what is decided in one place, ``check(repo)``: every read of a model, a change
-or a map goes through it. nolli's own store lets everyone read everything; a service built
-on nolli overrides ``check`` (raising ``NotAllowed``) and nothing else.
-
-Everything stored carries a format; data of another format is not read (it is built again).
-The store depends on the data model only.
-"""
+It defines what a store does and depends on the data model only."""
 
 from __future__ import annotations
 
@@ -28,8 +15,23 @@ FORMAT = 1  # of key.json and change.json
 
 
 class ModelStore(MapStore, Protocol):
+    """Keeps models by key (a commit's or a change's) and the maps overlays keep for them.
+
+    ``save_model`` keeps a commit's model with the maps its extractors made; ``save_change``
+    keeps a change's own record (what it says about itself, its two sides and the maps kept
+    for the change, git's hunks and a review's verdicts among them); ``open_maps`` gives an
+    overlay a handle on its maps.
+
+    Everything stored carries a format; data of another format is not read (a load returns
+    None, as if nothing were kept).
+    """
+
     def check(self, repo: Repo) -> None:
-        """Raises NotAllowed unless the current request may read ``repo``; every read calls it."""
+        """Raises NotAllowed unless the current request may read ``repo``.
+
+        This is the one place that decides who may read what: every read of a model, a change
+        or a map goes through it. A store that restricts access overrides ``check`` and nothing
+        else."""
 
     def find_key(self, name: str) -> ModelKey | None:
         """The key of the stored model called ``name`` (``key.format_name()``, or a name it was

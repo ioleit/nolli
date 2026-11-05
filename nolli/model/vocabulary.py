@@ -1,14 +1,7 @@
-"""What every language's overlays say in the same words: the shapes code that works with any
-language may rely on (the roll-up counting references, the change overlay finding a class's
-lines, the hover text). A language's overlay returns these, and may add what only it knows
-(a subclass: ``nolli/extractors/typescript/vocabulary.py``). At run time they are plain dicts
-(stored as maps, sent as JSON); ``check_map`` checks an extractor's map against them when
-extraction is done.
+"""The shapes of what overlays say about code, the same for every language.
 
-Who says what: the file tree's overlay (``fs``) says what a file or directory is
-(``FileFacts``); a language's symbols overlay what a module or a class defines
-(``ModuleFacts``, ``SymbolFacts``), named in the model's ``meta["symbols"]`` by language; the
-extractor that found an edge what references it stands for (``EdgeFacts``).
+A shape belongs here when code that works with any language relies on it; what only one
+language knows belongs in that language's own subclass of it.
 """
 
 from __future__ import annotations
@@ -17,6 +10,10 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from nolli.model.scene import Element
+
+
+# At run time these are plain dicts (stored as maps, sent as JSON); a language's overlay
+# returns them and may add keys of its own.
 
 
 class Reference(TypedDict):
@@ -36,7 +33,7 @@ class EdgeFacts(TypedDict):
 
 
 class FileFacts(TypedDict):
-    """What the file tree says about a file or directory."""
+    """What the file tree's overlay (``fs``) says about a file or directory."""
     path: str
     role: str  # source, test, docs, config, data, asset, markup, other; a directory's also mixed
     language: NotRequired[str]  # an extracted language's files
@@ -49,7 +46,7 @@ class FileFacts(TypedDict):
 
 
 class ModuleFacts(TypedDict):
-    """What a language says a module defines outside its classes and types."""
+    """What a language's symbols overlay says a module defines outside its classes and types."""
     functions: list[str]
     constants: list[str]
     own_lines: int
@@ -58,7 +55,7 @@ class ModuleFacts(TypedDict):
 
 
 class SymbolFacts(TypedDict):
-    """A class, interface, type alias or enum."""
+    """What a language's symbols overlay says about a class, interface, type alias or enum."""
     path: str
     line: int
     end_line: int
@@ -88,7 +85,8 @@ def count_references(el: Element) -> int:
 
 
 def read_symbols(el: Element) -> ModuleFacts | SymbolFacts | dict:
-    """What its language says a module, or a class (type, …) in one, defines ({} for anything else)."""
+    """What its language says a module, or a class (type, …) in one, defines ({} for anything
+    else), from the symbols overlay the model's ``meta["symbols"]`` names for that language."""
     f = el if el.kind == "file" else el.parent
     language = read_file(f).get("language") if f is not None else None
     name = (el.meta.get("symbols") or {}).get(language or "")

@@ -1,19 +1,6 @@
-"""nolli's data model: the structure of one codebase, and what such structure may be.
+"""The structure of one codebase, as nodes and the edges between them.
 
-Three levels, a module each:
-
-- a *model* is structure only (``Model``, here): nodes, each an address with a kind, and
-  edges between them, each a kind (``contain`` among them: the ownership tree) and a
-  subkind (how a use was found: ``import``, ``ref``, ``http``, …). Everything else that is
-  known about a node or an edge (its name, size, role, a docstring, which lines an import
-  is on, a review's verdict) is in *overlays* (``nolli/model/scene.py``), never in the model;
-- the *metamodel* says what any model may contain: kinds, namespaces, which relations
-  connect which namespaces (``metamodel.py``); an extracted model is checked against it;
-- an *address* is how a node's id is spelled in its namespace (``address.py``).
-
-A model made by a transformation (a change, a projection: ``nolli/transformations/``) also refers
-to the elements of the models it was made from (``refs``). ``model.json`` holds a model with
-its ``format``; a reader refuses another format rather than misread it.
+A model holds structure only: what else is known about a node or an edge belongs in overlays.
 """
 
 from __future__ import annotations
@@ -35,7 +22,8 @@ class FormatError(ValueError):
 
 @dataclass(frozen=True, order=True)
 class EdgeKey:
-    """An edge's address: its kind, its two ends and its subkind."""
+    """An edge's address: its kind, its two ends and its subkind (how a use was found:
+    ``import``, ``ref``, ``http``, …)."""
 
     kind: str
     src: str
@@ -56,9 +44,14 @@ Key = str | EdgeKey  # a node's address, or an edge's
 
 
 class Model:
-    """Structure: ``kinds`` (address -> kind), ``edges``, and for a derived model ``refs``
-    (role -> element -> the elements of that source it stands for). ``key`` names the model
-    (what it is the model of: ``nolli/store/`` keys); stored overlays are kept by it."""
+    """Structure: ``kinds`` (each node's address -> its kind), ``edges``, and for a model made
+    by a transformation (a change, a projection) ``refs`` (role -> element -> the elements of
+    that source it stands for). ``contain`` edges form the ownership tree. ``key`` names the
+    model (what it is the model of: ``nolli/store/`` keys); stored overlays are kept by it.
+
+    Everything else known about a node or an edge (its name, size, role, a docstring, which
+    lines an import is on, a review's verdict) is in overlays, never in the model. Every
+    entity and relation is checked against the metamodel unless ``check`` is False."""
 
     def __init__(self, key: str = "", kinds: dict[str, str] | None = None, edges: Iterable[EdgeKey] = (),
                  refs: dict[str, dict[Key, tuple[Key, ...]]] | None = None, meta: dict | None = None,
@@ -164,6 +157,8 @@ class Model:
 
     @classmethod
     def from_dict(cls, d: dict) -> Model:
+        """A model from its ``model.json`` form, which carries its ``format``; another format
+        raises ``FormatError`` rather than be misread."""
         if d.get("format") != FORMAT:
             raise FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {FORMAT}")
         return cls(d.get("key", ""), d["nodes"], (EdgeKey(*e) for e in d["edges"]), meta=d.get("meta") or {})

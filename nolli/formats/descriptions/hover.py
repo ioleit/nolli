@@ -1,16 +1,6 @@
-"""``hover``: what the viewer shows when the pointer rests on a box or an edge: plain sentences.
+"""Describes the boxes and edges of a picture in plain sentences.
 
-A description is Markdown (prose.py): one paragraph per sentence, code spans for the data
-in it ("`api-mock` references `1 name` in `lib/`"), a quoted paragraph for what the code
-says about itself (a docstring). The viewer sets both apart.
-
-What a box is, is said from the facts extraction wrote into the model, the same way for
-every language: a module (``module``) and its language's name (``meta["languages"]``),
-a folder made a package by its package body (``body``), the classes and types inside a
-module, doc comments (``doc``), and a module's own code (``functions``, ``constants``,
-``reexports``, ``own_lines``). Then what unfolding a folder shows, its size, and what a
-box depends on outside the picture (external packages, utilities, environment,
-deployment, HTTP), which the boxes themselves no longer carry as badges.
+It computes the ``hover`` overlay from the facts in the model a picture was drawn from.
 """
 
 from __future__ import annotations
@@ -474,6 +464,20 @@ def _make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
 
 
 class Hover:
+    """The ``hover`` overlay: ``{"text": ...}`` for each drawn box and edge, a description in
+    Markdown (see ``prose``), one paragraph per sentence, with code spans for the data in it
+    ("`api-mock` references `1 name` in `lib/`") and a quoted paragraph for what the code says
+    about itself (a docstring).
+
+    What a box is, is said from the facts extraction wrote into the model, the same way for
+    every language: a module (``module``) and its language's name (``meta["languages"]``), a
+    folder made a package by its package body (``body``), the classes and types inside a
+    module, doc comments (``doc``), and a module's own code (``functions``, ``constants``,
+    ``reexports``, ``own_lines``). Then what unfolding a folder shows, its size, and what a box
+    depends on outside the picture (external packages, utilities, environment, deployment,
+    HTTP). An edge says what it carries: the names it references, calls, variables or a
+    deployment relation."""
+
     name = "hover"
 
     def compute(self, el: Element) -> dict | None:

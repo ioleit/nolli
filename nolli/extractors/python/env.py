@@ -1,6 +1,4 @@
-"""Python: environment variables read by code, ``use`` from module to ``config:NAME``.
-
-``os.environ["X"]``, ``os.environ.get("X")``, ``os.getenv("X")``.
+"""Finds the environment variables that Python code reads.
 """
 
 from __future__ import annotations
@@ -13,6 +11,8 @@ from nolli.model import address, metamodel
 
 
 def run(ctx: Context) -> None:
+    """Add a ``use`` from each module to ``config:NAME`` for every variable it reads with
+    ``os.environ["X"]``, ``os.environ.get("X")`` or ``os.getenv("X")``."""
     m = ctx.model
     for rel in ctx.sources("python", tests=False):
         fid = address.repo(rel)

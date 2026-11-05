@@ -1,12 +1,6 @@
-"""HTTP endpoints provided by Python web code (FastAPI/Starlette style).
+"""Finds the HTTP endpoints that Python web apps define.
 
-Finds ``@<router>.<method>("<path>")`` decorators, ``APIRouter(prefix=...)``
-declarations and ``<parent>.include_router(<child>, prefix=...)`` calls, and
-composes full paths by following include chains from ``FastAPI()`` apps.
-Each route is reported to the shared API structure (``extractors/api.py``) as an
-operation of the app it is mounted in, provided by the file that defines the
-handler. Routers that are never included anywhere are APIs of their own (their
-prefix stands alone), marked heuristic.
+Covers route decorators and router mounting in FastAPI, Starlette and Flask style.
 """
 
 from __future__ import annotations
@@ -44,6 +38,14 @@ def _kw(call: ast.Call, name: str) -> ast.expr | None:
 
 
 def run(ctx: Context) -> None:
+    """Report every HTTP route as an operation of the API that serves it.
+
+    Finds ``@<router>.<method>("<path>")`` decorators, ``APIRouter(prefix=...)``
+    declarations and ``<parent>.include_router(<child>, prefix=...)`` calls, and
+    composes full paths by following include chains from ``FastAPI()`` apps. Each
+    route goes to ``api.provide`` as an operation of the app it is mounted in, provided
+    by the file that defines the handler. Routers that are never included anywhere
+    are APIs of their own (their prefix stands alone), marked heuristic."""
     m = ctx.model
     routers: dict[tuple[str, str], RouterVar] = {}
     imports_by_file: dict[str, dict[str, tuple[str, str | None]]] = {}  # file -> alias -> (module, name)

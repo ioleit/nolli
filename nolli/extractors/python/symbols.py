@@ -1,21 +1,4 @@
-"""Python: classes as entities inside modules, and the references between them.
-
-Each top-level ``class`` becomes an entity ``repo:<file>#<Name>`` contained in
-its module (a class is in exactly one file, so ``contain`` stays a tree).
-Functions are not entities: a module's functions and its module-level code
-are the module's own body, so their references are attributed to the module
-itself. A module without classes therefore has nothing to unfold. This is
-deliberate: the picture is about architecture, not call graphs.
-
-References are ``use`` relations with subkind ``ref`` (attrs ``name``: the name used): from the class whose
-body mentions a name (methods count for their class) or from the module, to
-the class the name is bound to, or to the module that defines it when the
-name is a function, a variable or a submodule. Names bound by imports are
-recorded against ``unresolved:pyref:`` placeholders that ``nolli.match``
-resolves; references into external modules are dropped (the import edge
-already covers them). Where references resolve, they replace the file-level
-import edge, so a directory-level count means "references", not "import
-statements".
+"""Finds the classes in Python modules and the references between them.
 """
 
 from __future__ import annotations
@@ -163,6 +146,24 @@ class Refs(ast.NodeVisitor):
 
 
 def run(ctx: Context) -> None:
+    """Add each module's classes as entities, and the references between them.
+
+    Each top-level ``class`` becomes an entity ``repo:<file>#<Name>`` contained in
+    its module (a class is in exactly one file, so ``contain`` stays a tree).
+    Functions are not entities: a module's functions and its module-level code
+    are the module's own body, so their references are attributed to the module
+    itself. A module without classes therefore has nothing to unfold. This is
+    deliberate: the picture is about architecture, not call graphs.
+
+    References are ``use`` relations with subkind ``ref`` (attrs ``name``: the name
+    used): from the class whose body mentions a name (methods count for their class)
+    or from the module, to the class the name is bound to, or to the module that
+    defines it when the name is a function, a variable or a submodule. Names bound by
+    imports are recorded against ``unresolved:pyref:`` placeholders that
+    ``resolve.resolve_refs`` binds; references into external modules are dropped (the
+    import edge already covers them). Where references resolve, they replace the
+    file-level import edge, so a directory-level count means "references", not
+    "import statements"."""
     m = ctx.model
     aliases_by_file: dict[str, dict[str, tuple[str, str]]] = {}
     pending: Counter[tuple[str, tuple]] = Counter()  # (src entity, binding) -> count

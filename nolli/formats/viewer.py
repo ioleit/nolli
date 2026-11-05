@@ -28,6 +28,14 @@ def _describe(el: Element, names: list[str]) -> dict:
 
 
 def export_scene(scene: Scene) -> dict:
+    """A projected scene as JSON: every drawn box and edge with the properties every overlay
+    gives it, under the overlay's name (``projection``, ``label``, ``hover``, ``change``,
+    ``verdicts``, ``review``, and whatever else the scene has). The extractors' overlays are
+    left out.
+
+    Boxes come in drawing order, each naming its drawn parent. Ids are stable across states
+    (addresses, ``<id>#`` for a module's own code, ``kind|src|dst|subkind`` for edges), so a
+    client can diff two scenes to animate the step between them."""
     meta = scene.model.meta.get("projection", {})
     names = _list_exported(scene)
     order = mermaid.list_drawing_order(scene)

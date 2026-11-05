@@ -1,12 +1,7 @@
-"""The review agent over the Messages API: one Claude conversation that reads a change's brief
-(review.md), may read the change's code with git, writes verdicts and checks them, as the
-agent in nolli's CI workflow does with Claude Code, but with tools of its own, so that it runs
-wherever ``ANTHROPIC_API_KEY`` is (``nolli serve``'s "Review structural changes").
+"""Reviews a change with Claude over the Messages API.
 
-Needs the ``anthropic`` package (``pip install 'nolli-review[api]'``); available() says
-what is missing. A run reports what it is doing to ``on_step`` and stops at the next event
-of the stream once ``cancel`` is set. Its verdicts go to ``out/verdicts.json`` only once they
-pass nolli's check.
+One Claude conversation, with tools of its own (read-only git, saving and checking verdicts),
+reads a change's brief and code and writes verdicts that pass the check.
 """
 
 from __future__ import annotations
@@ -83,7 +78,8 @@ class Reviewer:
 
     def available(self) -> str | None:
         """Why no review can run here, or None. A word the viewer knows ("key", "package") or a
-        sentence it shows as it is."""
+        sentence it shows as it is. This module's agent needs ``ANTHROPIC_API_KEY`` and the
+        ``anthropic`` package (``pip install 'nolli-review[api]'``)."""
         return _available()
 
     def model(self) -> str:
@@ -92,8 +88,11 @@ class Reviewer:
 
     def review(self, brief: str, head: str, check: Check, repo: Path, out: Path,
                on_step: Callable[[str, Run], None] | None = None, cancel: threading.Event | None = None) -> Run:
-        """As review() below: writes out/verdicts.json, reports steps to ``on_step``, stops when
-        ``cancel`` is set (Cancelled), raises Failed without verdicts that pass the check. The Run
+        """As review() below: one Claude conversation reads the brief, may read the change's code
+        with git, and writes verdicts and checks them, as the agent in nolli's CI workflow does
+        with Claude Code. Writes out/verdicts.json only once the verdicts pass the check, reports
+        what it is doing to ``on_step``, stops at the next event of the stream once ``cancel`` is
+        set (Cancelled), raises Failed without verdicts that pass the check. The Run
         says the model, time and turns; a reviewer that pays otherwise than PRICE subclasses it
         for its own ``cost``."""
         return _review(brief, head, check, repo, out, on_step, cancel)

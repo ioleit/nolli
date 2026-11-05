@@ -1,21 +1,4 @@
-"""Shared by the HTML and CSS extractors: a reference written in a page or stylesheet
-(``js/main.js``, ``../fonts/a.woff2``, ``/src/main.tsx``) to the file it names.
-
-A relative reference is resolved against the referring file's directory. A reference
-from the server root (``/src/main.tsx``) names a path the server decides; it is tried
-against the referring file's directory and each directory above it up to the repository
-root, also in a ``public/`` folder there; the nearest that has the file wins (Vite
-serves ``/src/...`` from the directory of ``index.html`` and ``/logo.png`` from
-``public/``), and is marked heuristic.
-
-A script from a package CDN (``https://cdn.jsdelivr.net/npm/elkjs@0.9.3/...``) and a
-stylesheet ``@import`` of a bare package name (``@import "tailwindcss"``) are uses of
-that npm package, the same ``pkg:npm/`` entity the TypeScript front-end gives it
-(``package`` below). Other URLs with a scheme (``https:``, ``data:``), protocol-relative
-ones (``//cdn...``), fragments and template expressions (``{{ x }}``, ``${x}``) are not
-the repository's files and are skipped. A reference that looks like a file of the
-repository but names none is noted under ``markup-unmatched``.
-"""
+"""Resolves a page's or stylesheet's reference to what it names."""
 
 from __future__ import annotations
 
@@ -80,7 +63,23 @@ def _file_exists(ctx: Context, fid: str) -> bool:
 def link(ctx: Context, rel: str, ref: str, line: int, how: str, extractor: str) -> None:
     """A ``use`` edge from the file ``rel`` to the file ``ref`` names, if it names one;
     or to the npm package it uses (``package``); ``how`` (``script``, ``stylesheet``,
-    ``image``, ``import``, ``url``) is kept in attrs."""
+    ``image``, ``import``, ``url``) is kept in attrs.
+
+    A relative reference (``js/main.js``, ``../fonts/a.woff2``) is resolved against the
+    referring file's directory. A reference from the server root (``/src/main.tsx``)
+    names a path the server decides; it is tried against the referring file's directory
+    and each directory above it up to the repository root, also in a ``public/`` folder
+    there; the nearest that has the file wins (Vite serves ``/src/...`` from the
+    directory of ``index.html`` and ``/logo.png`` from ``public/``), and is marked
+    heuristic.
+
+    A script from a package CDN (``https://cdn.jsdelivr.net/npm/elkjs@0.9.3/...``) and
+    a stylesheet ``@import`` of a bare package name (``@import "tailwindcss"``) are uses
+    of that npm package, its ``pkg:npm/`` entity. Other URLs with a scheme (``https:``,
+    ``data:``), protocol-relative ones (``//cdn...``), fragments and template
+    expressions (``{{ x }}``, ``${x}``) are not the repository's files and are skipped.
+    A reference that looks like a file of the repository but names none is noted under
+    ``markup-unmatched``."""
     pkg = _package(ref.strip(), how)
     t = (interfaces.ensure_ext(ctx.model, "js", pkg[0], extractor), pkg[1]) if pkg else _target(ctx, rel, ref)
     if t is None or t[0] == address.repo(rel):

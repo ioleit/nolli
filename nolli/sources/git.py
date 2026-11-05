@@ -21,6 +21,7 @@ class ChangeError(GitError):
 
 
 def run_git(repo: Path, *args: str, env: dict | None = None) -> str:
+    """git's output for ``args`` in ``repo``; raises GitError with what git said."""
     r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, env=env, check=False)
     if r.returncode:
         raise GitError(r.stderr.strip() or f"git {' '.join(args)} failed")

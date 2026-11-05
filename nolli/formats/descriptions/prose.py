@@ -1,15 +1,8 @@
-"""Shared vocabulary for the hover sentences (info.py and each language's describe.py).
+"""Writes descriptions as Markdown sentences.
 
-A description is Markdown, one paragraph per sentence, in a small subset the viewer
-renders (viewer/js/md.js) and GitHub shows as it is:
-
-- `code spans` for the data in a sentence ("`api-mock` references `1 name` in `lib/`"),
-- a paragraph quoted with "> " for what the code says about itself (a docstring), its own
-  code spans kept,
-- ``[problem](verdict:problem)``, a link to the made-up scheme ``verdict:``, for a verdict's mark,
-- backslash escapes; nothing else is interpreted.
-
-Text from the repository goes in through ``code`` or ``esc``, never as it is.
+Descriptions use a small subset of Markdown that reads well as plain text: one paragraph per
+sentence, code spans, quoted paragraphs, ``verdict:`` links and backslash escapes; nothing else
+is interpreted. Text from the repository goes in only escaped or as code, never as it is.
 """
 
 from __future__ import annotations
@@ -36,8 +29,9 @@ def _esc(text: str) -> str:
 
 
 def quote(text: str) -> str:
-    """What the code says about itself, as a quoted paragraph: its code spans (``x`` in a
-    docstring, `x` in a doc comment) stay code spans, the rest is text."""
+    """What the code says about itself (a docstring), as a paragraph quoted with "> ": its
+    code spans (``x`` in a docstring, `x` in a doc comment) stay code spans, the rest is
+    escaped text."""
     text = " ".join(text.split())
     out, i = "", 0
     for run in re.finditer(r"`+", text):
@@ -53,7 +47,7 @@ def quote(text: str) -> str:
 
 
 def mark(verdict: str) -> str:
-    """A verdict's mark."""
+    """A verdict's mark: a link to the made-up scheme ``verdict:``, ``[problem](verdict:problem)``."""
     return f"[{verdict}](verdict:{verdict})"
 
 
@@ -63,11 +57,13 @@ def one_line(text: str) -> str:
 
 
 def paragraphs(lines: list[str]) -> str:
+    """Sentences as Markdown, one paragraph each."""
     return "\n\n".join(lines)
 
 
 def say(template: str, *values) -> str:
-    """A sentence: the template (Markdown), each {} filled with a value as a code span."""
+    """A sentence: the template (Markdown), each {} filled with a value as a code span, for the
+    data in it ("`api-mock` references `1 name` in `lib/`")."""
     out = ""
     for i, text in enumerate(template.split("{}")):
         out += text + (code(values[i]) if i < len(values) else "")

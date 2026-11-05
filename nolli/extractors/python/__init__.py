@@ -1,5 +1,7 @@
-"""Python front-end: modules and imports, classes and references, and framework adapters
-that read Python syntax (FastAPI/Flask routes, environment reads)."""
+"""The Python language: its parser, extractors and resolvers.
+
+The package holds what reads Python syntax: modules and imports, classes and the
+references between them, and adapters for frameworks (web routes, environment reads)."""
 
 from __future__ import annotations
 

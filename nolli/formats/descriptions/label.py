@@ -1,8 +1,4 @@
-"""``label``: how the picture names a drawn box. Zero or more small icons that say what it is
-(``D`` directory, ``m`` module, the language's symbol icons (``C`` class, ``I`` interface,
-``T`` type, ``E`` enum), ``svc``/``img`` deployment, ``API``, ``/`` a path step of an API, the
-verbs of an operation), then a readable name (``text``); ``prose`` is the name in running
-text, where the word-like icons stay in front ("svc api", "GET health")."""
+"""Names a drawn box with icons and a readable name."""
 
 from __future__ import annotations
 
@@ -76,6 +72,13 @@ def format_prose(el: Element, drawn: Element | None = None) -> str:
 
 
 class Label:
+    """The ``label`` overlay: how the picture names a drawn box. Zero or more small icons
+    (``icons``) say what it is: ``D`` directory, ``m`` module, the language's symbol icons
+    (``C`` class, ``I`` interface, ``T`` type, ``E`` enum), ``svc``/``img`` deployment, ``API``,
+    ``/`` a path step of an API, the verbs of an operation. Then comes a readable name
+    (``text``); ``prose`` is the name in running text, where the word-like icons stay in front
+    ("svc api", "GET health")."""
+
     name = "label"
 
     def compute(self, el: Element) -> dict | None:

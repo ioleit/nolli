@@ -1,7 +1,9 @@
-"""Interface families shared by adapters: how an env variable or an external package is
-named, so that a provider in one language and a user in another meet on the same entity
-(an npm package imported in TypeScript and loaded from a CDN by a page is one entity).
-APIs (endpoints) have their own shared structure in ``api.py``."""
+"""Entities that providers and users in any language meet on.
+
+Environment variables, external packages and outside hosts are named the same way
+whichever language provides or uses them (an npm package imported in TypeScript and
+loaded from a CDN by a page is one entity). APIs have their own structure in ``api``.
+"""
 
 from __future__ import annotations
 

@@ -1,17 +1,7 @@
-"""nolli in a repository's CI: what a pull request's review run leaves behind, and how
-``nolli view`` finds it again.
+"""Leaves a review result in a pull request from CI and finds it again.
 
-On every push to a pull request, the workflow (``.github/workflows/nolli.yml``) builds the
-change's dataset, lets a review agent write its verdicts, uploads the dataset as a workflow
-artifact named ``nolli-pr<n>-<head7>`` and comments on the PR, once per pushed commit
-(``nolli ci comment``). The comment names the result by its key,
-``<owner>/<repo>#<n>@<head7>``; ``nolli view <key>`` downloads that artifact with the
-viewer's own GitHub login, so the repository's access decides who may see it. Artifacts
-expire after 7 days; the PR's are deleted when it closes.
-
-The comment also carries the verdicts and what they were made on (base, head, nolli's
-version), hidden, so they outlive the artifact: ``nolli serve`` reads them from there
-(results()), without a login, for a public repository's pull request.
+It writes the comment a CI run posts on a pull request, reads results back from such comments,
+and downloads the dataset a run stored, by its key.
 """
 
 from __future__ import annotations
@@ -45,6 +35,7 @@ NEW = {"added": "New", "removed": "Removed", "changed": "Changed"}
 
 
 def is_key(spec: str | None) -> bool:
+    """Whether ``spec`` is a CI result's key, ``<owner>/<repo>#<n>@<head7>``."""
     return bool(spec and KEY.match(spec))
 
 
@@ -67,7 +58,11 @@ def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None =
     worst ones (not fine) with their reasons, and how to open the result; ``review``: the
     change's review diagram as a scene (``Datasets.draw_review``). ``skipped`` says
     why no review agent ran: "no-key" (the repository has no API key for one) or "fork" (a PR
-    from a fork, which gets no secrets)."""
+    from a fork, which gets no secrets).
+
+    A CI run posts it once per pushed commit (``nolli ci comment``), naming the result by its
+    key. The comment also carries the verdicts and what they were made on (base, head, nolli's
+    version), hidden, so that they outlive the artifact; results() reads them back."""
     from nolli.formats import mermaid
     from nolli.review import changes
     from nolli.review import verdicts as verdicts_lib
@@ -170,7 +165,8 @@ BOTS = ("nolli-review[bot]", "github-actions[bot]")  # who posts nolli's comment
 def results(comments: list[dict]) -> list[dict]:
     """The results nolli's CI left in a PR's comments (GitHub's issue comments, oldest first),
     newest first: what read_result() reads, with the comment's ``link`` and ``at``. Only from
-    the bots that post them, so that nobody else's comment passes for a review."""
+    the bots that post them, so that nobody else's comment passes for a review. Reading them
+    needs no login for a public repository's pull request."""
     out = []
     for c in comments:
         user = c.get("user") or {}
@@ -187,7 +183,11 @@ def results(comments: list[dict]) -> list[dict]:
 
 
 def fetch(key: str, data: Path) -> Path:
-    """The dataset a CI run stored under ``key``, downloaded into ``data`` (once)."""
+    """The dataset a CI run stored under ``key``, downloaded into ``data`` (once).
+
+    The run uploads it as a workflow artifact named ``nolli-pr<n>-<head7>``. It is downloaded
+    with the user's own GitHub login, so the repository's access decides who may see it.
+    Artifacts expire after 7 days; a PR's are deleted when it closes."""
     from nolli.sources import github
 
     owner, repo, pr, head = KEY.match(key).groups()

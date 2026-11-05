@@ -1,6 +1,5 @@
-"""Python resolution, run by ``nolli.match``: import placeholders (``unresolved:py:``) to
-files, the stdlib (dropped) or external packages, and symbol references
-(``unresolved:pyref:``) to classes, following re-exports, else to the module's file."""
+"""Resolves Python imports and symbol references to their targets.
+"""
 
 from __future__ import annotations
 
@@ -64,6 +63,8 @@ def _resolve_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | No
 
 
 def resolve_imports(ctx: Context) -> None:
+    """Bind import placeholders (``unresolved:py:``) to files or external packages;
+    imports of the standard library are dropped."""
     m = ctx.model
     modmap = _python_module_map(m)
     stdlib = set(sys.stdlib_module_names)
@@ -122,7 +123,8 @@ def _exact_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None
 
 
 def resolve_refs(ctx: Context) -> None:
-    """Bind symbol references to symbols (following re-exports), else to the module's file.
+    """Bind symbol references (``unresolved:pyref:``) to symbols, following re-exports,
+    else to the module's file.
     References into external modules are dropped: the import edge covers them. Import
     edges between two files are dropped where references between them exist, so an edge
     count means references, not import statements."""

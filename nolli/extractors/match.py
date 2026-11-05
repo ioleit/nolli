@@ -1,12 +1,4 @@
-"""Resolution: bind placeholders produced by extractors to real targets.
-
-- Each language's resolvers first (``Language.resolvers``: imports to files or external
-  packages, references to symbols; see extractors/<language>/resolve.py).
-- API calls -> endpoints (heuristic; per protocol, see ``extractors/api.py``).
-
-Placeholders that cannot be bound stay in the model as ``unresolved``
-entities so views can count them. Placeholders bound everywhere are removed.
-"""
+"""Binds the placeholders extractors leave to their real targets."""
 
 from __future__ import annotations
 
@@ -33,6 +25,10 @@ def _prune_unresolved(ctx: Context) -> None:
 
 
 def run_all(ctx: Context) -> None:
+    """Runs each language's resolvers first (``Language.resolvers``: imports to files or
+    external packages, references to symbols), then binds API calls to endpoints
+    (heuristic, per protocol; ``api.resolve``). Placeholders that cannot be bound stay
+    in the model as ``unresolved`` entities; placeholders bound everywhere are removed."""
     for _, fn in extractors.all_resolvers():
         fn(ctx)
     api.resolve(ctx)

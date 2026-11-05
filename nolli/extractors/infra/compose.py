@@ -1,16 +1,4 @@
-"""Deployment: services from docker-compose files.
-
-- each service is a ``service`` in ``runtime:``, by the host name the other services
-  reach it at (``runtime:db``);
-- ``build`` gives an ``image`` in ``pkg:`` (``pkg:build/<Dockerfile>``) and ``allocate``
-  image -> service ("runs as");
-- ``depends_on`` is ``use`` service -> service (subkind depends_on);
-- environment values that contain ``scheme://<host>`` where <host> is another
-  service are ``use`` service -> service (subkind url, exact); other hosts
-  become ``host`` entities in ``runtime:`` (external systems);
-- every environment variable a service sets is ``provide`` service -> ``config:NAME``,
-  so code that reads it (env-reads) is linked to where it runs.
-"""
+"""Reads services and how they connect from docker-compose files."""
 
 from __future__ import annotations
 
@@ -29,6 +17,19 @@ PERMISSION_KEY = re.compile(r"CORS|ORIGIN|ALLOWED|WHITELIST|TRUSTED", re.IGNOREC
 
 
 def run(ctx: Context) -> None:
+    """Adds what each docker-compose file says about its services:
+
+    - each service is a ``service`` in ``runtime:``, by the host name the other
+      services reach it at (``runtime:db``);
+    - ``build`` gives an ``image`` in ``pkg:`` (``pkg:build/<Dockerfile>``) and
+      ``allocate`` image -> service ("runs as");
+    - ``depends_on`` is ``use`` service -> service (subkind depends_on);
+    - environment values that contain ``scheme://<host>`` where <host> is another
+      service are ``use`` service -> service (subkind url, exact); other hosts
+      become ``host`` entities in ``runtime:`` (external systems);
+    - every environment variable a service sets is ``provide`` service ->
+      ``config:NAME``, so code that reads it is linked to where it runs.
+    """
     m = ctx.model
     for f in ctx.files:
         rel = ctx.rel(f)

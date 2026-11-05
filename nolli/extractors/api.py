@@ -1,34 +1,8 @@
-"""APIs: what a component serves for others to call, whatever the language or framework.
+"""Builds the APIs a repository serves and binds calls to them.
 
-Adapters only report what they find in their framework's idioms:
-
-- ``provide(ctx, Operation(...))``: a served operation (``python/fastapi.py``, ...);
-- ``call(ctx, Call(...))``: a call site (``typescript/fetch.py``, ...).
-
-``build`` (run after every adapter) turns the reported operations into one structure,
-the same for every protocol, and ``resolve`` (run by ``nolli.match``) binds calls to
-operations with the protocol's matcher (``MATCHERS``). Only the matcher and the way a
-path splits into segments are protocol knowledge; the rest is shared.
-
-The structure (entity kind, id; ``nolli/model/address.py`` makes the ids):
-
-    group     api:                                 "APIs": the root group the filter shows or hides
-    api       api:<protocol>:<key>                 one served API: an app, a server, a service definition
-    resource  api:<protocol>:<key>/<seg>/<seg>     a step in the API's path tree (a parameter is ``{}``)
-    endpoint  api:<protocol>:<key>/<seg>#<VERB>    one operation: its method on its path
-
-Names follow the picture's pattern, icons then a readable name (``nolli/formats/descriptions/label.py``):
-an API is named after the directory it is declared in (``API server``), a resource by
-its own segments relative to its parent, which is drawn whenever it is (``/ assistant``,
-``/ api`` at the top),
-an operation by its verb and the path below its step, usually nothing (``GET``). Path
-steps without an operation of their own and with one step below are merged with it
-(``conversations/{project_name}``); a step with one operation and nothing below is no
-box: the operation takes its place (``GET setup/status``). The entity's ``name`` is the
-whole text (``GET setup/status``), ``attrs["short"]`` the part after the verb.
-
-Relations: ``provide(handler file, endpoint)`` and, after matching,
-``use(caller file, endpoint)``. Unmatched calls stay ``unresolved:<protocol>:...``.
+Adapters report served operations and call sites in their framework's terms; this
+module holds what is the same for every protocol. Only a protocol's matcher and the
+way its paths split into segments are protocol knowledge.
 """
 
 from __future__ import annotations
@@ -43,6 +17,7 @@ from nolli.model import address, metamodel
 
 @dataclass
 class Operation:
+    """A served operation, as an adapter reports it with ``provide``."""
     protocol: str  # "http"; later "grpc", "graphql", ...
     api: str  # the served API's key, unique within the protocol (e.g. "server/main.py:app")
     api_file: str  # where the API is declared: it is named after that place ("server")
@@ -58,6 +33,7 @@ class Operation:
 
 @dataclass
 class Call:
+    """A call site, as an adapter reports it with ``call``."""
     protocol: str
     verb: str  # "?" when unknown
     pattern: str  # the called path's static shape, "*" for unknown segments
@@ -68,10 +44,13 @@ class Call:
 
 
 def provide(ctx: Context, op: Operation) -> None:
+    """Reports a served operation; ``build`` adds it as ``provide(handler file, endpoint)``."""
     ctx.notes.setdefault("api-operations", []).append(op)
 
 
 def call(ctx: Context, c: Call) -> None:
+    """Reports a call site as ``use(caller file, unresolved:<protocol>:...)``, a
+    placeholder ``resolve`` binds to endpoints."""
     m = ctx.model
     uid = address.unresolved(c.protocol, f"{c.verb} {c.pattern}")
     if not m.has(uid):
@@ -125,6 +104,25 @@ def _api_names(files: dict[tuple[str, str], str]) -> dict[tuple[str, str], str]:
 
 
 def build(ctx: Context) -> None:
+    """Turns the reported operations into one structure, the same for every protocol.
+    Runs after every adapter has reported.
+
+    The structure (entity kind, id; ``nolli/model/address.py`` makes the ids)::
+
+        group     api:                                 "APIs", the root group
+        api       api:<protocol>:<key>                 one served API: an app, a server, a service definition
+        resource  api:<protocol>:<key>/<seg>/<seg>     a step in the API's path tree (a parameter is ``{}``)
+        endpoint  api:<protocol>:<key>/<seg>#<VERB>    one operation: its method on its path
+
+    An API is named after the directory it is declared in (``server``), a resource by
+    its own segments relative to its parent (``assistant``), an operation by its verb
+    and the path below its step, usually nothing (``GET``). Path steps without an
+    operation of their own and with one step below are merged with it
+    (``conversations/{project_name}``); a step with one operation and nothing below is
+    no node: the operation takes its place (``GET setup/status``). The entity's
+    ``name`` is the whole text (``GET setup/status``), ``attrs["short"]`` the part
+    after the verb.
+    """
     ops: list[Operation] = ctx.notes.pop("api-operations", [])
     if not ops:
         return
@@ -237,6 +235,9 @@ MATCHERS = {"http": _match_http}
 
 
 def resolve(ctx: Context) -> None:
+    """Binds calls to endpoints with their protocol's matcher (``MATCHERS``, exact
+    match for other protocols): ``use(caller file, endpoint)``. Unmatched calls stay
+    ``unresolved:<protocol>:...``."""
     m = ctx.model
     endpoints: dict[str, list[Entity]] = defaultdict(list)
     for e in m.entities.values():

@@ -1,6 +1,4 @@
-"""TypeScript/JavaScript: environment variables read by code, ``use`` from module to ``config:NAME``.
-
-``process.env.X``, ``import.meta.env.X``.
+"""Finds the environment variables that TypeScript/JavaScript reads.
 """
 
 from __future__ import annotations
@@ -15,6 +13,8 @@ JS_ENV = re.compile(rb"(?:process\.env|import\.meta\.env)\.([A-Za-z_][A-Za-z0-9_
 
 
 def run(ctx: Context) -> None:
+    """Add a ``use`` from each module to ``config:NAME`` for every ``process.env.X`` or
+    ``import.meta.env.X`` it reads."""
     m = ctx.model
     for rel in ctx.sources("typescript", tests=False):
         fid = address.repo(rel)

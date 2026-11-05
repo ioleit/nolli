@@ -1,13 +1,4 @@
-"""Deployment: what goes into each image, from Dockerfiles.
-
-- ``COPY``/``ADD`` sources that exist in the repository are ``allocate``
-  directory/file -> image (subkind copies). Sources are relative to the build
-  context (from compose if known, else the Dockerfile's directory).
-- ``CMD``/``ENTRYPOINT`` naming a Python module (``python -m a.b``,
-  ``uvicorn a.b:app``) or a script file are ``use`` image -> file
-  (subkind entrypoint).
-Images not referenced by any compose file are created here as well.
-"""
+"""Reads what goes into each image and what it starts, from Dockerfiles."""
 
 from __future__ import annotations
 
@@ -42,6 +33,15 @@ def _instructions(text: str) -> list[tuple[str, str]]:
 
 
 def run(ctx: Context) -> None:
+    """Adds an image per Dockerfile (unless one exists already) and:
+
+    - ``COPY``/``ADD`` sources that exist in the repository are ``allocate``
+      directory/file -> image (subkind copies). Sources are relative to the image's
+      build context if one is known, else to the Dockerfile's directory.
+    - ``CMD``/``ENTRYPOINT`` naming a Python module (``python -m a.b``,
+      ``uvicorn a.b:app``) or a script file are ``use`` image -> file
+      (subkind entrypoint).
+    """
     m = ctx.model
     for f in ctx.files:
         rel = ctx.rel(f)

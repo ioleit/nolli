@@ -93,8 +93,17 @@ def list_ids(scene: Scene) -> dict[str, str]:
 
 
 def render(scene: Scene, fade: bool = True) -> str:
-    """The scene as a Mermaid flowchart. ``fade``: in a change's scene, draw what did not
-    change faint (the viewer's "fade unchanged")."""
+    """The scene as a Mermaid flowchart, top to bottom in Mermaid's own layout.
+
+    It draws a projected scene's boxes, containers (as subgraphs) and edges, named by the
+    ``label`` overlay and marked by ``change``. The output uses only plain Mermaid, so that it
+    renders anywhere (GitHub included) and stays readable as text: no click handlers, no layout
+    engines beyond the default, styles only through ``classDef`` and ``linkStyle``. Where
+    utilities belong at the bottom, an invisible link (``~~~``) from a box that uses one keeps
+    it below that box.
+
+    ``fade``: in a change's scene, draw what did not change faint (the viewer's "fade
+    unchanged")."""
     node_list, edge_list, review = _read_scene(scene)
     nodes = {n["id"]: n for n in node_list}
     kids: dict[str | None, list[dict]] = {}

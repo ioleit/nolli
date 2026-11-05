@@ -1,11 +1,4 @@
-"""What a build is doing, on stderr, while it does it.
-
-A step that takes half a second or more ends with a line saying how long it took; quicker
-ones leave none, so a small repository's build says only that it was built. On a terminal
-the step under way is also one line rewritten in place, with the files it has read so far
-and the time since the build began. Elsewhere (an agent, a pipe) only the finished steps'
-lines are printed.
-"""
+"""Reports on stderr what a build is doing while it does it."""
 
 from __future__ import annotations
 
@@ -21,6 +14,14 @@ EVERY = 0.1  # s: how often the line under way is rewritten
 
 
 class Progress:
+    """Reports a build's steps on ``stream`` (stderr).
+
+    A step that takes half a second or more (``SHORT``) ends with a line saying how long it
+    took; quicker ones leave none, so a small repository's build says only that it was built.
+    On a terminal the step under way is also one line rewritten in place, with the files it has
+    read so far and the time since the build began. Elsewhere (a pipe) only the finished
+    steps' lines are printed."""
+
     def __init__(self, stream: TextIO | None = None, prefix: str = "", t0: float | None = None):
         self.stream = stream or sys.stderr
         self.live = self.stream.isatty()

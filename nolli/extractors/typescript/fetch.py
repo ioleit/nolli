@@ -1,18 +1,4 @@
-"""HTTP calls made by frontend code (TypeScript/JavaScript).
-
-Two passes over the frontend's syntax trees:
-
-1. Direct calls: ``fetch(<url>)``, ``axios.<method>(<url>)``,
-   ``new EventSource(<url>)``, ``new WebSocket(<url>)``. The URL's static
-   shape is kept (template substitutions become ``*`` segments; a leading
-   substitution such as ``${API_BASE}`` is dropped).
-2. One level of indirection: a function whose body passes one of its
-   parameters into such a URL is a *helper*; every call to a function of that
-   name elsewhere contributes its argument as a URL.
-
-Calls are reported to the shared API structure (``extractors/api.py``) as
-``unresolved:http:<METHOD or ?> <pattern>`` placeholders; ``nolli.match`` binds them
-to endpoints.
+"""Finds the HTTP calls that TypeScript/JavaScript code makes.
 """
 
 from __future__ import annotations
@@ -190,6 +176,20 @@ def _substitution_idents(node) -> set[str]:
 
 
 def run(ctx: Context) -> None:
+    """Report every HTTP call whose URL can be read from the code.
+
+    Two passes over the syntax trees:
+
+    1. Direct calls: ``fetch(<url>)``, ``axios.<method>(<url>)``,
+       ``new EventSource(<url>)``, ``new WebSocket(<url>)``. The URL's static
+       shape is kept (template substitutions become ``*`` segments; a leading
+       substitution such as ``${API_BASE}`` is dropped).
+    2. One level of indirection: a function whose body passes one of its
+       parameters into such a URL is a *helper*; every call to a function of that
+       name elsewhere contributes its argument as a URL.
+
+    Calls go to the ``api`` module as ``unresolved:http:<METHOD or ?> <pattern>``
+    placeholders, to be bound to endpoints later."""
     trees: dict[str, object] = {}
     for rel in ctx.sources("typescript", tests=False):
         tree = ctx.tree(rel)

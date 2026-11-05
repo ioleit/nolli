@@ -1,21 +1,7 @@
-"""Extractors turn files into entities and relations.
+"""Extractors that turn repository files into entities and relations.
 
-Each extractor is a function ``run(ctx: Context) -> None`` that adds to
-``ctx.model``. They run in the order ``all_extractors`` gives; the fs extractor runs
-first because the others attach to the artifacts it creates. Cross-reference
-resolution that needs several extractors' output (import targets, HTTP calls
-to routes, hostnames to services) is done afterwards in ``nolli.match``.
-
-A language is a package next to this file that exports ``LANGUAGE`` (a ``Language``)
-and is listed in ``LANGUAGE_PACKAGES``: which files are its modules, how to parse them,
-its extractors and resolvers, what it is called and which file is a folder's own code
-(``__init__.py``, ``index.ts``).
-
-Only extraction reads this. What the operations on the graph (roll-up, labels, hover
-text, diff) need to know about a language is written into the model: ``fs`` marks a
-language's files ``module`` and its package bodies ``body``, and ``meta["languages"]``
-names the languages. The rest of nolli never imports from here, except ``cli`` and
-``match``, which run the extraction.
+This package holds what all extractors share: the context they run in, the languages
+they can read, and the order they run in.
 """
 
 from __future__ import annotations
@@ -33,6 +19,7 @@ from nolli.progress import Progress, Quiet
 
 @dataclass
 class Context:
+    """What an extractor works on: the repository, its files and the model it adds to."""
     repo: Path
     model: Facts
     files: list[Path]  # tracked, non-ignored files, relative to repo
@@ -81,7 +68,13 @@ class Context:
 
 @dataclass
 class Language:
-    """What nolli knows about one language; see the module docstring.
+    """What nolli knows about one language.
+
+    A language is a package next to this module that exports ``LANGUAGE`` (a
+    ``Language``) and is listed in ``LANGUAGE_PACKAGES``: which files are its modules,
+    how to parse them, its extractors and resolvers, what it is called and which file is
+    a folder's own code (``__init__.py``, ``index.ts``). What later stages need to know
+    about a language is written into the model, not read from here.
 
     ``extensions`` maps a file extension to the ``language`` attribute its files get
     (".jsx" -> "javascript"). ``parse(rel, source)`` returns the tree ``Context.tree``
@@ -139,7 +132,12 @@ def language_names() -> dict[str, str]:
 
 
 def all_extractors():
-    """Extraction order: the file tree first (everything attaches to it), then per
+    """Each extractor is a ``(name, run(ctx: Context) -> None)`` pair; ``run`` adds to
+    ``ctx.model``. Cross-reference resolution that needs several extractors' output
+    (import targets, HTTP calls to routes, hostnames to services) runs afterwards
+    (``all_resolvers``, ``match``).
+
+    Extraction order: the file tree first (everything attaches to it), then per
     language its front-end (imports, symbols) and adapters, then what pages and
     stylesheets load (``markup``), then infrastructure, then
     the shared structures the adapters reported into (``api``)."""

@@ -1,15 +1,7 @@
-"""Merge: two models of one repository, base and head, into the model of the change between
-them, and the overlay that says what the change did (``change``).
+"""Merges the models of two commits into the model of their change.
 
-Same address, same thing: the change holds every node and edge of either side, and each
-refers to its namesake in ``base`` and in ``head`` (where it has one). What changed is the
-``change`` overlay's to say: on the change's own nodes and edges it compares what the two
-sides' overlays say (a node or edge on one side only is ``added`` or ``removed``, an edge
-whose number of references differs ``changed``); what changed inside a file is git's word,
-kept with the change as its ``content`` map (``nolli.build.list_content``): a file gets git's
-status and its added and removed lines, a class the changed lines inside its line range. On a
-drawn box or edge of a picture of the change it sums up what changed underneath. Links into
-the PR and the change's totals are here too.
+It also says what the change did: per node and edge in the ``change`` overlay, and as a
+whole in the change's totals and its links on GitHub.
 """
 
 from __future__ import annotations
@@ -26,6 +18,15 @@ def is_change(scene: Scene) -> bool:
 
 
 class Change:
+    """The ``change`` overlay. It says what a change did to each node and edge.
+
+    On a change's own nodes and edges it compares the two sides: a node or edge on one side
+    only is ``added`` or ``removed``, an edge whose number of references differs is
+    ``changed``. What changed inside a file is git's word, kept with the change as its
+    ``content`` map: a file gets git's status and its added and removed lines, a class the
+    changed lines inside its line range. On a box or edge of a scene drawn from a change
+    (role ``source``) it sums up what changed in what that box or edge stands for."""
+
     name = "change"
 
     def __init__(self, content: StoredMaps) -> None:
@@ -228,7 +229,8 @@ def _sum_edge(el: Element) -> dict | None:
 
 def union(key: str, meta: dict | None = None):
     """Merge as a transformation: of two scenes by role (``base``, ``head``), the model holding
-    every node and edge of either, each referring to its namesake on each side."""
+    every node and edge of either, each referring to its namesake on each side. Same address,
+    same thing: a node or edge is the same on both sides when its address is."""
     def make(sides: dict[str, Scene]) -> Model:
         base, head = sides["base"], sides["head"]
         kinds = {**base.model.kinds, **head.model.kinds}

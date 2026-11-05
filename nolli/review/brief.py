@@ -1,8 +1,4 @@
-"""What a review agent gets (``review.md``): the change's title, the diagram of everything that
-changed (the reviewer looks at the same picture), how to answer, and the change's
-description; and the diagram itself (``review.mmd``), the change with every area that
-changed in source code unfolded (``changes.find_review_cut``; ``nolli.datasets`` draws it).
-Verdicts come back as JSON on the diagram's node ids (``nolli/review/verdicts.py``)."""
+"""Writes the brief a review agent gets for a change."""
 
 from __future__ import annotations
 
@@ -15,7 +11,10 @@ from nolli.transformations.merge import Links
 def make_brief(scene: Scene, mermaid: str, description: str | None = None) -> str:
     """What a review agent gets: the change's title, the diagram of everything that changed
     (the reviewer looks at the same picture), how to answer, and the PR's description.
-    Verdicts come back as JSON on the diagram's nodes and edges and are shown in the viewer."""
+    Verdicts come back as JSON on the diagram's nodes and edges and are shown in the viewer.
+
+    ``mermaid``: the review diagram (``review.mmd``), the change with every area that changed
+    in source code unfolded (``changes.find_review_cut``)."""
     d = scene.model.meta["change"]
     links = Links(d)
     head = f"# Architecture review: {d.get('title') or 'change'}\n\n"

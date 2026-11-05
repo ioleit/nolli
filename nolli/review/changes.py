@@ -1,6 +1,7 @@
-"""The change as a reviewer (person or agent) goes through it: the numbered changes
-(``list_changes``), everything about one box (``detail_box``), and the review's cut, every
-area that changed in source code unfolded (``find_review_cut``)."""
+"""Lists what changed in a change, as a reviewer goes through it.
+
+Everything here reads a change's scene and returns plain data for a reviewer, person or agent.
+"""
 
 from __future__ import annotations
 

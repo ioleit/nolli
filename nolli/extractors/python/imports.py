@@ -1,9 +1,4 @@
-"""Python: ``use`` relations from import statements.
-
-Imports are recorded against ``unresolved:py:<module>`` placeholders here;
-``nolli.match`` resolves them to files (exact) or external packages.
-Relative imports are resolved immediately, since the file's own location
-settles them.
+"""Records the imports of Python modules.
 """
 
 from __future__ import annotations
@@ -23,6 +18,12 @@ def module_name_of(rel: str) -> str:
 
 
 def run(ctx: Context) -> None:
+    """Add a ``use`` relation for each import statement.
+
+    Imports are recorded against ``unresolved:py:<module>`` placeholders, which
+    ``resolve.resolve_imports`` later binds to files (exact) or external packages.
+    Relative imports are made absolute right away, since the file's own location
+    settles them."""
     m = ctx.model
     pending: list[tuple[str, str, int]] = []  # (file id, module, line)
     for rel in ctx.sources("python"):

@@ -19,7 +19,9 @@ def _summarize(scene: Scene) -> dict:
 
 
 def make_report(scene: Scene, picture: Scene) -> dict:
-    """``picture``: the scene's default picture, whose size the report gives."""
+    """What a model is, in numbers (``report.json``): its meta, how many nodes and edges of
+    each kind, the default picture's size, the unresolved references, and for a change how
+    many things changed. ``picture``: the scene's default picture, whose size the report gives."""
     meta = scene.model.meta
     p = picture.model.meta["projection"]
     report = {"meta": meta, "summary": _summarize(scene),

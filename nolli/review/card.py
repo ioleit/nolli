@@ -1,6 +1,4 @@
-"""``review``: what a review shows on a drawn box or edge of a change: which of the numbered
-changes it carries (``items``) and the second part of its hover card, under a line: what
-happened to it and the verdicts on it (``card``, Markdown)."""
+"""Sums up changes and verdicts on each drawn box and edge."""
 
 from __future__ import annotations
 
@@ -108,6 +106,11 @@ def _describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (
 
 
 class Review:
+    """The ``review`` overlay. On a change's node or edge: the numbered changes about it
+    (``items``, ``about``). On a drawn box or edge of a change: which of the numbered changes it
+    carries (``items``), and the second part of its hover card, under a line: what happened to
+    it and the verdicts on it (``card``, Markdown)."""
+
     name = "review"
 
     def compute(self, el: Element) -> dict | None:

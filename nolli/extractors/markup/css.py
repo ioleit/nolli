@@ -1,7 +1,4 @@
-"""Stylesheets: ``@import`` and ``url(...)`` references to files of the repository
-(other stylesheets, fonts, images), as ``use`` edges (see ``refs.py``). Read with
-regular expressions after comments are blanked out; no CSS parser is needed for these
-two forms."""
+"""Reads which files and packages a stylesheet refers to."""
 
 from __future__ import annotations
 
@@ -19,7 +16,9 @@ EXTENSIONS = (".css", ".scss", ".less")
 
 def scan(ctx: Context, rel: str, text: str, first_line: int = 1, extractor: str = "css") -> None:
     """References in CSS ``text`` that starts at ``first_line`` of ``rel`` (a stylesheet,
-    or a page's ``<style>``)."""
+    or a page's ``<style>``): ``@import`` and ``url(...)`` to other stylesheets, fonts
+    and images, as ``use`` edges (``refs.link``). Read with regular expressions after
+    comments are blanked out; no CSS parser is needed for these two forms."""
     text = COMMENT.sub(lambda mt: re.sub(r"[^\n]", " ", mt.group()), text)
     imports = set()
     for mt in IMPORT.finditer(text):

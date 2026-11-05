@@ -1,13 +1,7 @@
-"""Building models: from a repository's files to what the store keeps (``nolli/datasets.py``
-opens them as scenes).
+"""Builds models from a repository's files and keeps them in a store.
 
-- ``extract``: a directory's files -> its model and, per extractor, what it said (maps);
-- ``fetch_commit_model``, ``fetch_change``: from the store, or built from a ``Sources`` and
-  kept in the store;
-
-The steps that take time (``extract_commit``, ``list_content``) take paths and return data,
-so a caller can run them elsewhere (``run``: the service runs them in processes of their
-own); the store and the sources are used only here.
+A model or change is taken from the store when it has one built by this version, else it is
+extracted from the repository's commits and kept there.
 """
 
 from __future__ import annotations
@@ -30,7 +24,10 @@ from nolli.store.maps import Maps, MapStore
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
-Run = Callable[..., Any]  # run(fn, *args, progress=…): fn(*args, progress=…), here or elsewhere
+# run(fn, *args, progress=…) calls fn(*args, progress=…), here or elsewhere (in a process of
+# its own). The steps that take time (extract_commit, list_content) take paths and return
+# data, so that a caller can run them elsewhere.
+Run = Callable[..., Any]
 
 
 def run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:

@@ -1,6 +1,4 @@
-"""What the review reads off a change: the structure from the model, where a file or class is
-and what role it plays (the file tree, its language), how the picture names it (formats), and
-what changed (the ``change`` overlay)."""
+"""Reads what a review needs off a change's scene."""
 
 from __future__ import annotations
 
@@ -37,6 +35,10 @@ class ChangedEdge:
 
 
 class Reader:
+    """What the review reads off a change: the structure from the model, where a file or class
+    is and what role it plays (the file tree, its language), how the picture names it, and what
+    changed (the ``change`` overlay)."""
+
     def __init__(self, scene: Scene) -> None:
         self.scene, self.model = scene, scene.model
         self._attrs: dict[str, dict] = {}

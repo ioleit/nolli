@@ -15,7 +15,7 @@ from nolli.store import maps as maps_lib
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
 
 
-# -- nolli's own: models in directories ----------------------------------------------
+# -- models in directories ------------------------------------------------------------
 
 
 class DirectoryStore:

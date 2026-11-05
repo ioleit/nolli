@@ -1,4 +1,4 @@
-"""Utils for GitHub repos and PRs"""
+"""Utils for GitHub repos and PRs."""
 
 from __future__ import annotations
 
@@ -20,6 +20,9 @@ REMOTE = re.compile(r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh:
 
 
 def is_pull_request(change: str | None) -> bool:
+    """Whether ``change`` names a pull request: its URL
+    (``https://github.com/<owner>/<repo>/pull/<n>``), or ``#<n>`` (also ``pr:<n>``, ``pr/<n>``)
+    for a PR of the repository's GitHub remote."""
     return bool(change and (URL.match(change) or NUMBER.match(change)))
 
 
@@ -38,7 +41,13 @@ AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN 
 
 
 def resolve(repo: Path, change: str, tok: str | None | object = AMBIENT) -> tuple[ChangeSpec, dict]:
-    """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``. ``tok`` as for api()."""
+    """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``. ``tok`` as for api().
+
+    ``change`` is the PR's URL, or its number (``#<n>``) on the repository's GitHub remote
+    (``upstream``, else ``origin``, else any). GitHub's REST API gives the PR's title,
+    description, base and head; the head (``pull/<n>/head``) and the base branch are fetched
+    into ``repo``, storing objects only, no branch or tag. The change is the one GitHub's
+    "Files changed" tab shows: from where the head left the base branch to the head."""
     m = URL.match(change)
     gh = _remotes(repo)
     if m:
@@ -78,6 +87,9 @@ class NotFound(ChangeError):
 
 
 def token() -> str | None:
+    """A GitHub token, for when one is needed (a private repository, or more than 60 requests
+    an hour): $GH_TOKEN or $GITHUB_TOKEN, else the gh CLI's if it is logged in; None if
+    there is none."""
     t = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if t or not shutil.which("gh"):
         return t

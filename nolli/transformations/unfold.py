@@ -1,11 +1,6 @@
-"""The default cut (``unfold``): unfold the containment forest as far as a node budget allows.
+"""Chooses which containers to unfold so a picture fits a node budget.
 
-Start with the repository root unfolded (its top-level entries) plus the
-synthetic groups folded. Then repeatedly unfold the container that reveals the
-most edges per node it costs (relations between its children, divided by the
-children it adds), as long as the result stays within the budget. Unfolding
-shows all of a container's children; there is no partial opening. Groups with
-no internal structure (externals, env, endpoints) never unfold by themselves.
+It makes the default cut, for a plain scene and for a change.
 """
 
 from __future__ import annotations
@@ -34,8 +29,17 @@ def _unfold_cost(g: Reading, v: str, hidden: set[str], anchors: set[str] = froze
 
 
 def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_expand=(address.REPO_ROOT,), hidden: set[str] | None = None) -> dict:
-    """In a diff model the budget goes to the changes first (``changes.change_scores``),
-    then whatever is left to structure as usual."""
+    """The default cut: unfold the containment forest as far as a node budget allows.
+
+    Start with the repository root unfolded (its top-level entries) plus the synthetic
+    groups folded. Then repeatedly unfold the container that reveals the most edges per node
+    it costs (relations between its children, divided by the children it adds), as long as
+    the result stays within the budget. Unfolding shows all of a container's children;
+    there is no partial opening. Groups with no internal structure (externals, env,
+    endpoints) never unfold by themselves.
+
+    In a change the budget goes to the changes first (``_score_changes``), then whatever is
+    left to structure as usual."""
 
     roles = tuple(hidden_roles) if hidden_roles is not None else rollup.hidden_by_role.__defaults__[0]
     if hidden is None:

@@ -1,6 +1,8 @@
-"""Scenes of models: a model with the extractors' overlays and nolli's, on their storage. A model
-just extracted and kept nowhere (``open_built``, ``merge_built``), or one kept in a store (a
-commit, or a change merged from its two commits: ``open_stored``)."""
+"""Opens models as scenes, with the extractors' overlays and nolli's.
+
+A model may be one just extracted and kept nowhere, or one kept in a store: a commit, or a
+change merged from its two commits.
+"""
 
 from __future__ import annotations
 
@@ -33,6 +35,7 @@ def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = N
 
 
 def open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:
+    """A commit's stored model as a scene, None if the store does not have it."""
     m = store.load_model(commit)
     return None if m is None else _open_scene(m, store, overlays)
 

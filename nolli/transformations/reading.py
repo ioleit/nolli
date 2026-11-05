@@ -1,8 +1,6 @@
-"""What the projection reads off a scene, and from where: the structure from the model, what a
-file or directory is from the file tree (``read_file``), the references behind each edge from
-the extractor that found it (``read_references``), and in a change what changed (the
-``change`` overlay). Nothing else: the projection's algorithms (``rollup.py``, ``unfold.py``,
-``projection.py``) take a ``Reading``."""
+"""Reads a scene's structure, files, references and changes.
+
+Folding a scene reads nothing else, so anything new to read off a scene for it belongs here."""
 
 from __future__ import annotations
 
@@ -46,6 +44,11 @@ class Rel:
 
 
 class Reading:
+    """A scene, read for folding it. The structure comes from the model, what a file or
+    directory is from the file tree (``file``), the references behind each edge from the
+    extractor that found it (``relations``), and in a change what changed from the
+    ``change`` overlay (``diff``)."""
+
     def __init__(self, scene: Scene) -> None:
         self.scene = scene
         self.model = scene.model
