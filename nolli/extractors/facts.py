@@ -202,14 +202,14 @@ class Facts:
             ref = {"count": r.count, "confidence": r.confidence, "path": p.path if p else None, **r.attrs}
             if p and p.line is not None:
                 ref["line"] = p.line
-            check_reference(ref, p.extractor if p else "unknown", k)
+            _check_reference(ref, p.extractor if p else "unknown", k)
             maps[p.extractor if p else "unknown"].setdefault(k, {"references": []})["references"].append(ref)
         model = Model(key, {x: e.kind for x, e in self.entities.items()}, edges, meta=dict(self.meta))
         model.meta["overlays"] = sorted(maps)
         return model, {name: dict(v) for name, v in sorted(maps.items())}
 
 
-def check_reference(ref: dict, extractor: str, key: EdgeKey) -> None:
+def _check_reference(ref: dict, extractor: str, key: EdgeKey) -> None:
     """Raises unless ``ref`` is a ``Reference`` (``nolli/model/vocabulary.py``): every extractor says it
     in the same words, so code that works with any language can count on them."""
     for k in ("count", "confidence", "path"):

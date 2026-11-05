@@ -8,7 +8,7 @@ from nolli.model import metamodel
 from nolli.model.scene import Scene
 
 
-def summarize(scene: Scene) -> dict:
+def _summarize(scene: Scene) -> dict:
     by_kind: dict[str, int] = defaultdict(int)
     for k in scene.model.kinds.values():
         by_kind[k] += 1
@@ -22,17 +22,17 @@ def make_report(scene: Scene, picture: Scene) -> dict:
     """``picture``: the scene's default picture, whose size the report gives."""
     meta = scene.model.meta
     p = picture.model.meta["projection"]
-    report = {"meta": meta, "summary": summarize(scene),
+    report = {"meta": meta, "summary": _summarize(scene),
               "view": {"visible": p["stats"]["nodes"], "edges": p["stats"]["edges"], "internal": p["internal"],
                        "hidden_relations": p["hidden_relations"], "unresolved": p["unresolved"]},
               "unresolved": sorted(x for x, k in scene.model.kinds.items() if k == "unresolved"),
               "notes": meta.get("notes", {})}
     if "change" in meta:
-        report["diff"] = count_changes(scene)
+        report["diff"] = _count_changes(scene)
     return report
 
 
-def count_changes(scene: Scene) -> dict:
+def _count_changes(scene: Scene) -> dict:
     """How many nodes and edges changed, by kind and status (the ``change`` overlay's word)."""
     by: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for el in scene.list_nodes():

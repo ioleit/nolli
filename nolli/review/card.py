@@ -15,7 +15,7 @@ from nolli.review import verdicts as verdicts_lib
 FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside
 
 
-def list_items(el: Element) -> dict[str, dict]:
+def _list_items(el: Element) -> dict[str, dict]:
     """Which numbered changes a change's node or edge is about (a node those that focus on it, an
     edge those whose facts it is), by id, with what placing them needs."""
     items = changes.list_changes(el.scene)
@@ -23,7 +23,7 @@ def list_items(el: Element) -> dict[str, dict]:
     return {it["id"]: {"category": it["category"], "focus": it["focus"]} for it in mine}
 
 
-def place_items(el: Element) -> list[str]:
+def _place_items(el: Element) -> list[str]:
     """Which numbered changes a drawn box or edge shows. An item about facts lands on the edges
     carrying those facts; an item about nodes (or facts that fell inside one box, or became a
     badge) on the box that stands for the first of them that is drawn."""
@@ -43,7 +43,7 @@ def place_items(el: Element) -> list[str]:
     return sorted(out, key=lambda i: int(i[1:]))
 
 
-def list_verdict_lines(verdicts: list[dict], inside: list[dict] = (), items: int = 0, where: str = "") -> list[str]:
+def _list_verdict_lines(verdicts: list[dict], inside: list[dict] = (), items: int = 0, where: str = "") -> list[str]:
     """One line per verdict, worst first: [!] reason. Verdicts rolled up from inside a folded box
     or bundled edge (``inside``) become one line that counts them like the review panel does,
     "15 changes in this directory · verdicts: [??] 1 [✓] 8", once there are more than a card
@@ -60,7 +60,7 @@ def list_verdict_lines(verdicts: list[dict], inside: list[dict] = (), items: int
     return lines
 
 
-def describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0, kind: str = "box") -> str:
+def _describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0, kind: str = "box") -> str:
     """Sentences on a box's hover card in a review: what happened to it, the verdicts on it, and
     those on what it holds (``inside``, summed up when there are several; ``items`` changes)."""
     lines: list[str] = []
@@ -82,10 +82,10 @@ def describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = (),
             lines.append(prose.say("Renamed from {}", nd["old_path"]))
         if nd.get("renamed_to"):
             lines.append(prose.say("Renamed to {}", nd["renamed_to"]))
-    return prose.paragraphs(lines + list_verdict_lines(verdicts, inside, items, f"in this {kind}"))
+    return prose.paragraphs(lines + _list_verdict_lines(verdicts, inside, items, f"in this {kind}"))
 
 
-def describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0,
+def _describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0,
                   names: dict[str, str] | None = None) -> str:
     """Sentences on top of an edge's hover card in a review: how its references changed, which
     names came or went, and the verdicts on it and on the dependencies it bundles."""
@@ -104,7 +104,7 @@ def describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = ()
             lines.append(prose.listing("Now uses {}", came, "more", limit=4))
         if went:
             lines.append(prose.listing("No longer uses {}", went, "more", limit=4))
-    return prose.paragraphs(lines + list_verdict_lines(verdicts, inside, items, "on this edge"))
+    return prose.paragraphs(lines + _list_verdict_lines(verdicts, inside, items, "on this edge"))
 
 
 class Review:
@@ -116,16 +116,16 @@ class Review:
         if "change" not in el.meta:
             return None
         if "source" not in el.scene.sources:  # the change itself: which numbered changes are about it
-            about = list_items(el)
+            about = _list_items(el)
             return {"items": sorted(about, key=lambda i: int(i[1:])), "about": about} if about else None
-        items = place_items(el)
+        items = _place_items(el)
         v = el.get("verdicts") or {}
         own, inside = v.get("own", []), v.get("inside", [])
         ed = el.get("change")
         if el.is_edge:
             names = {s.key.dst: names_lib.format_name(s.dst) for s in el.sources.get("source", ()) if s.is_edge}
-            card = describe_edge(ed, own, inside, len(items), names)
+            card = _describe_edge(ed, own, inside, len(items), names)
         else:
             kind = el.kind if el.kind != "anchor" else "box"
-            card = describe_box(ed, own, inside, len(items), kind.replace("_", " "))
+            card = _describe_box(ed, own, inside, len(items), kind.replace("_", " "))
         return {"items": items, "card": card}

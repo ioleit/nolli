@@ -167,7 +167,7 @@ class ChangeSpec:
         return self.base is not None
 
 
-def default_branch(repo: Path) -> str | None:
+def _default_branch(repo: Path) -> str | None:
     """The default branch as a revision (``origin/main``, ``main``, …), or None."""
     try:
         ref = run_git(repo, "symbolic-ref", "-q", "refs/remotes/origin/HEAD").strip()
@@ -194,7 +194,7 @@ def merge_base(repo: Path, a: str, b: str) -> str:
     return out
 
 
-def first_parent(repo: Path, sha: str) -> str | None:
+def _first_parent(repo: Path, sha: str) -> str | None:
     parents = run_git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
     return parents[0] if parents else None
 
@@ -217,35 +217,35 @@ def resolve(repo: Path, spec: str | None) -> ChangeSpec:
     if spec and "..." in spec:
         a, _, b = spec.partition("...")
         head = find_commit(repo, b or "HEAD")
-        return describe(repo, ChangeSpec(head=head, base=merge_base(repo, find_commit(repo, a or "HEAD"), head)), b or "HEAD")
+        return _describe(repo, ChangeSpec(head=head, base=merge_base(repo, find_commit(repo, a or "HEAD"), head)), b or "HEAD")
     if spec and ".." in spec:
         a, _, b = spec.partition("..")
-        return describe(repo, ChangeSpec(head=find_commit(repo, b or "HEAD"), base=find_commit(repo, a or "HEAD")), b or "HEAD")
+        return _describe(repo, ChangeSpec(head=find_commit(repo, b or "HEAD"), base=find_commit(repo, a or "HEAD")), b or "HEAD")
     rev = spec or "HEAD"
     head = find_commit(repo, rev)
-    main = default_branch(repo)
+    main = _default_branch(repo)
     if main is None:
         if spec is None:
-            return describe(repo, ChangeSpec(head=head), rev)
+            return _describe(repo, ChangeSpec(head=head), rev)
         raise ChangeError(f"no default branch (origin/HEAD, main or master) to compare {spec!r} with; "
                           f"name both ends: nolli view <base>..{spec}")
     base = merge_base(repo, find_commit(repo, main), head)
     if base != head:
-        return describe(repo, ChangeSpec(head=head, base=base), rev)
+        return _describe(repo, ChangeSpec(head=head, base=base), rev)
     if spec is None:  # on the default branch, or nothing new on this one: the whole of HEAD
-        return describe(repo, ChangeSpec(head=head), rev)
-    parent = first_parent(repo, head)
+        return _describe(repo, ChangeSpec(head=head), rev)
+    parent = _first_parent(repo, head)
     if parent is None:
-        return describe(repo, ChangeSpec(head=head), rev)
-    return describe(repo, ChangeSpec(head=head, base=parent), rev)
+        return _describe(repo, ChangeSpec(head=head), rev)
+    return _describe(repo, ChangeSpec(head=head, base=parent), rev)
 
 
 def whole(repo: Path, rev: str = "HEAD") -> ChangeSpec:
     """One commit as a whole, no change: ``nolli view --whole [<commit>]``."""
-    return describe(repo, ChangeSpec(head=find_commit(repo, rev)), rev)
+    return _describe(repo, ChangeSpec(head=find_commit(repo, rev)), rev)
 
 
-def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
+def _describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
     """Title and description from the commits: one commit gives its subject and body; several
     give the branch's name (or the range) and the list of their subjects."""
     if not ch.is_diff:
@@ -257,7 +257,7 @@ def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
         _sha, subject, body = commits[0]
         ch.title, ch.description = subject, body.strip()
         return ch
-    name = rev if rev not in ("HEAD", "") and not looks_like_sha(rev) else None
+    name = rev if rev not in ("HEAD", "") and not _looks_like_sha(rev) else None
     if name is None:
         branch = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() if rev in ("HEAD", "") else ""
         name = branch if branch and branch != "HEAD" else None
@@ -268,5 +268,5 @@ def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
     return ch
 
 
-def looks_like_sha(rev: str) -> bool:
+def _looks_like_sha(rev: str) -> bool:
     return 4 <= len(rev) <= 40 and all(c in "0123456789abcdef" for c in rev.lower())

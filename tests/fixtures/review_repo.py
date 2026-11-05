@@ -202,13 +202,13 @@ def build(out: Path) -> Path:
 def keep_verdicts(ds: Path) -> None:
     """VERDICTS as the dataset's review (verdicts.json beside it, as an agent leaves it)."""
     from nolli.scenes import open_change_scene
-    from nolli.review.verdicts import keep_verdicts_file
+    from nolli.review.verdicts import _keep_verdicts_file
     from nolli.store import DirectoryStore
 
     (ds / "verdicts.json").write_text(json.dumps(VERDICTS, indent=1))
     store = DirectoryStore(ds.parent)
     key = store.find_key(ds.name)
-    keep_verdicts_file(store, key, open_change_scene(store, key), (ds / "verdicts.json").read_text(), {"by": "unknown"})
+    _keep_verdicts_file(store, key, open_change_scene(store, key), (ds / "verdicts.json").read_text(), {"by": "unknown"})
 
 
 if __name__ == "__main__":

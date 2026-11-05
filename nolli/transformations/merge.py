@@ -35,7 +35,7 @@ class Change:
         if is_change(el.scene):
             return self.compare(el)
         if "source" in el.scene.sources:  # a picture: what changed underneath, from what it stands for
-            return sum_edge(el) if el.is_edge else sum_box(el)
+            return _sum_edge(el) if el.is_edge else _sum_box(el)
         return None
 
     # -- on a change's own elements --------------------------------------------------
@@ -53,7 +53,7 @@ class Change:
                 rec = {"status": "changed", "base": nb, "head": nh}
             else:
                 return None
-            return rec | {"fact": describe_fact(el, rec, b, h)}
+            return rec | {"fact": _describe_fact(el, rec, b, h)}
         content = self.content.load(el.model_key)
         rec: dict = {}
         if b is None:
@@ -65,7 +65,7 @@ class Change:
             rec.setdefault("status", "same")
             rec.update(c)
         if el.kind == "file" and rec.get("status") == "removed":
-            gone = el.scene.memo(list_renames).get(el.key)
+            gone = el.scene.memo(_list_renames).get(el.key)
             if gone:
                 rec["renamed_to"] = gone
         if el.kind in metamodel.SYMBOL_KINDS:
@@ -98,7 +98,7 @@ class Change:
         return {"added": len(added), "removed": len(removed), "added_lines": added, "removed_lines": removed}
 
 
-def list_renames(scene: Scene) -> dict[str, str]:
+def _list_renames(scene: Scene) -> dict[str, str]:
     """old file -> its new path, for the files git saw renamed."""
     change = scene.overlays.get("change")
     content = change.content.load(scene.model.key) if isinstance(change, Change) else {}
@@ -161,7 +161,7 @@ def describe_change(about: dict, content: Mapping[Key, dict]) -> dict:
 TOTALS = ("added", "removed", "files", "new", "gone")
 
 
-def sum_box(el: Element) -> dict | None:
+def _sum_box(el: Element) -> dict | None:
     """A drawn box: its own status, and the totals of what changed in what it stands for and in
     the boxes drawn inside it; ``internal``, the changed dependencies the projection found
     between what it holds."""
@@ -196,7 +196,7 @@ def sum_box(el: Element) -> dict | None:
     return out
 
 
-def describe_fact(el: Element, rec: dict, b: Element | None, h: Element | None) -> dict:
+def _describe_fact(el: Element, rec: dict, b: Element | None, h: Element | None) -> dict:
     """A changed edge of a change for a tooltip or details panel, with a link to where it changed."""
     side = b if rec["status"] == "removed" else h
     refs = vocabulary.read_references(side) if side else []
@@ -210,7 +210,7 @@ def describe_fact(el: Element, rec: dict, b: Element | None, h: Element | None) 
             "link": links.diff(path, line, "base" if rec["status"] == "removed" else "head") if path else None}
 
 
-def sum_edge(el: Element) -> dict | None:
+def _sum_edge(el: Element) -> dict | None:
     """A drawn edge: how its references changed (the projection counted them), and the changed
     edges it bundles."""
     p = el.get("projection") or {}

@@ -34,7 +34,7 @@ DOC_MAX = 240  # characters of a docstring's summary kept
 NAMES_MAX = 60  # names kept per list (functions, constants, re-exports)
 
 
-def own_code(tree: ast.Module, rel: str, pkg_parts: list[str], aliases: dict[str, tuple[str, str]], total_lines: int | None) -> dict:
+def _own_code(tree: ast.Module, rel: str, pkg_parts: list[str], aliases: dict[str, tuple[str, str]], total_lines: int | None) -> dict:
     """What a module holds outside its classes, for the hover text on its own-code dot:
     top-level functions and constants (UPPER_CASE names) in source order, the lines not
     inside a class, and for a package's __init__.py the names it re-exports from its own
@@ -63,7 +63,7 @@ def own_code(tree: ast.Module, rel: str, pkg_parts: list[str], aliases: dict[str
     return out
 
 
-def doc_summary(node) -> str | None:
+def _doc_summary(node) -> str | None:
     """A module's or class's docstring, read from the syntax tree (nothing is imported or
     run): its first paragraph on one line, cut at DOC_MAX characters."""
     text = ast.get_docstring(node, clean=True)
@@ -87,40 +87,40 @@ TYPE_GENERICS = {"Union", "Optional", "Callable", "Literal", "Annotated", "Type"
                  "Collection", "Container", "Awaitable", "Coroutine", "AsyncIterator", "AsyncIterable"}
 
 
-def last_name(e: ast.expr) -> str | None:
+def _last_name(e: ast.expr) -> str | None:
     """``Name`` or the last part of an attribute chain, else None."""
     return e.id if isinstance(e, ast.Name) else e.attr if isinstance(e, ast.Attribute) else None
 
 
-def is_type_expr(e: ast.expr) -> bool:
+def _is_type_expr(e: ast.expr) -> bool:
     """A union written with ``|`` or a subscripted generic (``dict[str, int]``, ``Optional[X]``)."""
     if isinstance(e, ast.BinOp) and isinstance(e.op, ast.BitOr):
-        return is_type_operand(e.left) and is_type_operand(e.right)
-    return isinstance(e, ast.Subscript) and last_name(e.value) in TYPE_GENERICS
+        return _is_type_operand(e.left) and _is_type_operand(e.right)
+    return isinstance(e, ast.Subscript) and _last_name(e.value) in TYPE_GENERICS
 
 
-def is_type_operand(e: ast.expr) -> bool:
+def _is_type_operand(e: ast.expr) -> bool:
     return isinstance(e, (ast.Name, ast.Attribute)) or (isinstance(e, ast.Constant) and (e.value is None or isinstance(e.value, str))) \
-        or is_type_expr(e)
+        or _is_type_expr(e)
 
 
-def is_capwords(name: str) -> bool:
+def _is_capwords(name: str) -> bool:
     return name[:1].isupper() and not name.isupper()
 
 
-def type_definition(node: ast.stmt) -> tuple[str, str] | None:
+def _type_definition(node: ast.stmt) -> tuple[str, str] | None:
     """(name, kind) when a module-level statement defines a type, else None."""
     type_stmt = getattr(ast, "TypeAlias", None)  # Python 3.12+
     if type_stmt is not None and isinstance(node, type_stmt) and isinstance(node.name, ast.Name):
         return node.name.id, "type"
     if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None \
-            and last_name(node.annotation) == "TypeAlias":
+            and _last_name(node.annotation) == "TypeAlias":
         return node.target.id, "type"
     if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
         name, v = node.targets[0].id, node.value
-        if isinstance(v, ast.Call) and last_name(v.func) in TYPE_FACTORIES:
-            return name, TYPE_FACTORIES[last_name(v.func)]  # type: ignore[index]
-        if is_capwords(name) and is_type_expr(v):
+        if isinstance(v, ast.Call) and _last_name(v.func) in TYPE_FACTORIES:
+            return name, TYPE_FACTORIES[_last_name(v.func)]  # type: ignore[index]
+        if _is_capwords(name) and _is_type_expr(v):
             return name, "type"
     return None
 
@@ -171,7 +171,7 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        doc = doc_summary(tree)
+        doc = _doc_summary(tree)
         if doc:
             m.entities[fid].attrs["doc"] = doc
         pkg_parts = rel.split("/")[:-1]
@@ -201,13 +201,13 @@ def run(ctx: Context) -> None:
         aliases_by_file[rel] = aliases
         symbols: dict[str, str] = {}  # classes and type definitions: the file's symbol entities
         for node in tree.body:
-            defined = (node.name, "class") if isinstance(node, ast.ClassDef) else type_definition(node)
+            defined = (node.name, "class") if isinstance(node, ast.ClassDef) else _type_definition(node)
             if defined:
                 name, kind = defined
                 sid = address.part(fid, name)
                 attrs = {"path": rel, "line": node.lineno, "end_line": node.end_lineno, "language": "python"}
-                if kind == "class" and doc_summary(node):
-                    attrs["doc"] = doc_summary(node)
+                if kind == "class" and _doc_summary(node):
+                    attrs["doc"] = _doc_summary(node)
                 m.add_entity(Entity(sid, kind, name, attrs, Provenance("python-symbols", rel, node.lineno)))
                 m.contain(fid, sid, "python-symbols")
                 symbols[name] = sid
@@ -215,11 +215,11 @@ def run(ctx: Context) -> None:
                 bindings[node.name] = ("local", fid, node.name)  # a module's functions are the module's own body
         for name, sid in symbols.items():
             bindings[name] = ("local", sid, name)
-        m.entities[fid].attrs.update(own_code(tree, rel, pkg_parts, aliases, m.entities[fid].attrs.get("lines")))
+        m.entities[fid].attrs.update(_own_code(tree, rel, pkg_parts, aliases, m.entities[fid].attrs.get("lines")))
         for node in tree.body:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
-            defined = (node.name, "class") if isinstance(node, ast.ClassDef) else type_definition(node)
+            defined = (node.name, "class") if isinstance(node, ast.ClassDef) else _type_definition(node)
             src = symbols[defined[0]] if defined else fid
             v = Refs(bindings)
             v.visit(node)

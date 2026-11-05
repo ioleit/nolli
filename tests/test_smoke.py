@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from helpers import draw, extract_facts, find_node, open_dir
+from helpers import draw, find_node, open_dir
+from nolli.build import _extract_facts
 
 from nolli.transformations.reading import Reading as Graph
 from nolli import transformations
@@ -72,7 +73,7 @@ def rel_set(m, kind, subkind=None):
 
 
 def test_model_binds_the_seams(repo: Path):
-    m = extract_facts(repo)
+    m = _extract_facts(repo)
     uses = rel_set(m, "use")
     # imports resolve inside the repo, relative and absolute; Python references bind at
     # symbol level (module-level code -> a module variable stays at file level)
@@ -197,12 +198,12 @@ def test_utilities_by_incoming_edges(repo: Path):
     """A box with more than N incoming dependency edges is a utility: its incoming edges
     become badges on their sources. Boxes in groups never are."""
     from nolli.model.metamodel import USE
-    from nolli.transformations.projection import cut
+    from nolli.transformations.projection import _cut
     from nolli.transformations.rollup import utility_badges
 
     scene = open_dir(repo)
     g = Graph(scene)
-    rolled = cut(scene, ProjectionSpec(utilities=0)).rolled
+    rolled = _cut(scene, ProjectionSpec(utilities=0)).rolled
     before = list(rolled.edges)
     utilities = utility_badges(g, rolled, min_in=0)  # every used box outside a group
     targets = {e.dst for e in before if e.kind == USE}
@@ -210,7 +211,7 @@ def test_utilities_by_incoming_edges(repo: Path):
     assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
     src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
     assert any(k.startswith("util:") for k in rolled.annotations[src])
-    rolled = cut(scene, ProjectionSpec(utilities=0)).rolled
+    rolled = _cut(scene, ProjectionSpec(utilities=0)).rolled
     assert utility_badges(g, rolled, min_in=1) == set()  # nothing has more than one
 
 
@@ -241,7 +242,7 @@ def test_docstrings(tmp_path: Path):
     (tmp_path / "pkg/__init__.py").write_text('"""Tools for frobbing.\n\nLong details nobody reads."""\n')
     (tmp_path / "pkg/core.py").write_text('"""The core frobber."""\nimport sys\nsys.exit("must not run")\n\n'
                                           'class Frob:\n    """Frobs one thing at a time."""\n')
-    m = extract_facts(tmp_path)
+    m = _extract_facts(tmp_path)
     assert m.entities["repo:pkg/core.py"].attrs["doc"] == "The core frobber."
     assert m.entities["repo:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
     sc = draw(open_dir(tmp_path), expanded=["repo:", "repo:pkg", "repo:pkg/core.py"])
@@ -258,7 +259,7 @@ def test_own_code_dot(tmp_path: Path):
     (tmp_path / "pkg/core.py").write_text("LIMIT = 3\n\ndef helper():\n    pass\n\ndef frob():\n    return Frob()\n\n"
                                           "class Frob:\n    def go(self):\n        return frob()\n")
     (tmp_path / "pkg/use.py").write_text("from .core import frob\nfrob(); frob()\n")
-    m = extract_facts(tmp_path)
+    m = _extract_facts(tmp_path)
     core = m.entities["repo:pkg/core.py"].attrs
     assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
     assert m.entities["repo:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
@@ -299,11 +300,11 @@ def test_box_names_are_icons_then_a_name(repo: Path):
 
 def test_markdown_from_repository_text():
     """Names and docstrings from a repository can't turn into Markdown (prose.py)."""
-    from nolli.formats.descriptions.prose import code, esc, quote, say
+    from nolli.formats.descriptions.prose import code, _esc, quote, say
 
     assert say("{} references {} in {}", "api/", "1 name", "lib/") == "`api/` references `1 name` in `lib/`"
     assert code("a`b") == "``a`b``" and code("`x`") == "`` `x` ``"
-    assert esc("__init__.py *[x](y)*") == r"\_\_init\_\_.py \*\[x\](y)\*"
+    assert _esc("__init__.py *[x](y)*") == r"\_\_init\_\_.py \*\[x\](y)\*"
     assert quote("The core\n  frobber.") == "> The core frobber."
     # a docstring's own code spans stay, backslashes and all; the rest is text
     assert quote("Used by ``nolli/cli.py`` and `a_b`, not *this* or ` alone") == r"> Used by ``nolli/cli.py`` and `a_b`, not \*this\* or \` alone"
@@ -376,7 +377,7 @@ def test_type_definitions_and_module_attributes(tmp_path: Path):
         "from pkg.keys import Key, Sha, Commit\nfrom pkg import keys\nfrom . import keys as k\n"
         "def f(a: Key, b: Sha) -> Commit:\n    keys.parse({}); keys.LIMIT; k.parse({}); Commit.__name__\n"
     )
-    m = extract_facts(tmp_path)
+    m = _extract_facts(tmp_path)
     kinds = {e.name: e.kind for e in m.entities.values() if e.id.startswith("repo:pkg/keys.py#")}
     assert kinds == {"Commit": "class", "Change": "class", "Key": "type", "Sha": "type", "Names": "type"}
     uses = {(r.dst, r.attrs.get("name")): r.count for r in m.relations

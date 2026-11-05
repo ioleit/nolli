@@ -148,7 +148,7 @@ def chain_end(g: Reading, n: str, hidden: set[str]) -> str:
     return n
 
 
-def is_file(g: Reading, x: str) -> bool:
+def _is_file(g: Reading, x: str) -> bool:
     return g.kind(x) == "file"
 
 
@@ -158,7 +158,7 @@ def is_init(g: Reading, x: str) -> bool:
     return g.has(x) and g.kind(x) == "file" and bool(g.file(x).get("body"))
 
 
-def under(g: Reading, x: str, d: str) -> bool:
+def _under(g: Reading, x: str, d: str) -> bool:
     """x (or the file owning x) lies in directory d's subtree."""
     cur: str | None = x
     while cur is not None:
@@ -168,13 +168,13 @@ def under(g: Reading, x: str, d: str) -> bool:
     return False
 
 
-def default_init_edge(g: Reading, r) -> bool:
+def _default_init_edge(g: Reading, r) -> bool:
     """An edge from a package body to something inside its own package: the re-export /
     submodule import every ``__init__`` has. Not a dependency; dropped from the picture."""
     if not is_init(g, r.src):
         return False
     d = g.parent(r.src)
-    return d is not None and under(g, r.dst, d)
+    return d is not None and _under(g, r.dst, d)
 
 
 def init_anchor_dirs(g: Reading, hidden: set[str]) -> set[str]:
@@ -183,7 +183,7 @@ def init_anchor_dirs(g: Reading, hidden: set[str]) -> set[str]:
     out: set[str] = set()
     drawn_kinds = ("directory", "file", *metamodel.SYMBOL_KINDS, "service", "image")  # badge targets (externals, env, endpoints) don't count
     for r in g.relations:
-        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or default_init_edge(g, r):
+        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or _default_init_edge(g, r):
             continue
         for end, other in ((r.src, r.dst), (r.dst, r.src)):
             if is_init(g, end) and end not in hidden and g.has(other) and g.kind(other) in drawn_kinds:
@@ -193,7 +193,7 @@ def init_anchor_dirs(g: Reading, hidden: set[str]) -> set[str]:
     return out
 
 
-def file_degree(g: Reading, hidden: set[str]) -> dict[str, int]:
+def _file_degree(g: Reading, hidden: set[str]) -> dict[str, int]:
     """Relations touching each leaf entity, for ranking which files to show first."""
     deg: dict[str, int] = defaultdict(int)
     for r in g.relations:
@@ -203,9 +203,9 @@ def file_degree(g: Reading, hidden: set[str]) -> dict[str, int]:
     return dict(deg)
 
 
-def shown_files(g: Reading, d: str, hidden: set[str], k: int, degree: dict[str, int]) -> tuple[list[str], list[str]]:
+def _shown_files(g: Reading, d: str, hidden: set[str], k: int, degree: dict[str, int]) -> tuple[list[str], list[str]]:
     """The k most connected files of d (ties by name), and the rest."""
-    loose = sorted((c for c in g.children(d) if c not in hidden and is_file(g, c)),
+    loose = sorted((c for c in g.children(d) if c not in hidden and _is_file(g, c)),
                    key=lambda c: (-degree.get(c, 0), c))
     return loose[:k], loose[k:]
 
@@ -288,16 +288,16 @@ def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[
     return rep
 
 
-def fact_key(r) -> str:
+def _fact_key(r) -> str:
     """An edge's id: ``kind|src|dst|subkind``."""
     return r.key.format()
 
 
-def owner_of(node: str) -> str:
+def _owner_of(node: str) -> str:
     return address.owner(node)
 
 
-def top_of(g: Reading, node: str, expanded: set[str]) -> str:
+def _top_of(g: Reading, node: str, expanded: set[str]) -> str:
     """The outermost drawn ancestor of a drawn node (the top-level component it belongs to)."""
     cur = node
     while True:
@@ -314,7 +314,7 @@ def utility_badges(g: Reading, rolled: RolledUp, min_in: int = 6) -> set[str]:
     as drawn (one per arrow, whatever its count); groups and what's inside them are never
     utilities, so a shown group keeps its edges. Returns the utility nodes."""
     def in_group(x: str) -> bool:
-        cur: str | None = owner_of(x)
+        cur: str | None = _owner_of(x)
         while cur is not None and g.has(cur):
             if g.kind(cur) == "group":
                 return True
@@ -371,7 +371,7 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
         return out
 
     for r in g.relations:
-        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or default_init_edge(g, r):
+        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or _default_init_edge(g, r):
             continue
         s, d = alias.get(r.src, r.src), alias.get(r.dst, r.dst)
         if s == d or not g.has(s) or not g.has(d):
@@ -384,7 +384,7 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
         if common is None or common in (s, d):
             continue
         lca[common] += r.count
-        if g.parent(s) == common and g.parent(d) == common and is_file(g, s) and is_file(g, d):
+        if g.parent(s) == common and g.parent(d) == common and _is_file(g, s) and _is_file(g, d):
             loose[common] += r.count
     return dict(lca), dict(loose)
 
@@ -392,7 +392,7 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
 def drawn_parent(g: Reading, node: str, expanded: set[str]) -> str | None:
     """The unfolded container a drawn node sits in (the own code ``F#`` sits in F)."""
     if address.is_own_code(node):
-        return owner_of(node)
+        return _owner_of(node)
     p = g.parent(node)
     while p is not None:
         if p in expanded:
@@ -497,10 +497,10 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
             types: int = 0, member=None) -> None:
         if kind == metamodel.PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
-        if a == b or owner_of(a) == owner_of(b):
-            internal[owner_of(a)] += count
+        if a == b or _owner_of(a) == _owner_of(b):
+            internal[_owner_of(a)] += count
             if changed:
-                internal_changes[owner_of(a)].update(changed)
+                internal_changes[_owner_of(a)].update(changed)
             return
         if sub == "ref":
             sub = "import"  # references are the fine-grained form of imports; one edge kind in the picture
@@ -526,7 +526,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
         return not ((side == "base" and st == "added") or (side == "head" and st == "removed"))
 
     for r in g.relations:
-        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or default_init_edge(g, r) or not on_side(r):
+        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or _default_init_edge(g, r) or not on_side(r):
             continue
         if g.kind(r.dst) == "unresolved":
             if rep(r.src) is not None:
@@ -545,7 +545,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
                 names[f["name"]] = names.get(f["name"], 0) + f.get("count", 1)
         types = sum(f["count"] for f in r.references if f.get("type_only"))
         n = drawn_count(rb, rh)
-        add(r.kind, a, b, r.subkind, n, r.confidence, names, rb, rh, {fact_key(r): st} if st else None,
+        add(r.kind, a, b, r.subkind, n, r.confidence, names, rb, rh, {_fact_key(r): st} if st else None,
             min(types, n) if types and types >= r.count else types, r.key)
 
     # Edges touching a filtered-out group become annotations on the other end (or are left out

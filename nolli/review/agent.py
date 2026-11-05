@@ -50,7 +50,7 @@ class Failed(Exception):
     """The run ended without verdicts that pass the check; the message says why."""
 
 
-def available() -> str | None:
+def _available() -> str | None:
     """Why no review can run here: "key" (no ANTHROPIC_API_KEY), "package" (no anthropic), or None."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return "key"
@@ -84,7 +84,7 @@ class Reviewer:
     def available(self) -> str | None:
         """Why no review can run here, or None. A word the viewer knows ("key", "package") or a
         sentence it shows as it is."""
-        return available()
+        return _available()
 
     def model(self) -> str:
         """What the review panel names as the reviewer."""
@@ -96,10 +96,10 @@ class Reviewer:
         ``cancel`` is set (Cancelled), raises Failed without verdicts that pass the check. The Run
         says the model, time and turns; a reviewer that pays otherwise than PRICE subclasses it
         for its own ``cost``."""
-        return review(brief, head, check, repo, out, on_step, cancel)
+        return _review(brief, head, check, repo, out, on_step, cancel)
 
 
-def prompt(brief: str, head: str) -> str:
+def _prompt(brief: str, head: str) -> str:
     return (f"Review this change's architecture with nolli. Its brief (review.md) follows; do what it says.\n\n"
             f"Read code only as the change has it, with the git tool: `diff <base>..<head>` for the diff, "
             f"`show {head}:<path>` for a whole file at the head. Save your verdicts with write_verdicts "
@@ -107,7 +107,7 @@ def prompt(brief: str, head: str) -> str:
             f"save and check again until it says ok.\n\n<brief>\n{brief}\n</brief>")
 
 
-def doing(name: str, args: dict) -> str:
+def _doing(name: str, args: dict) -> str:
     """What a tool call does, in a few words, for the page that follows the run."""
     if name == "git":
         a = [x for x in args.get("args") or [] if not x.startswith("-")]
@@ -123,7 +123,7 @@ def doing(name: str, args: dict) -> str:
 Check = Callable[[str], tuple[list[dict], list[str]]]  # verdicts.json -> (verdicts, problems)
 
 
-def review(brief: str, head: str, check: Check, repo: Path, out: Path, on_step: Callable[[str, Run], None] | None = None,
+def _review(brief: str, head: str, check: Check, repo: Path, out: Path, on_step: Callable[[str, Run], None] | None = None,
            cancel: threading.Event | None = None, effort: str = EFFORT) -> Run:
     """Review a change from its brief (review.md) with the code in the git repository ``repo``,
     ``check`` judging the verdicts against the diagram they answer. Writes out/verdicts.json
@@ -162,7 +162,7 @@ def review(brief: str, head: str, check: Check, repo: Path, out: Path, on_step: 
         return f"unknown tool {name}", True
 
     t0 = time.time()
-    messages: list = [{"role": "user", "content": prompt(brief, head)}]
+    messages: list = [{"role": "user", "content": _prompt(brief, head)}]
     try:
         while True:
             if run.turns >= TURNS_MAX:
@@ -203,7 +203,7 @@ def review(brief: str, head: str, check: Check, repo: Path, out: Path, on_step: 
                 if b.type != "tool_use":
                     continue
                 args = b.input if isinstance(b.input, dict) else {}
-                say(doing(b.name, args))
+                say(_doing(b.name, args))
                 text, err = call(b.name, args)
                 results.append({"type": "tool_result", "tool_use_id": b.id, "content": text, "is_error": err})
             messages.append({"role": "user", "content": results})

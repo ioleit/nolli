@@ -40,10 +40,10 @@ def run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
 def extract(repo: Path, config: dict | None = None, progress: Progress | None = None, key: str = "") -> tuple[Model, Maps]:
     """The model of the files under ``repo`` as they are (a working tree, or a checkout), and
     what each extractor said about its nodes and edges."""
-    return extract_facts(repo, config, progress).split(key)
+    return _extract_facts(repo, config, progress).split(key)
 
 
-def extract_facts(repo: Path, config: dict | None = None, progress: Progress | None = None) -> Facts:
+def _extract_facts(repo: Path, config: dict | None = None, progress: Progress | None = None) -> Facts:
     """What the extractors found under ``repo``, before it is split into structure and maps
     (``Facts``: entities and relations with their attributes, as the extractors wrote them)."""
     facts = Facts()
@@ -109,18 +109,18 @@ def is_fresh(m: Model | dict | None) -> bool:
 # -- from the store, or built ---------------------------------------------------------
 
 
-def load_maps(store: MapStore, m: Model) -> Maps:
+def _load_maps(store: MapStore, m: Model) -> Maps:
     return {n: dict(store.open_maps(n).load(m.key)) for n in m.meta.get("overlays") or []}
 
 
-def fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = run_here,
+def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = run_here,
                        progress: Progress | None = None, rebuild: bool = False) -> tuple[Model, Maps]:
     """The model of one commit and its extractors' maps: from the store, or extracted from
     ``clone`` (which has the commit)."""
     progress = progress or Quiet()
     m = None if rebuild else store.load_model(commit)
     if m is not None and is_fresh(m):
-        return m, load_maps(store, m)
+        return m, _load_maps(store, m)
     m, maps = run(extract_commit, clone, commit.sha, commit.repo.format_name(), progress=progress)
     m.key = commit.format_key()
     return m, maps
@@ -134,7 +134,7 @@ def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *,
     if m is not None and is_fresh(m):
         return m
     with sources.open_commits(commit.repo, commit.sha) as clone:
-        m, maps = fetch_commit_model(store, clone, commit, run=run, progress=progress, rebuild=True)
+        m, maps = _fetch_commit_model(store, clone, commit, run=run, progress=progress, rebuild=True)
     with progress.step("keeping the model"):
         store.save_model(commit, m, maps)
     return m
@@ -150,7 +150,7 @@ def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, abou
     if kept is not None and is_fresh(kept):
         return kept
     with sources.open_commits(change.repo, change.base, change.head) as clone:
-        sides = {side: fetch_commit_model(store, clone, c, run=run, progress=progress.under(side), rebuild=rebuild)
+        sides = {side: _fetch_commit_model(store, clone, c, run=run, progress=progress.under(side), rebuild=rebuild)
                  for c, side in zip(change.list_sides(), ("base", "head"), strict=True)}
         content = run(list_content, clone, change.base, change.head, progress=progress)
     record = {k: v for k, v in (about or {}).items() if v}

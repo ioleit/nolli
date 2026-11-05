@@ -51,11 +51,11 @@ CONFIG_FILES = {"Dockerfile", "Procfile", "Makefile", ".gitignore", ".gitattribu
 CONFIG_CODE = re.compile(r"(^|\.)(config|conf|rc)\.[cm]?[jt]sx?$|^\.(eslintrc|prettierrc|babelrc)|^(vite|vitest|jest|tailwind|postcss|eslint|babel|webpack|rollup|playwright|next|nuxt|svelte|astro)\.config\.")
 
 
-def lang_by_ext() -> dict[str, str]:
+def _lang_by_ext() -> dict[str, str]:
     return OTHER_LANGS | {ext: v for lang in extractors.languages() for ext, v in lang.extensions.items()}
 
 
-def module_facts(name: str, lang: str | None) -> dict:
+def _module_facts(name: str, lang: str | None) -> dict:
     """What the graph operations need to know about a file of an extracted language:
     it is a ``module``; a package body (``__init__.py``, ``index.ts``) is also ``body``,
     what it makes its folder ("package", "folder module")."""
@@ -68,7 +68,7 @@ def module_facts(name: str, lang: str | None) -> dict:
 MAX_COUNTED = 4 << 20  # don't read files over 4 MiB just to count their lines
 
 
-def count_lines(path, size: int) -> int | None:
+def _count_lines(path, size: int) -> int | None:
     """Lines in a text file (a last line without a newline counts); None if unreadable."""
     if size > MAX_COUNTED:
         return None
@@ -81,11 +81,11 @@ def count_lines(path, size: int) -> int | None:
     return data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
 
 
-def classify(rel: str) -> tuple[str | None, str]:
+def _classify(rel: str) -> tuple[str | None, str]:
     p = PurePosixPath(rel)
     parts = set(p.parts[:-1])
     ext = p.suffix.lower()
-    lang = lang_by_ext().get(ext)
+    lang = _lang_by_ext().get(ext)
     if p.name in CONFIG_FILES or p.name.startswith("Dockerfile") or CONFIG_CODE.search(p.name):
         return lang, "config"
     if parts & TEST_DIRS or TEST_FILE.search(p.name):
@@ -122,7 +122,7 @@ def run(ctx: Context) -> None:
                 m.contain(parent_id, d.id, "fs")
                 seen_dirs[acc] = d.id
             parent_id = seen_dirs[acc]
-        lang, role = classify(rel)
+        lang, role = _classify(rel)
         try:
             size = (ctx.repo / f).stat().st_size
         except OSError:
@@ -130,8 +130,8 @@ def run(ctx: Context) -> None:
         attrs = {"path": rel, "role": role, "size": size}
         if lang:
             attrs["language"] = lang
-            attrs.update(module_facts(f.name, lang))
-            lines = count_lines(ctx.repo / f, size)
+            attrs.update(_module_facts(f.name, lang))
+            lines = _count_lines(ctx.repo / f, size)
             if lines is not None:
                 attrs["lines"] = lines
         e = m.add_entity(Entity(address.repo(rel), "file", f.name, attrs, Provenance("fs", rel)))

@@ -15,7 +15,7 @@ from nolli.model import address, metamodel
 SOURCE_ROOTS = ("src", "lib", "python")
 
 
-def python_module_map(m) -> dict[str, str]:
+def _python_module_map(m) -> dict[str, str]:
     """dotted module -> entity id (file or directory for namespace packages)."""
     out: dict[str, str] = {}
     for e in m.entities.values():
@@ -50,7 +50,7 @@ def module_candidates(mod: str, from_rel: str) -> list[str]:
     return out
 
 
-def resolve_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
+def _resolve_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
     for cand in module_candidates(mod, from_rel):
         parts = cand.split(".")
         for i in range(len(parts), 0, -1):
@@ -65,7 +65,7 @@ def resolve_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | Non
 
 def resolve_imports(ctx: Context) -> None:
     m = ctx.model
-    modmap = python_module_map(m)
+    modmap = _python_module_map(m)
     stdlib = set(sys.stdlib_module_names)
     rewrites: list[tuple[Relation, str | None, str]] = []  # (relation, new dst or None, status)
     for r in m.relations:
@@ -73,7 +73,7 @@ def resolve_imports(ctx: Context) -> None:
         if mod is None:
             continue
         parts = mod.split(".")
-        target = resolve_module(mod, address.path_of(r.src), modmap)
+        target = _resolve_module(mod, address.path_of(r.src), modmap)
         if target:
             rewrites.append((r, target, "file"))
         elif parts[0] in stdlib or parts[0] in ("__future__",):
@@ -114,7 +114,7 @@ def resolve_imports(ctx: Context) -> None:
     ctx.notes["py-resolution"] = {"file": sum(1 for _, _, s in rewrites if s == "file"), "external": sum(1 for _, _, s in rewrites if s == "external"), "stdlib": sum(1 for _, _, s in rewrites if s == "stdlib")}
 
 
-def exact_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
+def _exact_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
     for cand in module_candidates(mod, from_rel):
         if cand in modmap:
             return modmap[cand]
@@ -127,7 +127,7 @@ def resolve_refs(ctx: Context) -> None:
     edges between two files are dropped where references between them exist, so an edge
     count means references, not import statements."""
     m = ctx.model
-    modmap = python_module_map(m)
+    modmap = _python_module_map(m)
     aliases = ctx.notes.get("py-aliases", {})
     symbols = {e.id for e in m.entities.values() if e.kind in metamodel.SYMBOL_KINDS}
 
@@ -137,11 +137,11 @@ def resolve_refs(ctx: Context) -> None:
             return sid
         al = aliases.get(file_rel, {}).get(name)
         if al and depth < 4:
-            f = exact_module(al[0], file_rel, modmap) or resolve_module(al[0], file_rel, modmap)
+            f = _exact_module(al[0], file_rel, modmap) or _resolve_module(al[0], file_rel, modmap)
             if f and m.entities[f].kind == "file":
-                return symbol_in(address.path_of(f), al[1], depth + 1) or exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
+                return symbol_in(address.path_of(f), al[1], depth + 1) or _exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
             if f:
-                return exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
+                return _exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
         return None
 
     def resolve(key: str, src_rel: str) -> tuple[str | None, str | None]:
@@ -151,11 +151,11 @@ def resolve_refs(ctx: Context) -> None:
         mod, _, name = key.partition(":")
         if name:
             name, _, attr = name.partition(".")
-            f = exact_module(mod, src_rel, modmap) or resolve_module(mod, src_rel, modmap)
+            f = _exact_module(mod, src_rel, modmap) or _resolve_module(mod, src_rel, modmap)
             if not f:
                 return None, None
             sym = symbol_in(address.path_of(f), name) if m.entities[f].kind == "file" else None
-            target = sym or exact_module(f"{mod}.{name}", src_rel, modmap) or f
+            target = sym or _exact_module(f"{mod}.{name}", src_rel, modmap) or f
             if not attr:
                 return target, None
             if target != f and m.entities[target].kind == "file":  # name is a module: attr in it
@@ -163,7 +163,7 @@ def resolve_refs(ctx: Context) -> None:
             return target, name
         parts = mod.split(".")
         for i in range(len(parts), 0, -1):
-            f = exact_module(".".join(parts[:i]), src_rel, modmap)
+            f = _exact_module(".".join(parts[:i]), src_rel, modmap)
             if f:
                 rest = parts[i:]
                 if rest and m.entities[f].kind == "file":

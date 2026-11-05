@@ -149,7 +149,7 @@ class Ctx:
         return out
 
 
-def by_use(ctx: Ctx, file_id: str, names: list[str]) -> list[str]:
+def _by_use(ctx: Ctx, file_id: str, names: list[str]) -> list[str]:
     """Names defined in a module, most referenced from elsewhere first (references carry
     the name they use), then in source order."""
     uses: dict[str, int] = {}
@@ -175,43 +175,43 @@ WHAT = {"endpoint": "an HTTP endpoint", "env": "an environment variable", "servi
 NOUN_ORDER = ["subpackage", "folder module", "subfolder", "module", "class", "interface", "type alias", "enum"]  # earlier in a list; the rest by count
 
 
-def language(ctx: Ctx, x: str) -> str | None:
+def _language(ctx: Ctx, x: str) -> str | None:
     """The name in text of an entity's language ("TypeScript"), if it was extracted."""
     return (ctx.languages or {}).get(ctx.g.attrs(x).get("language") or "")
 
 
-def body_of(ctx: Ctx, x: str) -> str | None:
+def _body_of(ctx: Ctx, x: str) -> str | None:
     """A folder's package body (``__init__.py``, ``index.ts``)."""
     m = ctx.g
     return next((c for c in m.children(x) if m.is_init(c)), None) if m.kind(x) == "directory" else None
 
 
-def is_symbol(ctx: Ctx, x: str) -> bool:
-    return ctx.g.kind(x) in metamodel.SYMBOL_KINDS and language(ctx, x) is not None
+def _is_symbol(ctx: Ctx, x: str) -> bool:
+    return ctx.g.kind(x) in metamodel.SYMBOL_KINDS and _language(ctx, x) is not None
 
 
-def noun(ctx: Ctx, x: str) -> str:
+def _noun(ctx: Ctx, x: str) -> str:
     """What a box counts as inside its folder."""
     e = ctx.node(x)
-    body = body_of(ctx, x)
+    body = _body_of(ctx, x)
     if body:
         what = ctx.g.attrs(body)["body"]
         return "sub" + what if what == "package" else what
-    if ctx.g.is_module(x) and language(ctx, x):
-        return "module" if e.attrs.get("role") in ("source", None) else language(ctx, x) + " file"
+    if ctx.g.is_module(x) and _language(ctx, x):
+        return "module" if e.attrs.get("role") in ("source", None) else _language(ctx, x) + " file"
     return GENERIC_NOUN.get(e.kind, e.kind)
 
 
-def kind(ctx: Ctx, x: str) -> str | None:
+def _kind(ctx: Ctx, x: str) -> str | None:
     """What a folder is, for "<name> is <kind> with …": "a Python package"."""
-    body = body_of(ctx, x)
-    return f"a {language(ctx, body)} {ctx.g.attrs(body)['body']}" if body and language(ctx, body) else None
+    body = _body_of(ctx, x)
+    return f"a {_language(ctx, body)} {ctx.g.attrs(body)['body']}" if body and _language(ctx, body) else None
 
 
-def describe(ctx: Ctx, x: str) -> list[str] | None:
+def _describe(ctx: Ctx, x: str) -> list[str] | None:
     """The first sentence for a module or a class or type."""
     e = ctx.node(x)
-    lang = language(ctx, x)
+    lang = _language(ctx, x)
     if ctx.g.is_module(x) and lang:
         facts = [prose.count(e.attrs["lines"], "line")] if e.attrs.get("lines") is not None else []
         inner: dict[str, int] = defaultdict(int)
@@ -221,7 +221,7 @@ def describe(ctx: Ctx, x: str) -> list[str] | None:
         if not facts:
             return [prose.say("{} is a " + lang + " module", ctx.name(x))]
         return [prose.say("{} is a " + lang + " module with ", ctx.name(x)) + prose.listing("{}", facts)]
-    if is_symbol(ctx, x):
+    if _is_symbol(ctx, x):
         what = ("an exported " if e.attrs.get("exported") else "a ") + lang + " " + SYMBOL_NOUN[e.kind]
         where = (e.attrs.get("path") or "").rsplit("/", 1)[-1]
         if where and e.attrs.get("line"):
@@ -230,25 +230,25 @@ def describe(ctx: Ctx, x: str) -> list[str] | None:
     return None
 
 
-def doc(ctx: Ctx, x: str) -> str | None:
+def _doc(ctx: Ctx, x: str) -> str | None:
     """The doc comment's summary: a package's from its package body."""
-    body = body_of(ctx, x)
-    if body or ctx.g.is_module(x) or is_symbol(ctx, x):
+    body = _body_of(ctx, x)
+    if body or ctx.g.is_module(x) or _is_symbol(ctx, x):
         return ctx.node(body or x).attrs.get("doc")
     return None
 
 
-def own_code(ctx: Ctx, owner: str) -> list[str] | None:
+def _own_code(ctx: Ctx, owner: str) -> list[str] | None:
     """The own-code dot of a module (what it holds outside its classes and types) or of a
     package (what its package body defines and re-exports)."""
-    body = body_of(ctx, owner)
+    body = _body_of(ctx, owner)
     if not body and not ctx.g.is_module(owner):
         return None
     f = body or owner
     a = ctx.node(f).attrs
     name = ctx.name(owner)
     lead = prose.say("{}'s {} defines ", name, ctx.node(f).name) if body else prose.say("{} defines ", name)
-    functions = by_use(ctx, f, a.get("functions") or [])
+    functions = _by_use(ctx, f, a.get("functions") or [])
     constants = a.get("constants") or []
     lines: list[str] = []
     if functions:
@@ -275,21 +275,21 @@ def own_code(ctx: Ctx, owner: str) -> list[str] | None:
     return lines
 
 
-def folder(ctx: Ctx, x: str) -> str:
+def _folder(ctx: Ctx, x: str) -> str:
     """"agents/ is a Python package with 6 subpackages and 3 modules": what it holds,
     counted as unfolding draws it (hidden roles left out, __init__ classes in)."""
     e = ctx.node(x)
-    what = "the repository" if e.attrs.get("root") else kind(ctx, x) or "a folder"
+    what = "the repository" if e.attrs.get("root") else _kind(ctx, x) or "a folder"
     by: dict[str, int] = defaultdict(int)
     for c in ctx.shown_children(x):
-        by[noun(ctx, c)] += 1
+        by[_noun(ctx, c)] += 1
     if not by:
         return prose.say("{} is " + what, ctx.name(x))
     order = sorted(by, key=lambda k: (NOUN_ORDER.index(k) if k in NOUN_ORDER else len(NOUN_ORDER), -by[k], k))
     return prose.say("{} is " + what + " with ", ctx.name(x)) + prose.listing("{}", [prose.count(by[k], k) for k in order], limit=6)
 
 
-def size(ctx: Ctx, x: str) -> str | None:
+def _size(ctx: Ctx, x: str) -> str | None:
     files = ctx.files_below(x)
     if not files:
         return None
@@ -365,15 +365,15 @@ class Dependencies:
         return out
 
 
-def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> str:
+def _node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> str:
     """What a box's hover card says, as Markdown."""
-    return prose.paragraphs(node_lines(ctx, deps, x, used_by))
+    return prose.paragraphs(_node_lines(ctx, deps, x, used_by))
 
 
-def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[str]:
+def _node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[str]:
     m = ctx.g
     if address.is_own_code(x):
-        said = own_code(ctx, address.owner(x))
+        said = _own_code(ctx, address.owner(x))
         if said:
             return said
         owner = ctx.name(address.owner(x))
@@ -383,12 +383,12 @@ def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[s
         return [prose.say("The code in {} outside its classes and types", owner)]
     e = ctx.node(x)
     lines: list[str] = []
-    said = None if e.kind == "directory" else describe(ctx, x)
+    said = None if e.kind == "directory" else _describe(ctx, x)
     if said:
         lines += said
     else:
         if e.kind == "directory":
-            lines.append(folder(ctx, x))
+            lines.append(_folder(ctx, x))
         elif e.kind == "file":
             lines.append(prose.say("{} is a file with {}", ctx.name(x), prose.count(e.attrs["lines"], "line"))
                          if e.attrs.get("lines") is not None else prose.say("{} is a file", ctx.name(x)))
@@ -396,11 +396,11 @@ def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[s
             lines.append(prose.say("{} holds {}", ctx.name(x), prose.count(len(m.children(x)), "entry", "entries")))
         else:
             lines.append(prose.say("{} is " + WHAT.get(e.kind, "a " + e.kind), ctx.name(x)))
-    docstring = doc(ctx, x)
+    docstring = _doc(ctx, x)
     if docstring:
         lines.append(prose.quote(docstring))
     if e.kind == "directory":
-        total = size(ctx, x)
+        total = _size(ctx, x)
         if total:
             lines.append(total)
     lines += deps.lines(ctx, x)
@@ -425,9 +425,9 @@ PLAIN = {
 }
 
 
-def edge_info(ctx: Ctx, e) -> str:
+def _edge_info(ctx: Ctx, e) -> str:
     """What an edge's hover card says, as Markdown."""
-    lines = edge_lines(ctx, e)
+    lines = _edge_lines(ctx, e)
     types = getattr(e, "types", 0)
     if e.subkind == "import" and types and types == e.count:
         lines.append(prose.say("Only types: no dependency at run time"))
@@ -436,7 +436,7 @@ def edge_info(ctx: Ctx, e) -> str:
     return prose.paragraphs(lines)
 
 
-def edge_lines(ctx: Ctx, e) -> list[str]:
+def _edge_lines(ctx: Ctx, e) -> list[str]:
     src, dst = ctx.name(e.src), ctx.name(e.dst)
     sub = e.subkind
     if e.kind == "provide":
@@ -464,7 +464,7 @@ class EdgeFacts:
         self.count, self.names, self.types = p.get("count", 0), p.get("names") or {}, p.get("type_refs", 0)
 
 
-def make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
+def _make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
     """What every description of one projected scene shares, made once (``scene.memo``)."""
     src = scene.sources["source"]
     meta = scene.model.meta.get("projection", {})
@@ -479,10 +479,10 @@ class Hover:
     def compute(self, el: Element) -> dict | None:
         if "source" not in el.scene.sources:
             return None
-        ctx, deps = el.scene.memo(make_ctx)
+        ctx, deps = el.scene.memo(_make_ctx)
         if el.is_edge:
             if el.kind == "contain":
                 return None
-            return {"text": edge_info(ctx, EdgeFacts(el.key, el.get("projection") or {}))}
+            return {"text": _edge_info(ctx, EdgeFacts(el.key, el.get("projection") or {}))}
         used_by = (el.get("projection") or {}).get("used_by", 0)
-        return {"text": node_info(ctx, deps, el.key, used_by)}
+        return {"text": _node_info(ctx, deps, el.key, used_by)}

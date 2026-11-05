@@ -23,7 +23,7 @@ def _list_exported(scene: Scene) -> list[str]:
     return [n for n in scene.overlays if n not in left_out]
 
 
-def describe(el: Element, names: list[str]) -> dict:
+def _describe(el: Element, names: list[str]) -> dict:
     return {n: v for n in names if (v := el.get(n)) is not None}
 
 
@@ -31,9 +31,9 @@ def export_scene(scene: Scene) -> dict:
     meta = scene.model.meta.get("projection", {})
     names = _list_exported(scene)
     order = mermaid.list_drawing_order(scene)
-    nodes = [{"id": x, "kind": scene.model.kinds[x], "parent": scene.model.find_parent(x), **describe(scene.find_element(x), names)}
+    nodes = [{"id": x, "kind": scene.model.kinds[x], "parent": scene.model.find_parent(x), **_describe(scene.find_element(x), names)}
              for x in order]
-    edges = [{"key": el.id, "kind": el.key.kind, "subkind": el.key.subkind, "src": el.key.src, "dst": el.key.dst, **describe(el, names)}
+    edges = [{"key": el.id, "kind": el.key.kind, "subkind": el.key.subkind, "src": el.key.src, "dst": el.key.dst, **_describe(el, names)}
              for el in scene.list_edges()]
     residue = list(meta.get("residue", []))
     if meta.get("utilities"):  # named as the picture names them

@@ -44,7 +44,7 @@ DOC_MAX = 240  # characters of a doc comment's summary kept
 NAMES_MAX = 60  # names kept per list (functions, constants, re-exports)
 
 
-def declaration(stmt):
+def _declaration(stmt):
     """The declaration a top-level statement makes (unwrapping ``export``, ``export
     default`` and ``declare``), or the statement itself."""
     if stmt.type == "export_statement":
@@ -55,34 +55,34 @@ def declaration(stmt):
     return stmt
 
 
-def decl_name(d) -> str | None:
+def _decl_name(d) -> str | None:
     n = d.child_by_field_name("name")
     return n.text.decode() if n is not None else None
 
 
-def is_doc(n) -> bool:
+def _is_doc(n) -> bool:
     return n is not None and n.type == "comment" and n.text.startswith(b"/**")
 
 
-def doc_comment(stmt) -> str | None:
+def _doc_comment(stmt) -> str | None:
     """The ``/** ... */`` comment right before a statement."""
     prev = stmt.prev_sibling
-    return doc_text(prev) if is_doc(prev) and stmt.start_point[0] - prev.end_point[0] <= 1 else None
+    return _doc_text(prev) if _is_doc(prev) and stmt.start_point[0] - prev.end_point[0] <= 1 else None
 
 
-def file_doc(root) -> str | None:
+def _file_doc(root) -> str | None:
     """A file's leading ``/** ... */`` comment, unless it belongs to the declaration right
     below it."""
     first = root.named_children[0] if root.named_children else None
-    if not is_doc(first):
+    if not _is_doc(first):
         return None
     nxt = first.next_named_sibling
     if nxt is not None and nxt.start_point[0] - first.end_point[0] <= 1 and nxt.type not in ("import_statement", "comment"):
         return None
-    return doc_text(first)
+    return _doc_text(first)
 
 
-def doc_text(comment) -> str | None:
+def _doc_text(comment) -> str | None:
     """A doc comment's first paragraph on one line, without the ``@tags``, cut at DOC_MAX
     characters."""
     lines = [ln.strip().lstrip("*").strip() for ln in comment.text.decode("utf-8", "replace")[3:-2].splitlines()]
@@ -98,7 +98,7 @@ def doc_text(comment) -> str | None:
     return text if len(text) <= DOC_MAX else text[: DOC_MAX - 1].rsplit(" ", 1)[0] + "…"
 
 
-def local_exports(stmt) -> list[tuple[str, str]]:
+def _local_exports(stmt) -> list[tuple[str, str]]:
     """``export { a as b }`` and ``export default a`` without a source: (exported, local)."""
     if stmt.child_by_field_name("source") is not None:
         return []
@@ -116,7 +116,7 @@ def local_exports(stmt) -> list[tuple[str, str]]:
     return out
 
 
-def references(node, bindings: dict[str, tuple]) -> dict[tuple, list[int]]:
+def _references(node, bindings: dict[str, tuple]) -> dict[tuple, list[int]]:
     """binding -> [mentions, mentions in a value position] in a subtree."""
     found: dict[tuple, list[int]] = {}
 
@@ -147,7 +147,7 @@ def references(node, bindings: dict[str, tuple]) -> dict[tuple, list[int]]:
     return found
 
 
-def own_code(root, is_body: bool, symbol_lines: int, total_lines: int | None, reexports: list[str]) -> dict:
+def _own_code(root, is_body: bool, symbol_lines: int, total_lines: int | None, reexports: list[str]) -> dict:
     """What a module holds outside its classes and types, for the hover text on its
     own-code dot: top-level functions (declarations and ``const f = () => ...``) and
     constants (UPPER_CASE) in source order, the lines outside its symbols, and for a
@@ -155,9 +155,9 @@ def own_code(root, is_body: bool, symbol_lines: int, total_lines: int | None, re
     functions: list[str] = []
     constants: list[str] = []
     for stmt in root.named_children:
-        d = declaration(stmt)
+        d = _declaration(stmt)
         if d.type in ("function_declaration", "generator_function_declaration", "function_signature"):
-            name = decl_name(d)
+            name = _decl_name(d)
             if name and name not in functions:
                 functions.append(name)
         elif d.type in ("lexical_declaration", "variable_declaration"):
@@ -196,7 +196,7 @@ def run(ctx: Context) -> None:
         fid = address.repo(rel)
         lang = m.entities[fid].attrs.get("language", "typescript")
         root = tree.root_node
-        doc = file_doc(root)
+        doc = _file_doc(root)
         if doc:
             m.entities[fid].attrs["doc"] = doc
 
@@ -217,7 +217,7 @@ def run(ctx: Context) -> None:
         for stmt in root.named_children:
             if stmt.type == "import_statement":
                 continue
-            d = declaration(stmt)
+            d = _declaration(stmt)
             if d.type in ("lexical_declaration", "variable_declaration"):
                 for v in d.named_children:  # ``const f = () => ...`` is a function of the module
                     value = v.child_by_field_name("value") if v.type == "variable_declarator" else None
@@ -226,12 +226,12 @@ def run(ctx: Context) -> None:
             if stmt.type == "export_statement":
                 if stmt.child_by_field_name("source") is not None:
                     continue
-                local += local_exports(stmt)
+                local += _local_exports(stmt)
             kind = DECLS.get(d.type)
-            name = decl_name(d) if kind else None
+            name = _decl_name(d) if kind else None
             if not name:
-                if d.type in ("function_declaration", "generator_function_declaration") and decl_name(d):
-                    bindings[decl_name(d)] = ("local", fid, decl_name(d))  # a module's functions are its own body
+                if d.type in ("function_declaration", "generator_function_declaration") and _decl_name(d):
+                    bindings[_decl_name(d)] = ("local", fid, _decl_name(d))  # a module's functions are its own body
                 continue
             if stmt.type == "export_statement" and any(c.type == "default" for c in stmt.children):
                 local.append(("default", name))
@@ -239,7 +239,7 @@ def run(ctx: Context) -> None:
             if name not in symbols:
                 attrs = {"path": rel, "line": stmt.start_point[0] + 1, "end_line": stmt.end_point[0] + 1, "language": lang,
                          "exported": stmt.type == "export_statement"}
-                doc = doc_comment(stmt)
+                doc = _doc_comment(stmt)
                 if doc:
                     attrs["doc"] = doc
                 m.add_entity(Entity(sid, kind, name, attrs, Provenance(EXTRACTOR, rel, stmt.start_point[0] + 1)))
@@ -249,7 +249,7 @@ def run(ctx: Context) -> None:
             by_stmt[stmt.id] = symbols[name]
         for name, sid in symbols.items():
             bindings[name] = ("local", sid, name)
-        own = own_code(root, bool(m.entities[fid].attrs.get("body")), symbol_lines, m.entities[fid].attrs.get("lines"),
+        own = _own_code(root, bool(m.entities[fid].attrs.get("body")), symbol_lines, m.entities[fid].attrs.get("lines"),
                        [e for e, _, _ in reexports if e != "*"])
         m.entities[fid].attrs.update(own)
         names = set(symbols) | {k for k, b in bindings.items() if b[0] == "local"} | set(own.get("constants", []))
@@ -259,7 +259,7 @@ def run(ctx: Context) -> None:
             if stmt.type == "import_statement" or (stmt.type == "export_statement" and stmt.child_by_field_name("source") is not None):
                 continue
             src = by_stmt.get(stmt.id, fid)
-            for b, (n, v) in references(stmt, bindings).items():
+            for b, (n, v) in _references(stmt, bindings).items():
                 if b[0] == "local" and b[1] == src:
                     continue
                 pending[(src, b)] += n

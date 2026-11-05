@@ -23,7 +23,7 @@ def is_pull_request(change: str | None) -> bool:
     return bool(change and (URL.match(change) or NUMBER.match(change)))
 
 
-def remotes(repo: Path) -> dict[str, tuple[str, str]]:
+def _remotes(repo: Path) -> dict[str, tuple[str, str]]:
     """The repository's GitHub remotes: name -> (owner, repo)."""
     out = {}
     for line in git.run_git(repo, "remote", "-v").splitlines():
@@ -40,7 +40,7 @@ AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN 
 def resolve(repo: Path, change: str, tok: str | None | object = AMBIENT) -> tuple[ChangeSpec, dict]:
     """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``. ``tok`` as for api()."""
     m = URL.match(change)
-    gh = remotes(repo)
+    gh = _remotes(repo)
     if m:
         owner, name, number = m.group(1), m.group(2), int(m.group(3))
     else:
@@ -49,13 +49,13 @@ def resolve(repo: Path, change: str, tok: str | None | object = AMBIENT) -> tupl
         if pick is None:
             raise ChangeError(f"{repo} has no GitHub remote; give the PR's URL, or its commits: nolli view <base>..<head>")
         owner, name = gh[pick]
-    return fetch_pull(repo, owner, name, number, api(f"repos/{owner}/{name}/pulls/{number}", tok))
+    return _fetch_pull(repo, owner, name, number, api(f"repos/{owner}/{name}/pulls/{number}", tok))
 
 
-def fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tuple[ChangeSpec, dict]:
+def _fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tuple[ChangeSpec, dict]:
     """resolve() for a PR whose answer from GitHub's API (``pr``: its head, base, title, body) is
     at hand: fetch its commits into ``repo``, asking GitHub nothing more."""
-    gh = remotes(repo)
+    gh = _remotes(repo)
     # fetch from the clone's own remote for that repository if it has one (its credentials), else by URL
     remote = next((r for r, (o, n) in gh.items() if (o.lower(), n.lower()) == (owner.lower(), name.lower())),
                   f"https://github.com/{owner}/{name}")

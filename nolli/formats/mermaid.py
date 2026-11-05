@@ -30,20 +30,20 @@ STATUS_STROKE = {"added": "#2e9b4f", "removed": "#c94040", "changed": "#d08a1a"}
 make_node_id = address.format_identifier
 
 
-def text(s: str) -> str:
+def _text(s: str) -> str:
     """A label as Mermaid reads it between double quotes."""
     return s.replace('"', "'").replace("<", "#lt;").replace(">", "#gt;")
 
 
-def label(n: dict) -> str:
+def _label(n: dict) -> str:
     if n["kind"] == "anchor":
         return "own code"
     words = [ICON_WORD.get(i, i) for i in n["icons"] if i not in SILENT_ICONS]
-    out = text(" ".join(words + [n["label"] + ("/" if n["kind"] == "directory" else "")]))
+    out = _text(" ".join(words + [n["label"] + ("/" if n["kind"] == "directory" else "")]))
     if n["chips"]:
-        out += text(" [" + ", ".join(c["name"] for c in n["chips"]) + "]")
+        out += _text(" [" + ", ".join(c["name"] for c in n["chips"]) + "]")
     if n["badge"]:
-        out += "<br/>" + text(n["badge"])
+        out += "<br/>" + _text(n["badge"])
     return out
 
 
@@ -65,7 +65,7 @@ def list_drawing_order(scene: Scene) -> list[str]:
     return out
 
 
-def read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
+def _read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
     """A projected scene's boxes (drawing order) and edges, as the drawing needs them."""
     order = list_drawing_order(scene)
     nodes = []
@@ -88,14 +88,14 @@ def read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
 def list_ids(scene: Scene) -> dict[str, str]:
     """The Mermaid id of each box ``render`` draws (an unfolded one is a subgraph, ``<id>_g``),
     to the scene id it stands for: how a client maps a click on the drawing back to the scene."""
-    nodes, _, _ = read_scene(scene)
+    nodes, _, _ = _read_scene(scene)
     return {make_node_id(n["id"]) + ("_g" if n.get("container") else ""): n["id"] for n in nodes}
 
 
 def render(scene: Scene, fade: bool = True) -> str:
     """The scene as a Mermaid flowchart. ``fade``: in a change's scene, draw what did not
     change faint (the viewer's "fade unchanged")."""
-    node_list, edge_list, review = read_scene(scene)
+    node_list, edge_list, review = _read_scene(scene)
     nodes = {n["id"]: n for n in node_list}
     kids: dict[str | None, list[dict]] = {}
     for n in node_list:
@@ -109,7 +109,7 @@ def render(scene: Scene, fade: bool = True) -> str:
         pad = "  " * indent
         st = status(n) or ("same" if review and fade else None)
         if n.get("container"):
-            out.append(f'{pad}subgraph {ref(n["id"])} ["{label(n)}"]')
+            out.append(f'{pad}subgraph {ref(n["id"])} ["{_label(n)}"]')
             for c in kids.get(n["id"], []):
                 emit(c, indent + 1)
             out.append(f"{pad}end")
@@ -118,7 +118,7 @@ def render(scene: Scene, fade: bool = True) -> str:
             return
         cls = st or KIND_CLASS.get(n["kind"])
         shape = '(("{}"))' if n["kind"] == "anchor" else '["{}"]'
-        out.append(pad + make_node_id(n["id"]) + shape.format(label(n)) + (f":::{cls}" if cls else ""))
+        out.append(pad + make_node_id(n["id"]) + shape.format(_label(n)) + (f":::{cls}" if cls else ""))
         if n.get("utility"):
             classes.append((make_node_id(n["id"]), "utility"))
 

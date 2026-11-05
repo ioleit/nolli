@@ -17,7 +17,7 @@ from nolli.model import Model
 from nolli.progress import Quiet
 from nolli.sources import CloneCache, FetchError, LocalRepository
 from nolli.store import DirectoryStore
-from nolli.store.directory import read_key, write_change
+from nolli.store.directory import _read_key, write_change
 
 
 def git(repo: Path, *args: str) -> str:
@@ -117,12 +117,12 @@ def test_a_directory_written_elsewhere_is_found_by_its_name(tmp_path):
     old = tmp_path / "data" / "old-review"
     old.mkdir()
     (old / "model.json").write_text(json.dumps({"meta": {}, "entities": [], "relations": []}))
-    assert read_key(d) == key and read_key(old) is None
+    assert _read_key(d) == key and _read_key(old) is None
     store = DirectoryStore(tmp_path / "data")
     assert store.find_key("ledger-review") == key and store.load_change(key) == {"title": "t"}
     assert store.locate(key) == d and store.find_key("old-review") is None
     (d / "key.json").write_text(json.dumps({**json.loads((d / "key.json").read_text()), "format": 0}))
-    assert read_key(d) is None
+    assert _read_key(d) is None
 
 
 def test_local_repository_has_its_commits(src):

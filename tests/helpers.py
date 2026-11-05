@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from nolli.build import extract, extract_commit, extract_facts, list_content
+from nolli.build import extract, extract_commit, list_content
 from nolli.scenes import merge_built, open_built
 from nolli.formats.viewer import export_scene
 from nolli.progress import Quiet

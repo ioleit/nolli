@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.sources.git import ChangeError, default_branch, resolve, whole
+from nolli.sources.git import ChangeError, _default_branch, resolve, whole
 
 
 def git(repo: Path, *args: str) -> str:
@@ -45,7 +45,7 @@ def repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
 
 def test_default_branch(repo):
     r, _ = repo
-    assert default_branch(r) == "main"
+    assert _default_branch(r) == "main"
 
 
 def test_on_main_without_spec_is_the_whole_head(repo):

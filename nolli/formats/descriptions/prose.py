@@ -30,7 +30,7 @@ def code(value) -> str:
 MD_PUNCT = re.compile(r"([\\`*_\[\]<>~|#])")
 
 
-def esc(text: str) -> str:
+def _esc(text: str) -> str:
     """Text from the repository as plain Markdown text, on one line."""
     return MD_PUNCT.sub(r"\\\1", " ".join(text.split()))
 
@@ -75,10 +75,10 @@ def say(template: str, *values) -> str:
 
 
 def count(n: int, one: str, many: str | None = None) -> str:
-    return f"{n:,} {one if n == 1 else (many or plural(one))}"
+    return f"{n:,} {one if n == 1 else (many or _plural(one))}"
 
 
-def plural(noun: str) -> str:
+def _plural(noun: str) -> str:
     return noun[:-1] + "ies" if noun.endswith("y") and noun[-2:-1] not in "aeiou" else noun + ("es" if noun.endswith(("s", "x")) else "s")
 
 

@@ -16,7 +16,7 @@ from nolli.store.maps import Maps, MapStore, MemoryMaps
 from nolli.transformations import merge
 
 
-def make_overlays(maps: MapStore) -> list[Overlay]:
+def _make_overlays(maps: MapStore) -> list[Overlay]:
     """The overlays nolli shows on any scene, on top of the extractors'."""
     from nolli.formats.descriptions.hover import Hover
     from nolli.formats.descriptions.label import Label
@@ -27,14 +27,14 @@ def make_overlays(maps: MapStore) -> list[Overlay]:
     return [Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]
 
 
-def open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
+def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
     """An extracted model with its extractors' overlays and nolli's (or ``overlays``)."""
-    return Scene(model, [*overlays_lib.make_base_overlays(model, maps), *(make_overlays(maps) if overlays is None else overlays)])
+    return Scene(model, [*overlays_lib.make_base_overlays(model, maps), *(_make_overlays(maps) if overlays is None else overlays)])
 
 
 def open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:
     m = store.load_model(commit)
-    return None if m is None else open_scene(m, store, overlays)
+    return None if m is None else _open_scene(m, store, overlays)
 
 
 def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
@@ -48,12 +48,12 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
         return None
     meta = {"repo": head.model.meta.get("repo"), "commit": change.head[:7], "files": head.model.meta.get("files"),
             "languages": {**base.model.meta.get("languages", {}), **head.model.meta.get("languages", {})},
-            **join_readers(base.model.meta, head.model.meta),
+            **_join_readers(base.model.meta, head.model.meta),
             "change": merge.describe_change(about, store.open_maps("content").load(change.format_key()))}
     return transformations.apply({"base": base, "head": head}, merge.union(change.format_key(), meta))
 
 
-def join_readers(base: dict, head: dict) -> dict:
+def _join_readers(base: dict, head: dict) -> dict:
     """Who says what in a change: the overlays both sides' extractors wrote, each language's symbols."""
     return {"overlays": sorted(set(base.get("overlays") or []) | set(head.get("overlays") or [])),
             "symbols": {**(base.get("symbols") or {}), **(head.get("symbols") or {})}}
@@ -62,7 +62,7 @@ def join_readers(base: dict, head: dict) -> dict:
 def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
     """A model just extracted, not kept anywhere, as a scene."""
     store = MemoryMaps({n: {model.key: v} for n, v in maps.items()})
-    return open_scene(model, store, overlays)
+    return _open_scene(model, store, overlays)
 
 
 def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, about: dict, content: Mapping[Key, dict],
@@ -73,13 +73,13 @@ def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, ab
         for n, v in maps.items():
             store.open_maps(n).save(m.key, v)
     store.open_maps("content").save(key, content)
-    bs, hs = (open_scene(m, store, overlays) for m, _ in (base, head))
+    bs, hs = (_open_scene(m, store, overlays) for m, _ in (base, head))
     meta = {"repo": hs.model.meta.get("repo"), "commit": about.get("head", "")[:7], "files": hs.model.meta.get("files"),
             "languages": {**bs.model.meta.get("languages", {}), **hs.model.meta.get("languages", {})},
-            **join_readers(bs.model.meta, hs.model.meta), "change": merge.describe_change(about, content)}
+            **_join_readers(bs.model.meta, hs.model.meta), "change": merge.describe_change(about, content)}
     return transformations.apply({"base": bs, "head": hs}, merge.union(key, meta))
 
 
-def open_stored(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:
+def _open_stored(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:
     """The scene of a kept model: a change merged from its commits, or one commit."""
     return open_change_scene(store, key, overlays) if isinstance(key, ChangeKey) else open_commit_scene(store, key, overlays)

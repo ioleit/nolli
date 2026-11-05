@@ -47,7 +47,7 @@ class LocalRepository:
 
 
 @contextlib.contextmanager
-def lock_clone(clone: Path) -> Iterator[None]:
+def _lock_clone(clone: Path) -> Iterator[None]:
     """One git command at a time in a clone, across processes."""
     with open(clone / "nolli.lock", "w") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
@@ -87,7 +87,7 @@ class CloneCache:
             self.held[path] = self.held.get(path, 0) + 1
         try:
             path.mkdir(parents=True, exist_ok=True)
-            with lock_clone(path):
+            with _lock_clone(path):
                 if not (path / "HEAD").is_file():
                     git.run_git(path, "init", "-q", "--bare")
                     git.run_git(path, "remote", "add", "origin", remote)

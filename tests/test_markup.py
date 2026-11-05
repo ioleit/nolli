@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.build import extract_facts
+from nolli.build import _extract_facts
 from nolli.scenes import open_built
 from nolli.transformations.reading import Reading as Graph
 from nolli.transformations.rollup import hidden_by_role
@@ -61,7 +61,7 @@ def model(tmp_path_factory):
         p.write_text(text)
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "."], cwd=root, check=True)
-    return extract_facts(root)
+    return _extract_facts(root)
 
 
 def loads(m) -> dict[tuple[str, str], tuple[str, str]]:

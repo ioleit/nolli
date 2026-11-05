@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.review.ci import is_key, key_of, read_result
+from nolli.review.ci import is_key, _key_of, _read_result
 from nolli.scenes import open_change_scene
 from nolli.cli import main
 from nolli.store import DirectoryStore
@@ -77,7 +77,7 @@ def test_key():
 
 
 def test_without_review(dataset, capsys):
-    key = key_of(open_scene(dataset).model.meta)
+    key = _key_of(open_scene(dataset).model.meta)
     assert re.fullmatch(r"me/shop#7@[0-9a-f]{7}", key)
     text = comment(dataset, capsys)
     assert text.startswith("<!-- nolli -->\n**Nolli** found ")
@@ -85,7 +85,7 @@ def test_without_review(dataset, capsys):
     assert "No review: the review agent wrote no verdicts." in text
     assert f"nolli view {key}\n" in text
     assert "```mermaid\nflowchart" in text
-    assert read_result(text)["verdicts"] == [] and read_result(text)["key"] == key
+    assert _read_result(text)["verdicts"] == [] and _read_result(text)["key"] == key
 
 
 def test_skipped(dataset, capsys):
@@ -111,7 +111,7 @@ def test_with_review(dataset, capsys):
     assert len(findings) == 2  # never the fine one
     assert re.fullmatch(r'- <img [^>]*alt="\?!"[^>]*> \*\*New dependency from `shop/cache\.py` to `shop/store\.py`\*\*\. why --> here\?', findings[0])
     assert re.fullmatch(r"- <img [^>]*good\.svg[^>]*> \*\*New module `shop/cache\.py`\*\*\. a cache in its own module", findings[1])
-    assert [v["verdict"] for v in read_result(text)["verdicts"]] == ["good", "question", "fine"]  # "-->" kept, hidden
+    assert [v["verdict"] for v in _read_result(text)["verdicts"]] == ["good", "question", "fine"]  # "-->" kept, hidden
 
 
 def test_listed(dataset, capsys, monkeypatch):
@@ -130,7 +130,7 @@ def test_listed(dataset, capsys, monkeypatch):
 
 
 def test_failed_review(dataset, capsys):
-    from nolli.review.verdicts import keep_verdicts_file
+    from nolli.review.verdicts import _keep_verdicts_file
 
     review(dataset, [{"target": "n_nope", "verdict": "good", "reason": "x"}], capsys)  # nolli agent check keeps none of it
     assert "No review: the review agent wrote no verdicts." in comment(dataset, capsys)
@@ -138,7 +138,7 @@ def test_failed_review(dataset, capsys):
     store = DirectoryStore(dataset.parent)
     key = store.find_key(dataset.name)
     wrong = [{"target": "n_repo_shop_store_py --> n_repo_shop_cache_py", "verdict": "good", "reason": "x"}]
-    assert keep_verdicts_file(store, key, open_scene(dataset), json.dumps(wrong), {"by": "upload"})[0]["ends"]
+    assert _keep_verdicts_file(store, key, open_scene(dataset), json.dumps(wrong), {"by": "upload"})[0]["ends"]
     text = comment(dataset, capsys)
     assert "No review: the review agent’s verdicts failed nolli’s check." in text
     assert "verdicts:" not in text
@@ -165,7 +165,7 @@ def test_results_from_the_comments(dataset, capsys):
     found = results([bot_comment(text, n=1), bot_comment("<!-- nolli -->\nno result", n=2), forged])
     assert [r["link"] for r in found] == ["https://github.com/me/shop/pull/7#issuecomment-1"]
     assert found[0]["head"] == head and found[0]["verdicts"][0]["verdict"] == "good"
-    r = read_result(text) | {"head": "f" * 40}
+    r = _read_result(text) | {"head": "f" * 40}
     packed = base64.b64encode(zlib.compress(json.dumps(r).encode())).decode()
     later = bot_comment(f"<!-- nolli -->\nlater\n<!-- nolli-result {packed} -->", n=4)
     assert [r["head"] for r in results([bot_comment(text, n=1), later])] == ["f" * 40, head]  # newest first

@@ -53,14 +53,14 @@ def detail_box(scene: Scene, x: str) -> dict | None:
     deps = [r.diff["fact"] for r in g.relations if r.diff and (r.src in sub or r.dst in sub)]
     deps.sort(key=lambda c: ({"added": 0, "removed": 1, "changed": 2}[c["status"]], c["src"], c["dst"]))
     a = g.attrs(target)
-    return {"id": x, "kind": g.kind(target), "name": g.name(target), "path": a.get("path"), "diff": sum_subtree(scene, target),
+    return {"id": x, "kind": g.kind(target), "name": g.name(target), "path": a.get("path"), "diff": _sum_subtree(scene, target),
             "files": files[:MAX_ITEMS], "more_files": max(0, len(files) - MAX_ITEMS),
             "classes": classes[:MAX_ITEMS], "entities": entities[:MAX_ITEMS], "more_entities": max(0, len(entities) - MAX_ITEMS),
             "dependencies": deps[:MAX_ITEMS], "more_dependencies": max(0, len(deps) - MAX_ITEMS),
             "link": links.diff(a["path"]) if g.kind(target) == "file" and a.get("path") else None}
 
 
-def sum_subtree(scene: Scene, x: str) -> dict | None:
+def _sum_subtree(scene: Scene, x: str) -> dict | None:
     """What changed in a node of a change and everything under it: its own status, the totals."""
     own = scene.find_element(x).get("change") or {}
     totals = dict.fromkeys(merge.TOTALS, 0)
@@ -82,7 +82,7 @@ def sum_subtree(scene: Scene, x: str) -> dict | None:
 
 # ---------- the numbered changes a reviewer (person or agent) goes through ----------
 
-def find_module(g: Reader, x: str) -> str:
+def _find_module(g: Reader, x: str) -> str:
     """The module (file) a fact end belongs to; anything outside files stays itself."""
     cur: str | None = x
     while cur is not None:
@@ -92,7 +92,7 @@ def find_module(g: Reader, x: str) -> str:
     return x
 
 
-def find_area(g: Reader, x: str) -> str:
+def _find_area(g: Reader, x: str) -> str:
     """The top-level box a node sits in: a top-level directory, or a group."""
     cur, last = x, x
     while cur is not None:
@@ -116,7 +116,7 @@ def format_name(g: Reader, x: str) -> str:
     return g.name(x)
 
 
-def find_role(g: Reader, x: str) -> str:
+def _find_role(g: Reader, x: str) -> str:
     """The role of the file or directory a node belongs to (source, test, docs, …); nodes
     outside the file tree (services, endpoints, packages) count as source."""
     cur: str | None = x
@@ -165,7 +165,7 @@ def _list_changes(scene: Scene) -> list[dict]:
             title += f" (renamed {'from ' + d['old_path'] if d.get('old_path') else 'to ' + d['renamed_to']})"
         a = g.attrs(x)
         path = a.get("path")
-        comps.append({"category": "component", "status": st, "title": title, "area": find_area(g, x), "role": find_role(g, x),
+        comps.append({"category": "component", "status": st, "title": title, "area": _find_area(g, x), "role": _find_role(g, x),
                       "classes": classes, "lines": lines, "entities": [x] + inner, "facts": [],
                       "reveal": list_ancestors_to_unfold(g, x), "focus": [x],
                       "link": (links.diff(path) if kind == "file" else links.blob(path, "base" if st == "removed" else "head",
@@ -174,7 +174,7 @@ def _list_changes(scene: Scene) -> list[dict]:
     groups: dict[tuple, list] = defaultdict(list)
     totals: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])  # all references between the two modules, before and after
     for r in g.relations:
-        a, b = find_module(g, r.src), find_module(g, r.dst)
+        a, b = _find_module(g, r.src), _find_module(g, r.dst)
         if r.kind == "provide":
             a, b = b, a  # drawn interface -> implementation
         if a == b:
@@ -196,9 +196,9 @@ def _list_changes(scene: Scene) -> list[dict]:
         changes = sorted((r.diff["fact"] for r in rs),
                          key=lambda c: ({"added": 0, "removed": 1, "changed": 2}[c["status"]], c["dst"]))
         first = changes[0]
-        role = find_role(g, a)
+        role = _find_role(g, a)
         deps.append({"category": "dependency", "status": st, "title": f"{format_name(g, a)} → {format_name(g, b)}: {word}",
-                     "area": find_area(g, a), "role": role if role != "source" else find_role(g, b),
+                     "area": _find_area(g, a), "role": role if role != "source" else _find_role(g, b),
                      "kind": kind, "subkind": sub, "base": base, "head": head,
                      "targets": targets[:12], "entities": [a, b], "facts": [r.key.format() for r in rs],
                      "reveal": sorted(set(list_ancestors_to_unfold(g, a)) | set(list_ancestors_to_unfold(g, b))), "focus": [a, b],
@@ -214,7 +214,7 @@ def _list_changes(scene: Scene) -> list[dict]:
                   "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0], "head" if h["added"] else "base")}
                  for h in d.get("hunks", [])] if path else []
         content.append({"category": "content", "status": "changed", "title": f"edited {path} (+{d.get('added', 0)} −{d.get('removed', 0)})",
-                        "area": find_area(g, x), "role": find_role(g, x), "added": d.get("added", 0), "removed": d.get("removed", 0),
+                        "area": _find_area(g, x), "role": _find_role(g, x), "added": d.get("added", 0), "removed": d.get("removed", 0),
                         "classes": cls, "entities": [x], "facts": [], "hunks": hunks[:30], "more_hunks": max(0, len(hunks) - 30),
                         "reveal": list_ancestors_to_unfold(g, x), "focus": [x], "link": links.diff(path) if path else None})
     items = []

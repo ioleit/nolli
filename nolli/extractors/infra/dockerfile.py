@@ -23,7 +23,7 @@ PY_MODULE = re.compile(r"(?:python[\d.]*\s+-m\s+|uvicorn\s+|gunicorn\s+)([A-Za-z
 SCRIPT = re.compile(r"(?:^|\s)((?:[\w./-]+/)?[\w-]+\.(?:py|sh|js|mjs|ts))(?=\s|$)")
 
 
-def instructions(text: str) -> list[tuple[str, str]]:
+def _instructions(text: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     buf = ""
     for raw in text.splitlines():
@@ -56,7 +56,7 @@ def run(ctx: Context) -> None:
         context = m.entities[iid].attrs.get("context", ".")
         ctx_dir = PurePosixPath("." if context in ("", ".") else context)
         text = ctx.read(rel).decode("utf-8", "replace")
-        for lineno, (ins, arg) in enumerate(instructions(text), 1):
+        for lineno, (ins, arg) in enumerate(_instructions(text), 1):
             if ins in ("COPY", "ADD"):
                 try:
                     toks = shlex.split(arg)

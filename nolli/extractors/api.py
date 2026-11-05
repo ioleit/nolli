@@ -83,11 +83,11 @@ def call(ctx: Context, c: Call) -> None:
 
 # ---------- the shared structure ----------
 
-def segments(protocol: str, path: str) -> list[str]:
+def _segments(protocol: str, path: str) -> list[str]:
     return [s for s in path.split("/") if s]
 
 
-def step_key(seg: str) -> str:
+def _step_key(seg: str) -> str:
     """Parameters (adapters write them ``{name}``) at one position are one step, whatever
     each route calls them: ``/projects/{name}`` and ``/projects/{project_name}``."""
     return address.param(seg)
@@ -107,7 +107,7 @@ def _step() -> _Step:
     return _Step({}, [], defaultdict(int))
 
 
-def api_names(files: dict[tuple[str, str], str]) -> dict[tuple[str, str], str]:
+def _api_names(files: dict[tuple[str, str], str]) -> dict[tuple[str, str], str]:
     """(protocol, key) -> a readable name: the directory the API is declared in (its
     module at the top level), the whole path without extension where that is taken."""
     def short(f: str) -> str:
@@ -135,12 +135,12 @@ def build(ctx: Context) -> None:
     for op in ops:
         by_api[(op.protocol, op.api)].append(op)
 
-    names = api_names({k: v[0].api_file for k, v in by_api.items()})
+    names = _api_names({k: v[0].api_file for k, v in by_api.items()})
     for (protocol, key), api_ops in sorted(by_api.items()):
-        add_api(m, group, protocol, key, names[(protocol, key)], api_ops)
+        _add_api(m, group, protocol, key, names[(protocol, key)], api_ops)
 
 
-def add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: list[Operation]) -> None:
+def _add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: list[Operation]) -> None:
     """One API: its node under ``group``, its path steps (``resource``) and its operations (``endpoint``)."""
     prov = Provenance("api")
     aid = address.api_app(protocol, key)
@@ -152,13 +152,13 @@ def add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: l
     root = _step()
     for op in api_ops:
         s = root
-        for seg in segments(protocol, op.path):
-            s = s.children.setdefault(step_key(seg), _step())
+        for seg in _segments(protocol, op.path):
+            s = s.children.setdefault(_step_key(seg), _step())
             s.names[seg] += 1
         s.ops.append(op)
 
     def endpoint(op: Operation, parent: str, name: str) -> None:
-        eid = address.api_operation(aid, segments(protocol, op.path), op.verb)
+        eid = address.api_operation(aid, _segments(protocol, op.path), op.verb)
         if not m.has(eid):
             m.add_entity(Entity(eid, "endpoint", f"{op.verb} {name}".rstrip(),
                                 {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "short": name},
@@ -194,7 +194,7 @@ def add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: l
 
 # ---------- matching calls to operations ----------
 
-def http_path_matches(route: str, called: str) -> bool:
+def _http_path_matches(route: str, called: str) -> bool:
     rs, cs = route.strip("/").split("/"), called.strip("/").split("/")
     for i, rseg in enumerate(rs):
         if rseg.startswith("{") and rseg.endswith(":path}"):
@@ -209,31 +209,31 @@ def http_path_matches(route: str, called: str) -> bool:
     return len(cs) == len(rs)
 
 
-def http_suffix_matches(route: str, called: str) -> bool:
+def _http_suffix_matches(route: str, called: str) -> bool:
     rs, cs = route.strip("/").split("/"), called.strip("/").split("/")
     if len(cs) > len(rs):
         return False
-    return http_path_matches("/" + "/".join(rs[len(rs) - len(cs):]), called)
+    return _http_path_matches("/" + "/".join(rs[len(rs) - len(cs):]), called)
 
 
-def match_http(endpoints: list[Entity], verb: str, pattern: str) -> tuple[list[Entity], str]:
+def _match_http(endpoints: list[Entity], verb: str, pattern: str) -> tuple[list[Entity], str]:
     def verb_ok(e: Entity) -> bool:
         return verb == "?" or e.attrs["method"] in ("ANY", verb) or verb in e.attrs["method"].split(",")
 
-    hits = [e for e in endpoints if verb_ok(e) and http_path_matches(e.attrs["path"], pattern)]
+    hits = [e for e in endpoints if verb_ok(e) and _http_path_matches(e.attrs["path"], pattern)]
     if hits or pattern.count("/") < 2:
         return hits, "path"
     # unknown base prefix on the caller's side (``${API_BASE}`` we could not fold):
     # accept routes whose path ends with the called pattern
-    return [e for e in endpoints if verb_ok(e) and http_suffix_matches(e.attrs["path"], pattern)], "suffix"
+    return [e for e in endpoints if verb_ok(e) and _http_suffix_matches(e.attrs["path"], pattern)], "suffix"
 
 
-def match_exact(endpoints: list[Entity], verb: str, pattern: str) -> tuple[list[Entity], str]:
+def _match_exact(endpoints: list[Entity], verb: str, pattern: str) -> tuple[list[Entity], str]:
     """Protocols whose operations are named, not patterned (RPC): verb and path must equal."""
     return [e for e in endpoints if e.attrs["path"] == pattern and verb in ("?", e.attrs["method"])], "exact"
 
 
-MATCHERS = {"http": match_http}
+MATCHERS = {"http": _match_http}
 
 
 def resolve(ctx: Context) -> None:
@@ -250,7 +250,7 @@ def resolve(ctx: Context) -> None:
         if protocol is None:
             out.append(r)
             continue
-        hits, how = MATCHERS.get(protocol, match_exact)(endpoints[protocol], ph.attrs["method"], ph.attrs["pattern"])
+        hits, how = MATCHERS.get(protocol, _match_exact)(endpoints[protocol], ph.attrs["method"], ph.attrs["pattern"])
         if hits:
             stats[f"{protocol} matched-{how}"] += 1
             for e in hits:

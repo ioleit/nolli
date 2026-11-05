@@ -14,24 +14,24 @@ SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "functi
 VERB_ICON = {"WEBSOCKET": "WS", "DELETE": "DEL", "OPTIONS": "OPT"}
 
 
-def is_module(el: Element) -> bool:
+def _is_module(el: Element) -> bool:
     """A file of an extracted language (the file tree marks it): drawn ``m``, unfoldable."""
     return el.kind == "file" and bool(vocabulary.read_file(el).get("module"))
 
 
-def module_stem(file_name: str) -> str:
+def _module_stem(file_name: str) -> str:
     """A source file's module name: without its extension, ``.d.ts`` included."""
     stem = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
     return stem[:-2] if stem.endswith(".d") and file_name.endswith(("ts", "mts", "cts")) else stem
 
 
-def list_icons(el: Element) -> list[str]:
+def _list_icons(el: Element) -> list[str]:
     if address.is_own_code(el.key):
         return []
     kind = el.kind
     if kind == "directory":
         return ["D"]
-    if is_module(el):
+    if _is_module(el):
         return ["m"]
     if kind in SYMBOL_ICON:
         return [SYMBOL_ICON[kind]]
@@ -39,7 +39,7 @@ def list_icons(el: Element) -> list[str]:
         [VERB_ICON.get(v, v) for v in names.read_api(el).get("method", "").split(",") if v] if kind == "endpoint" else [])
 
 
-def format_path(el: Element, drawn: Element) -> str:
+def _format_path(el: Element, drawn: Element) -> str:
     """A directory's path below the box it is drawn in (a folded chain shows its whole run)."""
     path = address.path_of(el.key)
     parent = drawn.parent
@@ -50,15 +50,15 @@ def format_path(el: Element, drawn: Element) -> str:
     return path
 
 
-def format_label(el: Element, drawn: Element | None = None) -> str:
+def _format_label(el: Element, drawn: Element | None = None) -> str:
     """The readable name drawn after the icons; ``drawn``: the box it is in a picture."""
     if address.is_own_code(el.key):
         return ""
     kind = el.kind
     if kind == "directory":
-        return names.format_name(el) if vocabulary.read_file(el).get("root") or drawn is None else format_path(el, drawn)
-    if is_module(el):
-        return module_stem(names.format_name(el))  # a source file is its module
+        return names.format_name(el) if vocabulary.read_file(el).get("root") or drawn is None else _format_path(el, drawn)
+    if _is_module(el):
+        return _module_stem(names.format_name(el))  # a source file is its module
     if kind == "image":
         return names.format_name(el).removesuffix("/Dockerfile")
     if kind == "endpoint" and "short" in names.read_api(el):
@@ -70,8 +70,8 @@ def format_prose(el: Element, drawn: Element | None = None) -> str:
     """The name in running text: the word-like icons stay in front ("svc api", "GET health")."""
     if el.kind == "endpoint":
         return names.format_name(el)
-    icons = [i for i in list_icons(el) if i not in ("D", "m", "/", *SYMBOL_ICON.values())]
-    name = format_label(el, drawn)
+    icons = [i for i in _list_icons(el) if i not in ("D", "m", "/", *SYMBOL_ICON.values())]
+    name = _format_label(el, drawn)
     return " ".join(icons + ([name] if name else []))
 
 
@@ -86,4 +86,4 @@ class Label:
         s = el.find_same("source")
         if s is None:
             return None
-        return {"text": format_label(s, el), "icons": list_icons(s), "prose": format_prose(s, el)}
+        return {"text": _format_label(s, el), "icons": _list_icons(s), "prose": format_prose(s, el)}

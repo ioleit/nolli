@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from nolli.build import extract_facts
+from nolli.build import _extract_facts
 from nolli.scenes import open_built
-from nolli.formats.descriptions.hover import Source, Ctx, edge_info
-from nolli.formats.descriptions.label import module_stem
+from nolli.formats.descriptions.hover import Source, Ctx, _edge_info
+from nolli.formats.descriptions.label import _module_stem
 from nolli.transformations.reading import Reading as Graph
 from nolli.transformations.rollup import RolledEdge, is_init
 
@@ -67,7 +67,7 @@ def model(tmp_path_factory):
         p.write_text(text)
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "."], cwd=root, check=True)
-    return extract_facts(root)
+    return _extract_facts(root)
 
 
 def open_graph(m) -> Graph:
@@ -127,7 +127,7 @@ def test_type_only_dependencies(model):
     g = open_graph(m)
     ctx = Ctx(Source(g.scene), g.scene, set(), set())
     e = RolledEdge("use", "repo:app/src/lib/format.ts", "repo:app/src/model/task.ts#Task", "import", 1, types=1)
-    assert "no dependency at run time" in str(edge_info(ctx, e))
+    assert "no dependency at run time" in str(_edge_info(ctx, e))
 
 
 def test_resolution_particulars(model):
@@ -149,7 +149,7 @@ def test_resolution_particulars(model):
 
 
 def test_declaration_files_are_named_as_modules():
-    assert module_stem("vite-env.d.ts") == "vite-env" and module_stem("api.ts") == "api" and module_stem("a.b.js") == "a.b"
+    assert _module_stem("vite-env.d.ts") == "vite-env" and _module_stem("api.ts") == "api" and _module_stem("a.b.js") == "a.b"
 
 
 def test_imports_of_a_file_that_does_not_parse_whole():

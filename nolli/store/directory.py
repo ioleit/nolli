@@ -59,7 +59,7 @@ class DirectoryStore:
             self.scanned = mtime
             index, names, places = {}, {}, {}
             for d in sorted(self.root.iterdir()):
-                key = read_key(d) if not d.name.startswith(".") else None
+                key = _read_key(d) if not d.name.startswith(".") else None
                 if key is None:
                     continue
                 index.setdefault(key, d)
@@ -205,7 +205,7 @@ class DirectoryMaps:
         tmp.replace(f)
 
 
-def write_maps(d: Path, model_key: str, maps: Mapping[str, Mapping[Key, dict]]) -> None:
+def _write_maps(d: Path, model_key: str, maps: Mapping[str, Mapping[Key, dict]]) -> None:
     (d / "overlays").mkdir(exist_ok=True)
     for name, values in maps.items():
         (d / "overlays" / f"{name}.json").write_text(json.dumps(maps_lib.dump_map(model_key, values, None)))
@@ -215,7 +215,7 @@ def write_commit(d: Path, key: CommitKey, model: Model, maps: Mapping[str, Mappi
     model.key = key.format_key()
     (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
     model.save(d / "model.json")
-    write_maps(d, model.key, maps)
+    _write_maps(d, model.key, maps)
 
 
 def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]]) -> None:
@@ -225,10 +225,10 @@ def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str,
     for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
         (d / side).mkdir(exist_ok=True)
         write_commit(d / side, commit, *sides[side])
-    write_maps(d, key.format_key(), maps)
+    _write_maps(d, key.format_key(), maps)
 
 
-def read_key(d: Path) -> ModelKey | None:
+def _read_key(d: Path) -> ModelKey | None:
     """The key of a model directory (its key.json), None for anything else (another format
     included)."""
     try:

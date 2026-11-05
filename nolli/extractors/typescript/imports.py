@@ -32,7 +32,7 @@ def parse(rel: str, source: bytes):
     return _parsers[grammar].parse(source)
 
 
-def string_value(node) -> str | None:
+def _string_value(node) -> str | None:
     """The literal text of a string node, or None if it has substitutions."""
     if node is None:
         return None
@@ -75,24 +75,24 @@ class Import:
     top: bool = False
 
 
-def has_type(node) -> bool:
+def _has_type(node) -> bool:
     """The ``type`` keyword on a statement or a specifier (``import type``, ``{ type X }``)."""
     return any(c.type == "type" for c in node.children)
 
 
-def at_top(n, root) -> bool:
+def _at_top(n, root) -> bool:
     """A statement directly in the module. Compared with the root itself: a file the
     parser cannot read whole has an ``ERROR`` root, not ``program``."""
     return n is not None and n.parent is not None and n.parent.id == root.id
 
 
-def from_statement(n, root) -> Import | None:
+def _from_statement(n, root) -> Import | None:
     """``import ... from 'x'`` or ``export ... from 'x'``."""
-    spec = string_value(n.child_by_field_name("source"))
+    spec = _string_value(n.child_by_field_name("source"))
     if not spec:
         return None
-    imp = Import(spec, n.start_point[0] + 1, top=at_top(n, root))
-    stmt_type = has_type(n)
+    imp = Import(spec, n.start_point[0] + 1, top=_at_top(n, root))
+    stmt_type = _has_type(n)
     for c in n.named_children:
         if c.type == "import_clause":
             for b in c.named_children:
@@ -107,7 +107,7 @@ def from_statement(n, root) -> Import | None:
                         name, alias = sp.child_by_field_name("name"), sp.child_by_field_name("alias")
                         if sp.type == "import_specifier" and name is not None:
                             imp.names.append(((alias or name).text.decode(), name.text.decode().strip("'\""),
-                                              stmt_type or has_type(sp)))
+                                              stmt_type or _has_type(sp)))
         elif c.type == "export_clause":
             for sp in c.named_children:
                 name, alias = sp.child_by_field_name("name"), sp.child_by_field_name("alias")
@@ -123,12 +123,12 @@ def from_statement(n, root) -> Import | None:
     return imp
 
 
-def from_call(n, root) -> Import | None:
+def _from_call(n, root) -> Import | None:
     """``require('x')`` (bound by ``const x = ...`` or ``const {a, b: c} = ...``) or ``import('x')``."""
     fn, args = n.child_by_field_name("function"), n.child_by_field_name("arguments")
     if fn is None or args is None or fn.text not in (b"require", b"import"):
         return None
-    spec = string_value(next((c for c in args.children if c.type in ("string", "template_string")), None))
+    spec = _string_value(next((c for c in args.children if c.type in ("string", "template_string")), None))
     if not spec:
         return None
     imp = Import(spec, n.start_point[0] + 1, dynamic=fn.text == b"import")
@@ -145,7 +145,7 @@ def from_call(n, root) -> Import | None:
                     k, v = pt.child_by_field_name("key"), pt.child_by_field_name("value")
                     if k is not None and v is not None and v.type == "identifier":
                         imp.names.append((v.text.decode(), k.text.decode(), False))
-        imp.top = at_top(decl.parent, root)
+        imp.top = _at_top(decl.parent, root)
     return imp
 
 
@@ -153,8 +153,8 @@ def read(tree) -> list[Import]:
     """Every import of a module, in source order."""
     out: list[Import] = []
     for n in walk(tree.root_node):
-        imp = from_statement(n, tree.root_node) if n.type in ("import_statement", "export_statement") else \
-            from_call(n, tree.root_node) if n.type == "call_expression" else None
+        imp = _from_statement(n, tree.root_node) if n.type in ("import_statement", "export_statement") else \
+            _from_call(n, tree.root_node) if n.type == "call_expression" else None
         if imp is not None:
             out.append(imp)
     return out

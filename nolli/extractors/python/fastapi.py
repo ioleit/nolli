@@ -32,11 +32,11 @@ class RouterVar:
     included_by: int = 0
 
 
-def const_str(node) -> str | None:
+def _const_str(node) -> str | None:
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
 
 
-def kw(call: ast.Call, name: str) -> ast.expr | None:
+def _kw(call: ast.Call, name: str) -> ast.expr | None:
     for k in call.keywords:
         if k.arg == name:
             return k.value
@@ -84,7 +84,7 @@ def run(ctx: Context) -> None:
                 if fname in ("APIRouter", "FastAPI", "Starlette", "Flask", "Blueprint") and node.targets:
                     t = node.targets[0]
                     if isinstance(t, ast.Name):
-                        pfx = const_str(kw(node.value, "prefix") or kw(node.value, "url_prefix")) or ""
+                        pfx = _const_str(_kw(node.value, "prefix") or _kw(node.value, "url_prefix")) or ""
                         routers[(rel, t.id)] = RouterVar(rel, t.id, pfx, fname in ("FastAPI", "Starlette", "Flask"))
             # <x>.include_router(<y>, prefix="/p") / <x>.register_blueprint(<y>, url_prefix=...)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
@@ -92,7 +92,7 @@ def run(ctx: Context) -> None:
                     parent = (rel, node.func.value.id)
                     routers.setdefault(parent, RouterVar(rel, node.func.value.id))
                     child = node.args[0] if node.args else None
-                    pfx = const_str(kw(node, "prefix") or kw(node, "url_prefix")) or ""
+                    pfx = _const_str(_kw(node, "prefix") or _kw(node, "url_prefix")) or ""
                     raw = ast.unparse(child) if child is not None else "?"
                     routers[parent].includes.append((raw, pfx, node.lineno))
             # @router.get("/path")
@@ -100,13 +100,13 @@ def run(ctx: Context) -> None:
                 for d in node.decorator_list:
                     if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in METHODS:
                         if isinstance(d.func.value, ast.Name) and d.args:
-                            path = const_str(d.args[0])
+                            path = _const_str(d.args[0])
                             if path is None:
                                 continue
                             method = d.func.attr.upper()
                             if d.func.attr == "api_route":
-                                methods_kw = kw(d, "methods")
-                                method = ",".join(sorted(const_str(e) or "?" for e in getattr(methods_kw, "elts", []))) or "ANY"
+                                methods_kw = _kw(d, "methods")
+                                method = ",".join(sorted(_const_str(e) or "?" for e in getattr(methods_kw, "elts", []))) or "ANY"
                             key = (rel, d.func.value.id)
                             routers.setdefault(key, RouterVar(rel, d.func.value.id))
                             routers[key].routes.append((method, path, d.lineno, node.name))

@@ -50,11 +50,11 @@ class Context:
     def sources(self, language: str, tests: bool = True) -> Iterator[str]:
         """The files of a language (by its extensions) that the file tree holds, counted
         on ``progress``; ``tests=False`` leaves out files whose role is ``test``."""
-        exts = language_named(language).extensions
+        exts = _language_named(language).extensions
         for f in self.progress.each(self.files):
             rel = self.rel(f)
             e = self.model.entities.get(address.repo(rel))
-            if e is None or e.kind != "file" or ext_of(rel) not in exts:
+            if e is None or e.kind != "file" or _ext_of(rel) not in exts:
                 continue
             if tests or e.attrs.get("role") != "test":
                 yield rel
@@ -65,7 +65,7 @@ class Context:
         language says so (``Language.keep_trees``)."""
         if rel in self.trees:
             return self.trees[rel]
-        lang = language_of(rel)
+        lang = _language_of(rel)
         if lang is None or lang.parse is None:
             return None
         try:
@@ -113,17 +113,17 @@ def languages() -> tuple[Language, ...]:
     return tuple(importlib.import_module(f"{__name__}.{p}").LANGUAGE for p in LANGUAGE_PACKAGES)
 
 
-def language_named(name: str) -> Language:
+def _language_named(name: str) -> Language:
     return next(lang for lang in languages() if lang.name == name)
 
 
-def ext_of(rel: str) -> str:
+def _ext_of(rel: str) -> str:
     name = rel.rsplit("/", 1)[-1]
     return "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
 
 
-def language_of(rel: str) -> Language | None:
-    ext = ext_of(rel)
+def _language_of(rel: str) -> Language | None:
+    ext = _ext_of(rel)
     return next((lang for lang in languages() if ext in lang.extensions), None)
 
 

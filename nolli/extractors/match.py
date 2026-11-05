@@ -16,7 +16,7 @@ from nolli.extractors.facts import Provenance, Relation
 from nolli.model import metamodel
 
 
-def prune_unresolved(ctx: Context) -> None:
+def _prune_unresolved(ctx: Context) -> None:
     """Drop placeholders nothing refers to; park the rest under one group so they are
     counted as residue, never drawn as top-level nodes."""
     m = ctx.model
@@ -36,4 +36,4 @@ def run_all(ctx: Context) -> None:
     for _, fn in extractors.all_resolvers():
         fn(ctx)
     api.resolve(ctx)
-    prune_unresolved(ctx)
+    _prune_unresolved(ctx)

@@ -48,11 +48,11 @@ def is_key(spec: str | None) -> bool:
     return bool(spec and KEY.match(spec))
 
 
-def artifact_name(pr: int | str, head: str) -> str:
+def _artifact_name(pr: int | str, head: str) -> str:
     return f"nolli-pr{pr}-{head[:7]}"
 
 
-def key_of(meta: dict) -> str:
+def _key_of(meta: dict) -> str:
     """A PR dataset's key, from what its change records (remote, PR number, head)."""
     d = meta.get("change") or {}
     m = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
@@ -72,7 +72,7 @@ def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None =
     from nolli.review import changes
     from nolli.review import verdicts as verdicts_lib
 
-    key = key_of(scene.model.meta)
+    key = _key_of(scene.model.meta)
     d = scene.model.meta["change"]
     repo = key.split("#")[0]
     n = len(changes.list_changes(scene))
@@ -93,14 +93,14 @@ def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None =
         verdicts = None
     else:
         verdicts = verdicts_lib.describe_verdicts(scene, verdicts)
-        status = list_statuses(review)
+        status = _list_statuses(review)
         total = len(verdicts)
-        counts = " &nbsp; ".join(f"{mark(k)} {c}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in verdicts)))
+        counts = " &nbsp; ".join(f"{_mark(k)} {c}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in verdicts)))
         lines[-1] += f" The review agent's {total} verdict{'' if total == 1 else 's'}: {counts}"
         listed = sorted((v for v in verdicts if v["verdict"] != "fine"), key=lambda v: WORST_FIRST.index(v["verdict"]))
         if listed:
             lines.append("")
-            lines += [f"- {mark(v['verdict'])} **{what(scene, v, status)}**. {' '.join(v['reason'].split())}" for v in listed[:LISTED]]
+            lines += [f"- {_mark(v['verdict'])} **{_what(scene, v, status)}**. {' '.join(v['reason'].split())}" for v in listed[:LISTED]]
             if len(listed) > LISTED:
                 lines.append(f"- {len(listed) - LISTED} more")
     lines += ["", "Run these commands for the interactive viewer:", "",
@@ -117,7 +117,7 @@ def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None =
     return "\n".join(lines) + "\n"
 
 
-def mark(verdict: str) -> str:
+def _mark(verdict: str) -> str:
     """A verdict's mark as an image in the comment, its glyph as the alternative text."""
     import os
 
@@ -125,7 +125,7 @@ def mark(verdict: str) -> str:
     return f'<img src="{base}/{verdict}.svg" height="18" alt="{GLYPH[verdict]}" title="{verdict}" align="top">'
 
 
-def list_statuses(review: Scene) -> dict[str, str]:
+def _list_statuses(review: Scene) -> dict[str, str]:
     """What the review diagram draws as changed: a node id (a subgraph's without ``_g``), or
     ``"<src> <dst>"`` for an edge, to added, removed or changed."""
     out = {}
@@ -136,7 +136,7 @@ def list_statuses(review: Scene) -> dict[str, str]:
     return out
 
 
-def what(scene: Scene, v: dict, status: dict[str, str]) -> str:
+def _what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
     from nolli.review import changes
     from nolli.review.reading import Reader
@@ -158,7 +158,7 @@ def what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     return f"{st} {kind} {name(x)}" if st else f"{kind.capitalize()} {name(x)}"
 
 
-def read_result(body: str) -> dict | None:
+def _read_result(body: str) -> dict | None:
     """What a nolli comment carries hidden (see comment()), or None."""
     m = RESULT.search(body)
     return json.loads(zlib.decompress(base64.b64decode(m.group(1)))) if m else None
@@ -178,7 +178,7 @@ def results(comments: list[dict]) -> list[dict]:
         if user.get("type") != "Bot" or user.get("login") not in BOTS or not body.startswith(MARKER):
             continue
         try:
-            r = read_result(body)
+            r = _read_result(body)
         except (ValueError, zlib.error):
             continue
         if r and r.get("head") and r.get("format") == FORMAT:
@@ -191,7 +191,7 @@ def fetch(key: str, data: Path) -> Path:
     from nolli.sources import github
 
     owner, repo, pr, head = KEY.match(key).groups()
-    name = artifact_name(pr, head)
+    name = _artifact_name(pr, head)
     out = data / f"{repo}-ci-pr{pr}-{head[:7]}"
     if (out / "key.json").is_file():
         return out

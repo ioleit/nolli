@@ -67,9 +67,9 @@ def status(sc, x):
 
 def keep(sc, verdicts):
     """Verdicts kept as the change's review, as save_verdicts keeps them in a store."""
-    from nolli.review.verdicts import dump_verdicts
+    from nolli.review.verdicts import _dump_verdicts
 
-    sc.overlays["verdicts"].stored.save(sc.model.key, dump_verdicts(verdicts), {"by": "test"})
+    sc.overlays["verdicts"].stored.save(sc.model.key, _dump_verdicts(verdicts), {"by": "test"})
 
 
 def test_structure_and_content(repo):
@@ -192,13 +192,13 @@ def test_items_verdicts_and_export(repo):
 
 
 def test_rolled_up_verdicts_are_counted():
-    from nolli.review.card import describe_box
+    from nolli.review.card import _describe_box
 
     v = lambda i, verdict: {"id": f"V{i}", "verdict": verdict, "reason": f"reason {i}"}  # noqa: E731
     # few verdicts: every reason in full, worst first
-    assert describe_box(None, [v(1, "fine")], [v(2, "problem")]) == "[problem](verdict:problem) reason 2\n\n[fine](verdict:fine) reason 1"
+    assert _describe_box(None, [v(1, "fine")], [v(2, "problem")]) == "[problem](verdict:problem) reason 2\n\n[fine](verdict:fine) reason 1"
     # many from inside: one line counting them, like the review panel; the box's own in full
     inside = [v(2, "fine"), v(3, "blunder"), v(4, "fine"), v(5, "fine")]
-    lines = describe_box(None, [v(1, "question")], inside, items=13, kind="directory").split("\n\n")
+    lines = _describe_box(None, [v(1, "question")], inside, items=13, kind="directory").split("\n\n")
     assert lines == ["`13 changes` in this directory · verdicts: [blunder](verdict:blunder) `1` [fine](verdict:fine) `3`",
                      "[question](verdict:question) reason 1"]

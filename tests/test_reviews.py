@@ -23,7 +23,7 @@ from nolli.build import fetch_change
 from nolli.scenes import open_change_scene
 from nolli.review.ci import comment as ci_comment
 from nolli.model.keys import Repo
-from nolli.review.verdicts import find_provenance, keep_verdicts_file, parse_verdicts, save_verdicts
+from nolli.review.verdicts import find_provenance, _keep_verdicts_file, parse_verdicts, save_verdicts
 from nolli.sources import LocalRepository
 from nolli.datasets import Datasets
 from nolli.store import DirectoryStore
@@ -76,7 +76,7 @@ def comment(ds: Path, verdicts: str | None = None) -> str:
     with tempfile.TemporaryDirectory() as tmp:
         shutil.copytree(ds, Path(tmp) / ds.name)
         store, key, sc = open_dataset(Path(tmp) / ds.name)
-        keep_verdicts_file(store, key, sc, verdicts, {"by": "agent"})
+        _keep_verdicts_file(store, key, sc, verdicts, {"by": "agent"})
         return ci_comment(sc, Datasets(store).draw_review(sc), Datasets(store).load_verdicts(sc))
 
 
@@ -132,7 +132,7 @@ def test_upload_says_where_the_verdicts_came_from(server, dataset):
 
 def test_a_run_its_cancel_and_its_end(server, dataset, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
-    monkeypatch.setattr(reviewer, "available", lambda: None)
+    monkeypatch.setattr(reviewer, "_available", lambda: None)
     go = threading.Event()
 
     def fake(brief: str, head: str, check, repo: Path, out: Path, on_step, cancel: threading.Event) -> reviewer.Run:
@@ -147,7 +147,7 @@ def test_a_run_its_cancel_and_its_end(server, dataset, monkeypatch):
         (out / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "fine", "reason": "As intended."}]))
         return run
 
-    monkeypatch.setattr(reviewer, "review", fake)
+    monkeypatch.setattr(reviewer, "_review", fake)
     status, st = call(server, f"/api/review?d={dataset.name}", "POST")
     assert status == 200 and st["can_run"] and st["run"]["state"] in ("queued", "running")
     until(lambda: call(server, f"/api/review?d={dataset.name}")[1]["run"]["step"] == "reading shop/cache.py")
@@ -165,14 +165,14 @@ def test_a_run_its_cancel_and_its_end(server, dataset, monkeypatch):
 
 
 def test_a_failed_run_keeps_the_verdicts_shown(server, dataset, monkeypatch):
-    monkeypatch.setattr(reviewer, "available", lambda: None)
+    monkeypatch.setattr(reviewer, "_available", lambda: None)
     store, key, sc = open_dataset(dataset)
-    keep_verdicts_file(store, key, sc, GOOD, {"by": "upload"})
+    _keep_verdicts_file(store, key, sc, GOOD, {"by": "upload"})
 
     def fails(*args, **kwargs):
         raise reviewer.Failed("the agent wrote no verdicts")
 
-    monkeypatch.setattr(reviewer, "review", fails)
+    monkeypatch.setattr(reviewer, "_review", fails)
     call(server, f"/api/review?d={dataset.name}", "POST")
     until(lambda: call(server, f"/api/review?d={dataset.name}")[1]["run"]["state"] == "failed")
     st = call(server, f"/api/review?d={dataset.name}")[1]

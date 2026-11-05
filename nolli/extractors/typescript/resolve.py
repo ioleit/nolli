@@ -41,7 +41,7 @@ CONFIG = re.compile(r"^(tsconfig(\.[\w-]+)?|jsconfig)\.json$")
 ENTRY_FIELDS = ("source", "types", "typings", "module", "main")  # package.json, most source-like first
 
 
-def norm(p: PurePosixPath | str) -> str:
+def _norm(p: PurePosixPath | str) -> str:
     parts: list[str] = []
     for part in PurePosixPath(p).parts:
         if part == "..":
@@ -52,7 +52,7 @@ def norm(p: PurePosixPath | str) -> str:
     return "/".join(parts)
 
 
-def read_json(ctx: Context, rel: str) -> dict | None:
+def _read_json(ctx: Context, rel: str) -> dict | None:
     """JSON as tsconfig writes it: comments and trailing commas allowed."""
     try:
         text = ctx.read(rel).decode("utf-8", "replace")
@@ -77,7 +77,7 @@ class Resolver:
     @staticmethod
     def _configs(ctx: Context, rels: list[str]) -> list[tuple[str, list[tuple[str, str]], str | None]]:
         """(config dir, [(alias prefix, target prefix)], baseUrl dir), deepest first."""
-        raw = {rel: read_json(ctx, rel) or {} for rel in rels}
+        raw = {rel: _read_json(ctx, rel) or {} for rel in rels}
 
         def options(rel: str, depth: int = 0) -> dict:
             """compilerOptions with ``extends`` applied; paths and baseUrl relative to the
@@ -88,13 +88,13 @@ class Resolver:
             ext = cfg.get("extends")
             for e in ([ext] if isinstance(ext, str) else ext or []):
                 if isinstance(e, str) and e.startswith(".") and depth < 5:
-                    target = norm(PurePosixPath(here) / e)
+                    target = _norm(PurePosixPath(here) / e)
                     target = target if target.endswith(".json") else target + ".json"
                     if target in raw:
                         out.update(options(target, depth + 1))
             co = cfg.get("compilerOptions") or {}
             if "baseUrl" in co:
-                out["baseUrl"] = norm(PurePosixPath(here) / co["baseUrl"])
+                out["baseUrl"] = _norm(PurePosixPath(here) / co["baseUrl"])
             if co.get("paths"):
                 out["paths"] = (co["paths"], here)
             return out
@@ -110,7 +110,7 @@ class Resolver:
                 if targets and isinstance(targets, list) and isinstance(targets[0], str):
                     a = alias.removesuffix("*")
                     t = targets[0].removesuffix("*")
-                    aliases.append((a, norm(PurePosixPath(base) / t) + ("/" if t.endswith("/") else "")))
+                    aliases.append((a, _norm(PurePosixPath(base) / t) + ("/" if t.endswith("/") else "")))
             if aliases or "baseUrl" in opts:
                 out.append((d, sorted(aliases, key=lambda x: -len(x[0])), opts.get("baseUrl")))
         return sorted(out, key=lambda c: -len(c[0]))
@@ -121,7 +121,7 @@ class Resolver:
         for rel in rels:
             if "node_modules" in rel:
                 continue
-            pj = read_json(ctx, rel) or {}
+            pj = _read_json(ctx, rel) or {}
             name, d = pj.get("name"), str(PurePosixPath(rel).parent)
             if not isinstance(name, str) or not name or d == "." and not pj.get("workspaces"):
                 continue
@@ -133,7 +133,7 @@ class Resolver:
                 cands += [dot] if isinstance(dot, str) else [v for k, v in (dot.items() if isinstance(dot, dict) else []) if isinstance(v, str)]
             cands += [pj[f] for f in ENTRY_FIELDS if isinstance(pj.get(f), str)]
             for c in cands:
-                entry = self.find(norm(PurePosixPath(d) / c)) or self.find(norm(PurePosixPath(d) / re.sub(r"^(\./)?(dist|build|lib|out)/", "src/", c)))
+                entry = self.find(_norm(PurePosixPath(d) / c)) or self.find(_norm(PurePosixPath(d) / re.sub(r"^(\./)?(dist|build|lib|out)/", "src/", c)))
                 if entry:
                     break
             out[name] = (d, entry or self.find(f"{d}/src") or self.find(d))
@@ -159,21 +159,21 @@ class Resolver:
         """(how, target): ("file", path), ("external", package name), ("stdlib", None) or
         ("unresolved", None)."""
         if spec.startswith("."):
-            f = self.find(norm(PurePosixPath(src_rel).parent / spec))
+            f = self.find(_norm(PurePosixPath(src_rel).parent / spec))
             return ("file", f) if f else ("unresolved", None)
         if spec.startswith("/"):
-            f = self.find(norm(spec))
+            f = self.find(_norm(spec))
             return ("file", f) if f else ("unresolved", None)
         for d, aliases, base in self.configs:
             if d != "." and not src_rel.startswith(d + "/"):
                 continue
             for a, t in aliases:
                 if spec.startswith(a):
-                    f = self.find(norm(t + spec[len(a):]))
+                    f = self.find(_norm(t + spec[len(a):]))
                     if f:
                         return "file", f
             if base is not None:
-                f = self.find(norm(PurePosixPath(base) / spec))
+                f = self.find(_norm(PurePosixPath(base) / spec))
                 if f:
                     return "file", f
         pkg = interfaces.package_name(spec)

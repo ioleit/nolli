@@ -43,7 +43,7 @@ def find_diagram_ids(scene: Scene) -> dict[str, str]:
     return out
 
 
-def format_target(ends: list[str]) -> str:
+def _format_target(ends: list[str]) -> str:
     return PAIR.join(ends)
 
 
@@ -117,12 +117,12 @@ def check_verdicts(scene: Scene, mermaid: str, text: str) -> tuple[list[dict], l
 # -- kept by target ------------------------------------------------------------------
 
 
-def dump_verdicts(verdicts: list[dict]) -> dict[str, dict]:
+def _dump_verdicts(verdicts: list[dict]) -> dict[str, dict]:
     """Verdicts as the ``verdicts`` map keeps them: by target (address, or ``a --> b``)."""
     out: dict[str, dict] = defaultdict(lambda: {"verdicts": []})
     for v in verdicts:
         if v.get("ends"):
-            out[format_target(v["ends"])]["verdicts"].append({k: v[k] for k in ("id", "target", "verdict", "reason")})
+            out[_format_target(v["ends"])]["verdicts"].append({k: v[k] for k in ("id", "target", "verdict", "reason")})
     return dict(out)
 
 
@@ -164,10 +164,10 @@ def save_verdicts(maps: MapStore, key, verdicts: list[dict], by: dict) -> None:
     import time
 
     at = by.get("at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    maps.open_maps("verdicts").save(key.format_key(), dump_verdicts(verdicts), {**by, "at": at})
+    maps.open_maps("verdicts").save(key.format_key(), _dump_verdicts(verdicts), {**by, "at": at})
 
 
-def keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) -> list[dict]:
+def _keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) -> list[dict]:
     """A verdicts.json (on the review diagram's ids) read and kept as the change's verdicts."""
     verdicts = read_verdicts(text, find_diagram_ids(scene))
     save_verdicts(maps, key, verdicts, by)
@@ -208,7 +208,7 @@ class Verdicts:
         seen, vs = set(), []
         for v in (v for r in roots for b in iter_boxes(r) for s in b.sources.get("source", ())
                   for v in (s.get(self.name) or {}).get("starting", [])):
-            if v["id"] not in seen and land(el.scene, v) == el.key:
+            if v["id"] not in seen and _land(el.scene, v) == el.key:
                 seen.add(v["id"])
                 vs.append(v)
         vs.sort(key=lambda v: int(v["id"][1:]))
@@ -235,7 +235,7 @@ def find_box(scene: Scene, x: str) -> str | None:
     return scene.find_holder(x) or scene.find_holder(address.owner(x))
 
 
-def land(scene: Scene, v: dict) -> object | None:
+def _land(scene: Scene, v: dict) -> object | None:
     """Where a verdict is shown in a picture: on the drawn box that stands for its target, or on
     the drawn edge that carries the edge between its two ends. Roll-up and fan bundling both
     draw an edge between boxes that contain its ends (a folded box, or the unfolded box a bundle
@@ -246,13 +246,13 @@ def land(scene: Scene, v: dict) -> object | None:
     if not ends or None in ends:
         return None
     if len(ends) == 2 and ends[0] != ends[1]:
-        e = find_carrier(scene, ends[0], ends[1])
+        e = _find_carrier(scene, ends[0], ends[1])
         if e is not None:
             return e
     return ends[0]
 
 
-def find_carrier(scene: Scene, a: str, b: str):
+def _find_carrier(scene: Scene, a: str, b: str):
     """The drawn edge that carries an edge from a to b (drawn boxes), or from b to a."""
     def around(x: str) -> list[str]:
         out = [x]

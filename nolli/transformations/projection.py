@@ -75,7 +75,7 @@ class Cut:
     utilities: set[str]
 
 
-def hide_for(g: Reading, roles, side: str = "both") -> set[str]:
+def _hide_for(g: Reading, roles, side: str = "both") -> set[str]:
     """Files and directories whose role is not shown, plus images drawn as their service; in a
     change drawn for one side, what does not exist on that side."""
     shown = set(roles)
@@ -86,11 +86,11 @@ def hide_for(g: Reading, roles, side: str = "both") -> set[str]:
     return out | set(rollup.image_aliases(g))
 
 
-def is_root_group(g: Reading, x: str) -> bool:
+def _is_root_group(g: Reading, x: str) -> bool:
     return g.has(x) and g.kind(x) == "group" and g.parent(x) is None
 
 
-def find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[str]:
+def _find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[str]:
     """The containers a preset unfolds (a change's preset on a plain scene: the default cut)."""
     if st.preset == "folded":
         return {address.REPO_ROOT}
@@ -102,17 +102,17 @@ def find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[str
     return set(unfold_lib.find_default_cut(g, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
 
 
-def cut(scene: Scene, st: ProjectionSpec) -> Cut:
+def _cut(scene: Scene, st: ProjectionSpec) -> Cut:
     """``expanded`` is normalised to the containers actually reached, so folding a box also
     folds everything inside it."""
     g = Reading(scene)
-    hidden = hide_for(g, st.roles, st.side)
+    hidden = _hide_for(g, st.roles, st.side)
     shown_groups = set(st.groups)
     if st.unfold is not None:
         expanded = {x for x in g.nodes if g.children(x) and st.unfold(scene.find_element(x))}
     else:
-        expanded = find_preset_cut(g, st, hidden) if st.expanded is None else {x for x in st.expanded if g.has(x)}
-    expanded = {x for x in expanded if not (is_root_group(g, x) and x not in shown_groups)}  # filtered out: stays folded
+        expanded = _find_preset_cut(g, st, hidden) if st.expanded is None else {x for x in st.expanded if g.has(x)}
+    expanded = {x for x in expanded if not (_is_root_group(g, x) and x not in shown_groups)}  # filtered out: stays folded
     walked: set[str] = set()
     visible = rollup.visible_from_expanded(g, expanded, hidden, walked=walked)
     expanded = walked
@@ -122,13 +122,13 @@ def cut(scene: Scene, st: ProjectionSpec) -> Cut:
     return Cut(expanded, hidden, visible, rolled, utilities)
 
 
-def edge_style(e) -> str:
+def _edge_style(e) -> str:
     if e.kind == "provide":
         return "provide"
     return e.subkind if e.subkind in ("import", "http", "env") else "deploy"
 
 
-def leaf_count(g: Reading, x: str) -> int:
+def _leaf_count(g: Reading, x: str) -> int:
     """Files below a directory; leaves below anything else."""
     is_dir = g.kind(x) == "directory"
     n, stack = 0, list(g.children(x))
@@ -149,20 +149,20 @@ def leaf_count(g: Reading, x: str) -> int:
 
 def fold(st: ProjectionSpec) -> Callable[[Scene], tuple[Model, FixedOverlay]]:
     """The projection as a transformation: what ``st`` asks for, of the scene it is given."""
-    return lambda scene: fold_model(scene, st)
+    return lambda scene: _fold_model(scene, st)
 
 
-def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
+def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     """The folded model: its nodes the boxes drawn, each keeping its address and referring to
     what it stands for, its edges the lines drawn, each referring to the edges it bundles; and
     the projection's overlay, what it decided about them."""
     g = Reading(scene)
-    c = cut(scene, st)
+    c = _cut(scene, st)
     expanded, hidden, visible, rolled, utilities = c.expanded, c.hidden, c.visible, c.rolled, c.utilities
     shown_groups = set(st.groups)
     # a root group is drawn when the filter shows it and it has something to unfold (rollup
     # leaves no edge on one the filter hides)
-    root_group = lambda x: is_root_group(g, x) and (x not in shown_groups or not g.children(x))
+    root_group = lambda x: _is_root_group(g, x) and (x not in shown_groups or not g.children(x))
     edges = rolled.edges
     out_total: dict[str, int] = defaultdict(int)
     for e in edges:
@@ -191,7 +191,7 @@ def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
             return
         kids = bool(g.children(x))
         values[x] = {
-            "container": container, "foldable": kids, "leaves": leaf_count(g, x) if kids and not container else None,
+            "container": container, "foldable": kids, "leaves": _leaf_count(g, x) if kids and not container else None,
             "badge": f"used by {used_by[x]}" if used_by.get(x) else "", "used_by": used_by.get(x, 0), "utility": x in utilities,
             "chips": [{"id": s, "name": g.segment(s), "color": services.index(s) if s in services else -1}
                       for s in rolled.allocations.get(x, [])],
@@ -259,7 +259,7 @@ def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
         k = EdgeKey(e.kind, e.src, e.dst, e.subkind)
         ot = out_total.get(e.src, 0)
         values[k] = {
-            "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": edge_style(e),
+            "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": _edge_style(e),
             "local": local(e), "single": e.count == 1, "weak": bool(ot) and e.kind == metamodel.USE and e.count / ot < 0.05 and e.count < 3,
             "heuristic": e.confidence == "heuristic",
             "types": e.count > 0 and e.types == e.count,  # references only to types (``type_only``): no run-time dependency
