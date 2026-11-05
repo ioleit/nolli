@@ -7,8 +7,7 @@ from nolli.model.scene import Element, Scene
 
 FORMAT = 1
 
-#? is this internal? can it start with _?
-def list_extracted(scene: Scene) -> set[str]:
+def _list_extracted(scene: Scene) -> set[str]:
     """The overlays the extractors wrote (each extracted model names its own), all the way down."""
     out, stack = {"facts"}, [scene]
     while stack:
@@ -18,10 +17,9 @@ def list_extracted(scene: Scene) -> set[str]:
     return out
 
 
-#? is this internal? can it start with _?
-def list_exported(scene: Scene) -> list[str]:
+def _list_exported(scene: Scene) -> list[str]:
     """Every overlay but the extractors': they are read by the others, not shown as they are."""
-    left_out = list_extracted(scene)
+    left_out = _list_extracted(scene)
     return [n for n in scene.overlays if n not in left_out]
 
 
@@ -31,7 +29,7 @@ def describe(el: Element, names: list[str]) -> dict:
 
 def export_scene(scene: Scene) -> dict:
     meta = scene.model.meta.get("projection", {})
-    names = list_exported(scene)
+    names = _list_exported(scene)
     order = mermaid.list_drawing_order(scene)
     nodes = [{"id": x, "kind": scene.model.kinds[x], "parent": scene.model.find_parent(x), **describe(scene.find_element(x), names)}
              for x in order]
