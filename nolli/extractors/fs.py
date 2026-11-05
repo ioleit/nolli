@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import PurePosixPath
 
-from nolli.extractors import Context, languages
+from nolli import extractors
+from nolli.extractors import Context
 from nolli.extractors.facts import Entity, Provenance
 from nolli.model import address
 
@@ -51,14 +52,14 @@ CONFIG_CODE = re.compile(r"(^|\.)(config|conf|rc)\.[cm]?[jt]sx?$|^\.(eslintrc|pr
 
 
 def lang_by_ext() -> dict[str, str]:
-    return OTHER_LANGS | {ext: v for lang in languages() for ext, v in lang.extensions.items()}
+    return OTHER_LANGS | {ext: v for lang in extractors.languages() for ext, v in lang.extensions.items()}
 
 
 def module_facts(name: str, lang: str | None) -> dict:
     """What the graph operations need to know about a file of an extracted language:
     it is a ``module``; a package body (``__init__.py``, ``index.ts``) is also ``body``,
     what it makes its folder ("package", "folder module")."""
-    for language in languages():
+    for language in extractors.languages():
         if lang in language.names:
             return {"module": True} | ({"body": language.package} if name in language.package_body else {})
     return {}

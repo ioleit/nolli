@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 
 from nolli.extractors import Context, api
-from nolli.extractors.typescript.imports import walk
+from nolli.extractors.typescript import imports
 
 AXIOS_METHODS = {"get", "post", "put", "patch", "delete"}
 
@@ -179,9 +179,9 @@ def param_names(fn_node) -> list[str]:
 
 def substitution_idents(node) -> set[str]:
     out = set()
-    for n in walk(node):
+    for n in imports.walk(node):
         if n.type == "template_substitution":
-            for c in walk(n):
+            for c in imports.walk(n):
                 if c.type == "identifier":
                     out.add(c.text.decode())
         if n.type == "identifier" and node.type == "binary_expression":
@@ -202,7 +202,7 @@ def run(ctx: Context) -> None:
 
     for rel, tree in trees.items():
         consts = consts_by_file[rel]
-        for n in walk(tree.root_node):
+        for n in imports.walk(tree.root_node):
             url_node, default_method, is_call = None, "?", False
             if n.type == "call_expression":
                 fn = n.child_by_field_name("function")
@@ -242,7 +242,7 @@ def run(ctx: Context) -> None:
                 calls.append(Call(rel, n.start_point[0] + 1, default_method, pat, "direct"))
 
     for rel, tree in trees.items():
-        for n in walk(tree.root_node):
+        for n in imports.walk(tree.root_node):
             if n.type != "call_expression":
                 continue
             fn = n.child_by_field_name("function")

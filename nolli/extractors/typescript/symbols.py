@@ -33,8 +33,8 @@ from collections import Counter
 
 from nolli.extractors import Context
 from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.extractors.typescript.imports import read
-from nolli.model import USE, address
+from nolli.extractors.typescript import imports
+from nolli.model import address, metamodel
 
 EXTRACTOR = "typescript-symbols"
 DECLS = {"class_declaration": "class", "abstract_class_declaration": "class", "class": "class",
@@ -206,7 +206,7 @@ def run(ctx: Context) -> None:
         reexports: list[tuple[str, str, str]] = []
         local: list[tuple[str, str]] = []
         symbol_lines = 0
-        for imp in read(tree):
+        for imp in imports.read(tree):
             if imp.exports:
                 reexports += [(exported, imp.spec, there) for exported, there in imp.exports]
             if not imp.top:
@@ -269,7 +269,7 @@ def run(ctx: Context) -> None:
     for (src, b), n in pending.items():
         file = address.path_of(src)
         if b[0] == "local":
-            m.add_relation(Relation(USE, src, b[1], "ref", n, "exact", Provenance(EXTRACTOR, file),
+            m.add_relation(Relation(metamodel.USE, src, b[1], "ref", n, "exact", Provenance(EXTRACTOR, file),
                                     {"name": b[2], "type_only": values[(src, b)] == 0, "language": "javascript"}))
             continue
         spec, name, type_only = (b[1], "", b[2]) if b[0] == "module" else (b[1], b[2], b[3])
@@ -280,6 +280,6 @@ def run(ctx: Context) -> None:
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", f"{spec} {name}".strip(),
                                 {"language": "javascript", "ref": True, "spec": spec, "from": file, "name": name}, Provenance(EXTRACTOR)))
-        m.add_relation(Relation(USE, src, uid, "ref", n, "exact", Provenance(EXTRACTOR, file),
+        m.add_relation(Relation(metamodel.USE, src, uid, "ref", n, "exact", Provenance(EXTRACTOR, file),
                                 {"name": shown, "type_only": type_only, "language": "javascript"}))
 

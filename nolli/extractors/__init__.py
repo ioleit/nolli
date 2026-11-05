@@ -90,7 +90,7 @@ class Language:
     ``names`` says how to write each ``language`` value in text ("TypeScript").
     ``package_body`` names the files that are their folder's own code rather than a
     module of their own, and ``package`` what such a folder is called ("package").
-    The symbols a language extracts are of the kinds in ``model.SYMBOL_KINDS``. ``keep_trees``: parse each
+    The symbols a language extracts are of the kinds in ``metamodel.SYMBOL_KINDS``. ``keep_trees``: parse each
     file once for all extractors; off for Python, whose ``ast`` trees for a 2,000-file
     repository take 700 MB and make the garbage collector a third of the run time."""
     name: str

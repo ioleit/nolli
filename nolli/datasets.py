@@ -31,7 +31,8 @@ from .sources import FetchError, Sources, github
 from .sources.git import GitError, find_commit, find_head, find_remote
 from .sources.spec import ChangeError, ChangeSpec, find_toplevel
 from .sources.spec import resolve as resolve_spec, whole as resolve_whole
-from .store import ModelStore, write_change, write_commit
+from .store import ModelStore
+from .store.directory import write_change, write_commit
 from .store.maps import MapStore, MemoryMaps
 from .scenes import merge_built, open_built, open_change_scene, open_commit_scene
 from .transformations.merge import is_change

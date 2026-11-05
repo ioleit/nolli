@@ -18,7 +18,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
-from nolli.model import ALLOCATE, CONTAIN, PROVIDE, USE, EdgeKey, Key, Model, address, metamodel
+from nolli.model import EdgeKey, Key, Model, address, metamodel
 
 
 @dataclass
@@ -113,7 +113,7 @@ class Facts:
             missing = r.src if r.src not in self.entities else r.dst
             raise KeyError(f"relation {r.kind} {r.src} -> {r.dst}: unknown entity {missing}")
         metamodel.check_relation(r.kind, r.src, r.dst, address.scheme_of(r.src), address.scheme_of(r.dst))
-        if r.kind == CONTAIN:
+        if r.kind == metamodel.CONTAIN:
             self._parent = self._children = None
         if r.provenance is None:
             r.provenance = Provenance(self.current)
@@ -128,7 +128,7 @@ class Facts:
         return rid
 
     def contain(self, parent: str, child: str, extractor: str) -> None:
-        self.add_relation(Relation(CONTAIN, parent, child, provenance=Provenance(extractor)))
+        self.add_relation(Relation(metamodel.CONTAIN, parent, child, provenance=Provenance(extractor)))
 
     def has(self, entity_id: str) -> bool:
         return entity_id in self.entities
@@ -141,7 +141,7 @@ class Facts:
         parent: dict[str, str] = {}
         children: dict[str, list[str]] = defaultdict(list)
         for r in self.relations:
-            if r.kind == CONTAIN:
+            if r.kind == metamodel.CONTAIN:
                 if r.dst in parent and parent[r.dst] != r.src:
                     raise ValueError(f"{r.dst} has two owners: {parent[r.dst]} and {r.src}")
                 parent[r.dst] = r.src
@@ -175,7 +175,7 @@ class Facts:
             yield c
             stack.extend(self.children(c))
 
-    def relations_of(self, kinds: Iterable[str] = (USE, PROVIDE, ALLOCATE)) -> list[Relation]:
+    def relations_of(self, kinds: Iterable[str] = (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE)) -> list[Relation]:
         ks = set(kinds)
         return [r for r in self.relations if r.kind in ks]
 
@@ -196,7 +196,7 @@ class Facts:
         for r in self.relations:
             k = EdgeKey(r.kind, r.src, r.dst, r.subkind)
             edges.add(k)
-            if r.kind == CONTAIN:
+            if r.kind == metamodel.CONTAIN:
                 continue
             p = r.provenance
             ref = {"count": r.count, "confidence": r.confidence, "path": p.path if p else None, **r.attrs}

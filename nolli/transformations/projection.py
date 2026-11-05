@@ -23,31 +23,19 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
-from nolli.model import CONTAIN, USE, EdgeKey, Key, Model, address, metamodel
+from nolli.model import EdgeKey, Key, Model, address, metamodel
 from nolli.model.scene import Element, FixedOverlay, Scene
+from nolli.transformations import rollup
+from nolli.transformations import unfold as unfold_lib
 from nolli.transformations.reading import Reading
-from nolli.transformations.rollup import (
-    HIDDEN_ROLES_DEFAULT,
-    RolledUp,
-    chain_end,
-    drawn_parent,
-    hidden_by_role,
-    image_aliases,
-    is_init,
-    lift,
-    representative,
-    rollup,
-    utility_badges,
-    visible_from_expanded,
-)
-from nolli.transformations.unfold import find_default_cut
+from nolli.transformations.rollup import RolledUp
 
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
-DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in HIDDEN_ROLES_DEFAULT)
+DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in rollup.HIDDEN_ROLES_DEFAULT)
 DEFAULT_BUDGET = 34
 DEFAULT_UTILITY_IN = 4  # more incoming edges than this: a utility, drawn as badges
 DEFAULT_MAX_LINES = 4  # lines between two drawn boxes at most; more are lifted to a box they are inside (rollup.lift)
-DEFAULT_GROUPS = (address.root(address.API),)  # root groups drawn as boxes; the others are badges on their users
+DEFAULT_GROUPS = (address.root(metamodel.API),)  # root groups drawn as boxes; the others are badges on their users
 PRESETS = ("default", "folded", "changes", "unfolded")
 
 
@@ -91,11 +79,11 @@ def hide_for(g: Reading, roles, side: str = "both") -> set[str]:
     """Files and directories whose role is not shown, plus images drawn as their service; in a
     change drawn for one side, what does not exist on that side."""
     shown = set(roles)
-    out = hidden_by_role(g, {g.file(x)["role"] for x in g.nodes if g.file(x).get("role")} - shown)
+    out = rollup.hidden_by_role(g, {g.file(x)["role"] for x in g.nodes if g.file(x).get("role")} - shown)
     if side in ("base", "head"):
         gone = "added" if side == "base" else "removed"
         out |= {x for x in g.nodes if g.diff(x).get("status") == gone}
-    return out | set(image_aliases(g))
+    return out | set(rollup.image_aliases(g))
 
 
 def is_root_group(g: Reading, x: str) -> bool:
@@ -111,7 +99,7 @@ def find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[str
     if st.preset == "unfolded":
         return {x for x in g.nodes if x not in hidden and g.children(x)}
     hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
-    return set(find_default_cut(g, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
+    return set(unfold_lib.find_default_cut(g, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
 
 
 def cut(scene: Scene, st: ProjectionSpec) -> Cut:
@@ -126,11 +114,11 @@ def cut(scene: Scene, st: ProjectionSpec) -> Cut:
         expanded = find_preset_cut(g, st, hidden) if st.expanded is None else {x for x in st.expanded if g.has(x)}
     expanded = {x for x in expanded if not (is_root_group(g, x) and x not in shown_groups)}  # filtered out: stays folded
     walked: set[str] = set()
-    visible = visible_from_expanded(g, expanded, hidden, walked=walked)
+    visible = rollup.visible_from_expanded(g, expanded, hidden, walked=walked)
     expanded = walked
-    rolled = rollup(g, visible, hidden, shown_groups=shown_groups, side=st.side)
-    rolled.edges = lift(g, rolled.edges, expanded, st.max_lines)  # at most max_lines lines between two boxes
-    utilities = utility_badges(g, rolled, st.utilities) if st.utilities > 0 else set()
+    rolled = rollup.rollup(g, visible, hidden, shown_groups=shown_groups, side=st.side)
+    rolled.edges = rollup.lift(g, rolled.edges, expanded, st.max_lines)  # at most max_lines lines between two boxes
+    utilities = rollup.utility_badges(g, rolled, st.utilities) if st.utilities > 0 else set()
     return Cut(expanded, hidden, visible, rolled, utilities)
 
 
@@ -149,7 +137,7 @@ def leaf_count(g: Reading, x: str) -> int:
         k = g.kind(c)
         if is_dir:
             if k == "file":
-                n += 0 if is_init(g, c) else 1
+                n += 0 if rollup.is_init(g, c) else 1
             elif k == "directory":
                 stack.extend(g.children(c))
         elif not g.children(c):
@@ -178,7 +166,7 @@ def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     edges = rolled.edges
     out_total: dict[str, int] = defaultdict(int)
     for e in edges:
-        if e.kind == USE:
+        if e.kind == metamodel.USE:
             out_total[e.src] += e.count
     touched = {e.src for e in edges} | {e.dst for e in edges}
     used_by: dict[str, int] = defaultdict(int)  # utility -> boxes whose edges into it became badges
@@ -221,10 +209,10 @@ def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
             for kid in g.children(x):
                 if kid in hidden:
                     continue
-                if g.kind(x) == "directory" and is_init(g, kid):
+                if g.kind(x) == "directory" and rollup.is_init(g, kid):
                     ch.extend(g.children(kid))  # a package's __init__ classes are its children
                     continue
-                ch.append(chain_end(g, kid, hidden) if g.kind(x) == "directory" and g.kind(kid) == "directory" else kid)
+                ch.append(rollup.chain_end(g, kid, hidden) if g.kind(x) == "directory" and g.kind(kid) == "directory" else kid)
             n = 0
             if address.own_code(x) in visible:
                 node(address.own_code(x), me or parent, False)
@@ -248,7 +236,7 @@ def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     # what each drawn box stands for, each node by exactly one box: the innermost drawn box
     # holding it (a container itself, what is inside belongs to what is drawn inside), a
     # package's own code what its package body holds
-    rep = representative(g, visible, hidden, image_aliases(g))
+    rep = rollup.representative(g, visible, hidden, rollup.image_aliases(g))
     refs: dict[Key, list[Key]] = defaultdict(list)
     for x in sorted(g.nodes):
         if x in hidden:
@@ -261,8 +249,8 @@ def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
             refs[x] = [x] + [k for k in refs[x] if k != x]
 
     def local(e) -> bool:
-        ps = drawn_parent(g, e.src, expanded)
-        return ps is not None and ps == drawn_parent(g, e.dst, expanded)
+        ps = rollup.drawn_parent(g, e.src, expanded)
+        return ps is not None and ps == rollup.drawn_parent(g, e.dst, expanded)
 
     keys: list[EdgeKey] = []
     for e in edges:
@@ -272,7 +260,7 @@ def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
         ot = out_total.get(e.src, 0)
         values[k] = {
             "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": edge_style(e),
-            "local": local(e), "single": e.count == 1, "weak": bool(ot) and e.kind == USE and e.count / ot < 0.05 and e.count < 3,
+            "local": local(e), "single": e.count == 1, "weak": bool(ot) and e.kind == metamodel.USE and e.count / ot < 0.05 and e.count < 3,
             "heuristic": e.confidence == "heuristic",
             "types": e.count > 0 and e.types == e.count,  # references only to types (``type_only``): no run-time dependency
             "type_refs": e.types, "names": dict(e.names),
@@ -285,7 +273,7 @@ def fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
         keys.append(k)
 
     kinds = {x: ("anchor" if address.is_own_code(x) else g.kind(x)) for x in order}
-    contain = [EdgeKey(CONTAIN, p, x) for x, p in parent_of.items() if p is not None]
+    contain = [EdgeKey(metamodel.CONTAIN, p, x) for x, p in parent_of.items() if p is not None]
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
     residue += [f"{v} unresolved {k} references" for k, v in sorted(rolled.unresolved.items())]
     groups = [{"id": r, "namespace": address.scheme_of(r), "name": metamodel.NAMESPACES[address.scheme_of(r)].title, "size": len(g.children(r)), "shown": r in shown_groups}

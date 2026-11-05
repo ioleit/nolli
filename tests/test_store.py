@@ -16,7 +16,8 @@ from nolli.keys import Repo
 from nolli.model import Model
 from nolli.progress import Quiet
 from nolli.sources import CloneCache, FetchError, LocalRepository
-from nolli.store import DirectoryStore, read_key, write_change
+from nolli.store import DirectoryStore
+from nolli.store.directory import read_key, write_change
 
 
 def git(repo: Path, *args: str) -> str:

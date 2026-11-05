@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from urllib.parse import unquote
 
-from nolli.model import CONTAIN, EdgeKey, address
+from nolli.model import EdgeKey, address, metamodel, vocabulary
 from nolli.model.scene import Scene
-from nolli.model.vocabulary import FileFacts, Reference, read_file, read_references
+from nolli.model.vocabulary import FileFacts, Reference
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 
@@ -90,7 +90,7 @@ class Reading:
     def file(self, x: str) -> FileFacts | dict:
         f = self._files.get(x)
         if f is None:
-            f = self._files[x] = read_file(self.scene.find_element(x))
+            f = self._files[x] = vocabulary.read_file(self.scene.find_element(x))
         return f
 
     # -- what changed ------------------------------------------------------------
@@ -107,10 +107,10 @@ class Reading:
     def relations(self) -> list[Rel]:
         out = []
         for e in self.model.edges:
-            if e.kind == CONTAIN:
+            if e.kind == metamodel.CONTAIN:
                 continue
             el = self.scene.find_element(e)
-            refs = read_references(el)
+            refs = vocabulary.read_references(el)
             conf = max((r["confidence"] for r in refs), key=lambda c: CONF_RANK.get(c, 0), default="exact")
             d = el.get("change") if self.is_change else None
             out.append(Rel(e, sum(r["count"] for r in refs), conf, refs,

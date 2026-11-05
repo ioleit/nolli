@@ -15,8 +15,7 @@ import ast
 from dataclasses import dataclass, field
 
 from nolli.extractors import Context, api
-from nolli.extractors.python.imports import module_name_of
-from nolli.extractors.python.resolve import module_candidates
+from nolli.extractors.python import imports, resolve
 from nolli.model import address
 
 METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "websocket", "api_route"}
@@ -52,7 +51,7 @@ def run(ctx: Context) -> None:
     for f in ctx.files:
         rel = ctx.rel(f)
         if rel.endswith(".py") and m.has(address.repo(rel)):
-            module_to_file[module_name_of(rel)] = rel
+            module_to_file[imports.module_name_of(rel)] = rel
 
     for rel in ctx.progress.each(module_to_file.values()):
         if m.entities[address.repo(rel)].attrs.get("role") == "test":
@@ -114,7 +113,7 @@ def run(ctx: Context) -> None:
 
     # Resolve include targets to router keys via the including file's imports.
     def find_module(mod: str, file: str) -> str | None:
-        for cand in module_candidates(mod, file):
+        for cand in resolve.module_candidates(mod, file):
             if cand in module_to_file:
                 return module_to_file[cand]
         return None

@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 
 from nolli.extractors import Context
-from nolli.extractors.markup.refs import link
+from nolli.extractors.markup import refs
 from nolli.model import address
 
 COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -24,10 +24,10 @@ def scan(ctx: Context, rel: str, text: str, first_line: int = 1, extractor: str 
     imports = set()
     for mt in IMPORT.finditer(text):
         imports.add(mt.start(2))
-        link(ctx, rel, mt.group(2), first_line + text.count("\n", 0, mt.start()), "import", extractor)
+        refs.link(ctx, rel, mt.group(2), first_line + text.count("\n", 0, mt.start()), "import", extractor)
     for mt in URL.finditer(text):
         if mt.start(2) not in imports:
-            link(ctx, rel, mt.group(2), first_line + text.count("\n", 0, mt.start()), "url", extractor)
+            refs.link(ctx, rel, mt.group(2), first_line + text.count("\n", 0, mt.start()), "url", extractor)
 
 
 def run(ctx: Context) -> None:

@@ -45,29 +45,29 @@ from __future__ import annotations
 import re
 from urllib.parse import quote, unquote
 
-from nolli.model.metamodel import API, CONFIG, NAMESPACES, PKG, REPO, RUNTIME, UNRESOLVED
+from nolli.model import metamodel
 
 
 def scheme_of(eid: str) -> str:
     """The namespace an address is in (``repo``), by its scheme."""
     scheme, sep, _ = eid.partition(":")
-    if not sep or scheme not in NAMESPACES:
+    if not sep or scheme not in metamodel.NAMESPACES:
         raise ValueError(f"not an address in a known namespace: {eid!r}")
     return scheme
 
 
 def root(scheme: str) -> str:
     """A namespace's root: ``api:``. For ``repo:`` the repository's directory."""
-    if scheme not in NAMESPACES:
+    if scheme not in metamodel.NAMESPACES:
         raise ValueError(f"unknown namespace {scheme!r}")
     return scheme + ":"
 
 
-REPO_ROOT = REPO + ":"  # the repository's root directory
+REPO_ROOT = metamodel.REPO + ":"  # the repository's root directory
 
 
 def is_root(eid: str) -> bool:
-    return eid.endswith(":") and eid[:-1] in NAMESPACES
+    return eid.endswith(":") and eid[:-1] in metamodel.NAMESPACES
 
 
 # ---------- repo: ----------
@@ -80,7 +80,7 @@ def repo(path: str, *fragment: str) -> str:
     """A directory or file by its path relative to the repository root (``""`` or ``"."``
     for the root), or a part of a file by the segments its extractor gives it."""
     path = "" if path in ("", ".") else path
-    return part(f"{REPO}:{path}", *fragment)
+    return part(f"{metamodel.REPO}:{path}", *fragment)
 
 
 def part(file: str, *fragment: str) -> str:
@@ -90,9 +90,9 @@ def part(file: str, *fragment: str) -> str:
 
 def path_of(eid: str) -> str:
     """The repository path of a ``repo:`` address (``"."`` for the root), a part's file's."""
-    if scheme_of(eid) != REPO:
+    if scheme_of(eid) != metamodel.REPO:
         raise ValueError(f"not in repo: {eid!r}")
-    return eid[len(REPO) + 1:].split("#", 1)[0] or "."
+    return eid[len(metamodel.REPO) + 1:].split("#", 1)[0] or "."
 
 
 def fragment_of(eid: str) -> tuple[str, ...]:
@@ -104,7 +104,7 @@ def fragment_of(eid: str) -> tuple[str, ...]:
 
 
 def is_repo(eid: str) -> bool:
-    return eid.startswith(REPO + ":")
+    return eid.startswith(metamodel.REPO + ":")
 
 
 def is_part(eid: str) -> bool:
@@ -154,7 +154,7 @@ def param(seg: str) -> str:
 def api_app(protocol: str, key: str) -> str:
     """An API: the app, server or service definition serving operations, ``key`` unique
     within the protocol (``server/main.py:app``)."""
-    return f"{API}:{protocol}:{key}"
+    return f"{metamodel.API}:{protocol}:{key}"
 
 
 def api_step(app: str, segments: list[str]) -> str:
@@ -177,26 +177,26 @@ def package(lang: str, name: str) -> str:
     kind = PURL_TYPE[lang]
     if name.startswith("@") and "/" in name:
         scope, _, base = name.partition("/")
-        return f"{PKG}:{kind}/{quote(scope, safe='')}/{quote(base, safe='')}"
-    return f"{PKG}:{kind}/{quote(name, safe='')}"
+        return f"{metamodel.PKG}:{kind}/{quote(scope, safe='')}/{quote(base, safe='')}"
+    return f"{metamodel.PKG}:{kind}/{quote(name, safe='')}"
 
 
 def built(recipe: str) -> str:
     """An artifact built from the recipe at the repository path ``recipe`` that has no
     registry name."""
-    return f"{PKG}:build/{recipe}"
+    return f"{metamodel.PKG}:build/{recipe}"
 
 
 # ---------- runtime: and config: ----------
 
 def runtime(host: str) -> str:
     """A compose service or a host outside, by the host name it is reached at."""
-    return f"{RUNTIME}:{host}"
+    return f"{metamodel.RUNTIME}:{host}"
 
 
 def config(name: str) -> str:
     """A setting the code reads at runtime, such as an environment variable."""
-    return f"{CONFIG}:{name}"
+    return f"{metamodel.CONFIG}:{name}"
 
 
 # ---------- unresolved: ----------
@@ -204,14 +204,14 @@ def config(name: str) -> str:
 def unresolved(what: str, key: str) -> str:
     """A reference not bound yet: ``what`` says how to read ``key`` (``py`` a Python module,
     ``pyref`` a name in one, ``js`` an import specifier, ``tsref``, a protocol's call)."""
-    return f"{UNRESOLVED}:{what}:{key}"
+    return f"{metamodel.UNRESOLVED}:{what}:{key}"
 
 
 def unresolved_key(eid: str, what: str) -> str | None:
     """The key of an unresolved reference of sort ``what``, None for any other address."""
-    prefix = f"{UNRESOLVED}:{what}:"
+    prefix = f"{metamodel.UNRESOLVED}:{what}:"
     return eid[len(prefix):] if eid.startswith(prefix) else None
 
 
 def is_unresolved(eid: str) -> bool:
-    return eid.startswith(UNRESOLVED + ":")
+    return eid.startswith(metamodel.UNRESOLVED + ":")

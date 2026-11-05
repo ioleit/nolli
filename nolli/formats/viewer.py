@@ -8,7 +8,7 @@ client can diff two scenes to animate the step between them."""
 
 from __future__ import annotations
 
-from nolli.formats.mermaid import list_drawing_order
+from nolli.formats import mermaid
 from nolli.model.scene import Element, Scene
 
 FORMAT = 1
@@ -37,7 +37,7 @@ def describe(el: Element, names: list[str]) -> dict:
 def export_scene(scene: Scene) -> dict:
     meta = scene.model.meta.get("projection", {})
     names = list_exported(scene)
-    order = list_drawing_order(scene)
+    order = mermaid.list_drawing_order(scene)
     nodes = [{"id": x, "kind": scene.model.kinds[x], "parent": scene.model.find_parent(x), **describe(scene.find_element(x), names)}
              for x in order]
     edges = [{"key": el.id, "kind": el.key.kind, "subkind": el.key.subkind, "src": el.key.src, "dst": el.key.dst, **describe(el, names)}

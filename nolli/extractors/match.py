@@ -10,9 +10,10 @@ entities so views can count them. Placeholders bound everywhere are removed.
 
 from __future__ import annotations
 
-from nolli.extractors import Context, all_resolvers, api
+from nolli import extractors
+from nolli.extractors import Context, api
 from nolli.extractors.facts import Provenance, Relation
-from nolli.model import CONTAIN, address
+from nolli.model import metamodel
 
 
 def prune_unresolved(ctx: Context) -> None:
@@ -22,17 +23,17 @@ def prune_unresolved(ctx: Context) -> None:
     referenced = {r.dst for r in m.relations} | {r.src for r in m.relations}
     for eid in [e for e, ent in m.entities.items() if ent.kind == "unresolved" and e not in referenced]:
         del m.entities[eid]
-    m.relations = [r for r in m.relations if not (r.kind == CONTAIN and (r.src not in m.entities or r.dst not in m.entities))]
+    m.relations = [r for r in m.relations if not (r.kind == metamodel.CONTAIN and (r.src not in m.entities or r.dst not in m.entities))]
     m._parent = m._children = None
     loose = [e for e, ent in m.entities.items() if ent.kind == "unresolved" and m.parent(e) is None]
     if loose:
-        group = m.ensure_root(address.UNRESOLVED, "match")
+        group = m.ensure_root(metamodel.UNRESOLVED, "match")
         for e in loose:
-            m.add_relation(Relation(CONTAIN, group, e, provenance=Provenance("match")))
+            m.add_relation(Relation(metamodel.CONTAIN, group, e, provenance=Provenance("match")))
 
 
 def run_all(ctx: Context) -> None:
-    for _, fn in all_resolvers():
+    for _, fn in extractors.all_resolvers():
         fn(ctx)
     api.resolve(ctx)
     prune_unresolved(ctx)

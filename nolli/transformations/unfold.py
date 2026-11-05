@@ -14,15 +14,8 @@ from collections import defaultdict
 
 from nolli.model import address
 from nolli.model.scene import Scene
+from nolli.transformations import rollup
 from nolli.transformations.reading import Reading
-from nolli.transformations.rollup import (
-    hidden_by_role,
-    image_aliases,
-    init_anchor_dirs,
-    is_init,
-    reveal_scores,
-    visible_from_expanded,
-)
 
 
 def unfold_cost(g: Reading, v: str, hidden: set[str], anchors: set[str] = frozenset()) -> int:
@@ -33,7 +26,7 @@ def unfold_cost(g: Reading, v: str, hidden: set[str], anchors: set[str] = frozen
         return len(kids)
     n = 0
     for c in kids:
-        if is_init(g, c):
+        if rollup.is_init(g, c):
             n += sum(1 for cc in g.children(c) if cc not in hidden)
         else:
             n += 1
@@ -44,11 +37,11 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
     """In a diff model the budget goes to the changes first (``changes.change_scores``),
     then whatever is left to structure as usual."""
 
-    roles = tuple(hidden_roles) if hidden_roles is not None else hidden_by_role.__defaults__[0]
+    roles = tuple(hidden_roles) if hidden_roles is not None else rollup.hidden_by_role.__defaults__[0]
     if hidden is None:
-        hidden = hidden_by_role(g, roles) | set(image_aliases(g))
-    lca, _loose = reveal_scores(g, hidden)
-    anchors = init_anchor_dirs(g, hidden)
+        hidden = rollup.hidden_by_role(g, roles) | set(rollup.image_aliases(g))
+    lca, _loose = rollup.reveal_scores(g, hidden)
+    anchors = rollup.init_anchor_dirs(g, hidden)
     expanded: set[str] = {e for e in always_expand if g.has(e)}
     diff = g.is_change
     phases = [score_changes(g.scene, hidden), lca] if diff else [lca]
@@ -59,12 +52,12 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
     def cost_of_unfolding(v: str) -> float:
         if not diff:
             return unfold_cost(g, v, hidden, anchors)
-        after = visible_from_expanded(g, expanded | {v}, hidden)
+        after = rollup.visible_from_expanded(g, expanded | {v}, hidden)
         return sum(weight(x) for x in after) - sum(weight(x) for x in visible)
 
     for scores in phases:
         while True:
-            visible = visible_from_expanded(g, expanded, hidden)
+            visible = rollup.visible_from_expanded(g, expanded, hidden)
             room = budget - sum(weight(x) for x in visible)
             best, best_key = None, (0.0, 0.0)
             for v in visible:
@@ -81,7 +74,7 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
             if best is None:
                 break
             expanded.add(best)
-    visible = visible_from_expanded(g, expanded, hidden)
+    visible = rollup.visible_from_expanded(g, expanded, hidden)
     return {"budget": budget, "expanded": sorted(expanded), "visible": sorted(visible), "hidden_roles": list(roles)}
 
 

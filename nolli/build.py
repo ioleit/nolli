@@ -18,14 +18,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from nolli.extractors import Context, all_extractors, language_names, list_symbols_overlays
+from nolli import extractors
+from nolli.extractors import Context, match
 from nolli.extractors.facts import Facts
-from nolli.extractors.match import run_all as match_all
 from nolli.keys import ChangeKey, Commit
 from nolli.model import Key, Model, address
 from nolli.progress import Progress, Quiet
-from nolli.sources import Sources
-from nolli.sources.git import export_commit, find_head, list_file_changes, list_tracked_files
+from nolli.sources import Sources, git
 from nolli.store import ModelStore
 from nolli.store.maps import MapStore
 
@@ -50,9 +49,9 @@ def extract_facts(repo: Path, config: dict | None = None, progress: Progress | N
     (``Facts``: entities and relations with their attributes, as the extractors wrote them)."""
     facts = Facts()
     progress = progress or Quiet()
-    ctx = Context(repo=repo, model=facts, files=list_tracked_files(repo), config=config or {}, progress=progress)
+    ctx = Context(repo=repo, model=facts, files=git.list_tracked_files(repo), config=config or {}, progress=progress)
     timings = {}
-    for name, fn in all_extractors():
+    for name, fn in extractors.all_extractors():
         t0 = time.time()
         facts.current = name
         with progress.step("file tree" if name == "fs" else name.replace("-", " ")):
@@ -61,11 +60,11 @@ def extract_facts(repo: Path, config: dict | None = None, progress: Progress | N
     t0 = time.time()
     facts.current = "match"
     with progress.step("matching references"):
-        match_all(ctx)
+        match.run_all(ctx)
     timings["match"] = round(time.time() - t0, 3)
-    head = find_head(repo)
-    facts.meta = {"repo": str(repo), "commit": head[:7] if head else None, "files": len(ctx.files), "languages": language_names(),
-                  "symbols": list_symbols_overlays(),
+    head = git.find_head(repo)
+    facts.meta = {"repo": str(repo), "commit": head[:7] if head else None, "files": len(ctx.files), "languages": extractors.language_names(),
+                  "symbols": extractors.list_symbols_overlays(),
                   "timings": timings, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                   "notes": {k: v for k, v in ctx.notes.items() if k not in WORKING_NOTES}, "nolli": version()}
     return facts
@@ -76,7 +75,7 @@ def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple
     tree), its root named ``name``."""
     with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
         with progress.step("checking out the commit"):
-            export_commit(repo, sha, Path(tmp))
+            git.export_commit(repo, sha, Path(tmp))
         m, maps = extract(Path(tmp), progress=progress)
     for values in maps.values():  # the root is the temporary directory
         if address.REPO_ROOT in values and "name" in values[address.REPO_ROOT]:
@@ -89,7 +88,7 @@ def list_content(repo: Path, base: str, head: str, progress: Progress) -> dict[K
     """The ``content`` map of a change: what git says changed in each file, by the file's
     address (its head path; base path for a deletion)."""
     with progress.step("comparing the commits"):
-        return {address.repo(path): c.to_dict() for path, c in list_file_changes(repo, base, head).items()}
+        return {address.repo(path): c.to_dict() for path, c in git.list_file_changes(repo, base, head).items()}
 
 
 def version() -> str:

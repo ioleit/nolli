@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from collections import Counter
 
-from nolli.formats.descriptions.names import format_name
-from nolli.formats.descriptions.prose import code, count, listing, mark, one_line, paragraphs, say
+from nolli.formats.descriptions import names as names_lib
+from nolli.formats.descriptions import prose
 from nolli.model.scene import Element
-from nolli.review.changes import list_changes
-from nolli.review.verdicts import VERDICT_RANK, find_box, iter_boxes
+from nolli.review import changes
+from nolli.review import verdicts as verdicts_lib
 
 FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside
 
@@ -18,7 +18,7 @@ FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up
 def list_items(el: Element) -> dict[str, dict]:
     """Which numbered changes a change's node or edge is about (a node those that focus on it, an
     edge those whose facts it is), by id, with what placing them needs."""
-    items = list_changes(el.scene)
+    items = changes.list_changes(el.scene)
     mine = [it for it in items if (el.id in it["facts"] if el.is_edge else el.key in it["focus"])]
     return {it["id"]: {"category": it["category"], "focus": it["focus"]} for it in mine}
 
@@ -30,15 +30,15 @@ def place_items(el: Element) -> list[str]:
     src = el.sources.get("source", ())
     if el.is_edge:
         return sorted({i for s in src for i in (s.get("review") or {}).get("about", {})}, key=lambda i: int(i[1:]))
-    near = [*iter_boxes(el), *el.iter_ancestors()]  # a line lifted to a box around it carries what is inside too
+    near = [*verdicts_lib.iter_boxes(el), *el.iter_ancestors()]  # a line lifted to a box around it carries what is inside too
     carried = {i for b in near for e in [*b.out_edges, *b.in_edges] for i in (e.get("review") or {}).get("items", [])}
     out = set()
     for s in src:
         for i, it in (s.get("review") or {}).get("about", {}).items():
             if it["category"] == "dependency" and i in carried:
                 continue
-            first = next((f for f in it["focus"] if find_box(el.scene, f) is not None), None)
-            if first is not None and find_box(el.scene, first) == el.key:
+            first = next((f for f in it["focus"] if verdicts_lib.find_box(el.scene, f) is not None), None)
+            if first is not None and verdicts_lib.find_box(el.scene, first) == el.key:
                 out.add(i)
     return sorted(out, key=lambda i: int(i[1:]))
 
@@ -50,12 +50,12 @@ def list_verdict_lines(verdicts: list[dict], inside: list[dict] = (), items: int
     lists (FULL_VERDICTS in all) and more than one of them."""
     if len(verdicts) + len(inside) <= FULL_VERDICTS or len(inside) < 2:
         verdicts, inside = [*verdicts, *inside], []
-    lines = [mark(v["verdict"]) + " " + one_line(v["reason"]) for v in sorted(verdicts, key=lambda v: -VERDICT_RANK[v["verdict"]])]
+    lines = [prose.mark(v["verdict"]) + " " + prose.one_line(v["reason"]) for v in sorted(verdicts, key=lambda v: -verdicts_lib.VERDICT_RANK[v["verdict"]])]
     if inside:
         n = Counter(v["verdict"] for v in inside)
-        line = say(f"{{}} {where} · verdicts:", count(items, "change")) if items else f"Verdicts {where}:"
-        for v in sorted(n, key=lambda v: -VERDICT_RANK[v]):
-            line += " " + mark(v) + " " + code(n[v])
+        line = prose.say(f"{{}} {where} · verdicts:", prose.count(items, "change")) if items else f"Verdicts {where}:"
+        for v in sorted(n, key=lambda v: -verdicts_lib.VERDICT_RANK[v]):
+            line += " " + prose.mark(v) + " " + prose.code(n[v])
         lines.insert(0, line)
     return lines
 
@@ -66,23 +66,23 @@ def describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = (),
     lines: list[str] = []
     if nd:
         lines_changed = nd["added"] or nd["removed"]
-        where = f" in {count(nd['files'], 'file')}" if nd["files"] > 1 else ""
+        where = f" in {prose.count(nd['files'], 'file')}" if nd["files"] > 1 else ""
         if nd["status"] == "added":
-            lines.append(say("New in this change" + (", {} lines" if lines_changed else ""), *([f"+{nd['added']}"] if lines_changed else [])))
+            lines.append(prose.say("New in this change" + (", {} lines" if lines_changed else ""), *([f"+{nd['added']}"] if lines_changed else [])))
         elif nd["status"] == "removed":
-            lines.append(say("Removed in this change" + (", {} lines" if lines_changed else ""), *([f"−{nd['removed']}"] if lines_changed else [])))
+            lines.append(prose.say("Removed in this change" + (", {} lines" if lines_changed else ""), *([f"−{nd['removed']}"] if lines_changed else [])))
         elif lines_changed:
-            lines.append(say("Changed: {} {} lines" + where, f"+{nd['added']}", f"−{nd['removed']}"))
+            lines.append(prose.say("Changed: {} {} lines" + where, f"+{nd['added']}", f"−{nd['removed']}"))
         elif not (nd.get("new") or nd.get("gone")) and nd.get("internal"):
-            lines.append(say("Changed: {} between what it holds", count(nd["internal"], "dependency", "dependencies")))
+            lines.append(prose.say("Changed: {} between what it holds", prose.count(nd["internal"], "dependency", "dependencies")))
         if (nd.get("new") or nd.get("gone")) and nd["status"] == "changed":
-            bits = ([count(nd["new"], "new part")] if nd.get("new") else []) + ([count(nd["gone"], "removed part")] if nd.get("gone") else [])
-            lines.append(say("Inside: " + " and ".join("{}" for _ in bits), *bits))
+            bits = ([prose.count(nd["new"], "new part")] if nd.get("new") else []) + ([prose.count(nd["gone"], "removed part")] if nd.get("gone") else [])
+            lines.append(prose.say("Inside: " + " and ".join("{}" for _ in bits), *bits))
         if nd.get("old_path"):
-            lines.append(say("Renamed from {}", nd["old_path"]))
+            lines.append(prose.say("Renamed from {}", nd["old_path"]))
         if nd.get("renamed_to"):
-            lines.append(say("Renamed to {}", nd["renamed_to"]))
-    return paragraphs(lines + list_verdict_lines(verdicts, inside, items, f"in this {kind}"))
+            lines.append(prose.say("Renamed to {}", nd["renamed_to"]))
+    return prose.paragraphs(lines + list_verdict_lines(verdicts, inside, items, f"in this {kind}"))
 
 
 def describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0,
@@ -92,19 +92,19 @@ def describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = ()
     lines: list[str] = []
     if ed:
         if ed["status"] == "added":
-            lines.append(say("New in this change: {}", count(ed["head"], "reference")))
+            lines.append(prose.say("New in this change: {}", prose.count(ed["head"], "reference")))
         elif ed["status"] == "removed":
-            lines.append(say("Removed in this change: {} gone", count(ed["base"], "reference")))
+            lines.append(prose.say("Removed in this change: {} gone", prose.count(ed["base"], "reference")))
         else:
-            lines.append(say("Changed: {} → {} references", ed["base"], ed["head"]))
+            lines.append(prose.say("Changed: {} → {} references", ed["base"], ed["head"]))
         names = names or {}
         came = sorted({names.get(c["dst"], c["dst"]) for c in ed.get("changes", []) if c["status"] == "added"})
         went = sorted({names.get(c["dst"], c["dst"]) for c in ed.get("changes", []) if c["status"] == "removed"})
         if came:
-            lines.append(listing("Now uses {}", came, "more", limit=4))
+            lines.append(prose.listing("Now uses {}", came, "more", limit=4))
         if went:
-            lines.append(listing("No longer uses {}", went, "more", limit=4))
-    return paragraphs(lines + list_verdict_lines(verdicts, inside, items, "on this edge"))
+            lines.append(prose.listing("No longer uses {}", went, "more", limit=4))
+    return prose.paragraphs(lines + list_verdict_lines(verdicts, inside, items, "on this edge"))
 
 
 class Review:
@@ -123,7 +123,7 @@ class Review:
         own, inside = v.get("own", []), v.get("inside", [])
         ed = el.get("change")
         if el.is_edge:
-            names = {s.key.dst: format_name(s.dst) for s in el.sources.get("source", ()) if s.is_edge}
+            names = {s.key.dst: names_lib.format_name(s.dst) for s in el.sources.get("source", ()) if s.is_edge}
             card = describe_edge(ed, own, inside, len(items), names)
         else:
             kind = el.kind if el.kind != "anchor" else "box"

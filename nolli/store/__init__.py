@@ -58,4 +58,4 @@ class ModelStore(MapStore, Protocol):
 
 
 
-from nolli.store.directory import DirectoryMaps, DirectoryStore, read_key, write_change, write_commit  # noqa: F401
+from nolli.store.directory import DirectoryMaps, DirectoryStore  # noqa: F401 (nolli's own store, as callers import it)

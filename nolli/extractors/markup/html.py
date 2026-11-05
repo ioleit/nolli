@@ -14,8 +14,7 @@ from __future__ import annotations
 from html.parser import HTMLParser
 
 from nolli.extractors import Context
-from nolli.extractors.markup import css
-from nolli.extractors.markup.refs import link
+from nolli.extractors.markup import css, refs
 from nolli.model import address
 
 EXTENSIONS = (".html", ".htm")
@@ -31,7 +30,7 @@ class Page(HTMLParser):
 
     def ref(self, value: str | None, how: str) -> None:
         if value:
-            link(self.ctx, self.rel, value, self.getpos()[0], how, "html")
+            refs.link(self.ctx, self.rel, value, self.getpos()[0], how, "html")
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = dict(attrs)

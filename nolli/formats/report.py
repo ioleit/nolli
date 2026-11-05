@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from nolli.model import SYMBOL_KINDS
+from nolli.model import metamodel
 from nolli.model.scene import Scene
 
 
@@ -41,7 +41,7 @@ def count_changes(scene: Scene) -> dict:
         d = el.get("change")
         if d:
             by["entities"][f"{el.kind}/{d['status']}"] += 1
-            if (el.kind == "file" or el.kind in SYMBOL_KINDS) and (d.get("added") or d.get("removed")):
+            if (el.kind == "file" or el.kind in metamodel.SYMBOL_KINDS) and (d.get("added") or d.get("removed")):
                 by["content"][el.kind] += 1
     for el in scene.list_edges():
         d = el.get("change")

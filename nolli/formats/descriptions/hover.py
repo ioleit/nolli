@@ -18,12 +18,10 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from nolli.formats.descriptions.label import format_prose
-from nolli.formats.descriptions.names import format_name, read_api
-from nolli.formats.descriptions.prose import count, listing, paragraphs, quote, say
-from nolli.model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, EdgeKey, address
+from nolli.formats.descriptions import label, prose
+from nolli.formats.descriptions import names as names_lib
+from nolli.model import EdgeKey, address, metamodel, vocabulary
 from nolli.model.scene import Element, Scene
-from nolli.model.vocabulary import read_file, read_references, read_symbols
 
 
 class Source:
@@ -54,11 +52,11 @@ class Source:
         a = self._attrs.get(x)
         if a is None:
             el = self.element(x)
-            a = self._attrs[x] = {**read_file(el), **read_symbols(el), **read_api(el)}
+            a = self._attrs[x] = {**vocabulary.read_file(el), **vocabulary.read_symbols(el), **names_lib.read_api(el)}
         return a
 
     def name(self, x: str) -> str:
-        return format_name(self.element(x))
+        return names_lib.format_name(self.element(x))
 
     def is_module(self, x: str) -> bool:
         return self.kind(x) == "file" and bool(self.attrs(x).get("module"))
@@ -79,7 +77,7 @@ class Source:
 
     def list_relations(self):
         for e in self.model.list_edges():
-            yield e, sum(r["count"] for r in read_references(self.element(e)))
+            yield e, sum(r["count"] for r in vocabulary.read_references(self.element(e)))
 
 @dataclass
 class NodeView:
@@ -119,8 +117,8 @@ class Ctx:
         if e.kind == "endpoint":
             return f"{e.attrs.get('method', '')} {e.attrs.get('path', e.name)}".strip()
         drawn = self.scene.find_element(x) if self.scene.has(x) else None
-        label = format_prose(self.g.element(x), drawn)
-        return label + "/" if e.kind == "directory" and not label.endswith("/") else label
+        text = label.format_prose(self.g.element(x), drawn)
+        return text + "/" if e.kind == "directory" and not text.endswith("/") else text
 
     def shown_children(self, x: str) -> list[str]:
         """What unfolding x draws: children not hidden, a package's __init__ replaced by its
@@ -159,7 +157,7 @@ def by_use(ctx: Ctx, file_id: str, names: list[str]) -> list[str]:
     for e in ctx.g.model.list_in(file_id):
         if e.subkind != "ref":
             continue
-        for f in read_references(ctx.g.element(e)):
+        for f in vocabulary.read_references(ctx.g.element(e)):
             n = f.get("name")
             if n in wanted:
                 uses[n] = uses.get(n, 0) + f["count"]
@@ -189,7 +187,7 @@ def body_of(ctx: Ctx, x: str) -> str | None:
 
 
 def is_symbol(ctx: Ctx, x: str) -> bool:
-    return ctx.g.kind(x) in SYMBOL_KINDS and language(ctx, x) is not None
+    return ctx.g.kind(x) in metamodel.SYMBOL_KINDS and language(ctx, x) is not None
 
 
 def noun(ctx: Ctx, x: str) -> str:
@@ -215,20 +213,20 @@ def describe(ctx: Ctx, x: str) -> list[str] | None:
     e = ctx.node(x)
     lang = language(ctx, x)
     if ctx.g.is_module(x) and lang:
-        facts = [count(e.attrs["lines"], "line")] if e.attrs.get("lines") is not None else []
+        facts = [prose.count(e.attrs["lines"], "line")] if e.attrs.get("lines") is not None else []
         inner: dict[str, int] = defaultdict(int)
         for c in ctx.g.children(x):
             inner[ctx.g.kind(c)] += 1
-        facts += [count(inner[k], SYMBOL_NOUN[k]) for k in SYMBOL_NOUN if inner.get(k)]
+        facts += [prose.count(inner[k], SYMBOL_NOUN[k]) for k in SYMBOL_NOUN if inner.get(k)]
         if not facts:
-            return [say("{} is a " + lang + " module", ctx.name(x))]
-        return [say("{} is a " + lang + " module with ", ctx.name(x)) + listing("{}", facts)]
+            return [prose.say("{} is a " + lang + " module", ctx.name(x))]
+        return [prose.say("{} is a " + lang + " module with ", ctx.name(x)) + prose.listing("{}", facts)]
     if is_symbol(ctx, x):
         what = ("an exported " if e.attrs.get("exported") else "a ") + lang + " " + SYMBOL_NOUN[e.kind]
         where = (e.attrs.get("path") or "").rsplit("/", 1)[-1]
         if where and e.attrs.get("line"):
-            return [say("{} is " + what + " in {}, line {}", ctx.name(x), where, e.attrs["line"])]
-        return [say("{} is " + what, ctx.name(x))]
+            return [prose.say("{} is " + what + " in {}, line {}", ctx.name(x), where, e.attrs["line"])]
+        return [prose.say("{} is " + what, ctx.name(x))]
     return None
 
 
@@ -249,31 +247,31 @@ def own_code(ctx: Ctx, owner: str) -> list[str] | None:
     f = body or owner
     a = ctx.node(f).attrs
     name = ctx.name(owner)
-    lead = say("{}'s {} defines ", name, ctx.node(f).name) if body else say("{} defines ", name)
+    lead = prose.say("{}'s {} defines ", name, ctx.node(f).name) if body else prose.say("{} defines ", name)
     functions = by_use(ctx, f, a.get("functions") or [])
     constants = a.get("constants") or []
     lines: list[str] = []
     if functions:
         if len(functions) <= 3:  # "rollup defines bundle and rollup"
-            lines.append(lead + listing("{}", functions))
+            lines.append(lead + prose.listing("{}", functions))
         else:  # "… defines 20 functions: is_init, … and 17 more" (most used first)
-            lines.append(lead + say("{}: ", count(len(functions), "function")) + listing("{}", functions, "more", limit=3))
+            lines.append(lead + prose.say("{}: ", prose.count(len(functions), "function")) + prose.listing("{}", functions, "more", limit=3))
     if constants:
         many = len(constants) > 3
-        consts = (say("{}: ", count(len(constants), "constant")) if many else say("the constant" + ("s " if len(constants) > 1 else " "))) \
-            + listing("{}", constants, "more", limit=3)
+        consts = (prose.say("{}: ", prose.count(len(constants), "constant")) if many else prose.say("the constant" + ("s " if len(constants) > 1 else " "))) \
+            + prose.listing("{}", constants, "more", limit=3)
         lines.append(("Also " if functions else lead) + consts)
     if body and a.get("reexports"):
-        lines.append(say("It re-exports ") + listing("{}", a["reexports"], "more", limit=4) + say(" from its modules"))
+        lines.append(prose.say("It re-exports ") + prose.listing("{}", a["reexports"], "more", limit=4) + prose.say(" from its modules"))
     inside = "classes" if all(ctx.g.kind(c) == "class" for c in ctx.g.children(f)) else "classes and types"
     if not lines:
-        lines.append(say("{}'s {} only marks the folder as a " + a["body"], name, ctx.node(f).name) if body
-                     else say("{} has no functions or constants outside its " + inside, name))
+        lines.append(prose.say("{}'s {} only marks the folder as a " + a["body"], name, ctx.node(f).name) if body
+                     else prose.say("{} has no functions or constants outside its " + inside, name))
     total, own = a.get("lines"), a.get("own_lines")
     if total and own is not None and not body and own != total:
-        lines.append(say("{} of its {} are outside its " + inside, f"{own:,}", count(total, "line")))
+        lines.append(prose.say("{} of its {} are outside its " + inside, f"{own:,}", prose.count(total, "line")))
     elif total:
-        lines.append(say("{}", count(total, "line")))
+        lines.append(prose.say("{}", prose.count(total, "line")))
     return lines
 
 
@@ -286,9 +284,9 @@ def folder(ctx: Ctx, x: str) -> str:
     for c in ctx.shown_children(x):
         by[noun(ctx, c)] += 1
     if not by:
-        return say("{} is " + what, ctx.name(x))
+        return prose.say("{} is " + what, ctx.name(x))
     order = sorted(by, key=lambda k: (NOUN_ORDER.index(k) if k in NOUN_ORDER else len(NOUN_ORDER), -by[k], k))
-    return say("{} is " + what + " with ", ctx.name(x)) + listing("{}", [count(by[k], k) for k in order], limit=6)
+    return prose.say("{} is " + what + " with ", ctx.name(x)) + prose.listing("{}", [prose.count(by[k], k) for k in order], limit=6)
 
 
 def size(ctx: Ctx, x: str) -> str | None:
@@ -297,8 +295,8 @@ def size(ctx: Ctx, x: str) -> str | None:
         return None
     lines = sum(ctx.node(f).attrs.get("lines") or 0 for f in files)
     if lines:
-        return say("{} with {} in all", count(len(files), "file"), count(lines, "line"))
-    return say("{} in all", count(len(files), "file"))
+        return prose.say("{} with {} in all", prose.count(len(files), "file"), prose.count(lines, "line"))
+    return prose.say("{} in all", prose.count(len(files), "file"))
 
 
 class Dependencies:
@@ -326,21 +324,21 @@ class Dependencies:
             return chain
 
         for r, n in m.list_relations():
-            if r.kind not in (USE, PROVIDE, ALLOCATE) or not m.has(r.dst) or not m.has(r.src):
+            if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or not m.has(r.dst) or not m.has(r.src):
                 continue
             d, s = ctx.node(r.dst), ctx.node(r.src)
-            if d.kind == "package" and r.kind == USE:
+            if d.kind == "package" and r.kind == metamodel.USE:
                 for b in boxes(r.src):
                     self.ext[b][d.name] += n
-            elif d.kind == "env" and r.kind == USE:
+            elif d.kind == "env" and r.kind == metamodel.USE:
                 for b in boxes(r.src):
                     self.env[b].add(d.name)
             elif d.kind == "endpoint":
-                target = self.serves if r.kind == PROVIDE else self.calls if r.kind == USE else None
+                target = self.serves if r.kind == metamodel.PROVIDE else self.calls if r.kind == metamodel.USE else None
                 if target is not None:
                     for b in boxes(r.src):
                         target[b].add(d.id)
-            elif d.kind in ("service", "image") and r.kind == ALLOCATE:
+            elif d.kind in ("service", "image") and r.kind == metamodel.ALLOCATE:
                 for b in boxes(r.src):
                     self.deployed[b].add(d.name.removesuffix("/Dockerfile"))
             elif s.kind in ("service", "image") and r.subkind == "entrypoint":
@@ -352,24 +350,24 @@ class Dependencies:
         ext = self.ext.get(x)
         if ext:
             names = sorted(ext, key=lambda k: (-ext[k], k))
-            out.append(say("Uses {}: ", count(len(names), "external package")) + listing("{}", names, "more"))
+            out.append(prose.say("Uses {}: ", prose.count(len(names), "external package")) + prose.listing("{}", names, "more"))
         utils = ctx.list_utilities_used(x)
         if utils:
-            out.append(listing("Uses the utilit" + ("y" if len(utils) == 1 else "ies") + " {}", [ctx.name(u) for u in utils]))
+            out.append(prose.listing("Uses the utilit" + ("y" if len(utils) == 1 else "ies") + " {}", [ctx.name(u) for u in utils]))
         if self.env.get(x):
-            out.append(say("Reads {}", count(len(self.env[x]), "environment variable")))
+            out.append(prose.say("Reads {}", prose.count(len(self.env[x]), "environment variable")))
         if self.serves.get(x):
-            out.append(say("Serves {}", count(len(self.serves[x]), "HTTP endpoint")))
+            out.append(prose.say("Serves {}", prose.count(len(self.serves[x]), "HTTP endpoint")))
         if self.calls.get(x):
-            out.append(say("Calls {}", count(len(self.calls[x]), "HTTP endpoint")))
+            out.append(prose.say("Calls {}", prose.count(len(self.calls[x]), "HTTP endpoint")))
         if self.deployed.get(x):
-            out.append(listing("Deployed in {}", sorted(self.deployed[x])))
+            out.append(prose.listing("Deployed in {}", sorted(self.deployed[x])))
         return out
 
 
 def node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> str:
     """What a box's hover card says, as Markdown."""
-    return paragraphs(node_lines(ctx, deps, x, used_by))
+    return prose.paragraphs(node_lines(ctx, deps, x, used_by))
 
 
 def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[str]:
@@ -381,8 +379,8 @@ def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[s
         owner = ctx.name(address.owner(x))
         if ctx.node(address.owner(x)).kind == "directory":
             body = next((ctx.node(c).name for c in m.children(address.owner(x)) if m.is_init(c)), "package")
-            return [say("The code in {}'s {} beyond re-exporting its modules", owner, body)]
-        return [say("The code in {} outside its classes and types", owner)]
+            return [prose.say("The code in {}'s {} beyond re-exporting its modules", owner, body)]
+        return [prose.say("The code in {} outside its classes and types", owner)]
     e = ctx.node(x)
     lines: list[str] = []
     said = None if e.kind == "directory" else describe(ctx, x)
@@ -392,22 +390,22 @@ def node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[s
         if e.kind == "directory":
             lines.append(folder(ctx, x))
         elif e.kind == "file":
-            lines.append(say("{} is a file with {}", ctx.name(x), count(e.attrs["lines"], "line"))
-                         if e.attrs.get("lines") is not None else say("{} is a file", ctx.name(x)))
+            lines.append(prose.say("{} is a file with {}", ctx.name(x), prose.count(e.attrs["lines"], "line"))
+                         if e.attrs.get("lines") is not None else prose.say("{} is a file", ctx.name(x)))
         elif e.kind == "group":
-            lines.append(say("{} holds {}", ctx.name(x), count(len(m.children(x)), "entry", "entries")))
+            lines.append(prose.say("{} holds {}", ctx.name(x), prose.count(len(m.children(x)), "entry", "entries")))
         else:
-            lines.append(say("{} is " + WHAT.get(e.kind, "a " + e.kind), ctx.name(x)))
+            lines.append(prose.say("{} is " + WHAT.get(e.kind, "a " + e.kind), ctx.name(x)))
     docstring = doc(ctx, x)
     if docstring:
-        lines.append(quote(docstring))
+        lines.append(prose.quote(docstring))
     if e.kind == "directory":
         total = size(ctx, x)
         if total:
             lines.append(total)
     lines += deps.lines(ctx, x)
     if used_by:
-        lines.append(say("A utility, used by {}: their arrows into it are left out", count(used_by, "box", "boxes")))
+        lines.append(prose.say("A utility, used by {}: their arrows into it are left out", prose.count(used_by, "box", "boxes")))
     return lines
 
 
@@ -432,30 +430,30 @@ def edge_info(ctx: Ctx, e) -> str:
     lines = edge_lines(ctx, e)
     types = getattr(e, "types", 0)
     if e.subkind == "import" and types and types == e.count:
-        lines.append(say("Only types: no dependency at run time"))
+        lines.append(prose.say("Only types: no dependency at run time"))
     elif e.subkind == "import" and types:
-        lines.append(say("{} of {} only for types", f"{types:,}", count(e.count, "reference") + " are" if types > 1 else count(e.count, "reference") + " is"))
-    return paragraphs(lines)
+        lines.append(prose.say("{} of {} only for types", f"{types:,}", prose.count(e.count, "reference") + " are" if types > 1 else prose.count(e.count, "reference") + " is"))
+    return prose.paragraphs(lines)
 
 
 def edge_lines(ctx: Ctx, e) -> list[str]:
     src, dst = ctx.name(e.src), ctx.name(e.dst)
     sub = e.subkind
     if e.kind == "provide":
-        return [say("{} is served by {}", src, dst)]
+        return [prose.say("{} is served by {}", src, dst)]
     names = getattr(e, "names", None) or {}
     if sub == "import":
         if not names:  # import statements whose names were not recorded (TypeScript, unresolved Python)
-            return [say("{} imports {}", src, dst)]
+            return [prose.say("{} imports {}", src, dst)]
         if set(names) == {ctx.node(e.dst).name} if ctx.g.has(e.dst) else False:
-            return [say("{} uses {}", src, dst)]  # the target is the one name used
+            return [prose.say("{} uses {}", src, dst)]  # the target is the one name used
         # the names themselves, most used first: "api/ references Store and list_items in lib/"
         top = sorted(names, key=lambda k: (-names[k], k))
-        return [say("{} references ", src) + listing("{}", top, "more", limit=3) + say(" in {}", dst)]
+        return [prose.say("{} references ", src) + prose.listing("{}", top, "more", limit=3) + prose.say(" in {}", dst)]
     if sub in COUNTED:
         template, noun_ = COUNTED[sub]
-        return [say(template, src, count(e.count, noun_), dst)]
-    return [say(PLAIN.get(sub, "{} uses {}"), src, dst)]
+        return [prose.say(template, src, prose.count(e.count, noun_), dst)]
+    return [prose.say(PLAIN.get(sub, "{} uses {}"), src, dst)]
 
 
 class EdgeFacts:

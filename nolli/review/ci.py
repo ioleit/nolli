@@ -68,16 +68,16 @@ def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None =
     change's review diagram as a scene (``Datasets.draw_review``). ``skipped`` says
     why no review agent ran: "no-key" (the repository has no API key for one) or "fork" (a PR
     from a fork, which gets no secrets)."""
-    from nolli.formats.mermaid import render
-    from nolli.review.changes import list_changes
-    from nolli.review.verdicts import check_verdicts, describe_verdicts
+    from nolli.formats import mermaid
+    from nolli.review import changes
+    from nolli.review import verdicts as verdicts_lib
 
     key = key_of(scene.model.meta)
     d = scene.model.meta["change"]
     repo = key.split("#")[0]
-    n = len(list_changes(scene))
-    mmd = render(review)
-    verdicts, errors = check_verdicts(scene, mmd, json.dumps(kept)) if kept else (None, [])
+    n = len(changes.list_changes(scene))
+    mmd = mermaid.render(review)
+    verdicts, errors = verdicts_lib.check_verdicts(scene, mmd, json.dumps(kept)) if kept else (None, [])
     commit = f"[`{d['head'][:7]}`](https://github.com/{repo}/pull/{d['pr']}/commits/{d['head']})"
     lines = [MARKER, f"**Nolli** found {n} structural change{'' if n == 1 else 's'} in this PR (at {commit})."]
     after: list[str] = []  # why there is no review, after everything else
@@ -92,7 +92,7 @@ def comment(scene: Scene, review: Scene, kept: list[dict], skipped: str | None =
         after = [f"No review: {'the review agent wrote no verdicts' if verdicts is None else 'the review agent’s verdicts failed nolli’s check'}."]
         verdicts = None
     else:
-        verdicts = describe_verdicts(scene, verdicts)
+        verdicts = verdicts_lib.describe_verdicts(scene, verdicts)
         status = list_statuses(review)
         total = len(verdicts)
         counts = " &nbsp; ".join(f"{mark(k)} {c}" for k in WORST_FIRST if (c := sum(v["verdict"] == k for v in verdicts)))
@@ -138,14 +138,14 @@ def list_statuses(review: Scene) -> dict[str, str]:
 
 def what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     """What a verdict is about, in words: "New dependency from `a` to `b`", "Changed module `x`"."""
-    from nolli.review.changes import format_name
+    from nolli.review import changes
     from nolli.review.reading import Reader
 
     g = scene.memo(Reader)
     ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]
     st = NEW.get(status.get(" ".join(ids), ""), "")
     def name(x: str) -> str:
-        return f"`{format_name(g, address.owner(x))}`"
+        return f"`{changes.format_name(g, address.owner(x))}`"
     if v["edge"]:
         a, b = v["ends"]
         return f"{st} dependency from {name(a)} to {name(b)}" if st else f"Dependency from {name(a)} to {name(b)}"
@@ -188,21 +188,21 @@ def results(comments: list[dict]) -> list[dict]:
 
 def fetch(key: str, data: Path) -> Path:
     """The dataset a CI run stored under ``key``, downloaded into ``data`` (once)."""
-    from nolli.sources.github import api, download, token
+    from nolli.sources import github
 
     owner, repo, pr, head = KEY.match(key).groups()
     name = artifact_name(pr, head)
     out = data / f"{repo}-ci-pr{pr}-{head[:7]}"
     if (out / "key.json").is_file():
         return out
-    t = token()
+    t = github.token()
     if not t:
         raise ChangeError("a CI result is downloaded with your GitHub login: log in with gh (gh auth login), or set GH_TOKEN")
-    live = [a for a in api(f"repos/{owner}/{repo}/actions/artifacts?name={name}&per_page=10")["artifacts"] if not a["expired"]]
+    live = [a for a in github.api(f"repos/{owner}/{repo}/actions/artifacts?name={name}&per_page=10")["artifacts"] if not a["expired"]]
     if not live:
         raise ChangeError(f"{key}: GitHub keeps no result for it any more (artifact {name}: expired, or replaced by a later "
                           f"push); the PR's current state: nolli view https://github.com/{owner}/{repo}/pull/{pr}")
-    blob = download(live[0]["archive_download_url"], t)
+    blob = github.download(live[0]["archive_download_url"], t)
     with tempfile.TemporaryDirectory(prefix="nolli-ci-", dir=data if data.is_dir() else None) as tmp:
         with zipfile.ZipFile(io.BytesIO(blob)) as z:
             for info in z.infolist():

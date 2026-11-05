@@ -22,10 +22,9 @@ from __future__ import annotations
 import posixpath
 import re
 
-from nolli.extractors import Context
+from nolli.extractors import Context, interfaces
 from nolli.extractors.facts import Provenance, Relation
-from nolli.extractors.interfaces import CDN, ensure_ext, package_name
-from nolli.model import USE, address
+from nolli.model import address, metamodel
 
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 TEMPLATE = re.compile(r"\{\{|\{%|\$\{|<%")
@@ -37,10 +36,10 @@ def package(ref: str, how: str) -> tuple[str, str] | None:
     stylesheet ``@import`` of a bare name that is no file name (``tailwindcss``, not
     ``base.css``); heuristic, since plain CSS would read that as a relative path, which
     bundlers (PostCSS, Vite, Tailwind) do not."""
-    if how == "script" and CDN.match(ref):
-        return package_name(ref), "exact"
+    if how == "script" and interfaces.CDN.match(ref):
+        return interfaces.package_name(ref), "exact"
     if how == "import" and BARE.match(ref) and not ref.lower().endswith((".css", ".scss", ".less")):
-        return package_name(ref), "heuristic"
+        return interfaces.package_name(ref), "heuristic"
     return None
 
 
@@ -83,10 +82,10 @@ def link(ctx: Context, rel: str, ref: str, line: int, how: str, extractor: str) 
     or to the npm package it uses (``package``); ``how`` (``script``, ``stylesheet``,
     ``image``, ``import``, ``url``) is kept in attrs."""
     pkg = package(ref.strip(), how)
-    t = (ensure_ext(ctx.model, "js", pkg[0], extractor), pkg[1]) if pkg else target(ctx, rel, ref)
+    t = (interfaces.ensure_ext(ctx.model, "js", pkg[0], extractor), pkg[1]) if pkg else target(ctx, rel, ref)
     if t is None or t[0] == address.repo(rel):
         return
     fid, confidence = t
     language = ctx.model.entities[address.repo(rel)].attrs.get("language")
-    ctx.model.add_relation(Relation(USE, address.repo(rel), fid, "import", 1, confidence, Provenance(extractor, rel, line),
+    ctx.model.add_relation(Relation(metamodel.USE, address.repo(rel), fid, "import", 1, confidence, Provenance(extractor, rel, line),
                                     {"language": language, "via": how}))

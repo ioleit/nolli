@@ -8,10 +8,9 @@ import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from nolli.extractors import Context
+from nolli.extractors import Context, interfaces
 from nolli.extractors.facts import Relation
-from nolli.extractors.interfaces import ensure_ext
-from nolli.model import SYMBOL_KINDS, USE, address
+from nolli.model import address, metamodel
 
 SOURCE_ROOTS = ("src", "lib", "python")
 
@@ -70,7 +69,7 @@ def resolve_imports(ctx: Context) -> None:
     stdlib = set(sys.stdlib_module_names)
     rewrites: list[tuple[Relation, str | None, str]] = []  # (relation, new dst or None, status)
     for r in m.relations:
-        mod = address.unresolved_key(r.dst, "py") if r.kind == USE else None
+        mod = address.unresolved_key(r.dst, "py") if r.kind == metamodel.USE else None
         if mod is None:
             continue
         parts = mod.split(".")
@@ -80,7 +79,7 @@ def resolve_imports(ctx: Context) -> None:
         elif parts[0] in stdlib or parts[0] in ("__future__",):
             rewrites.append((r, None, "stdlib"))
         else:
-            rewrites.append((r, ensure_ext(m, "py", parts[0]), "external"))
+            rewrites.append((r, interfaces.ensure_ext(m, "py", parts[0]), "external"))
 
     # ``from a.b import c`` produced both a.b and a.b.c; keep the most specific resolution per line.
     by_line: dict[tuple[str, int | None], list[tuple[Relation, str | None, str]]] = defaultdict(list)
@@ -99,7 +98,7 @@ def resolve_imports(ctx: Context) -> None:
                         drop.add(id(it[0]))
     new_relations: list[Relation] = []
     for r in m.relations:
-        if r.kind == USE and address.unresolved_key(r.dst, "py") is not None:
+        if r.kind == metamodel.USE and address.unresolved_key(r.dst, "py") is not None:
             continue
         new_relations.append(r)
     seen: set[tuple] = set()
@@ -110,7 +109,7 @@ def resolve_imports(ctx: Context) -> None:
         if key in seen:
             continue
         seen.add(key)
-        new_relations.append(Relation(USE, r.src, dst, "import", 1, "exact", r.provenance, {"language": "python"}))
+        new_relations.append(Relation(metamodel.USE, r.src, dst, "import", 1, "exact", r.provenance, {"language": "python"}))
     m.relations = new_relations
     ctx.notes["py-resolution"] = {"file": sum(1 for _, _, s in rewrites if s == "file"), "external": sum(1 for _, _, s in rewrites if s == "external"), "stdlib": sum(1 for _, _, s in rewrites if s == "stdlib")}
 
@@ -130,7 +129,7 @@ def resolve_refs(ctx: Context) -> None:
     m = ctx.model
     modmap = python_module_map(m)
     aliases = ctx.notes.get("py-aliases", {})
-    symbols = {e.id for e in m.entities.values() if e.kind in SYMBOL_KINDS}
+    symbols = {e.id for e in m.entities.values() if e.kind in metamodel.SYMBOL_KINDS}
 
     def symbol_in(file_rel: str, name: str, depth: int = 0) -> str | None:
         sid = address.repo(file_rel, name)
@@ -175,7 +174,7 @@ def resolve_refs(ctx: Context) -> None:
     stats = defaultdict(int)
     new_relations: list[Relation] = []
     for r in m.relations:
-        key = address.unresolved_key(r.dst, "pyref") if r.kind == USE else None
+        key = address.unresolved_key(r.dst, "pyref") if r.kind == metamodel.USE else None
         if key is None:
             new_relations.append(r)
             continue
@@ -189,7 +188,7 @@ def resolve_refs(ctx: Context) -> None:
             attrs = dict(r.attrs)
             if name:
                 attrs["name"] = name
-            new_relations.append(Relation(USE, r.src, dst, "ref", r.count, "exact", r.provenance, attrs))
+            new_relations.append(Relation(metamodel.USE, r.src, dst, "ref", r.count, "exact", r.provenance, attrs))
     m.relations = new_relations
 
     def file_of(eid: str) -> str | None:
@@ -199,11 +198,11 @@ def resolve_refs(ctx: Context) -> None:
 
     covered = set()
     for r in m.relations:
-        if r.kind == USE and r.subkind == "ref":
+        if r.kind == metamodel.USE and r.subkind == "ref":
             a, b = file_of(r.src), file_of(r.dst)
             if a and b:
                 covered.add((a, b))
     before = len(m.relations)
-    m.relations = [r for r in m.relations if not (r.kind == USE and r.subkind == "import" and r.attrs.get("language") == "python" and (r.src, r.dst) in covered)]
+    m.relations = [r for r in m.relations if not (r.kind == metamodel.USE and r.subkind == "import" and r.attrs.get("language") == "python" and (r.src, r.dst) in covered)]
     stats["imports_replaced"] = before - len(m.relations)
     ctx.notes["pyref-resolution"] = dict(stats)

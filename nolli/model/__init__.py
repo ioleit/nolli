@@ -25,19 +25,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nolli.model import address, metamodel
-from nolli.model.metamodel import (
-    ALLOCATE,
-    ARTIFACT_KINDS,
-    COMPONENT_KINDS,
-    CONTAIN,
-    ENTITY_KINDS,
-    INTERFACE_KINDS,
-    OTHER_KINDS,
-    PROVIDE,
-    RELATION_KINDS,
-    SYMBOL_KINDS,
-    USE,
-)
 
 FORMAT = 2  # of model.json; a model of another format is built again, never read (2: meta names the symbols overlays)
 
@@ -91,7 +78,7 @@ class Model:
                 if e.src not in self.kinds or e.dst not in self.kinds:
                     raise KeyError(f"edge {e.format()}: unknown node {e.src if e.src not in self.kinds else e.dst}")
                 metamodel.check_relation(e.kind, e.src, e.dst, address.scheme_of(e.src), address.scheme_of(e.dst))
-            if e.kind == CONTAIN:
+            if e.kind == metamodel.CONTAIN:
                 if e.dst in parent and parent[e.dst] != e.src:
                     raise ValueError(f"{e.dst} has two owners: {parent[e.dst]} and {e.src}")
                 parent[e.dst] = e.src
@@ -140,7 +127,7 @@ class Model:
     def list_edges(self, kinds: Iterable[str] | None = None) -> list[EdgeKey]:
         """Edges other than ``contain`` (or of ``kinds``)."""
         ks = set(kinds) if kinds is not None else None
-        return [e for e in self.edges if (e.kind in ks if ks is not None else e.kind != CONTAIN)]
+        return [e for e in self.edges if (e.kind in ks if ks is not None else e.kind != metamodel.CONTAIN)]
 
     def list_out(self, x: str) -> list[EdgeKey]:
         """Edges (but ``contain``) from ``x``."""

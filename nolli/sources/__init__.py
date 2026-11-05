@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Protocol
 
 from nolli.keys import NotAllowed, Repo  # noqa: F401 (part of the protocol)
-from nolli.sources.git import GitError, has_commit, run_git
+from nolli.sources import git
+from nolli.sources.git import GitError
 
 
 class FetchError(GitError):
@@ -39,7 +40,7 @@ class LocalRepository:
 
     @contextlib.contextmanager
     def open_commits(self, repo: Repo, *shas: str) -> Iterator[Path]:
-        missing = [s for s in shas if not has_commit(self.path, s)]
+        missing = [s for s in shas if not git.has_commit(self.path, s)]
         if missing:
             raise FetchError(f"{self.path} has no commit {', '.join(s[:7] for s in missing)}")
         yield self.path
@@ -88,10 +89,10 @@ class CloneCache:
             path.mkdir(parents=True, exist_ok=True)
             with lock_clone(path):
                 if not (path / "HEAD").is_file():
-                    run_git(path, "init", "-q", "--bare")
-                    run_git(path, "remote", "add", "origin", remote)
+                    git.run_git(path, "init", "-q", "--bare")
+                    git.run_git(path, "remote", "add", "origin", remote)
                 os.utime(path)  # used now (retention)
-                missing = [s for s in shas if not has_commit(path, s)]
+                missing = [s for s in shas if not git.has_commit(path, s)]
                 if missing:
                     self.fetch_commits(repo, path, missing)
             yield path
@@ -114,6 +115,6 @@ class CloneCache:
             env.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.extraHeader",
                        GIT_CONFIG_VALUE_0=f"Authorization: Basic {basic}")
         try:
-            run_git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", *shas, env=env)
+            git.run_git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", *shas, env=env)
         except GitError as exc:
             raise FetchError(f"could not fetch {', '.join(s[:7] for s in shas)} from {repo.url}: {exc}") from None

@@ -17,9 +17,8 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 
-from nolli.model import CONTAIN, SYMBOL_KINDS, Key, Model, address
+from nolli.model import Key, Model, address, metamodel, vocabulary
 from nolli.model.scene import Element, Scene
-from nolli.model.vocabulary import count_references, read_references, read_symbols
 from nolli.store.maps import StoredMaps
 
 
@@ -45,8 +44,8 @@ class Change:
     def compare(self, el: Element) -> dict | None:
         b, h = el.find_same("base"), el.find_same("head")
         if el.is_edge:
-            nb = count_references(b) if b else 0
-            nh = count_references(h) if h else 0
+            nb = vocabulary.count_references(b) if b else 0
+            nh = vocabulary.count_references(h) if h else 0
             if b is None:
                 rec = {"status": "added", "base": 0, "head": nh}
             elif h is None:
@@ -70,7 +69,7 @@ class Change:
             gone = el.scene.memo(list_renames).get(el.key)
             if gone:
                 rec["renamed_to"] = gone
-        if el.kind in SYMBOL_KINDS:
+        if el.kind in metamodel.SYMBOL_KINDS:
             lines = self.list_class_lines(el, b, h, content)
             if lines:
                 rec.setdefault("status", "same")
@@ -90,7 +89,7 @@ class Change:
             c = next((v for k, v in content.items() if isinstance(k, str) and v.get("old_path") == address.path_of(f)), None)
         if c is None:
             return None
-        hf, bf = read_symbols(h) if h else {}, read_symbols(b) if b else {}
+        hf, bf = vocabulary.read_symbols(h) if h else {}, vocabulary.read_symbols(b) if b else {}
         old_path = c.get("old_path") or address.path_of(f)
         added = [n for hk in c.get("hunks", []) for n in hk["added"] if hf and hf.get("line", 0) <= n <= (hf.get("end_line") or 0)]
         removed = [n for hk in c.get("hunks", []) for n in hk["removed"]
@@ -190,7 +189,7 @@ def sum_box(el: Element) -> dict | None:
     if status is None:
         return None
     out = {"status": status, **totals, "totals": totals, "internal": internal}
-    if el.kind in SYMBOL_KINDS and own.get("status") == "same":
+    if el.kind in metamodel.SYMBOL_KINDS and own.get("status") == "same":
         out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)  # its own lines; files count them for the module
     for k in ("git", "old_path", "renamed_to"):
         if own.get(k):
@@ -201,7 +200,7 @@ def sum_box(el: Element) -> dict | None:
 def describe_fact(el: Element, rec: dict, b: Element | None, h: Element | None) -> dict:
     """A changed edge of a change for a tooltip or details panel, with a link to where it changed."""
     side = b if rec["status"] == "removed" else h
-    refs = read_references(side) if side else []
+    refs = vocabulary.read_references(side) if side else []
     first = refs[0] if refs else {}
     path = first.get("path")
     line = first.get("line")
@@ -234,8 +233,8 @@ def union(key: str, meta: dict | None = None):
     def make(sides: dict[str, Scene]) -> Model:
         base, head = sides["base"], sides["head"]
         kinds = {**base.model.kinds, **head.model.kinds}
-        owned = {e.dst for e in head.model.edges if e.kind == CONTAIN}
-        edges = list(head.model.edges) + [e for e in base.model.edges if not (e.kind == CONTAIN and e.dst in owned)]
+        owned = {e.dst for e in head.model.edges if e.kind == metamodel.CONTAIN}
+        edges = list(head.model.edges) + [e for e in base.model.edges if not (e.kind == metamodel.CONTAIN and e.dst in owned)]
         return Model(key, kinds, edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
 
     return make

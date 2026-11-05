@@ -38,7 +38,7 @@ from dataclasses import dataclass
 
 from nolli.extractors import Context
 from nolli.extractors.facts import Entity, Facts, Provenance, Relation
-from nolli.model import CONTAIN, PROVIDE, USE, address
+from nolli.model import address, metamodel
 
 
 @dataclass
@@ -77,7 +77,7 @@ def call(ctx: Context, c: Call) -> None:
     if not m.has(uid):
         m.add_entity(Entity(uid, "unresolved", f"{c.verb} {c.pattern}",
                             {"protocol": c.protocol, "method": c.verb, "pattern": c.pattern}, Provenance(c.extractor)))
-    m.add_relation(Relation(USE, address.repo(c.file), uid, c.protocol, confidence="heuristic",
+    m.add_relation(Relation(metamodel.USE, address.repo(c.file), uid, c.protocol, confidence="heuristic",
                             provenance=Provenance(c.extractor, c.file, c.line), attrs={"via": c.via}))
 
 
@@ -129,7 +129,7 @@ def build(ctx: Context) -> None:
     if not ops:
         return
     m = ctx.model
-    group = m.ensure_root(address.API, "api")
+    group = m.ensure_root(metamodel.API, "api")
 
     by_api: dict[tuple[str, str], list[Operation]] = defaultdict(list)
     for op in ops:
@@ -147,7 +147,7 @@ def add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: l
     m.add_entity(Entity(aid, "api", name,
                         {"protocol": protocol, "key": key, "file": api_ops[0].api_file,
                          "about": api_ops[0].api_about, "operations": len(api_ops)}, prov))
-    m.add_relation(Relation(CONTAIN, group, aid, provenance=prov))
+    m.add_relation(Relation(metamodel.CONTAIN, group, aid, provenance=prov))
 
     root = _step()
     for op in api_ops:
@@ -163,8 +163,8 @@ def add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: l
             m.add_entity(Entity(eid, "endpoint", f"{op.verb} {name}".rstrip(),
                                 {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "short": name},
                                 Provenance(op.extractor, op.file, op.line)))
-            m.add_relation(Relation(CONTAIN, parent, eid, provenance=prov))
-        m.add_relation(Relation(PROVIDE, address.repo(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
+            m.add_relation(Relation(metamodel.CONTAIN, parent, eid, provenance=prov))
+        m.add_relation(Relation(metamodel.PROVIDE, address.repo(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
                                 provenance=Provenance(op.extractor, op.file, op.line), attrs={"handler": op.handler}))
 
     def emit(s: _Step, parent: str, path: list[str], label: list[str]) -> None:
@@ -180,7 +180,7 @@ def add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: l
             return
         rid = address.api_step(aid, path)
         m.add_entity(Entity(rid, "resource", text, {"protocol": protocol, "path": "/" + "/".join(path), "api": aid}, prov))
-        m.add_relation(Relation(CONTAIN, parent, rid, provenance=prov))
+        m.add_relation(Relation(metamodel.CONTAIN, parent, rid, provenance=prov))
         for op in sorted(s.ops, key=lambda o: o.verb):
             endpoint(op, rid, "")
         for seg, child in sorted(s.children.items()):
@@ -245,7 +245,7 @@ def resolve(ctx: Context) -> None:
     stats: dict[str, int] = defaultdict(int)
     out: list[Relation] = []
     for r in m.relations:
-        ph = m.entities.get(r.dst) if r.kind == USE and address.is_unresolved(r.dst) else None
+        ph = m.entities.get(r.dst) if r.kind == metamodel.USE and address.is_unresolved(r.dst) else None
         protocol = ph.attrs.get("protocol") if ph is not None else None
         if protocol is None:
             out.append(r)
@@ -254,7 +254,7 @@ def resolve(ctx: Context) -> None:
         if hits:
             stats[f"{protocol} matched-{how}"] += 1
             for e in hits:
-                out.append(Relation(USE, r.src, e.id, protocol, 1, "heuristic", r.provenance,
+                out.append(Relation(metamodel.USE, r.src, e.id, protocol, 1, "heuristic", r.provenance,
                                     dict(r.attrs, pattern=ph.attrs["pattern"], match=how)))
         else:
             stats[f"{protocol} unmatched"] += 1

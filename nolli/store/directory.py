@@ -9,9 +9,10 @@ import threading
 from collections.abc import Mapping
 from pathlib import Path
 
-from nolli.keys import ChangeKey, Commit, ModelKey, Repo, dump_key, parse_key
+from nolli import keys
+from nolli.keys import ChangeKey, Commit, ModelKey, Repo
 from nolli.model import Key, Model
-from nolli.store.maps import dump_map, parse_map
+from nolli.store import maps as maps_lib
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
 
@@ -186,7 +187,7 @@ class DirectoryMaps:
 
     def read(self, model_key: str) -> tuple[dict[Key, dict], dict | None] | None:
         f = self.store.locate_maps(model_key, self.name)
-        return None if f is None else self.store.read_json(f, parse_map)
+        return None if f is None else self.store.read_json(f, maps_lib.parse_map)
 
     def load(self, model_key: str) -> Mapping[Key, dict]:
         got = self.read(model_key)
@@ -202,26 +203,26 @@ class DirectoryMaps:
             raise KeyError(f"no model {model_key} to keep {self.name} for")
         f.parent.mkdir(exist_ok=True)
         tmp = f.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
-        tmp.write_text(json.dumps(dump_map(model_key, values, about), indent=1))
+        tmp.write_text(json.dumps(maps_lib.dump_map(model_key, values, about), indent=1))
         tmp.replace(f)
 
 
 def write_maps(d: Path, model_key: str, maps: Mapping[str, Mapping[Key, dict]]) -> None:
     (d / "overlays").mkdir(exist_ok=True)
     for name, values in maps.items():
-        (d / "overlays" / f"{name}.json").write_text(json.dumps(dump_map(model_key, values, None)))
+        (d / "overlays" / f"{name}.json").write_text(json.dumps(maps_lib.dump_map(model_key, values, None)))
 
 
 def write_commit(d: Path, key: Commit, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
     model.key = key.format_key()
-    (d / "key.json").write_text(json.dumps({"format": FORMAT, **dump_key(key)}))
+    (d / "key.json").write_text(json.dumps({"format": FORMAT, **keys.dump_key(key)}))
     model.save(d / "model.json")
     write_maps(d, model.key, maps)
 
 
 def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]]) -> None:
     """A change's directory (``DirectoryStore``) at ``d``, which exists."""
-    (d / "key.json").write_text(json.dumps({"format": FORMAT, **dump_key(key)}))
+    (d / "key.json").write_text(json.dumps({"format": FORMAT, **keys.dump_key(key)}))
     (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": about}, indent=1))
     for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
         (d / side).mkdir(exist_ok=True)
@@ -234,6 +235,6 @@ def read_key(d: Path) -> ModelKey | None:
     included)."""
     try:
         j = json.loads((d / "key.json").read_text())
-        return parse_key(j) if j.get("format") == FORMAT else None
+        return keys.parse_key(j) if j.get("format") == FORMAT else None
     except (OSError, ValueError, KeyError, TypeError):
         return None

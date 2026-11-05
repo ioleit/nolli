@@ -8,14 +8,13 @@ from collections.abc import Mapping
 
 from nolli import transformations
 from nolli.build import Maps
-from nolli.extractors.overlays import make_base_overlays
+from nolli.extractors import overlays as overlays_lib
 from nolli.keys import ChangeKey, Commit, ModelKey
 from nolli.model import Key, Model
 from nolli.model.scene import Overlay, Scene
 from nolli.store import ModelStore
 from nolli.store.maps import MapStore, MemoryMaps
 from nolli.transformations import merge
-from nolli.transformations.merge import describe_change
 
 
 def make_overlays(maps: MapStore) -> list[Overlay]:
@@ -31,7 +30,7 @@ def make_overlays(maps: MapStore) -> list[Overlay]:
 
 def open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
     """An extracted model with its extractors' overlays and nolli's (or ``overlays``)."""
-    return Scene(model, [*make_base_overlays(model, maps), *(make_overlays(maps) if overlays is None else overlays)])
+    return Scene(model, [*overlays_lib.make_base_overlays(model, maps), *(make_overlays(maps) if overlays is None else overlays)])
 
 
 def open_commit_scene(store: ModelStore, commit: Commit, overlays: list[Overlay] | None = None) -> Scene | None:
@@ -51,7 +50,7 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
     meta = {"repo": head.model.meta.get("repo"), "commit": change.head[:7], "files": head.model.meta.get("files"),
             "languages": {**base.model.meta.get("languages", {}), **head.model.meta.get("languages", {})},
             **join_readers(base.model.meta, head.model.meta),
-            "change": describe_change(about, store.open_maps("content").load(change.format_key()))}
+            "change": merge.describe_change(about, store.open_maps("content").load(change.format_key()))}
     return transformations.apply({"base": base, "head": head}, merge.union(change.format_key(), meta))
 
 
@@ -78,7 +77,7 @@ def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, ab
     bs, hs = (open_scene(m, store, overlays) for m, _ in (base, head))
     meta = {"repo": hs.model.meta.get("repo"), "commit": about.get("head", "")[:7], "files": hs.model.meta.get("files"),
             "languages": {**bs.model.meta.get("languages", {}), **hs.model.meta.get("languages", {})},
-            **join_readers(bs.model.meta, hs.model.meta), "change": describe_change(about, content)}
+            **join_readers(bs.model.meta, hs.model.meta), "change": merge.describe_change(about, content)}
     return transformations.apply({"base": bs, "head": hs}, merge.union(key, meta))
 
 

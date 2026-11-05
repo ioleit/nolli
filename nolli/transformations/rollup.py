@@ -29,8 +29,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cache
 
-from nolli.model import ALLOCATE, PROVIDE, SYMBOL_KINDS, USE, address
-from nolli.transformations.reading import CONF_RANK, Reading
+from nolli.model import address, metamodel
+from nolli.transformations import reading
+from nolli.transformations.reading import Reading
 
 HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "data", "asset", "other")
 
@@ -85,7 +86,7 @@ class RolledEdge:
         self.members |= other.members
         for side in ("src", "dst"):
             self.ends[side] |= other.ends[side] or {getattr(other, side)}
-        if CONF_RANK[other.confidence] > CONF_RANK[self.confidence]:
+        if reading.CONF_RANK[other.confidence] > reading.CONF_RANK[self.confidence]:
             self.confidence = other.confidence
 
 
@@ -111,7 +112,7 @@ def image_aliases(g: Reading) -> dict[str, str]:
     """image -> service, for images that run as exactly one service (drawn as that service)."""
     runs: dict[str, list[str]] = defaultdict(list)
     for r in g.relations:
-        if r.kind == ALLOCATE and r.subkind == "runs_as":
+        if r.kind == metamodel.ALLOCATE and r.subkind == "runs_as":
             runs[r.src].append(r.dst)
     return {img: svcs[0] for img, svcs in runs.items() if len(svcs) == 1}
 
@@ -180,9 +181,9 @@ def init_anchor_dirs(g: Reading, hidden: set[str]) -> set[str]:
     """Directories whose ``__init__`` body still has edges after the default ones are
     dropped: these get an anchor node when unfolded, the others get nothing."""
     out: set[str] = set()
-    drawn_kinds = ("directory", "file", *SYMBOL_KINDS, "service", "image")  # badge targets (externals, env, endpoints) don't count
+    drawn_kinds = ("directory", "file", *metamodel.SYMBOL_KINDS, "service", "image")  # badge targets (externals, env, endpoints) don't count
     for r in g.relations:
-        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(g, r):
+        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or default_init_edge(g, r):
             continue
         for end, other in ((r.src, r.dst), (r.dst, r.src)):
             if is_init(g, end) and end not in hidden and g.has(other) and g.kind(other) in drawn_kinds:
@@ -196,7 +197,7 @@ def file_degree(g: Reading, hidden: set[str]) -> dict[str, int]:
     """Relations touching each leaf entity, for ranking which files to show first."""
     deg: dict[str, int] = defaultdict(int)
     for r in g.relations:
-        if r.kind in (USE, PROVIDE, ALLOCATE) and r.src not in hidden and r.dst not in hidden:
+        if r.kind in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) and r.src not in hidden and r.dst not in hidden:
             deg[r.src] += r.count
             deg[r.dst] += r.count
     return dict(deg)
@@ -322,14 +323,14 @@ def utility_badges(g: Reading, rolled: RolledUp, min_in: int = 6) -> set[str]:
 
     incoming: dict[str, int] = defaultdict(int)
     for e in rolled.edges:
-        if e.kind == USE:
+        if e.kind == metamodel.USE:
             incoming[e.dst] += 1
     utilities = {d for d, n in incoming.items() if n > min_in and not in_group(d)}
     if not utilities:
         return utilities
     kept = []
     for e in rolled.edges:
-        if e.kind == USE and e.dst in utilities and not e.status:  # a changed dependency on a utility stays an edge, so a review sees it
+        if e.kind == metamodel.USE and e.dst in utilities and not e.status:  # a changed dependency on a utility stays an edge, so a review sees it
             rolled.annotations.setdefault(e.src, {})
             rolled.annotations[e.src]["util:" + e.dst] = rolled.annotations[e.src].get("util:" + e.dst, 0) + e.count
         else:
@@ -370,7 +371,7 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
         return out
 
     for r in g.relations:
-        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(g, r):
+        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or default_init_edge(g, r):
             continue
         s, d = alias.get(r.src, r.src), alias.get(r.dst, r.dst)
         if s == d or not g.has(s) or not g.has(d):
@@ -458,13 +459,13 @@ def lift(g: Reading, edges: list[RolledEdge], expanded: set[str], max_lines: int
         done.add((a, b))
         es = pairs[(a, b)]
         spread_src, spread_dst = len({e.src for e in es}), len({e.dst for e in es})
-        liftable_dst = [e for e in es if e.kind != PROVIDE]
+        liftable_dst = [e for e in es if e.kind != metamodel.PROVIDE]
         order = ["dst", "src"] if spread_dst >= spread_src or not liftable_dst else ["src", "dst"]
         for side in order:
             for e in es:
                 if side == "src":
                     e.src = a
-                elif e.kind != PROVIDE:
+                elif e.kind != metamodel.PROVIDE:
                     e.dst = b
                 e.via.add("lift")
             rest = [e for e in lines if e not in es]
@@ -494,7 +495,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
     def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, names: dict[str, int] | None = None,
             base: int | None = None, head: int | None = None, changed: dict[str, str] | None = None,
             types: int = 0, member=None) -> None:
-        if kind == PROVIDE:
+        if kind == metamodel.PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
         if a == b or owner_of(a) == owner_of(b):
             internal[owner_of(a)] += count
@@ -525,7 +526,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
         return not ((side == "base" and st == "added") or (side == "head" and st == "removed"))
 
     for r in g.relations:
-        if r.kind not in (USE, PROVIDE, ALLOCATE) or default_init_edge(g, r) or not on_side(r):
+        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or default_init_edge(g, r) or not on_side(r):
             continue
         if g.kind(r.dst) == "unresolved":
             if rep(r.src) is not None:
@@ -566,7 +567,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
             annotations[node][group] += e.count
             if e.changed:
                 annotation_changes[node][group].update(e.changed)
-        elif e.kind == ALLOCATE and e.subkind == "copies" and g.has(e.dst) and g.kind(e.dst) == "service":
+        elif e.kind == metamodel.ALLOCATE and e.subkind == "copies" and g.has(e.dst) and g.kind(e.dst) == "service":
             allocations[e.src].append(e.dst)
         else:
             kept.append(e)

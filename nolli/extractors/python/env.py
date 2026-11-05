@@ -7,10 +7,9 @@ from __future__ import annotations
 
 import ast
 
-from nolli.extractors import Context
+from nolli.extractors import Context, interfaces
 from nolli.extractors.facts import Provenance, Relation
-from nolli.extractors.interfaces import ensure_env
-from nolli.model import USE, address
+from nolli.model import address, metamodel
 
 
 def run(ctx: Context) -> None:
@@ -32,4 +31,4 @@ def run(ctx: Context) -> None:
                     if isinstance(a, ast.Constant) and isinstance(a.value, str):
                         name = a.value
             if name:
-                m.add_relation(Relation(USE, fid, ensure_env(ctx, name, "python-env"), "env", provenance=Provenance("python-env", rel, node.lineno)))
+                m.add_relation(Relation(metamodel.USE, fid, interfaces.ensure_env(ctx, name, "python-env"), "env", provenance=Provenance("python-env", rel, node.lineno)))

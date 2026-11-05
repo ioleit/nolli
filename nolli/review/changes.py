@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from nolli.model import SYMBOL_KINDS, address
+from nolli.model import address, metamodel
 from nolli.model.scene import Scene
 from nolli.review.reading import Reader
-from nolli.transformations.merge import TOTALS, Links
+from nolli.transformations import merge
+from nolli.transformations.merge import Links
 
 MAX_ITEMS = 60
 
@@ -39,7 +40,7 @@ def detail_box(scene: Scene, x: str) -> dict | None:
                           "removed": d.get("removed", 0), "binary": d.get("binary", False), "link": links.diff(path),
                           "blob": links.blob(path, "base" if d["git"] == "D" else "head"), "hunks": hunks[:20],
                           "more_hunks": max(0, len(hunks) - 20)})
-        elif kind in SYMBOL_KINDS and (d.get("added") or d.get("removed")) and d["status"] == "same":
+        elif kind in metamodel.SYMBOL_KINDS and (d.get("added") or d.get("removed")) and d["status"] == "same":
             path = a.get("path")
             first = (d.get("added_lines") or [None])[0]
             classes.append({"id": eid, "name": g.name(eid), "path": path, "added": d.get("added", 0), "removed": d.get("removed", 0),
@@ -62,19 +63,19 @@ def detail_box(scene: Scene, x: str) -> dict | None:
 def sum_subtree(scene: Scene, x: str) -> dict | None:
     """What changed in a node of a change and everything under it: its own status, the totals."""
     own = scene.find_element(x).get("change") or {}
-    totals = dict.fromkeys(TOTALS, 0)
+    totals = dict.fromkeys(merge.TOTALS, 0)
     seen = False
     for y in [x, *scene.model.iter_descendants(x)]:
         rec = scene.find_element(y).get("change")
         if rec:
             seen = True
-            for k in TOTALS:
+            for k in merge.TOTALS:
                 totals[k] += (rec.get("totals") or {}).get(k, 0)
     status = own.get("status") if own.get("status") in ("added", "removed") else "changed" if seen else None
     if status is None:
         return None
     out = {"status": status, **totals, "internal": 0}
-    if scene.model.kinds[x] in SYMBOL_KINDS and own.get("status") == "same":
+    if scene.model.kinds[x] in metamodel.SYMBOL_KINDS and own.get("status") == "same":
         out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)
     return out | {k: own[k] for k in ("git", "old_path", "renamed_to") if own.get(k)}
 
@@ -110,7 +111,7 @@ def format_name(g: Reader, x: str) -> str:
     kind, a = g.kind(x), g.attrs(x)
     if kind in ("file", "directory"):
         return a.get("path") or g.name(x)
-    if kind in SYMBOL_KINDS:
+    if kind in metamodel.SYMBOL_KINDS:
         return f"{a.get('path')}#{g.name(x)}"
     return g.name(x)
 
@@ -154,7 +155,7 @@ def _list_changes(scene: Scene) -> list[dict]:
         if p is not None and g.diff(p).get("status") == st:
             continue  # covered by its parent's item
         inner = [c for c in g.descendants(x) if g.diff(c).get("status") == st]
-        classes = [g.name(c) for c in inner if g.kind(c) in SYMBOL_KINDS] if kind not in SYMBOL_KINDS else []
+        classes = [g.name(c) for c in inner if g.kind(c) in metamodel.SYMBOL_KINDS] if kind not in metamodel.SYMBOL_KINDS else []
         lines = d.get("added", 0) if st == "added" else d.get("removed", 0)
         if kind == "directory":
             lines = sum(g.diff(c).get("added" if st == "added" else "removed", 0) for c in inner if g.kind(c) == "file")

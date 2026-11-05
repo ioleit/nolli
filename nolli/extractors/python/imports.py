@@ -12,7 +12,7 @@ import ast
 
 from nolli.extractors import Context
 from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import USE, address
+from nolli.model import address, metamodel
 
 
 def module_name_of(rel: str) -> str:
@@ -56,5 +56,5 @@ def run(ctx: Context) -> None:
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", mod, {"language": "python"}, Provenance("python-imports")))
         m.add_relation(
-            Relation(USE, fid, uid, "import", confidence="exact", provenance=Provenance("python-imports", address.path_of(fid), line))
+            Relation(metamodel.USE, fid, uid, "import", confidence="exact", provenance=Provenance("python-imports", address.path_of(fid), line))
         )

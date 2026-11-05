@@ -21,22 +21,22 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from nolli.sources.git import has_commit
-from nolli.sources.spec import ChangeError, ChangeSpec, git, merge_base
+from nolli.sources import git, spec
+from nolli.sources.spec import ChangeError, ChangeSpec
 
 URL = re.compile(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/pulls?/(\d+)(?:[/?#].*)?$")
 NUMBER = re.compile(r"^(?:#|pr:|pr/)(\d+)$", re.IGNORECASE)
 REMOTE = re.compile(r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
 
 
-def is_pull_request(spec: str | None) -> bool:
-    return bool(spec and (URL.match(spec) or NUMBER.match(spec)))
+def is_pull_request(change: str | None) -> bool:
+    return bool(change and (URL.match(change) or NUMBER.match(change)))
 
 
 def remotes(repo: Path) -> dict[str, tuple[str, str]]:
     """The repository's GitHub remotes: name -> (owner, repo)."""
     out = {}
-    for line in git(repo, "remote", "-v").splitlines():
+    for line in spec.run_git(repo, "remote", "-v").splitlines():
         name, url, *_ = line.split()
         m = REMOTE.match(url)
         if m:
@@ -47,14 +47,14 @@ def remotes(repo: Path) -> dict[str, tuple[str, str]]:
 AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (token())
 
 
-def resolve(repo: Path, spec: str, tok: str | None | object = AMBIENT) -> tuple[ChangeSpec, dict]:
+def resolve(repo: Path, change: str, tok: str | None | object = AMBIENT) -> tuple[ChangeSpec, dict]:
     """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``. ``tok`` as for api()."""
-    m = URL.match(spec)
+    m = URL.match(change)
     gh = remotes(repo)
     if m:
         owner, name, number = m.group(1), m.group(2), int(m.group(3))
     else:
-        number = int(NUMBER.match(spec).group(1))
+        number = int(NUMBER.match(change).group(1))
         pick = "upstream" if "upstream" in gh else "origin" if "origin" in gh else next(iter(gh), None)
         if pick is None:
             raise ChangeError(f"{repo} has no GitHub remote; give the PR's URL, or its commits: nolli view <base>..<head>")
@@ -70,15 +70,15 @@ def fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tupl
     remote = next((r for r, (o, n) in gh.items() if (o.lower(), n.lower()) == (owner.lower(), name.lower())),
                   f"https://github.com/{owner}/{name}")
     try:
-        git(repo, "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote,
+        spec.run_git(repo, "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote,
             f"pull/{number}/head", pr["base"]["ref"])
     except ChangeError as exc:
         raise ChangeError(f"could not fetch PR #{number} from {remote}: {exc}") from None
     head, base_tip = pr["head"]["sha"], pr["base"]["sha"]
     for sha in (head, base_tip):
-        if not has_commit(repo, sha):
+        if not git.has_commit(repo, sha):
             raise ChangeError(f"commit {sha[:7]} of PR #{number} is not in {repo} after fetching it")
-    ch = ChangeSpec(head=head, base=merge_base(repo, base_tip, head), title=pr.get("title") or f"PR #{number}",
+    ch = ChangeSpec(head=head, base=spec.merge_base(repo, base_tip, head), title=pr.get("title") or f"PR #{number}",
                 description=(pr.get("body") or "").replace("\r\n", "\n").strip())
     return ch, {"pr": number, "remote": f"https://github.com/{owner}/{name}"}
 

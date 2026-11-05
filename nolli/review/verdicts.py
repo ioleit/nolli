@@ -17,7 +17,7 @@ from collections import defaultdict
 
 from nolli.model import address
 from nolli.model.scene import Element, Scene
-from nolli.review.changes import format_name, list_ancestors_to_unfold
+from nolli.review import changes
 from nolli.review.reading import Reader
 from nolli.store.maps import MapStore, StoredMaps
 
@@ -139,12 +139,12 @@ def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
     out = []
     for v in verdicts:
         ends = v.get("ends") or []
-        name = lambda x: format_name(g, address.owner(x)) + (" (own code)" if address.is_own_code(x) else "")
+        name = lambda x: changes.format_name(g, address.owner(x)) + (" (own code)" if address.is_own_code(x) else "")
         reveal: list[str] = []
         for x in ends:
             if not g.has(address.owner(x)):
                 continue
-            for a in list_ancestors_to_unfold(g, address.owner(x)) + ([address.owner(x)] if address.is_own_code(x) else []):
+            for a in changes.list_ancestors_to_unfold(g, address.owner(x)) + ([address.owner(x)] if address.is_own_code(x) else []):
                 if a not in reveal:
                     reveal.append(a)
         out.append(v | {"ends": ends, "edge": len(ends) == 2, "reveal": reveal,

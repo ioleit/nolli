@@ -15,7 +15,7 @@ from tree_sitter_language_pack import get_parser
 
 from nolli.extractors import Context
 from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import USE, address
+from nolli.model import address, metamodel
 
 GRAMMAR = {".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",
            ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript"}
@@ -177,5 +177,5 @@ def run(ctx: Context) -> None:
         uid = address.unresolved("js", f"{spec}@{address.path_of(fid)}" if relative else spec)
         if not m.has(uid):
             m.add_entity(Entity(uid, "unresolved", spec, {"language": "javascript"}, Provenance("ts-imports")))
-        m.add_relation(Relation(USE, fid, uid, "import", provenance=Provenance("ts-imports", address.path_of(fid), line),
+        m.add_relation(Relation(metamodel.USE, fid, uid, "import", provenance=Provenance("ts-imports", address.path_of(fid), line),
                                 attrs=attrs))

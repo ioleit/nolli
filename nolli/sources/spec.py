@@ -21,7 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from nolli.sources.git import GitError, run_git
+from nolli.sources import git
+from nolli.sources.git import GitError
 
 
 class ChangeError(Exception):
@@ -40,9 +41,10 @@ class ChangeSpec:
         return self.base is not None
 
 
-def git(repo: Path, *args: str) -> str:
+def run_git(repo: Path, *args: str) -> str:
+    """``git.run_git``, failing with a ChangeError: what the user named is not in the repository."""
     try:
-        return run_git(repo, *args)
+        return git.run_git(repo, *args)
     except GitError as exc:
         raise ChangeError(str(exc)) from None
 
@@ -50,14 +52,14 @@ def git(repo: Path, *args: str) -> str:
 def find_toplevel(path: Path) -> Path:
     """The root of the git working tree that ``path`` is in."""
     try:
-        return Path(git(path, "rev-parse", "--show-toplevel").strip())
+        return Path(run_git(path, "rev-parse", "--show-toplevel").strip())
     except ChangeError:
         raise ChangeError(f"{path} is not in a git repository") from None
 
 
 def find_commit(repo: Path, rev: str) -> str:
     try:
-        return git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
+        return run_git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
     except ChangeError:
         raise ChangeError(f"no commit {rev!r} in {repo}") from None
 
@@ -65,14 +67,14 @@ def find_commit(repo: Path, rev: str) -> str:
 def default_branch(repo: Path) -> str | None:
     """The default branch as a revision (``origin/main``, ``main``, …), or None."""
     try:
-        ref = git(repo, "symbolic-ref", "-q", "refs/remotes/origin/HEAD").strip()
+        ref = run_git(repo, "symbolic-ref", "-q", "refs/remotes/origin/HEAD").strip()
         if ref:
             return ref.removeprefix("refs/remotes/")
     except ChangeError:
         pass
     for rev in ("origin/main", "origin/master", "main", "master"):
         try:
-            git(repo, "rev-parse", "--verify", "-q", f"refs/{'remotes' if '/' in rev else 'heads'}/{rev}")
+            run_git(repo, "rev-parse", "--verify", "-q", f"refs/{'remotes' if '/' in rev else 'heads'}/{rev}")
             return rev
         except ChangeError:
             continue
@@ -80,14 +82,14 @@ def default_branch(repo: Path) -> str | None:
 
 
 def merge_base(repo: Path, a: str, b: str) -> str:
-    out = git(repo, "merge-base", a, b).strip()
+    out = run_git(repo, "merge-base", a, b).strip()
     if not out:
         raise ChangeError(f"{a} and {b} have no common ancestor; name both ends: nolli view <base>..<head>")
     return out
 
 
 def first_parent(repo: Path, sha: str) -> str | None:
-    parents = git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
+    parents = run_git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
     return parents[0] if parents else None
 
 
@@ -128,9 +130,9 @@ def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
     """Title and description from the commits: one commit gives its subject and body; several
     give the branch's name (or the range) and the list of their subjects."""
     if not ch.is_diff:
-        ch.title = git(repo, "log", "-1", "--format=%s", ch.head).strip()
+        ch.title = run_git(repo, "log", "-1", "--format=%s", ch.head).strip()
         return ch
-    log = git(repo, "log", "--first-parent", "--format=%H%x00%s%x00%b%x1e", f"{ch.base}..{ch.head}")
+    log = run_git(repo, "log", "--first-parent", "--format=%H%x00%s%x00%b%x1e", f"{ch.base}..{ch.head}")
     commits = [c.strip("\n").split("\0") for c in log.split("\x1e") if c.strip()]
     if len(commits) == 1:
         _sha, subject, body = commits[0]
@@ -138,7 +140,7 @@ def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
         return ch
     name = rev if rev not in ("HEAD", "") and not looks_like_sha(rev) else None
     if name is None:
-        branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() if rev in ("HEAD", "") else ""
+        branch = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() if rev in ("HEAD", "") else ""
         name = branch if branch and branch != "HEAD" else None
     ch.title = name or f"{ch.base[:7]}..{ch.head[:7]}"
     ch.description = "\n".join(f"- {subject} ({sha[:7]})" for sha, subject, _ in reversed(commits))

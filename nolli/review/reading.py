@@ -8,10 +8,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cached_property
 
-from nolli.formats.descriptions.names import format_name
-from nolli.model import CONTAIN, EdgeKey
+from nolli.formats.descriptions import names
+from nolli.model import EdgeKey, metamodel, vocabulary
 from nolli.model.scene import Scene
-from nolli.model.vocabulary import count_references, read_file, read_symbols
 
 
 @dataclass
@@ -65,14 +64,14 @@ class Reader:
         return self.model.kinds
 
     def name(self, x: str) -> str:
-        return format_name(self.scene.find_element(x))
+        return names.format_name(self.scene.find_element(x))
 
     def attrs(self, x: str) -> dict:
         """Where it is (path, line range) and what role it plays: the file tree's and its language's word."""
         a = self._attrs.get(x)
         if a is None:
             el = self.scene.find_element(x)
-            a = self._attrs[x] = {**read_file(el), **read_symbols(el)}
+            a = self._attrs[x] = {**vocabulary.read_file(el), **vocabulary.read_symbols(el)}
         return a
 
     def diff(self, x: str) -> dict:
@@ -82,9 +81,9 @@ class Reader:
     def relations(self) -> list[ChangedEdge]:
         out = []
         for e in self.model.edges:
-            if e.kind == CONTAIN:
+            if e.kind == metamodel.CONTAIN:
                 continue
             el = self.scene.find_element(e)
             d = el.get("change")
-            out.append(ChangedEdge(e, count_references(el), d if d and d.get("status") in ("added", "removed", "changed") else None))
+            out.append(ChangedEdge(e, vocabulary.count_references(el), d if d and d.get("status") in ("added", "removed", "changed") else None))
         return out

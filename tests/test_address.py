@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from nolli.extractors.facts import Entity, Facts, Relation
-from nolli.model import CONTAIN, ENTITY_KINDS, USE, EdgeKey, Model, address, metamodel
+from nolli.model import EdgeKey, Model, address, metamodel
+from nolli.model.metamodel import CONTAIN, ENTITY_KINDS, USE
 
 ROOT = Path(__file__).resolve().parent.parent
 OLD = ("fs", "py", "ts", "svc", "img", "host", "env", "ext", "body")  # the prefixes before the namespaces
@@ -85,7 +86,7 @@ def test_the_model_keeps_to_the_namespaces():
     with pytest.raises(ValueError, match="is a file"):
         m.add_entity(Entity("repo:a.py", "directory", "a.py"))
     db = m.add_entity(Entity(address.runtime("db"), "service", "db")).id
-    root = m.ensure_root(address.RUNTIME, "test")
+    root = m.ensure_root(metamodel.RUNTIME, "test")
     assert m.entities[root].kind == "group" and m.entities[root].name == "Runtime"
     m.add_relation(Relation(CONTAIN, root, db))
     with pytest.raises(ValueError, match="crosses"):

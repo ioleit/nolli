@@ -17,7 +17,7 @@ from pathlib import PurePosixPath
 
 from nolli.extractors import Context
 from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import ALLOCATE, CONTAIN, USE, address
+from nolli.model import address, metamodel
 
 PY_MODULE = re.compile(r"(?:python[\d.]*\s+-m\s+|uvicorn\s+|gunicorn\s+)([A-Za-z_][\w.]*)(?::\w+)?")
 SCRIPT = re.compile(r"(?:^|\s)((?:[\w./-]+/)?[\w-]+\.(?:py|sh|js|mjs|ts))(?=\s|$)")
@@ -48,11 +48,11 @@ def run(ctx: Context) -> None:
         name = PurePosixPath(rel).name
         if not (name == "Dockerfile" or name.startswith("Dockerfile.") or name.endswith(".Dockerfile")):
             continue
-        group = m.ensure_root(address.PKG, "dockerfile")
+        group = m.ensure_root(metamodel.PKG, "dockerfile")
         iid = address.built(rel)  # the image, by its Dockerfile
         if not m.has(iid):
             m.add_entity(Entity(iid, "image", rel, {"dockerfile": rel, "context": str(PurePosixPath(rel).parent)}, Provenance("dockerfile", rel)))
-            m.add_relation(Relation(CONTAIN, group, iid, provenance=Provenance("dockerfile", rel)))
+            m.add_relation(Relation(metamodel.CONTAIN, group, iid, provenance=Provenance("dockerfile", rel)))
         context = m.entities[iid].attrs.get("context", ".")
         ctx_dir = PurePosixPath("." if context in ("", ".") else context)
         text = ctx.read(rel).decode("utf-8", "replace")
@@ -74,7 +74,7 @@ def run(ctx: Context) -> None:
                     full_s = full_s.removeprefix("./")
                     fid = address.repo(full_s)
                     if m.has(fid):
-                        m.add_relation(Relation(ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))
+                        m.add_relation(Relation(metamodel.ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))
                     else:
                         ctx.notes.setdefault("dockerfile-unmatched-copy", []).append((rel, src))
             elif ins in ("CMD", "ENTRYPOINT"):
@@ -90,9 +90,9 @@ def run(ctx: Context) -> None:
                     cand = mod.replace(".", "/")
                     for fid in (address.repo(f"{cand}.py"), address.repo(f"{cand}/__init__.py"), address.repo(f"{cand}/__main__.py")):
                         if m.has(fid):
-                            m.add_relation(Relation(USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
+                            m.add_relation(Relation(metamodel.USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
                             break
                 for script in SCRIPT.findall(cmd):
                     fid = address.repo(str(ctx_dir / script).removeprefix("./"))
                     if m.has(fid):
-                        m.add_relation(Relation(USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
+                        m.add_relation(Relation(metamodel.USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
