@@ -126,11 +126,11 @@ def test_a_scene_is_saved_and_opened_whole(scene):
     live = scene.with_overlays(Counting())
     store.save_scene(live)
     assert store.load_model(scene.model.key) is scene.model
-    assert "counting" in store.list_map_names(scene.model.key) and "fs" in store.list_map_names(scene.model.key)
+    assert "counting" in store.list_map_names(scene.model.key) and "files" in store.list_map_names(scene.model.key)
 
     behind = Counting()
     opened = store.open_scene(scene.model.key, [behind])
-    assert isinstance(opened.overlays["counting"], CachingOverlay) and isinstance(opened.overlays["fs"], PrecomputedOverlay)
+    assert isinstance(opened.overlays["counting"], CachingOverlay) and isinstance(opened.overlays["files"], PrecomputedOverlay)
     assert opened.find_element("repo:pkg/a.py").get("counting") == {"kind": "file", "inside": 0} and behind.asked == []
-    assert opened.find_element("repo:pkg/a.py").get("fs")["module"]
+    assert opened.find_element("repo:pkg/a.py").get("files")["module"]
     assert store.open_scene("nobody@0") is None

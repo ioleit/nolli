@@ -60,7 +60,6 @@ def _extract_facts(repo: Path, config: dict | None = None, progress: Progress | 
     timings["match"] = round(time.time() - t0, 3)
     head = git.find_head(repo)
     facts.meta = {"repo": str(repo), "commit": head[:7] if head else None, "files": len(ctx.files), "languages": extractors.language_names(),
-                  "symbols": extractors.list_symbols_overlays(),
                   "timings": timings, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                   "notes": {k: v for k, v in ctx.notes.items() if k not in WORKING_NOTES}, "nolli": version()}
     return facts

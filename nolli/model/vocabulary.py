@@ -9,10 +9,31 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
-from nolli.model import EdgeKey
+from nolli.model import EdgeKey, address
 
 if TYPE_CHECKING:
     from nolli.model.scene import Element, Scene
+
+
+# The overlays that say these things, one per shape, whatever language's extractor said
+# them: extraction files what each extractor said by shape (``extractors/facts.py``), so no
+# reader needs to know which extractor spoke.
+FILES = "files"  # the file tree: ``FileFacts`` of every file and directory
+SYMBOLS = "symbols"  # what a module, class or type defines: ``ModuleFacts``, ``SymbolFacts``
+REFERENCES = "references"  # ``EdgeFacts`` of every edge an extractor found references behind
+EXTERNALS = "externals"  # a node outside the repository: how it is called, its language, an API's protocol and method
+SHAPES = (FILES, SYMBOLS, REFERENCES, EXTERNALS)
+
+
+def shape_of(key: str | EdgeKey, speaker: str) -> str:
+    """The overlay a fact belongs in, by what it is about and who said it: an edge's facts are
+    references; a repository node's are files from the file tree (``fs``) and symbols from a
+    language; anything outside the repository is externals."""
+    if isinstance(key, EdgeKey):
+        return REFERENCES
+    if address.is_repo(key):
+        return FILES if speaker == "fs" else SYMBOLS
+    return EXTERNALS
 
 
 # At run time these are plain dicts (stored as maps, sent as JSON); a language's overlay
@@ -66,50 +87,36 @@ class SymbolFacts(TypedDict):
     exported: NotRequired[bool]
 
 
-# -- reading them off an element (the model's ``meta`` names who says what) -----------------
+# -- reading them off an element or a whole scene ---------------------------------------
 
 
 def read_file(el: Element) -> FileFacts | dict:
     """What the file tree says about a file or directory ({} for anything else)."""
-    return el.get("fs") or {}
+    return el.get(FILES) or {}
 
 
 def read_references(el: Element) -> list[Reference]:
     """The references an edge stands for, as the extractor that found it says ([] for none)."""
-    for name in el.meta.get("overlays") or []:
-        v = el.get(name)
-        if v and "references" in v:
-            return v["references"]
-    return []
+    return (el.get(REFERENCES) or {}).get("references", [])
+
+
+def read_external(el: Element) -> dict:
+    """What an extractor says about a node outside the repository ({} for one inside, or one
+    nothing was said about): its ``name``, its ``language``, an API's ``method`` and ``protocol``."""
+    return el.get(EXTERNALS) or {}
 
 
 def read_all_files(scene: Scene) -> Mapping[str, FileFacts]:
     """What the file tree says about every file and directory of a scene, by address."""
-    return scene.read_all("fs")  # type: ignore[return-value]
+    return scene.read_all(FILES)  # type: ignore[return-value]
 
 
 def read_all_references(scene: Scene) -> Mapping[EdgeKey, list[Reference]]:
     """The references every edge of a scene stands for, by edge (edges no extractor found
     references for are left out), as ``read_references`` reads them one by one."""
-    out: dict[EdgeKey, list[Reference]] = {}
-    for name in scene.model.meta.get("overlays") or []:
-        for k, v in scene.read_all(name).items():
-            if isinstance(k, EdgeKey) and "references" in v and k not in out:
-                out[k] = v["references"]
-    return out
+    return {k: v["references"] for k, v in scene.read_all(REFERENCES).items()}  # type: ignore[misc]
 
 
-def read_all_symbols(scene: Scene) -> dict[str, ModuleFacts | SymbolFacts]:
-    """What every module, class or type of a scene defines, by address, each from the symbols
-    overlay of its language."""
-    files = read_all_files(scene)
-    model = scene.model
-    out: dict[str, ModuleFacts | SymbolFacts] = {}
-    for language, name in (model.meta.get("symbols") or {}).items():
-        for k, v in scene.read_all(name).items():
-            if isinstance(k, EdgeKey) or not model.has(k):
-                continue
-            f = k if model.find_kind(k) == "file" else model.find_parent(k)
-            if f is not None and files.get(f, {}).get("language") == language:
-                out[k] = v  # type: ignore[assignment]
-    return out
+def read_all_symbols(scene: Scene) -> Mapping[str, ModuleFacts | SymbolFacts]:
+    """What every module, class or type of a scene defines, by address."""
+    return scene.read_all(SYMBOLS)  # type: ignore[return-value]

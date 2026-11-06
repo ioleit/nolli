@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
-from nolli.model import EdgeKey, Key, Model, address, metamodel
+from nolli.model import EdgeKey, Key, Model, address, metamodel, vocabulary
 
 
 @dataclass
@@ -182,17 +182,17 @@ class Facts:
     # -- what extraction made ------------------------------------------------
 
     def split(self, key: str = "") -> tuple[Model, dict[str, dict[Key, dict]]]:
-        """The structure, and per extractor what it said: for a node its attributes (``name``
-        among them), for an edge its facts (one per relation: count, confidence, where it
-        was found, the relation's attributes) and their total ``count``. Each extractor's
-        map is what its overlay stores (``nolli/model/scene.py``)."""
+        """The structure, and what the extractors said, filed by shape (``vocabulary.SHAPES``,
+        one map each, whichever extractor spoke): for a node its attributes (``name`` among
+        them), for an edge its facts (one per relation: count, confidence, where it was
+        found, the relation's attributes). Each map is what its overlay says."""
         maps: dict[str, dict[Key, dict]] = defaultdict(dict)
         for e in self.entities.values():
             by = getattr(e.attrs, "by", {})
             creator = e.provenance.extractor if e.provenance else "fs"
-            maps[by.get("name", creator)].setdefault(e.id, {})["name"] = e.name
+            maps[vocabulary.shape_of(e.id, by.get("name", creator))].setdefault(e.id, {})["name"] = e.name
             for k, v in e.attrs.items():
-                maps[by.get(k, creator)].setdefault(e.id, {})[k] = v
+                maps[vocabulary.shape_of(e.id, by.get(k, creator))].setdefault(e.id, {})[k] = v
         edges = set()
         for r in self.relations:
             k = EdgeKey(r.kind, r.src, r.dst, r.subkind)
@@ -204,7 +204,7 @@ class Facts:
             if p and p.line is not None:
                 ref["line"] = p.line
             _check_reference(ref, p.extractor if p else "unknown", k)
-            maps[p.extractor if p else "unknown"].setdefault(k, {"references": []})["references"].append(ref)
+            maps[vocabulary.REFERENCES].setdefault(k, {"references": []})["references"].append(ref)
         model = Model(key, {x: e.kind for x, e in self.entities.items()}, edges, meta=dict(self.meta))
         model.meta["overlays"] = sorted(maps)
         return model, {name: dict(v) for name, v in sorted(maps.items())}

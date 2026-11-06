@@ -126,9 +126,4 @@ class Reading:
     def find_unresolved_language(self, x: str) -> str:
         """The language an unresolved reference was written in, as its extractor says, else the
         sort of reference its address names (``http``)."""
-        el = self.scene.find_element(x)
-        for name in el.meta.get("overlays") or []:
-            v = el.get(name)
-            if v and v.get("language"):
-                return v["language"]
-        return x.split(":")[1]
+        return vocabulary.read_external(self.scene.find_element(x)).get("language") or x.split(":")[1]

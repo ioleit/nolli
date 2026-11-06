@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from urllib.parse import unquote
 
-from nolli.model import address, metamodel
+from nolli.model import address, metamodel, vocabulary
 from nolli.model.scene import Element
 
 
@@ -22,11 +22,7 @@ def format_name(el: Element) -> str:
         fragment = address.fragment_of(x)
         return fragment[-1] if fragment else address.path_of(x).rsplit("/", 1)[-1]
     if scheme == metamodel.API:
-        for name in el.meta.get("overlays") or []:  # the extractor that made it says how it reads
-            v = el.get(name)
-            if v and v.get("name"):
-                return v["name"]
-        return rest
+        return vocabulary.read_external(el).get("name") or rest  # the extractor that made it says how it reads
     if scheme == metamodel.PKG:
         kind, _, name = rest.partition("/")
         return name if kind == "build" else unquote(name)
@@ -41,8 +37,5 @@ def read_api(el: Element) -> dict:
     path below its step (``short``)."""
     if address.scheme_of(el.key) != metamodel.API:
         return {}
-    for name in el.meta.get("overlays") or []:
-        v = el.get(name)
-        if v and ("method" in v or "protocol" in v):
-            return v
-    return {}
+    v = vocabulary.read_external(el)
+    return v if "method" in v or "protocol" in v else {}
