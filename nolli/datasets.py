@@ -34,7 +34,7 @@ from .sources.git import resolve as resolve_spec, whole as resolve_whole
 from .store import ModelStore
 from .store.directory import DirectoryStore, write_change, write_commit
 from .store.maps import MapStore, MemoryMaps
-from .scenes import describe_change_meta, keep_change_scene, merge_built, open_built, open_change_scene, open_commit_scene
+from .scenes import describe_change_meta, keep_change_scene, keep_commit_scene, merge_built, open_built, open_change_scene, open_commit_scene
 from .transformations.merge import is_change, merge_models
 from .formats.mermaid import list_ids, render
 from .formats.viewer import export_scene
@@ -228,6 +228,7 @@ def extract_dataset(repo: Path, out: Path, budget: int | None = None) -> dict:
         m.meta["budget"] = budget
     out.mkdir(parents=True, exist_ok=True)
     write_commit(out, key, m, maps)
+    keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": version()})  # the directory as nolli serve reads it
     return write_extras(Datasets(MemoryMaps()), open_built(m, maps), out)
 
 

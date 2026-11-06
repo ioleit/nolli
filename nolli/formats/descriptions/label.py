@@ -2,37 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from nolli.formats.descriptions import names
-from nolli.model import address, vocabulary
-from nolli.model.scene import Element, Overlay
-
-SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "function": "f"}  # metamodel.SYMBOL_KINDS
-VERB_ICON = {"WEBSOCKET": "WS", "DELETE": "DEL", "OPTIONS": "OPT"}
-
-
-def _is_module(el: Element) -> bool:
-    """A file of an extracted language (the file tree marks it): drawn ``m``, unfoldable."""
-    return el.kind == "file" and bool(vocabulary.read_file(el).get("module"))
+from nolli.model import Key, address, vocabulary
+from nolli.model.scene import Element, Overlay, Scene
 
 
 def _module_stem(file_name: str) -> str:
     """A source file's module name: without its extension, ``.d.ts`` included."""
     stem = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
     return stem[:-2] if stem.endswith(".d") and file_name.endswith(("ts", "mts", "cts")) else stem
-
-
-def _list_icons(el: Element) -> list[str]:
-    if address.is_own_code(el.key):
-        return []
-    kind = el.kind
-    if kind == "directory":
-        return ["D"]
-    if _is_module(el):
-        return ["m"]
-    if kind in SYMBOL_ICON:
-        return [SYMBOL_ICON[kind]]
-    return {"service": ["svc"], "image": ["img"], "api": ["API"], "resource": ["/"]}.get(kind) or (
-        [VERB_ICON.get(v, v) for v in names.read_api(el).get("method", "").split(",") if v] if kind == "endpoint" else [])
 
 
 def _format_path(el: Element, drawn: Element) -> str:
@@ -46,29 +26,35 @@ def _format_path(el: Element, drawn: Element) -> str:
     return path
 
 
-def _format_label(el: Element, drawn: Element | None = None) -> str:
-    """The readable name drawn after the icons; ``drawn``: the box it is in a picture."""
+def _format_label(el: Element, named: dict, drawn: Element | None = None) -> str:
+    """The readable name drawn after the icons; ``named``: what the ``names`` overlay says of
+    the node; ``drawn``: the box it is in a picture."""
     if address.is_own_code(el.key):
         return ""
     kind = el.kind
     if kind == "directory":
-        return names.format_name(el) if vocabulary.read_file(el).get("root") or drawn is None else _format_path(el, drawn)
-    if _is_module(el):
-        return _module_stem(names.format_name(el))  # a source file is its module
+        return named["name"] if vocabulary.read_file(el).get("root") or drawn is None else _format_path(el, drawn)
+    if names.is_module(el):
+        return _module_stem(named["name"])  # a source file is its module
     if kind == "image":
-        return names.format_name(el).removesuffix("/Dockerfile")
+        return named["name"].removesuffix("/Dockerfile")
     if kind == "endpoint" and "short" in names.read_api(el):
         return names.read_api(el)["short"]  # the path below its step, often nothing: the verb says it all
-    return names.format_name(el)
+    return named["name"]
 
 
-def format_prose(el: Element, drawn: Element | None = None) -> str:
+def format_prose(el: Element, named: dict, drawn: Element | None = None) -> str:
     """The name in running text: the word-like icons stay in front ("svc api", "GET health")."""
     if el.kind == "endpoint":
-        return names.format_name(el)
-    icons = [i for i in _list_icons(el) if i not in ("D", "m", "/", *SYMBOL_ICON.values())]
-    name = _format_label(el, drawn)
+        return named["name"]
+    icons = [i for i in named["icons"] if i not in ("D", "m", "/", *names.SYMBOL_ICON.values())]
+    name = _format_label(el, named, drawn)
     return " ".join(icons + ([name] if name else []))
+
+
+def _describe(s: Element, drawn: Element, named: dict) -> dict:
+    """A drawn box named: its source node ``s``, what ``names`` says of it, and the box itself."""
+    return {"text": _format_label(s, named, drawn), "icons": named["icons"], "prose": format_prose(s, named, drawn)}
 
 
 class Label(Overlay):
@@ -82,11 +68,20 @@ class Label(Overlay):
     name = "label"
 
     def compute(self, el: Element) -> dict | None:
-        if "source" not in el.scene.sources or el.is_edge:
-            return None
-        if el.kind == "anchor":
-            return {"text": "", "icons": [], "prose": ""}
-        s = el.find_same("source")
-        if s is None:
-            return None
-        return {"text": _format_label(s, el), "icons": _list_icons(s), "prose": format_prose(s, el)}
+        return el.scene.read_all(self.name).get(el.key)  # named as a whole (compute_all)
+
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        """Every box of a picture named, from the names its source gives the nodes, read once."""
+        if "source" not in scene.sources:
+            return {}
+        named = scene.sources["source"].read_all("names")
+        out: dict[Key, dict] = {}
+        for x, kind in scene.model.kinds.items():
+            if kind == "anchor":
+                out[x] = {"text": "", "icons": [], "prose": ""}
+                continue
+            el = scene.find_element(x)
+            s = el.find_same("source")
+            if s is not None and s.key in named:
+                out[x] = _describe(s, el, named[s.key])
+        return out

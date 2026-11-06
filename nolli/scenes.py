@@ -17,6 +17,14 @@ from nolli.store.maps import Maps, MapStore, MemoryMaps
 from nolli.transformations import merge
 
 
+def _make_derived_overlays() -> list[Overlay]:
+    """What nolli derives from any model's facts and keeps with it at build time
+    (``keep_commit_scene``, ``keep_change_scene``): how its nodes are called (``names``)."""
+    from nolli.formats.descriptions.names import Names
+
+    return [Names()]
+
+
 def _make_change_overlays(maps: MapStore) -> list[Overlay]:
     """What a change says about itself, computed from its sides: what changed (``change``) and
     which numbered changes each node and edge is about (``review``). Kept with the change at
@@ -48,7 +56,8 @@ def _make_overlays(maps: MapStore) -> list[Overlay]:
     from nolli.review.verdicts import Verdicts
     from nolli.transformations.merge import Change
 
-    return [Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]
+    derived = [maps.caching_overlay(o) for o in _make_derived_overlays()]
+    return [*derived, Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]
 
 
 def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
@@ -65,6 +74,16 @@ def open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overl
     return None if m is None else _open_scene(m, store, overlays)
 
 
+def keep_commit_scene(store: ModelStore, commit: CommitKey, by: dict | None = None) -> None:
+    """Keep what nolli derives from a stored commit's facts (``_make_derived_overlays``) under
+    its key, so that opening it reads that instead of computing it."""
+    scene = open_commit_scene(store, commit)
+    if scene is None:
+        raise KeyError(f"no commit {commit.format_key()} to keep")
+    for o in _make_derived_overlays():
+        store.precompute_overlay_values(scene, o, by)
+
+
 def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
     """The change of its two stored commits: its merged model as kept with it (merged here for a
     change kept without one), what it says about itself in its model's ``meta["change"]``, and
@@ -77,16 +96,18 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
         return None
     meta = _describe_scene_meta(base.model, head.model, about, store.open_maps("content").load(change.format_key()))
     scene = transformations.apply({"base": base, "head": head}, merge.union(change.format_key(), meta, store.load_model(change)))
-    return scene.with_overlays(*[store.caching_overlay(o) for o in _make_change_overlays(store)])
+    return scene.with_overlays(*[store.caching_overlay(o) for o in [*_make_derived_overlays(), *_make_change_overlays(store)]])
 
 
 def keep_change_scene(store: ModelStore, change: ChangeKey, by: dict | None = None) -> None:
     """Keep what a stored change says about itself (``_make_change_overlays``) under its key, so
     that ``open_change_scene`` reads it instead of computing it on every read."""
+    for c in change.list_sides():
+        keep_commit_scene(store, c, by)
     scene = open_change_scene(store, change)
     if scene is None:
         raise KeyError(f"no change {change.format_key()} to keep")
-    for o in _make_change_overlays(store):
+    for o in [*_make_derived_overlays(), *_make_change_overlays(store)]:
         store.precompute_overlay_values(scene, o, by)
 
 

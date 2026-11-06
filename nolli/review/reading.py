@@ -6,7 +6,6 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 
-from nolli.formats.descriptions import names
 from nolli.model import EdgeKey, Key, metamodel, vocabulary
 from nolli.model.scene import Scene
 
@@ -66,7 +65,11 @@ class Reader:
         return self.model.kinds
 
     def name(self, x: str) -> str:
-        return names.format_name(self.scene.find_element(x))
+        return self.names[x]["name"]
+
+    @cached_property
+    def names(self) -> Mapping[str, dict]:
+        return self.scene.read_all("names")
 
     @cached_property
     def files(self) -> Mapping[str, dict]:

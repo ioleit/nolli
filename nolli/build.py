@@ -135,6 +135,7 @@ def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *,
         m, maps = _fetch_commit_model(store, clone, commit, run=run, progress=progress, rebuild=True)
     with progress.step("keeping the model"):
         store.save_model(commit, m, maps)
+        scenes.keep_commit_scene(store, commit, {"nolli": version()})
     return m
 
 

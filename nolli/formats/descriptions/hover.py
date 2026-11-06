@@ -48,6 +48,10 @@ class Source:
     def symbols(self) -> Mapping[str, dict]:
         return vocabulary.read_all_symbols(self.scene)
 
+    @cached_property
+    def names(self) -> Mapping[str, dict]:
+        return self.scene.read_all("names")
+
     def attrs(self, x: str) -> dict:
         a = self._attrs.get(x)
         if a is None:
@@ -55,7 +59,7 @@ class Source:
         return a
 
     def name(self, x: str) -> str:
-        return names_lib.format_name(self.element(x))
+        return self.names[x]["name"]
 
     def is_module(self, x: str) -> bool:
         return self.kind(x) == "file" and bool(self.attrs(x).get("module"))
@@ -102,6 +106,11 @@ class Ctx:
     def node(self, x: str) -> NodeView:
         return NodeView(x, self.g.kind(x), self.g.name(x), self.g.attrs(x))
 
+    @cached_property
+    def labels(self) -> Mapping[Key, dict]:
+        """How the picture names its boxes (the ``label`` overlay), read once."""
+        return self.scene.read_all("label")
+
     def list_utilities_used(self, x: str) -> list[str]:
         if not self.scene.has(x):
             return []
@@ -116,8 +125,7 @@ class Ctx:
             return e.name.removesuffix("/Dockerfile")  # no "svc " / "img " prefix in prose
         if e.kind == "endpoint":
             return f"{e.attrs.get('method', '')} {e.attrs.get('path', e.name)}".strip()
-        drawn = self.scene.find_element(x) if self.scene.has(x) else None
-        text = label.format_prose(self.g.element(x), drawn)
+        text = self.labels[x]["prose"] if x in self.labels else label.format_prose(self.g.element(x), self.g.names[x])
         return text + "/" if e.kind == "directory" and not text.endswith("/") else text
 
     def shown_children(self, x: str) -> list[str]:

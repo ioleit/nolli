@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 
-from nolli.formats.descriptions import names as names_lib
 from nolli.formats.descriptions import prose
 from nolli.model import EdgeKey, Key
 from nolli.model.scene import Element, Overlay, Scene
@@ -155,14 +154,14 @@ class Review(Overlay):
             return {}
         if "source" not in scene.sources:
             return _index_items(scene)
-        about = scene.sources["source"].read_all(self.name)
+        about, named = scene.sources["source"].read_all(self.name), scene.sources["source"].read_all("names")
         verdicts, changed = scene.read_all("verdicts"), scene.read_all("change")
         out: dict[Key, dict] = {}
         on_edges = {e: _place_edge_items(scene.find_element(e), about) for e in scene.model.list_edges()}
         for e, items in on_edges.items():
             el = scene.find_element(e)
             v = verdicts.get(e) or {}
-            names = {s.key.dst: names_lib.format_name(s.dst) for s in el.sources.get("source", ()) if s.is_edge}
+            names = {s.key.dst: named[s.key.dst]["name"] for s in el.sources.get("source", ()) if s.is_edge}
             out[e] = {"items": items, "card": _describe_edge(changed.get(e), v.get("own", []), v.get("inside", []), len(items), names)}
         on_boxes = _place_box_items(scene, about, on_edges)
         for x, kind in scene.model.kinds.items():
