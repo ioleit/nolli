@@ -15,6 +15,14 @@ from typing import Protocol
 from nolli.model import EdgeKey, Key, Model
 
 
+def _hash_source(cls: type) -> str:
+    try:
+        source = inspect.getsource(cls)
+    except (OSError, TypeError):
+        return cls.__qualname__
+    return hashlib.sha256(source.encode()).hexdigest()[:12]
+
+
 class Overlay:
     """Code that says something about one element: ``compute(element)`` returns its properties
     (a dict) or None. The ``files`` overlay, for one, says a file's role and size.
@@ -33,19 +41,16 @@ class Overlay:
     own."""
 
     name: str
+    cache_version: str = ""  # which precomputed values of this overlay are acceptable; set once per class, below
 
-    @property
-    def cache_version(self) -> str:
-        """Which precomputed values of this overlay are acceptable: values kept under another
+    def __init_subclass__(cls, **kwargs) -> None:
+        """``cache_version``, computed once when the class is made: values kept under another
         version are not read. By default a hash of the class's source, so a change to the code
         retires what it computed before; an overlay whose answers depend on more than its code
-        (its arguments, a helper it calls) sets its own, ``cache_version = "2"``."""
-        cls = type(self)
-        try:
-            source = inspect.getsource(cls)
-        except (OSError, TypeError):
-            return cls.__qualname__
-        return hashlib.sha256(source.encode()).hexdigest()[:12]
+        (its arguments, a helper it calls) sets its own in its body, ``cache_version = "2"``."""
+        super().__init_subclass__(**kwargs)
+        if "cache_version" not in cls.__dict__:
+            cls.cache_version = _hash_source(cls)
 
     def compute(self, element: Element) -> dict | None:
         raise NotImplementedError

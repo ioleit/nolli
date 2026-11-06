@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from nolli.formats import mermaid
-from nolli.model.scene import Element, Scene
+from nolli.model import Key
+from nolli.model.scene import Scene
 
 FORMAT = 1
 SHOWN = ("projection", "label", "hover", "change", "verdicts", "review")  # the overlays the viewer draws, in this order
 
 
-def _describe(el: Element, names: list[str]) -> dict:
-    return {n: v for n in names if (v := el.get(n)) is not None}
+def _describe(key: Key, said: dict[str, Mapping[Key, dict]]) -> dict:
+    return {n: v for n, values in said.items() if (v := values.get(key)) is not None}
 
 
 def export_scene(scene: Scene) -> dict:
@@ -23,11 +26,11 @@ def export_scene(scene: Scene) -> dict:
     client can diff two scenes to animate the step between them."""
     meta = scene.model.meta.get("projection", {})
     names = [n for n in SHOWN if n in scene.overlays]
+    said = {n: scene.read_all(n) for n in names}  # each overlay asked about the whole picture once
     order = mermaid.list_drawing_order(scene)
-    nodes = [{"id": x, "kind": scene.model.kinds[x], "parent": scene.model.find_parent(x), **_describe(scene.find_element(x), names)}
-             for x in order]
-    edges = [{"key": el.id, "kind": el.key.kind, "subkind": el.key.subkind, "src": el.key.src, "dst": el.key.dst, **_describe(el, names)}
-             for el in scene.list_edges()]
+    nodes = [{"id": x, "kind": scene.model.kinds[x], "parent": scene.model.find_parent(x), **_describe(x, said)} for x in order]
+    edges = [{"key": e.format(), "kind": e.kind, "subkind": e.subkind, "src": e.src, "dst": e.dst, **_describe(e, said)}
+             for e in scene.model.list_edges()]
     residue = list(meta.get("residue", []))
     if meta.get("utilities"):  # named as the picture names them
         residue.append("utilities: " + ", ".join((scene.find_element(u).get("label") or {}).get("prose", u) for u in meta["utilities"]

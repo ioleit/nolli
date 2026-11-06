@@ -40,9 +40,10 @@ class Change(Overlay):
         return None
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """On a change: every node and edge compared between the two sides' maps."""
+        """On a change: every node and edge compared between the two sides' maps. On a picture of
+        a commit: nothing changed, so nothing."""
         if not is_change(scene):
-            return Overlay.compute_all(self, scene)
+            return Overlay.compute_all(self, scene) if "change" in scene.model.meta else {}
         out: dict[Key, dict] = {}
         sides = {role: _Side(scene.sources[role]) for role in ("base", "head")}
         content = self.content.load(scene.model.key)

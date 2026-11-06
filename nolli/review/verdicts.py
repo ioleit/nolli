@@ -197,9 +197,10 @@ class Verdicts(Overlay):
         return dict(out)
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """On the change itself: the verdicts starting at each node, all at once."""
+        """On the change itself: the verdicts starting at each node, all at once; on a picture
+        of a commit, nothing."""
         if "source" in scene.sources:
-            return Overlay.compute_all(self, scene)
+            return Overlay.compute_all(self, scene) if "change" in scene.model.meta else {}
         return {x: {"starting": vs} for x, vs in self.group(scene).items()}
 
     def compute(self, el: Element) -> dict | None:
