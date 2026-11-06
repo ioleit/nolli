@@ -210,7 +210,7 @@ class Verdicts(Overlay):
             return None
         roots = [el.src, el.dst] if el.is_edge else [el.parent or el] if el.kind == "anchor" else [el]
         seen, vs = set(), []
-        for v in (v for r in roots for b in iter_boxes(r) for s in b.sources.get("source", ())
+        for v in (v for r in roots for b in _iter_boxes(r) for s in b.sources.get("source", ())
                   for v in (s.get(self.name) or {}).get("starting", [])):
             if v["id"] not in seen and _land(el.scene, v) == el.key:
                 seen.add(v["id"])
@@ -224,11 +224,11 @@ class Verdicts(Overlay):
                 "own": own, "inside": [v for v in vs if v not in own]}
 
 
-def iter_boxes(el: Element):
+def _iter_boxes(el: Element):
     """A drawn box and every box drawn inside it."""
     yield el
     for c in el.children:
-        yield from iter_boxes(c)
+        yield from _iter_boxes(c)
 
 
 def find_box(scene: Scene, x: str) -> str | None:

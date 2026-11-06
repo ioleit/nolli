@@ -135,10 +135,18 @@ def list_ancestors_to_unfold(g: Reader, x: str) -> list[str]:
 
 
 def list_changes(scene: Scene) -> list[dict]:
+    """A change's numbered changes, as the ``review`` overlay keeps them (``number_changes``,
+    once per change)."""
+    listed = [it for v in scene.read_all("review").values() for it in v.get("listed", ())]
+    return sorted(listed, key=lambda it: int(it["id"][1:]))
+
+
+def number_changes(scene: Scene) -> list[dict]:
     """The changes as a numbered list, in a stable order: components added or removed (a new
     module once, with its classes, not once per class), then dependencies between modules,
     then edited files. Each item names the nodes and facts it is about, so a verdict on it can
-    be shown on whatever box or edge contains them."""
+    be shown on whatever box or edge contains them. Computed by the ``review`` overlay, which
+    keeps the list; readers take it from there (``list_changes``)."""
     g = Reader(scene)
     links = Links(scene.model.meta.get("change") or {})
     comps, deps, content = [], [], []
