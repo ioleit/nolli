@@ -47,7 +47,7 @@ def test_brief(change):
     work = Path(change["verdicts"]).parent  # the agent's own directory, beside the store
     assert work == Path(change["brief"]).parent and work.parent.name == ".agent" and work.name == Path(change["dataset"]).name
     # the dataset holds what the store keeps of a change, nothing of the agent's
-    assert sorted(f.name for f in Path(change["dataset"]).iterdir()) == ["base", "change.json", "head", "key.json", "overlays"]
+    assert sorted(f.name for f in Path(change["dataset"]).iterdir()) == ["base", "change.json", "head", "key.json", "model.json", "overlays"]
 
 
 def test_check(change, capsys):

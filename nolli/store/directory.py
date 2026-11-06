@@ -112,7 +112,8 @@ class DirectoryStore(OverlayStore):
         self.cache[f] = (version, value)
         return value
 
-    def load_model(self, key: CommitKey) -> Model | None:
+    def load_model(self, key: ModelKey) -> Model | None:
+        """A commit's model; a change's merged model, if it was kept with the change."""
         self.check(key.repo)
         self.scan()
         d = self.places.get(key.format_key())
@@ -138,11 +139,11 @@ class DirectoryStore(OverlayStore):
         with self.lock:
             self.index[key], self.names[out.name], self.places[key.format_key()] = out, key, out
 
-    def save_change(self, key: ChangeKey, about: dict, sides, maps) -> None:
+    def save_change(self, key: ChangeKey, about: dict, sides, maps, model: Model | None = None) -> None:
         out = self.locate(key)
 
         def write(tmp: Path) -> None:
-            write_change(tmp, key, about, sides, maps)
+            write_change(tmp, key, about, sides, maps, model)
             kept = out / "overlays" / "verdicts.json"  # a review stays with the change it answers
             if kept.is_file() and "verdicts" not in maps:
                 shutil.copy2(kept, tmp / "overlays" / "verdicts.json")
@@ -233,10 +234,14 @@ def write_commit(d: Path, key: CommitKey, model: Model, maps: Mapping[str, Mappi
     _write_maps(d, model.key, maps)
 
 
-def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]]) -> None:
-    """A change's directory (``DirectoryStore``) at ``d``, which exists."""
+def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]], model: Model | None = None) -> None:
+    """A change's directory (``DirectoryStore``) at ``d``, which exists; ``model``: the change's
+    merged model (``nolli/transformations/merge.py``), kept so it is not merged again on every read."""
     (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
     (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": about}, indent=1))
+    if model is not None:
+        model.key = key.format_key()
+        model.save(d / "model.json")
     for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
         (d / side).mkdir(exist_ok=True)
         write_commit(d / side, commit, *sides[side])

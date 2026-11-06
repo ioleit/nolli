@@ -153,13 +153,20 @@ class Model:
     # -- model.json ----------------------------------------------------------
 
     def to_dict(self) -> dict:
-        return {"format": FORMAT, "key": self.key, "meta": self.meta,
-                "nodes": dict(sorted(self.kinds.items())),
-                "edges": [[e.kind, e.src, e.dst, e.subkind] for e in self.edges]}
+        """Its ``model.json`` form. A model made from others names their roles under ``refs``
+        when each of its elements stands for its namesake there (a change's sides); one that
+        refers to its sources element by element (a picture) is made again from them, not
+        written."""
+        if any(v is not None for v in self.refs.values()):
+            raise ValueError("a model that refers to its sources element by element is made again from them, not saved")
+        out = {"format": FORMAT, "key": self.key, "meta": self.meta,
+               "nodes": dict(sorted(self.kinds.items())),
+               "edges": [[e.kind, e.src, e.dst, e.subkind] for e in self.edges]}
+        if self.refs:
+            out["refs"] = dict.fromkeys(self.refs)
+        return out
 
     def save(self, path: Path) -> None:
-        if self.refs:
-            raise ValueError("a derived model is made again from its sources, not saved")
         path.write_text(json.dumps(self.to_dict(), indent=1))
 
     @classmethod
@@ -168,7 +175,7 @@ class Model:
         raises ``FormatError`` rather than be misread."""
         if d.get("format") != FORMAT:
             raise FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {FORMAT}")
-        return cls(d.get("key", ""), d["nodes"], (EdgeKey(*e) for e in d["edges"]), meta=d.get("meta") or {})
+        return cls(d.get("key", ""), d["nodes"], (EdgeKey(*e) for e in d["edges"]), refs=d.get("refs"), meta=d.get("meta") or {})
 
     @classmethod
     def load(cls, path: Path) -> Model:

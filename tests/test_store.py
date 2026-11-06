@@ -171,8 +171,9 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     sc = open_change_scene(store, first)
     assert sc.model.meta["change"]["title"] == "a cache" and sc.model.meta["change"]["base"] == shas[0]
     assert sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
-    assert sorted(f.name for f in store.locate(first).iterdir()) == ["base", "change.json", "head", "key.json", "overlays"]
-    assert sorted(f.name for f in (store.locate(first) / "overlays").iterdir()) == ["content.json"]  # nothing made from it
+    assert sorted(f.name for f in store.locate(first).iterdir()) == ["base", "change.json", "head", "key.json", "model.json", "overlays"]
+    assert sorted(f.name for f in (store.locate(first) / "overlays").iterdir()) == ["change.json", "content.json", "review.json"]
+    assert store.load_model(first).refs == {"base": None, "head": None}  # the merged model, each node its namesake on each side
 
     calls.clear()
     assert fetch_change(store, sources, first, run=counting(calls))["title"] == "a cache"
@@ -188,3 +189,34 @@ def test_extract_commit_names_the_root(src):
     assert m.has("repo:shop/store.py")
     m.key = "shop@0"
     assert open_built(m, maps).find_element("repo:").get("files")["name"] == "shop"
+
+
+def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, tmp_path):
+    """What a change says about itself (change, review) and its merged model are kept at diff
+    time and read back; a change kept without them (an older nolli) is computed on every read."""
+    from nolli.datasets import Datasets
+    from nolli.review.card import Review
+    from nolli.transformations.merge import Change
+    from nolli.transformations.projection import ProjectionSpec
+
+    path, shas = src
+    store, sources = DirectoryStore(tmp_path / "data"), LocalRepository(path)
+    change = Repo(str(path)).make_change(shas[0], shas[2])
+    fetch_change(store, sources, change, about={"title": "kept"})
+    datasets = Datasets(store)
+    kept = open_change_scene(store, change)
+    assert type(kept.overlays["change"]).__name__ == "PrecomputedOverlay" and kept.overlays["change"].find_kept(change.format_key())
+    assert store.open_maps("review").load_about(change.format_key())["overlay"] == "review"
+    computed = kept.with_overlays(Change(store.open_maps("content")), Review())  # the same scene, its own overlays computing
+    for preset in ("folded", "changes", "unfolded"):
+        assert datasets.draw_json(kept, ProjectionSpec(preset=preset)) == datasets.draw_json(computed, ProjectionSpec(preset=preset))
+    assert kept.read_all("change") == computed.read_all("change") and kept.read_all("review") == computed.read_all("review")
+    assert datasets.list_changes(kept) == datasets.list_changes(computed) and datasets.list_changes(kept)
+
+    for f in ("model.json", "overlays/change.json", "overlays/review.json"):  # a change kept by an older nolli
+        (store.locate(change) / f).unlink()
+    older = DirectoryStore(tmp_path / "data")
+    assert older.load_model(change) is None and older.open_maps("change").load(change.format_key()) == {}
+    old = open_change_scene(older, change)
+    assert old.overlays["change"].find_kept(change.format_key()) is None
+    assert Datasets(older).draw_json(old, ProjectionSpec(preset="changes")) == datasets.draw_json(kept, ProjectionSpec(preset="changes"))

@@ -32,10 +32,10 @@ from .sources.git import GitError, find_commit, find_head, find_remote
 from .sources.git import ChangeError, ChangeSpec, find_toplevel
 from .sources.git import resolve as resolve_spec, whole as resolve_whole
 from .store import ModelStore
-from .store.directory import write_change, write_commit
+from .store.directory import DirectoryStore, write_change, write_commit
 from .store.maps import MapStore, MemoryMaps
-from .scenes import merge_built, open_built, open_change_scene, open_commit_scene
-from .transformations.merge import is_change
+from .scenes import describe_change_meta, keep_change_scene, merge_built, open_built, open_change_scene, open_commit_scene
+from .transformations.merge import is_change, merge_models
 from .formats.mermaid import list_ids, render
 from .formats.viewer import export_scene
 from .formats.report import make_report
@@ -245,6 +245,8 @@ def diff_dataset(repo: Path, base_rev: str, head_rev: str, out: Path, about: dic
     about = {k: v for k, v in about.items() if v}
     about.update({"base": base, "head": head, "remote": key.repo.format_remote(), "nolli": version()})
     out.mkdir(parents=True, exist_ok=True)
-    write_change(out, key, about, sides, {"content": content})
     scene = merge_built(sides["base"], sides["head"], key.format_key(), about, content)
+    merged = merge_models(key.format_key(), sides["base"][0], sides["head"][0], describe_change_meta(sides["base"][0], sides["head"][0], about))
+    write_change(out, key, about, sides, {"content": content}, merged)
+    keep_change_scene(DirectoryStore(out.parent), key, {"nolli": version()})  # the directory as nolli serve reads it
     return about, write_extras(Datasets(MemoryMaps()), scene, out)

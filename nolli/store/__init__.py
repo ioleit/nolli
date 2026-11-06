@@ -43,9 +43,10 @@ class ModelStore(MapStore, Protocol):
     def list_names(self) -> list[str]:
         """The names of the stored models this request may read, newest first."""
 
-    def load_model(self, key: CommitKey) -> Model | None:
-        """A commit's model, None if there is none (or of another format). Raises NotAllowed if
-        this request may not read ``key.repo``."""
+    def load_model(self, key: ModelKey) -> Model | None:
+        """A commit's model, or a change's merged model if it was kept with the change; None if
+        there is none (or of another format). Raises NotAllowed if this request may not read
+        ``key.repo``."""
 
     def save_model(self, key: CommitKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         """Keep a commit's model and the maps its extractors made, replacing what was kept."""
@@ -55,10 +56,11 @@ class ModelStore(MapStore, Protocol):
         Raises NotAllowed as load_model."""
 
     def save_change(self, key: ChangeKey, about: dict, sides: Mapping[str, tuple[Model, Mapping[str, Mapping[Key, dict]]]],
-                    maps: Mapping[str, Mapping[Key, dict]]) -> None:
+                    maps: Mapping[str, Mapping[Key, dict]], model: Model | None = None) -> None:
         """Keep a change: what it says about itself, its two commits' models (``base``, ``head``:
-        model and maps, kept with it so a change is all in one place) and the maps kept for the
-        change itself. Maps saved for it since (a review's verdicts) stay."""
+        model and maps, kept with it so a change is all in one place), the maps kept for the
+        change itself, and its merged model (``model``), so that it is not merged again on every
+        read. Maps saved for it since (a review's verdicts) stay."""
 
 
 

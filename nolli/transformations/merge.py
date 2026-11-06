@@ -287,17 +287,25 @@ class SidesSaid(Overlay):
         return out
 
 
-def union(key: str, meta: dict | None = None):
-    """Merge as a transformation: of two scenes by role (``base``, ``head``), the model holding
-    every node and edge of either, each referring to its namesake on each side. Same address,
-    same thing: a node or edge is the same on both sides when its address is, and what
-    extraction said about it on the sides is the change's (``SidesSaid``, one per shape)."""
+def merge_models(key: str, base: Model, head: Model, meta: dict | None = None) -> Model:
+    """The model holding every node and edge of either side, each referring to its namesake on
+    each side (``refs``). Same address, same thing: a node or edge is the same on both sides
+    when its address is; a node owned on both sides is owned as head has it."""
+    kinds = {**base.kinds, **head.kinds}
+    owned = {e.dst for e in head.edges if e.kind == metamodel.CONTAIN}
+    edges = list(head.edges) + [e for e in base.edges if not (e.kind == metamodel.CONTAIN and e.dst in owned)]
+    return Model(key, kinds, edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
+
+
+def union(key: str, meta: dict | None = None, kept: Model | None = None):
+    """Merge as a transformation: of two scenes by role (``base``, ``head``), the merged model
+    (``merge_models``, or ``kept``: the same as it was kept at diff time, with ``meta`` on top),
+    and what extraction said about it on the sides as the change's (``SidesSaid``, one per
+    shape)."""
     def make(sides: dict[str, Scene]) -> tuple[Model, list[Overlay]]:
-        base, head = sides["base"], sides["head"]
-        kinds = {**base.model.kinds, **head.model.kinds}
-        owned = {e.dst for e in head.model.edges if e.kind == metamodel.CONTAIN}
-        edges = list(head.model.edges) + [e for e in base.model.edges if not (e.kind == metamodel.CONTAIN and e.dst in owned)]
-        model = Model(key, kinds, edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
-        return model, [SidesSaid(n) for n in vocabulary.SHAPES]
+        if kept is None:
+            return merge_models(key, sides["base"].model, sides["head"].model, meta), [SidesSaid(n) for n in vocabulary.SHAPES]
+        kept.meta = {**kept.meta, **(meta or {})}
+        return kept, [SidesSaid(n) for n in vocabulary.SHAPES]
 
     return make

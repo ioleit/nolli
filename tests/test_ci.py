@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from nolli.review.ci import is_key, _key_of, _read_result
-from nolli.scenes import open_change_scene
+from nolli.scenes import keep_change_scene, open_change_scene
 from nolli.cli import main
 from nolli.store import DirectoryStore
 
@@ -46,10 +46,13 @@ def dataset(tmp_path: Path, capsys) -> Path:
 
 
 def edit_about(ds: Path, edit) -> None:
-    """Change what the dataset's change says about itself (change.json)."""
+    """Change what the dataset's change says about itself (change.json), and keep again what
+    was made from it."""
     c = json.loads((ds / "change.json").read_text())
     c["about"] = edit(c["about"])
     (ds / "change.json").write_text(json.dumps(c))
+    store = DirectoryStore(ds.parent)
+    keep_change_scene(store, store.find_key(ds.name))
 
 
 def review(ds: Path, verdicts: list[dict], capsys) -> None:

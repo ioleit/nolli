@@ -21,6 +21,8 @@ from nolli.progress import Progress, Quiet
 from nolli.sources import Sources, git
 from nolli.store import ModelStore
 from nolli.store.maps import Maps, MapStore
+from nolli.transformations import merge
+from nolli import scenes
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
@@ -152,5 +154,7 @@ def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, abou
     record = {k: v for k, v in (about or {}).items() if v}
     record.update({"base": change.base, "head": change.head, "remote": change.repo.format_remote(), "nolli": version()})
     with progress.step("keeping the change"):
-        store.save_change(change, record, sides, {"content": content})
+        meta = scenes.describe_change_meta(sides["base"][0], sides["head"][0], record)
+        store.save_change(change, record, sides, {"content": content}, merge.merge_models(change.format_key(), sides["base"][0], sides["head"][0], meta))
+        scenes.keep_change_scene(store, change, {"nolli": version()})
     return record
