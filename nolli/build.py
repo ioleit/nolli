@@ -106,7 +106,7 @@ def is_fresh(m: Model | dict | None) -> bool:
 
 
 def _load_maps(store: MapStore, m: Model) -> Maps:
-    return {n: dict(store.open_maps(n).load(m.key)) for n in m.meta.get("overlays") or []}
+    return {n: dict(store.open_maps(n).load(m.key)) for n in store.list_map_names(m.key)}
 
 
 def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = run_here,

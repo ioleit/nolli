@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nolli import transformations
-from nolli.model import Key, Model
+from nolli.model import Key, Model, vocabulary
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey
 from nolli.model.scene import Overlay, Scene
 from nolli.store import ModelStore
@@ -18,7 +18,7 @@ from nolli.transformations import merge
 
 
 def _make_overlays(maps: MapStore) -> list[Overlay]:
-    """The overlays nolli shows on any scene, on top of the extractors'."""
+    """The overlays nolli shows on any scene, on top of what extraction said."""
     from nolli.formats.descriptions.hover import Hover
     from nolli.formats.descriptions.label import Label
     from nolli.review.card import Review
@@ -29,10 +29,11 @@ def _make_overlays(maps: MapStore) -> list[Overlay]:
 
 
 def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
-    """An extracted model with the maps the store keeps for it (its extractors' word, each a
-    precomputed overlay) and nolli's overlays (or ``overlays``)."""
-    kept = [maps.precomputed_overlay(n) for n in maps.list_map_names(model.key)]
-    return Scene(model, [*kept, *(_make_overlays(maps) if overlays is None else overlays)])
+    """A model as a scene with nolli's default overlays: what extraction said, by shape, as
+    precomputed overlays (one that was never extracted for this model says nothing), and
+    nolli's own (or ``overlays``)."""
+    said = [maps.precomputed_overlay(n) for n in vocabulary.SHAPES]
+    return Scene(model, [*said, *(_make_overlays(maps) if overlays is None else overlays)])
 
 
 def open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:
@@ -52,15 +53,8 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
         return None
     meta = {"repo": head.model.meta.get("repo"), "commit": change.head[:7], "files": head.model.meta.get("files"),
             "languages": {**base.model.meta.get("languages", {}), **head.model.meta.get("languages", {})},
-            **_join_readers(base.model.meta, head.model.meta),
             "change": merge.describe_change(about, store.open_maps("content").load(change.format_key()))}
     return transformations.apply({"base": base, "head": head}, merge.union(change.format_key(), meta))
-
-
-def _join_readers(base: dict, head: dict) -> dict:
-    """Who says what in a change: the overlays both sides' extractors wrote, each language's symbols."""
-    return {"overlays": sorted(set(base.get("overlays") or []) | set(head.get("overlays") or [])),
-            "symbols": {**(base.get("symbols") or {}), **(head.get("symbols") or {})}}
 
 
 def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
@@ -80,7 +74,7 @@ def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, ab
     bs, hs = (_open_scene(m, store, overlays) for m, _ in (base, head))
     meta = {"repo": hs.model.meta.get("repo"), "commit": about.get("head", "")[:7], "files": hs.model.meta.get("files"),
             "languages": {**bs.model.meta.get("languages", {}), **hs.model.meta.get("languages", {})},
-            **_join_readers(bs.model.meta, hs.model.meta), "change": merge.describe_change(about, content)}
+            "change": merge.describe_change(about, content)}
     return transformations.apply({"base": bs, "head": hs}, merge.union(key, meta))
 
 

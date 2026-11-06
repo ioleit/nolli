@@ -206,7 +206,6 @@ class Facts:
             _check_reference(ref, p.extractor if p else "unknown", k)
             maps[vocabulary.REFERENCES].setdefault(k, {"references": []})["references"].append(ref)
         model = Model(key, {x: e.kind for x, e in self.entities.items()}, edges, meta=dict(self.meta))
-        model.meta["overlays"] = sorted(maps)
         return model, {name: dict(v) for name, v in sorted(maps.items())}
 
 

@@ -6,21 +6,7 @@ from nolli.formats import mermaid
 from nolli.model.scene import Element, Scene
 
 FORMAT = 1
-
-def _list_extracted(scene: Scene) -> set[str]:
-    """The overlays the extractors wrote (each extracted model names its own), all the way down."""
-    out, stack = {"facts"}, [scene]
-    while stack:
-        s = stack.pop()
-        out |= set(s.model.meta.get("overlays") or [])
-        stack.extend(s.sources.values())
-    return out
-
-
-def _list_exported(scene: Scene) -> list[str]:
-    """Every overlay but the extractors': they are read by the others, not shown as they are."""
-    left_out = _list_extracted(scene)
-    return [n for n in scene.overlays if n not in left_out]
+SHOWN = ("projection", "label", "hover", "change", "verdicts", "review")  # the overlays the viewer draws, in this order
 
 
 def _describe(el: Element, names: list[str]) -> dict:
@@ -28,16 +14,15 @@ def _describe(el: Element, names: list[str]) -> dict:
 
 
 def export_scene(scene: Scene) -> dict:
-    """A projected scene as JSON: every drawn box and edge with the properties every overlay
-    gives it, under the overlay's name (``projection``, ``label``, ``hover``, ``change``,
-    ``verdicts``, ``review``, and whatever else the scene has). The extractors' overlays are
-    left out.
+    """A projected scene as JSON: every drawn box and edge with the properties the overlays
+    the viewer draws give it (``SHOWN``), under the overlay's name. What extraction said is
+    read by those, not shown as it is.
 
     Boxes come in drawing order, each naming its drawn parent. Ids are stable across states
     (addresses, ``<id>#`` for a module's own code, ``kind|src|dst|subkind`` for edges), so a
     client can diff two scenes to animate the step between them."""
     meta = scene.model.meta.get("projection", {})
-    names = _list_exported(scene)
+    names = [n for n in SHOWN if n in scene.overlays]
     order = mermaid.list_drawing_order(scene)
     nodes = [{"id": x, "kind": scene.model.kinds[x], "parent": scene.model.find_parent(x), **_describe(scene.find_element(x), names)}
              for x in order]
