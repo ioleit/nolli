@@ -4,6 +4,43 @@ Everything here is provisional. Each entry is a choice made while building the p
 on a few repositories, with the reason, so a later change knows what it is undoing.
 Nothing is a settled design.
 
+## Model, overlays and scenes
+
+- The model is structure only (`nolli/model/`): nodes are addresses with a kind, and edges
+  are a kind (`contain` among them), two ends and a subkind. A derived model also refers
+  to what each of its elements stands for in the models it was made from (`refs`).
+  Structure is what a sound graph needs: addresses (their namespace is in them), node
+  kinds and edge kinds, the metamodel's checks. Everything else goes in overlays: names,
+  roles, sizes, docstrings, an import's lines, a review's verdict.
+- An overlay is code that answers for one element (`compute(element)`, `nolli/model/scene.py`), and for every element of a scene at once (`compute_all(scene)`, by default `compute` asked about each; a stored overlay answers with its map). Code that reads a whole model (the fold's `Reading`, the descriptions, the review) reads maps (`scene.read_all(name)`, `vocabulary.read_all_*`), not element by element: that is what keeps a request cheap.
+  The element carries what the overlay needs: its key and kind, what it stands for
+  (`sources`), and a way to ask other overlays. Where an overlay's knowledge comes from is
+  its own business. It may use a map it keeps in the store, by model key, through a handle
+  restricted to its name (`open_maps(name)`). It may compute its answer each time. It may
+  combine what its sources' elements say.
+  - Extraction writes one map per extractor. `facts` merges them for code that does not
+    care which extractor said what.
+  - nolli's own overlays are `change`, `verdicts`, `label`, `hover` and `review`.
+    `projection` is what a projection decided.
+- A scene is a model, its overlays, and the scenes its references point into.
+  Transformations take a scene and return one:
+  - `merge` gives a change, which refers to `base` and `head`;
+  - `project` gives a picture, which refers to its `source`.
+
+  Rolling up is therefore nothing special: an overlay asked about a folded box asks the
+  box's sources and combines their answers its own way. The verdicts overlay keeps the
+  worst verdict and counts them; the hover text counts kinds. A transformation that needs
+  more than structure (hiding tests, the "changes" preset) reads overlays too.
+- Why: an overlay can be added without touching anything else, a verdict-shaped one for
+  an experiment for instance, and models can be shown before every overlay is computed.
+  The cost is managing stored maps beside the models.
+- Stored data carries a format (model.json, key.json, change.json, each map). Data of
+  another format is never read but built again. There are no migrations while nolli has
+  no users.
+- Exporters take a scene. The viewer's JSON gives each element every overlay under that
+  overlay's name, so a new overlay shows up without code in the exporter. Mermaid picks
+  what it draws.
+
 ## Model
 
 - Vocabulary from UML 2 component/deployment diagrams: artifacts (directory, file),
@@ -51,10 +88,11 @@ Nothing is a settled design.
 
 ## Extraction
 
-- Two layers that know nothing of each other's code: extraction (`extractors/`, `match`)
-  writes the graph; the operations on it (roll-up, labels, hover text, scene, Mermaid,
-  diff) read only the graph. What they need to know about a language is a fact in the
-  model, written by the file tree: a file is a `module`, a package body is `body` (what
+- Two layers that know nothing of each other's code. Extraction (`extractors/`, `match`)
+  writes the facts: structure plus one overlay map per extractor (`extractors/facts.py`
+  records which extractor wrote each attribute). The operations on them (merge,
+  projection, the overlays, the exporters) read only scenes. What they need to know about
+  a language is a fact the file tree writes: a file is a `module`, a package body is `body` (what
   it makes its folder: "package", "folder module"), and `meta["languages"]` names the
   languages. Symbol kinds are the model's vocabulary (`model.SYMBOL_KINDS`), so their
   icons and nouns live with the picture. A dataset therefore describes itself; one
@@ -147,8 +185,10 @@ Nothing is a settled design.
   or with a different reference count) and content (changed lines per file and per
   class, from `git diff -M -U0`). Content is recorded even when nothing structural
   changed, so a review can still point at it. Classes record their end line for this.
-- Records sit in `attrs["diff"]` only on what changed; base and head commits and the
-  GitHub remote are in `meta["diff"]`, enough to build links later.
+- What changed is the `change` overlay's to say (`nolli/transformations/merge.py`). It compares
+  what the two sides' overlays say, and takes git's hunks from the change's `content` map,
+  so merge reads no git. Base and head commits and the GitHub remote are what the change
+  says about itself (`meta["change"]`), enough to build links later.
 
 ## Review mode (first version)
 

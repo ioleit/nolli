@@ -6,8 +6,8 @@ report the timings.
 Datasets are written to <data_dir>/<name>-<short sha> (the sha of the repository's
 HEAD, or "wip" when it has uncommitted changes); older datasets of the same name are
 removed so the viewer shows one per repository. Diffs ([[diff]] entries: name, repo,
-base, head, and optionally pr and title) go to <data_dir>/<name>; a verdicts.json there
-is kept.
+base, head, and optionally pr and title) go to <data_dir>/<name>; a review kept there
+(overlays/verdicts.json) stays.
 """
 
 from __future__ import annotations

@@ -1,200 +1,182 @@
-"""nolli's data model: the facts about one codebase, and what such facts may be.
+"""The structure of one codebase, as nodes and the edges between them.
 
-Three levels, a module each:
-
-- a *model* is the graph of one codebase: entities and typed relations with provenance,
-  held by ``Model`` (here) and saved as a dataset's ``model.json``;
-- the *metamodel* says what any model may contain: kinds, namespaces, which relations
-  connect which namespaces (``metamodel.py``); ``Model`` checks every fact against it;
-- an *address* is how an entity's id is spelled in its namespace (``address.py``).
-
-Relations are stored at the finest level an extractor could resolve. Coarser
-edges are derived by rolling up through ``contain`` (see ``rollup.py``), never
-stored. Every tuple carries provenance (extractor, path, line) and a
-confidence class: ``exact`` (resolved by construction), ``heuristic`` (matched
-by name or pattern) or ``statistical`` (inferred from history).
+A model holds structure only: what else is known about a node or an edge belongs in overlays.
 """
 
 from __future__ import annotations
 
 import json
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator
 
-from . import address, metamodel
-from .metamodel import (  # noqa: F401 (the vocabulary, as callers import it)
-    ALLOCATE,
-    ARTIFACT_KINDS,
-    COMPONENT_KINDS,
-    CONTAIN,
-    ENTITY_KINDS,
-    INTERFACE_KINDS,
-    OTHER_KINDS,
-    PROVIDE,
-    RELATION_KINDS,
-    SYMBOL_KINDS,
-    USE,
-)
+from nolli.model import address, metamodel
+
+FORMAT = 3  # of model.json; a model of another format is built again, never read (3: its maps are by shape, meta names no overlays)
 
 
-@dataclass
-class Provenance:
-    extractor: str
-    path: str | None = None
-    line: int | None = None
+class FormatError(ValueError):
+    """Stored data of a format this version of nolli does not read."""
 
 
-@dataclass
-class Entity:
-    id: str
-    kind: str
-    name: str
-    attrs: dict = field(default_factory=dict)
-    provenance: Provenance | None = None
+@dataclass(frozen=True, order=True)
+class EdgeKey:
+    """An edge's address: its kind, its two ends and its subkind (how a use was found:
+    ``import``, ``ref``, ``http``, …)."""
 
-
-@dataclass
-class Relation:
     kind: str
     src: str
     dst: str
     subkind: str = ""
-    count: int = 1
-    confidence: str = "exact"
-    provenance: Provenance | None = None
-    attrs: dict = field(default_factory=dict)
+    _hash: int = field(init=False, repr=False, compare=False, default=0)  # computed once: a key is hashed on every lookup
 
-    @property
-    def key(self) -> tuple[str, str, str, str]:
-        return (self.kind, self.src, self.dst, self.subkind)
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_hash", hash((self.kind, self.src, self.dst, self.subkind)))
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def format(self) -> str:
+        """``kind|src|dst|subkind``: how the viewer, verdicts and changes name an edge."""
+        return f"{self.kind}|{self.src}|{self.dst}|{self.subkind}"
+
+    @classmethod
+    def parse(cls, s: str) -> EdgeKey:
+        kind, src, dst, sub = s.split("|", 3)
+        return cls(kind, src, dst, sub)
+
+
+Key = str | EdgeKey  # a node's address, or an edge's
 
 
 class Model:
-    def __init__(self) -> None:
-        self.entities: dict[str, Entity] = {}
-        self.relations: list[Relation] = []
-        self.meta: dict = {}
-        self._parent: dict[str, str] | None = None
-        self._children: dict[str, list[str]] | None = None
+    """Structure: ``kinds`` (each node's address -> its kind), ``edges``, and for a model made
+    by a transformation (a change, a projection) ``refs`` (role -> element -> the elements of
+    that source it stands for). ``contain`` edges form the ownership tree. ``key`` names the
+    model (what it is the model of: ``nolli/store/`` keys); its maps are kept by it.
 
-    # -- building ---------------------------------------------------------
+    Everything else known about a node or an edge (its name, size, role, a docstring, which
+    lines an import is on, a review's verdict) is in overlays, never in the model. Every
+    entity and relation is checked against the metamodel unless ``check`` is False."""
 
-    def add_entity(self, e: Entity) -> Entity:
-        metamodel.check_entity(e.id, address.scheme_of(e.id), address.is_root(e.id), e.kind)
-        existing = self.entities.get(e.id)
-        if existing:
-            if existing.kind != e.kind:
-                raise ValueError(f"{e.id} is a {existing.kind}, not a {e.kind}")
-            existing.attrs.update({k: v for k, v in e.attrs.items() if k not in existing.attrs})
-            return existing
-        self.entities[e.id] = e
-        self._parent = self._children = None
-        return e
-
-    def add_relation(self, r: Relation) -> Relation:
-        if r.src not in self.entities or r.dst not in self.entities:
-            missing = r.src if r.src not in self.entities else r.dst
-            raise KeyError(f"relation {r.kind} {r.src} -> {r.dst}: unknown entity {missing}")
-        metamodel.check_relation(r.kind, r.src, r.dst, address.scheme_of(r.src), address.scheme_of(r.dst))
-        if r.kind == CONTAIN:
-            self._parent = self._children = None
-        self.relations.append(r)
-        return r
-
-    def ensure_root(self, scheme: str, extractor: str) -> str:
-        """The root of a namespace (``metamodel.py``), added if missing."""
-        rid, ns = address.root(scheme), metamodel.NAMESPACES[scheme]
-        if rid not in self.entities:
-            self.add_entity(Entity(rid, ns.root_kind, ns.title, {"synthetic": True}, Provenance(extractor)))
-        return rid
-
-    def contain(self, parent: str, child: str, extractor: str) -> None:
-        self.add_relation(Relation(CONTAIN, parent, child, provenance=Provenance(extractor)))
-
-    def has(self, entity_id: str) -> bool:
-        return entity_id in self.entities
-
-    # -- the containment forest ----------------------------------------------
-
-    def _index(self) -> None:
-        if self._parent is not None:
-            return
+    def __init__(self, key: str = "", kinds: dict[str, str] | None = None, edges: Iterable[EdgeKey] = (),
+                 refs: dict[str, dict[Key, tuple[Key, ...]]] | None = None, meta: dict | None = None,
+                 check: bool = True) -> None:
+        self.key = key
+        self.kinds: dict[str, str] = dict(kinds or {})
+        self.edges: list[EdgeKey] = sorted(set(edges))
+        self.refs = refs or {}
+        self.meta: dict = meta or {}
+        self._edge_set = set(self.edges)
         parent: dict[str, str] = {}
         children: dict[str, list[str]] = defaultdict(list)
-        for r in self.relations:
-            if r.kind == CONTAIN:
-                if r.dst in parent and parent[r.dst] != r.src:
-                    raise ValueError(f"{r.dst} has two owners: {parent[r.dst]} and {r.src}")
-                parent[r.dst] = r.src
-                children[r.src].append(r.dst)
+        out: dict[str, list[EdgeKey]] = defaultdict(list)
+        into: dict[str, list[EdgeKey]] = defaultdict(list)
+        for e in self.edges:
+            if check:
+                if e.src not in self.kinds or e.dst not in self.kinds:
+                    raise KeyError(f"edge {e.format()}: unknown node {e.src if e.src not in self.kinds else e.dst}")
+                metamodel.check_relation(e.kind, e.src, e.dst, address.scheme_of(e.src), address.scheme_of(e.dst))
+            if e.kind == metamodel.CONTAIN:
+                if e.dst in parent and parent[e.dst] != e.src:
+                    raise ValueError(f"{e.dst} has two owners: {parent[e.dst]} and {e.src}")
+                parent[e.dst] = e.src
+                children[e.src].append(e.dst)
+            else:
+                out[e.src].append(e)
+                into[e.dst].append(e)
+        if check:
+            for x, kind in self.kinds.items():
+                metamodel.check_entity(x, address.scheme_of(x), address.is_root(x), kind)
         for v in children.values():
             v.sort()
-        self._parent, self._children = parent, children
+        self._parent, self._children, self._out, self._in = parent, dict(children), dict(out), dict(into)
+        self._roots = sorted(x for x in self.kinds if x not in parent)
 
-    def parent(self, entity_id: str) -> str | None:
-        self._index()
-        return self._parent.get(entity_id)  # type: ignore[union-attr]
+    # -- structure -----------------------------------------------------------
 
-    def children(self, entity_id: str) -> list[str]:
-        self._index()
-        return self._children.get(entity_id, [])  # type: ignore[union-attr]
+    def has(self, key: Key) -> bool:
+        return key in self._edge_set if isinstance(key, EdgeKey) else key in self.kinds
 
-    def roots(self) -> list[str]:
-        self._index()
-        return sorted(e for e in self.entities if e not in self._parent)  # type: ignore[operator]
+    def find_kind(self, key: Key) -> str:
+        return key.kind if isinstance(key, EdgeKey) else self.kinds[key]
 
-    def ancestors(self, entity_id: str) -> Iterator[str]:
-        p = self.parent(entity_id)
+    def find_parent(self, x: str) -> str | None:
+        return self._parent.get(x)
+
+    def list_children(self, x: str) -> list[str]:
+        return self._children.get(x, [])
+
+    def list_roots(self) -> list[str]:
+        return self._roots
+
+    def iter_ancestors(self, x: str) -> Iterator[str]:
+        p = self._parent.get(x)
         while p is not None:
             yield p
-            p = self.parent(p)
+            p = self._parent.get(p)
 
-    def descendants(self, entity_id: str) -> Iterator[str]:
-        stack = list(self.children(entity_id))
+    def iter_descendants(self, x: str) -> Iterator[str]:
+        stack = list(self.list_children(x))
         while stack:
             c = stack.pop()
             yield c
-            stack.extend(self.children(c))
+            stack.extend(self.list_children(c))
 
-    def relations_of(self, kinds: Iterable[str] = (USE, PROVIDE, ALLOCATE)) -> list[Relation]:
-        ks = set(kinds)
-        return [r for r in self.relations if r.kind in ks]
+    def list_edges(self, kinds: Iterable[str] | None = None) -> list[EdgeKey]:
+        """Edges other than ``contain`` (or of ``kinds``)."""
+        ks = set(kinds) if kinds is not None else None
+        return [e for e in self.edges if (e.kind in ks if ks is not None else e.kind != metamodel.CONTAIN)]
 
-    # -- serialization -----------------------------------------------------
+    def list_out(self, x: str) -> list[EdgeKey]:
+        """Edges (but ``contain``) from ``x``."""
+        return self._out.get(x, [])
+
+    def list_in(self, x: str) -> list[EdgeKey]:
+        return self._in.get(x, [])
+
+    def select(self, keep) -> Model:
+        """The part of this model with the nodes ``keep`` names and the edges between them (an
+        edge in ``keep`` too), each referring to itself here (``refs``: the same key)."""
+        keep = set(keep)
+        kinds = {x: k for x, k in self.kinds.items() if x in keep}
+        edges = [e for e in self.edges if e.src in kinds and e.dst in kinds]
+        return Model(f"{self.key}|select", kinds, edges, refs={"source": None}, check=False)
+
+    def count_nodes_by_kind(self) -> dict[str, int]:
+        out: dict[str, int] = defaultdict(int)
+        for k in self.kinds.values():
+            out[k] += 1
+        return dict(sorted(out.items()))
+
+    # -- model.json ----------------------------------------------------------
 
     def to_dict(self) -> dict:
-        return {
-            "meta": self.meta,
-            "entities": [asdict(e) for e in sorted(self.entities.values(), key=lambda e: e.id)],
-            "relations": [asdict(r) for r in self.relations],
-        }
+        """Its ``model.json`` form. A model made from others names their roles under ``refs``
+        when each of its elements stands for its namesake there (a change's sides); one that
+        refers to its sources element by element (a picture) is made again from them, not
+        written."""
+        if any(v is not None for v in self.refs.values()):
+            raise ValueError("a model that refers to its sources element by element is made again from them, not saved")
+        out = {"format": FORMAT, "key": self.key, "meta": self.meta,
+               "nodes": dict(sorted(self.kinds.items())),
+               "edges": [[e.kind, e.src, e.dst, e.subkind] for e in self.edges]}
+        if self.refs:
+            out["refs"] = dict.fromkeys(self.refs)
+        return out
 
     def save(self, path: Path) -> None:
-        path.write_text(json.dumps(self.to_dict(), indent=1, sort_keys=False))
+        path.write_text(json.dumps(self.to_dict(), indent=1))
 
     @classmethod
-    def load(cls, path: Path) -> "Model":
+    def from_dict(cls, d: dict) -> Model:
+        """A model from its ``model.json`` form, which carries its ``format``; another format
+        raises ``FormatError`` rather than be misread."""
+        if d.get("format") != FORMAT:
+            raise FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {FORMAT}")
+        return cls(d.get("key", ""), d["nodes"], (EdgeKey(*e) for e in d["edges"]), refs=d.get("refs"), meta=d.get("meta") or {})
+
+    @classmethod
+    def load(cls, path: Path) -> Model:
         return cls.from_dict(json.loads(path.read_text()))
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "Model":
-        m = cls()
-        m.meta = d.get("meta", {})
-        for e in d["entities"]:
-            prov = e.pop("provenance", None)
-            m.add_entity(Entity(**e, provenance=Provenance(**prov) if prov else None))
-        for r in d["relations"]:
-            prov = r.pop("provenance", None)
-            m.add_relation(Relation(**r, provenance=Provenance(**prov) if prov else None))
-        return m
-
-    def summary(self) -> dict:
-        by_kind: dict[str, int] = defaultdict(int)
-        for e in self.entities.values():
-            by_kind[e.kind] += 1
-        rel: dict[str, int] = defaultdict(int)
-        for r in self.relations:
-            rel[f"{r.kind}/{r.subkind}" if r.subkind else r.kind] += 1
-        return {"entities": dict(sorted(by_kind.items())), "relations": dict(sorted(rel.items()))}

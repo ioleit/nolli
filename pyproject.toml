@@ -37,12 +37,12 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 # The viewer lives in viewer/ (with its Node tooling for type checks and tests) and is
-# installed as nolli.viewer: serve.py, the page and its scripts (libraries come from a CDN).
+# installed as nolli.viewer: the page and its scripts (libraries come from a CDN); the server is nolli.server.
 [tool.setuptools]
 # Every directory with an __init__.py, listed (tests/test_packaging.py checks it).
-packages = ["nolli", "nolli.model", "nolli.extractors", "nolli.extractors.infra", "nolli.extractors.markup",
+packages = ["nolli", "nolli.model", "nolli.formats", "nolli.sources", "nolli.transformations", "nolli.extractors", "nolli.extractors.infra", "nolli.extractors.markup",
             "nolli.extractors.python",
-            "nolli.extractors.typescript", "nolli.viewer"]
+            "nolli.extractors.typescript", "nolli.review", "nolli.server", "nolli.store", "nolli.formats.descriptions", "nolli.viewer"]
 
 [tool.setuptools.package-dir]
 "nolli.viewer" = "viewer"
@@ -53,3 +53,12 @@ packages = ["nolli", "nolli.model", "nolli.extractors", "nolli.extractors.infra"
 
 [tool.ruff]
 line-length = 110
+
+[tool.ruff.lint]
+# ruff's own rules, and no relative imports: every module names the package it imports from
+extend-select = ["TID252"]
+# nested ifs that each say one thing; a bad file is a ValueError, whatever is wrong in it
+ignore = ["SIM102", "TRY004"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"

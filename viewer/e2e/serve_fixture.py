@@ -9,11 +9,11 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT), str(ROOT / "viewer"), str(ROOT / "tests" / "fixtures")]
+sys.path[:0] = [str(ROOT), str(ROOT / "tests" / "fixtures")]
 
 import nav_repo  # noqa: E402
 import review_repo  # noqa: E402
-from serve import make_server  # noqa: E402
+from nolli.server.serve import make_server  # noqa: E402
 
 with tempfile.TemporaryDirectory(prefix="nolli-e2e-") as tmp:
     data = review_repo.build(Path(tmp)).parent

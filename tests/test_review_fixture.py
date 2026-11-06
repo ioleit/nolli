@@ -8,10 +8,11 @@ import json
 import sys
 from pathlib import Path
 
+from helpers import draw, find_node
+from nolli.scenes import open_change_scene
 from nolli.cli import main
-from nolli.model import Model
-from nolli.review import read_verdicts, resolve_verdicts
-from nolli.scene import SceneState, scene
+from nolli.review.verdicts import describe_verdicts
+from nolli.store import DirectoryStore
 
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
 import review_repo  # noqa: E402
@@ -30,11 +31,12 @@ def test_verdict_on_a_bundled_edge(tmp_path):
     lines between two boxes, the endpoints client.ts calls are drawn as one edge to the API's
     box: the verdict goes on that edge, not on client.ts."""
     ds = review_repo.build(tmp_path)
-    m = Model.load(ds / "model.json")
-    verdicts = read_verdicts((ds / "verdicts.json").read_text())
-    v = next(r for r in resolve_verdicts(m, verdicts) if r["target"].startswith("n_repo_web_src_client_ts ==>"))
-    s = scene(m, SceneState(expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"], max_lines=2), verdicts)
+    store = DirectoryStore(ds.parent)
+    sc = open_change_scene(store, store.find_key(ds.name))
+    verdicts = sc.overlays["verdicts"].load(sc)  # the review kept with the dataset
+    v = next(r for r in describe_verdicts(sc, verdicts) if r["target"].startswith("n_repo_web_src_client_ts ==>"))
+    s = draw(sc, expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"], max_lines=2)
     edge = next(e for e in s["edges"] if e["src"] == "repo:web/src/client.ts" and e["kind"] == "use" and e["subkind"] == "http")
     assert edge["dst"] == "api:http:ledger/api/app.py:app"
-    assert edge["verdict"] == "question"
-    assert next(n for n in s["nodes"] if n["id"] == "repo:web/src/client.ts")["verdict"] is None
+    assert edge["verdicts"]["verdict"] == "question"
+    assert find_node(s, "repo:web/src/client.ts")["verdicts"]["verdict"] is None

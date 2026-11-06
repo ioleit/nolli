@@ -1,12 +1,6 @@
-"""HTTP endpoints provided by Python web code (FastAPI/Starlette style).
+"""Finds the HTTP endpoints that Python web apps define.
 
-Finds ``@<router>.<method>("<path>")`` decorators, ``APIRouter(prefix=...)``
-declarations and ``<parent>.include_router(<child>, prefix=...)`` calls, and
-composes full paths by following include chains from ``FastAPI()`` apps.
-Each route is reported to the shared API structure (``extractors/api.py``) as an
-operation of the app it is mounted in, provided by the file that defines the
-handler. Routers that are never included anywhere are APIs of their own (their
-prefix stands alone), marked heuristic.
+Covers route decorators and router mounting in FastAPI, Starlette and Flask style.
 """
 
 from __future__ import annotations
@@ -14,10 +8,9 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
-from ...model import address
-from .. import Context, api
-from .resolve import module_candidates
-from .imports import module_name_of
+from nolli.extractors import Context, api
+from nolli.extractors.python import imports, resolve
+from nolli.model import address
 
 METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "websocket", "api_route"}
 
@@ -33,11 +26,11 @@ class RouterVar:
     included_by: int = 0
 
 
-def const_str(node) -> str | None:
+def _const_str(node) -> str | None:
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
 
 
-def kw(call: ast.Call, name: str) -> ast.expr | None:
+def _kw(call: ast.Call, name: str) -> ast.expr | None:
     for k in call.keywords:
         if k.arg == name:
             return k.value
@@ -45,6 +38,14 @@ def kw(call: ast.Call, name: str) -> ast.expr | None:
 
 
 def run(ctx: Context) -> None:
+    """Report every HTTP route as an operation of the API that serves it.
+
+    Finds ``@<router>.<method>("<path>")`` decorators, ``APIRouter(prefix=...)``
+    declarations and ``<parent>.include_router(<child>, prefix=...)`` calls, and
+    composes full paths by following include chains from ``FastAPI()`` apps. Each
+    route goes to ``api.provide`` as an operation of the app it is mounted in, provided
+    by the file that defines the handler. Routers that are never included anywhere
+    are APIs of their own (their prefix stands alone), marked heuristic."""
     m = ctx.model
     routers: dict[tuple[str, str], RouterVar] = {}
     imports_by_file: dict[str, dict[str, tuple[str, str | None]]] = {}  # file -> alias -> (module, name)
@@ -52,7 +53,7 @@ def run(ctx: Context) -> None:
     for f in ctx.files:
         rel = ctx.rel(f)
         if rel.endswith(".py") and m.has(address.repo(rel)):
-            module_to_file[module_name_of(rel)] = rel
+            module_to_file[imports.module_name_of(rel)] = rel
 
     for rel in ctx.progress.each(module_to_file.values()):
         if m.entities[address.repo(rel)].attrs.get("role") == "test":
@@ -85,7 +86,7 @@ def run(ctx: Context) -> None:
                 if fname in ("APIRouter", "FastAPI", "Starlette", "Flask", "Blueprint") and node.targets:
                     t = node.targets[0]
                     if isinstance(t, ast.Name):
-                        pfx = const_str(kw(node.value, "prefix") or kw(node.value, "url_prefix")) or ""
+                        pfx = _const_str(_kw(node.value, "prefix") or _kw(node.value, "url_prefix")) or ""
                         routers[(rel, t.id)] = RouterVar(rel, t.id, pfx, fname in ("FastAPI", "Starlette", "Flask"))
             # <x>.include_router(<y>, prefix="/p") / <x>.register_blueprint(<y>, url_prefix=...)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
@@ -93,7 +94,7 @@ def run(ctx: Context) -> None:
                     parent = (rel, node.func.value.id)
                     routers.setdefault(parent, RouterVar(rel, node.func.value.id))
                     child = node.args[0] if node.args else None
-                    pfx = const_str(kw(node, "prefix") or kw(node, "url_prefix")) or ""
+                    pfx = _const_str(_kw(node, "prefix") or _kw(node, "url_prefix")) or ""
                     raw = ast.unparse(child) if child is not None else "?"
                     routers[parent].includes.append((raw, pfx, node.lineno))
             # @router.get("/path")
@@ -101,20 +102,20 @@ def run(ctx: Context) -> None:
                 for d in node.decorator_list:
                     if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in METHODS:
                         if isinstance(d.func.value, ast.Name) and d.args:
-                            path = const_str(d.args[0])
+                            path = _const_str(d.args[0])
                             if path is None:
                                 continue
                             method = d.func.attr.upper()
                             if d.func.attr == "api_route":
-                                methods_kw = kw(d, "methods")
-                                method = ",".join(sorted(const_str(e) or "?" for e in getattr(methods_kw, "elts", []))) or "ANY"
+                                methods_kw = _kw(d, "methods")
+                                method = ",".join(sorted(_const_str(e) or "?" for e in getattr(methods_kw, "elts", []))) or "ANY"
                             key = (rel, d.func.value.id)
                             routers.setdefault(key, RouterVar(rel, d.func.value.id))
                             routers[key].routes.append((method, path, d.lineno, node.name))
 
     # Resolve include targets to router keys via the including file's imports.
     def find_module(mod: str, file: str) -> str | None:
-        for cand in module_candidates(mod, file):
+        for cand in resolve.module_candidates(mod, file):
             if cand in module_to_file:
                 return module_to_file[cand]
         return None

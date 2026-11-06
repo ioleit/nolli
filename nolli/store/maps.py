@@ -1,0 +1,81 @@
+"""Utilities to store and retrieve overlays as maps."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Protocol
+
+from nolli.model import EdgeKey, FormatError, Key, Model
+from nolli.store.precomputed import KeptMaps, OverlayStore
+
+FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
+
+
+Maps = dict[str, dict[Key, dict]]  # overlay name -> what it says per node and edge of one model
+
+
+class MapStore(Protocol):
+    """Keeps maps. A map is kept by model key (``Model.key``) and holds, per node or edge, what
+    an overlay says about it, with ``about`` (who made it, when)."""
+
+    def open_maps(self, name: str) -> KeptMaps:
+        """A handle restricted to the maps kept under ``name``, so an overlay never sees the
+        store itself."""
+        ...
+
+
+
+
+class MemoryMaps(OverlayStore):
+    """Maps in memory (a model just extracted, tests), and models under any key."""
+
+    def __init__(self, maps: dict[str, dict[str, dict[Key, dict]]] | None = None) -> None:
+        self.maps = maps if maps is not None else {}  # name -> model key -> values
+        self.about: dict[tuple[str, str], dict] = {}
+        self.models: dict[str, Model] = {}
+
+    def open_maps(self, name: str) -> _MemoryHandle:
+        return _MemoryHandle(self, name)
+
+    def list_map_names(self, model_key: str) -> list[str]:
+        return sorted(n for n, by_model in self.maps.items() if model_key in by_model)
+
+    def load_model(self, key: str) -> Model | None:
+        return self.models.get(key)
+
+    def save_model(self, model: Model) -> None:
+        self.models[model.key] = model
+
+
+class _MemoryHandle:
+    def __init__(self, store: MemoryMaps, name: str) -> None:
+        self.store, self.name = store, name
+
+    def load(self, model_key: str) -> Mapping[Key, dict]:
+        return self.store.maps.get(self.name, {}).get(model_key, {})
+
+    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None:
+        self.store.maps.setdefault(self.name, {})[model_key] = dict(values)
+        if about is not None:
+            self.store.about[(self.name, model_key)] = about
+
+    def load_about(self, model_key: str) -> dict | None:
+        return self.store.about.get((self.name, model_key))
+
+
+
+
+def dump_map(model_key: str, values: Mapping[Key, dict], about: dict | None) -> dict:
+    nodes = {k: v for k, v in values.items() if not isinstance(k, EdgeKey)}
+    edges = {k.format(): v for k, v in values.items() if isinstance(k, EdgeKey)}
+    return {"format": FORMAT, "model": model_key, "about": about, "nodes": nodes, "edges": edges}
+
+
+def parse_map(d: dict) -> tuple[dict[Key, dict], dict | None]:
+    if d.get("format") != FORMAT:
+        raise FormatError(f"a map of format {d.get('format')!r}, this nolli reads {FORMAT}")
+    values: dict[Key, dict] = dict(d.get("nodes") or {})
+    values.update({EdgeKey.parse(k): v for k, v in (d.get("edges") or {}).items()})
+    return values, d.get("about")
+
+

@@ -1,22 +1,12 @@
-"""HTML pages: the files of the repository a page loads, as ``use`` edges (see
-``refs.py``): ``<script src>`` (via ``script``), ``<link href>`` (``stylesheet``,
-``preload`` for module preloads, ``link`` for icons and the rest), and ``src`` of
-``img``, ``source``, ``video``, ``audio``, ``iframe``, ``embed`` (``image``, ``media``,
-``frame``). A page's ``<style>`` blocks are read as stylesheets (``css.py``). Links
-between pages (``<a href>``) are navigation, not dependencies, and are not drawn.
-
-Not read (yet): ``import`` statements inside inline ``<script type="module">``, and
-``srcset``. Parsed with the standard library's tolerant ``html.parser``.
-"""
+"""Reads which files and packages an HTML page loads."""
 
 from __future__ import annotations
 
 from html.parser import HTMLParser
 
-from ...model import address
-from .. import Context
-from . import css
-from .refs import link
+from nolli.extractors import Context
+from nolli.extractors.markup import css, refs
+from nolli.model import address
 
 EXTENSIONS = (".html", ".htm")
 SRC = {"script": "script", "img": "image", "source": "media", "video": "media", "audio": "media",
@@ -24,6 +14,16 @@ SRC = {"script": "script", "img": "image", "source": "media", "video": "media", 
 
 
 class Page(HTMLParser):
+    """Reads what one page loads, as ``use`` edges (``refs.link``): ``<script src>``
+    (via ``script``), ``<link href>`` (``stylesheet``, ``preload`` for module preloads,
+    ``link`` for icons and the rest), and ``src`` of ``img``, ``source``, ``video``,
+    ``audio``, ``iframe``, ``embed`` (``image``, ``media``, ``frame``). ``<style>``
+    blocks are read as stylesheets (``css.scan``). Links between pages (``<a href>``)
+    are navigation, not dependencies, and are left out.
+
+    Not read (yet): ``import`` statements inside inline ``<script type="module">``, and
+    ``srcset``. Built on the standard library's tolerant ``html.parser``."""
+
     def __init__(self, ctx: Context, rel: str) -> None:
         super().__init__(convert_charrefs=True)
         self.ctx, self.rel = ctx, rel
@@ -31,7 +31,7 @@ class Page(HTMLParser):
 
     def ref(self, value: str | None, how: str) -> None:
         if value:
-            link(self.ctx, self.rel, value, self.getpos()[0], how, "html")
+            refs.link(self.ctx, self.rel, value, self.getpos()[0], how, "html")
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = dict(attrs)

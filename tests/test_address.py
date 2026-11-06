@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from nolli.model import CONTAIN, ENTITY_KINDS, USE, Entity, Model, Relation, address, metamodel
+from nolli.extractors.facts import Entity, Facts, Relation
+from nolli.model import EdgeKey, Model, address, metamodel
+from nolli.model.metamodel import CONTAIN, ENTITY_KINDS, USE
 
 ROOT = Path(__file__).resolve().parent.parent
 OLD = ("fs", "py", "ts", "svc", "img", "host", "env", "ext", "body")  # the prefixes before the namespaces
@@ -72,7 +74,9 @@ def test_other_namespaces():
 
 
 def test_the_model_keeps_to_the_namespaces():
-    m = Model()
+    """Extraction (``Facts``) is checked against the metamodel as it grows, and so is a
+    ``Model`` made from structure."""
+    m = Facts()
     m.add_entity(Entity("repo:", "directory", "r"))
     m.add_entity(Entity("repo:a.py", "file", "a.py"))
     with pytest.raises(ValueError, match="no place"):
@@ -82,10 +86,16 @@ def test_the_model_keeps_to_the_namespaces():
     with pytest.raises(ValueError, match="is a file"):
         m.add_entity(Entity("repo:a.py", "directory", "a.py"))
     db = m.add_entity(Entity(address.runtime("db"), "service", "db")).id
-    root = m.ensure_root(address.RUNTIME, "test")
+    root = m.ensure_root(metamodel.RUNTIME, "test")
     assert m.entities[root].kind == "group" and m.entities[root].name == "Runtime"
     m.add_relation(Relation(CONTAIN, root, db))
     with pytest.raises(ValueError, match="crosses"):
         m.add_relation(Relation(CONTAIN, "repo:", db))
     with pytest.raises(ValueError, match="no use from runtime to repo"):
         m.add_relation(Relation(USE, db, "repo:a.py"))
+    model, _ = m.split()
+    assert model.kinds[root] == "group" and model.find_parent(db) == root
+    with pytest.raises(ValueError, match="no place"):
+        Model(kinds={"repo:": "directory", "repo:b": "service"})
+    with pytest.raises(ValueError, match="crosses"):
+        Model(kinds={"repo:": "directory", db: "service"}, edges=[EdgeKey(CONTAIN, "repo:", db)])

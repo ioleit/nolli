@@ -1,4 +1,4 @@
-"""nolli in CI (nolli/ci.py): the key a PR comment gives, and the comment itself, for a
+"""nolli in CI (nolli/review/ci.py): the key a PR comment gives, and the comment itself, for a
 change without a review, with one, and with verdicts that fail the check. Downloading an
 artifact is not tested here: it needs GitHub."""
 
@@ -13,9 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from nolli.ci import is_key, key_of, read_result
+from nolli.review.ci import is_key, _key_of, _read_result
+from nolli.scenes import keep_change_scene, open_change_scene
 from nolli.cli import main
-from nolli.model import Model
+from nolli.store import DirectoryStore
 
 
 def git(repo: Path, *args: str) -> None:
@@ -40,10 +41,31 @@ def dataset(tmp_path: Path, capsys) -> Path:
     git(r, "commit", "-q", "-m", "Add a cache")
     assert main(["agent", "brief", "--repo", str(r), "--data", str(tmp_path / "data")]) == 0
     ds = Path(json.loads(capsys.readouterr().out)["dataset"])
-    m = json.loads((ds / "model.json").read_text())  # as if built from '#7' on GitHub
-    m["meta"]["diff"] |= {"remote": "https://github.com/me/shop", "pr": 7}
-    (ds / "model.json").write_text(json.dumps(m))
+    edit_about(ds, lambda about: about | {"remote": "https://github.com/me/shop", "pr": 7})  # as if built from '#7' on GitHub
     return ds
+
+
+def edit_about(ds: Path, edit) -> None:
+    """Change what the dataset's change says about itself (change.json), and keep again what
+    was made from it."""
+    c = json.loads((ds / "change.json").read_text())
+    c["about"] = edit(c["about"])
+    (ds / "change.json").write_text(json.dumps(c))
+    store = DirectoryStore(ds.parent)
+    keep_change_scene(store, store.find_key(ds.name))
+
+
+def review(ds: Path, verdicts: list[dict], capsys) -> None:
+    """The review agent's verdicts, as the CI workflow keeps them: verdicts.json in the
+    dataset's directory, then nolli agent check, which keeps them if they pass."""
+    (ds / "verdicts.json").write_text(json.dumps(verdicts))
+    main(["agent", "check", str(ds)])
+    capsys.readouterr()
+
+
+def open_scene(ds: Path):
+    store = DirectoryStore(ds.parent)
+    return open_change_scene(store, store.find_key(ds.name))
 
 
 def comment(ds: Path, capsys) -> str:
@@ -58,7 +80,7 @@ def test_key():
 
 
 def test_without_review(dataset, capsys):
-    key = key_of(Model.load(dataset / "model.json").meta)
+    key = _key_of(open_scene(dataset).model.meta)
     assert re.fullmatch(r"me/shop#7@[0-9a-f]{7}", key)
     text = comment(dataset, capsys)
     assert text.startswith("<!-- nolli -->\n**Nolli** found ")
@@ -66,7 +88,7 @@ def test_without_review(dataset, capsys):
     assert "No review: the review agent wrote no verdicts." in text
     assert f"nolli view {key}\n" in text
     assert "```mermaid\nflowchart" in text
-    assert read_result(text)["verdicts"] == [] and read_result(text)["key"] == key
+    assert _read_result(text)["verdicts"] == [] and _read_result(text)["key"] == key
 
 
 def test_skipped(dataset, capsys):
@@ -83,7 +105,7 @@ def test_with_review(dataset, capsys):
     verdicts = [{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "a cache\nin its own module"},
                 {"target": "n_repo_shop_cache_py --> n_repo_shop_store_py", "verdict": "question", "reason": "why --> here?"},
                 {"target": "n_repo_shop_store_py", "verdict": "fine", "reason": "unchanged"}]
-    (dataset / "verdicts.json").write_text(json.dumps(verdicts))
+    review(dataset, verdicts, capsys)
     text = comment(dataset, capsys)
     first = text.splitlines()[1]
     assert re.search(r"\. The review agent's 3 verdicts: <img src=\"\S+/question\.svg\"[^>]*> 1 &nbsp; <img [^>]*good\.svg[^>]*> 1 "
@@ -92,35 +114,41 @@ def test_with_review(dataset, capsys):
     assert len(findings) == 2  # never the fine one
     assert re.fullmatch(r'- <img [^>]*alt="\?!"[^>]*> \*\*New dependency from `shop/cache\.py` to `shop/store\.py`\*\*\. why --> here\?', findings[0])
     assert re.fullmatch(r"- <img [^>]*good\.svg[^>]*> \*\*New module `shop/cache\.py`\*\*\. a cache in its own module", findings[1])
-    assert [v["verdict"] for v in read_result(text)["verdicts"]] == ["good", "question", "fine"]  # "-->" kept, hidden
+    assert [v["verdict"] for v in _read_result(text)["verdicts"]] == ["good", "question", "fine"]  # "-->" kept, hidden
 
 
 def test_listed(dataset, capsys, monkeypatch):
     monkeypatch.setenv("NOLLI_ASSETS_URL", "https://example.com/marks")
     verdicts = [{"target": "n_repo_shop_store_py", "verdict": "question", "reason": f"q{i}"} for i in range(7)]
-    (dataset / "verdicts.json").write_text(json.dumps(verdicts + [{"target": "n_repo_shop_cache_py", "verdict": "fine", "reason": "ok"}]))
+    review(dataset, verdicts + [{"target": "n_repo_shop_cache_py", "verdict": "fine", "reason": "ok"}], capsys)
     text = comment(dataset, capsys)
     findings = [line for line in text.splitlines() if line.startswith("- ")]
     assert findings[0].startswith('- <img src="https://example.com/marks/question.svg"')
     assert findings[0].endswith("**Module `shop/store.py`**. q0")  # drawn, not changed
     assert len(findings) == 6 and findings[-1] == "- 2 more"
-    (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "fine", "reason": "ok"}]))
+    review(dataset, [{"target": "n_repo_shop_cache_py", "verdict": "fine", "reason": "ok"}], capsys)
     text = comment(dataset, capsys)
     assert not [line for line in text.splitlines() if line.startswith("- ")]
     assert "The review agent's 1 verdict: <img" in text
 
 
 def test_failed_review(dataset, capsys):
-    (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_nope", "verdict": "good", "reason": "x"}]))
+    from nolli.review.verdicts import _keep_verdicts_file
+
+    review(dataset, [{"target": "n_nope", "verdict": "good", "reason": "x"}], capsys)  # nolli agent check keeps none of it
+    assert "No review: the review agent wrote no verdicts." in comment(dataset, capsys)
+    # kept without the check (the edge is drawn the other way round): the comment checks them again
+    store = DirectoryStore(dataset.parent)
+    key = store.find_key(dataset.name)
+    wrong = [{"target": "n_repo_shop_store_py --> n_repo_shop_cache_py", "verdict": "good", "reason": "x"}]
+    assert _keep_verdicts_file(store, key, open_scene(dataset), json.dumps(wrong), {"by": "upload"})[0]["ends"]
     text = comment(dataset, capsys)
     assert "No review: the review agent’s verdicts failed nolli’s check." in text
     assert "verdicts:" not in text
 
 
 def test_not_a_pr(dataset, capsys):
-    m = json.loads((dataset / "model.json").read_text())
-    del m["meta"]["diff"]["pr"]
-    (dataset / "model.json").write_text(json.dumps(m))
+    edit_about(dataset, lambda about: {k: v for k, v in about.items() if k != "pr"})
     assert main(["ci", "comment", str(dataset)]) == 2
     assert "not the dataset of a GitHub pull request" in capsys.readouterr().err
 
@@ -131,27 +159,17 @@ def bot_comment(text: str, login: str = "nolli-review[bot]", n: int = 1) -> dict
 
 
 def test_results_from_the_comments(dataset, capsys):
-    from nolli.ci import results
+    from nolli.review.ci import results
 
-    (dataset / "verdicts.json").write_text(json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}]))
+    review(dataset, [{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}], capsys)
     text = comment(dataset, capsys)
-    head = json.loads((dataset / "model.json").read_text())["meta"]["diff"]["head"]
+    head = json.loads((dataset / "change.json").read_text())["about"]["head"]
     forged = bot_comment(text, login="mallory", n=3)  # anyone can paste a comment like the bot's
     found = results([bot_comment(text, n=1), bot_comment("<!-- nolli -->\nno result", n=2), forged])
     assert [r["link"] for r in found] == ["https://github.com/me/shop/pull/7#issuecomment-1"]
     assert found[0]["head"] == head and found[0]["verdicts"][0]["verdict"] == "good"
-    r = read_result(text) | {"head": "f" * 40}
+    r = _read_result(text) | {"head": "f" * 40}
     packed = base64.b64encode(zlib.compress(json.dumps(r).encode())).decode()
     later = bot_comment(f"<!-- nolli -->\nlater\n<!-- nolli-result {packed} -->", n=4)
     assert [r["head"] for r in results([bot_comment(text, n=1), later])] == ["f" * 40, head]  # newest first
 
-
-def test_upgrade_of_old_targets():
-    from nolli.ci import upgrade
-
-    old = [{"target": "n_fs_nolli_mermaid_py --> n_fs_nolli_model_py", "verdict": "fine", "reason": "r"},
-           {"target": "n_py_nolli_scene_py_SceneState", "verdict": "good", "reason": "r"},
-           {"target": "n_body_fs_nolli_scene_py --> n_api_x", "verdict": "fine", "reason": "r"}]
-    assert [v["target"] for v in upgrade(old, "0.3.0")] == [
-        "n_repo_nolli_mermaid_py --> n_repo_nolli_model_py", "n_repo_nolli_scene_py_SceneState", "n_repo_nolli_scene_py_ --> n_api_x"]
-    assert upgrade(old, "0.4.0") == old and upgrade(old, None) == old

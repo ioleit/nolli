@@ -1,2 +1,1 @@
-"""Infrastructure adapters: deployment components and allocation from docker-compose
-files and Dockerfiles."""
+"""Extractors that read deployment from compose files and Dockerfiles."""

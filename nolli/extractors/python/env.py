@@ -1,18 +1,18 @@
-"""Python: environment variables read by code, ``use`` from module to ``config:NAME``.
-
-``os.environ["X"]``, ``os.environ.get("X")``, ``os.getenv("X")``.
+"""Finds the environment variables that Python code reads.
 """
 
 from __future__ import annotations
 
 import ast
 
-from ...model import USE, Provenance, Relation, address
-from .. import Context
-from ..interfaces import ensure_env
+from nolli.extractors import Context, interfaces
+from nolli.extractors.facts import Provenance, Relation
+from nolli.model import address, metamodel
 
 
 def run(ctx: Context) -> None:
+    """Add a ``use`` from each module to ``config:NAME`` for every variable it reads with
+    ``os.environ["X"]``, ``os.environ.get("X")`` or ``os.getenv("X")``."""
     m = ctx.model
     for rel in ctx.sources("python", tests=False):
         fid = address.repo(rel)
@@ -31,4 +31,4 @@ def run(ctx: Context) -> None:
                     if isinstance(a, ast.Constant) and isinstance(a.value, str):
                         name = a.value
             if name:
-                m.add_relation(Relation(USE, fid, ensure_env(ctx, name, "python-env"), "env", provenance=Provenance("python-env", rel, node.lineno)))
+                m.add_relation(Relation(metamodel.USE, fid, interfaces.ensure_env(ctx, name, "python-env"), "env", provenance=Provenance("python-env", rel, node.lineno)))

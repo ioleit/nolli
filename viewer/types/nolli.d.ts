@@ -1,15 +1,15 @@
-// The shapes the viewer works with. The scene mirrors nolli/scene.py (GET /api/scene).
+// The shapes the viewer works with. The scene is what nolli/formats/viewer.py makes of a projected scene (GET /api/scene).
 
 export interface Chip { id: string; name: string; color: number }
 
 /**
- * What hovering over a box or an edge shows (nolli/info.py): Markdown, one paragraph per
+ * What hovering over a box or an edge shows (nolli/formats/descriptions/hover.py): Markdown, one paragraph per
  * sentence, `code spans` for the values in it, a "> " quoted paragraph for a docstring,
- * [problem](verdict:problem) for a verdict's mark (nolli/prose.py, rendered by js/md.js).
+ * [problem](verdict:problem) for a verdict's mark (nolli/formats/descriptions/prose.py, rendered by js/md.js).
  */
 export type Info = string;
 
-// ---------- review mode (diff datasets, nolli/review.py) ----------
+// ---------- review mode (a change: nolli/transformations/merge.py, verdicts.py, review.py) ----------
 
 export type Status = "added" | "removed" | "changed";
 export type Verdict = "blunder" | "problem" | "question" | "fine" | "good" | "brilliant";
@@ -87,43 +87,73 @@ export interface Details {
   more_dependencies: number;
 }
 
-/** A module's own code: a small dot inside the module. */
-export interface AnchorNode {
-  id: string; kind: "anchor"; parent: string | null; utilities_used: string[]; info: Info;
-  items?: string[]; verdicts?: string[]; verdict?: Verdict | null; review?: Info;  // review mode only, as on a box
+/**
+ * Each drawn box and edge comes with what every overlay says about it, under the overlay's
+ * name (nolli/formats/viewer.py). The ones the viewer draws are typed here; others (a
+ * research overlay) arrive under their own names and show as they are.
+ */
+
+/** What the projection decided about a module's own code. */
+export interface AnchorProjection {
+  container: false;
+  utilities_used: string[];  // ids of the utilities whose edges from it became badges
 }
 
-export interface BoxNode {
-  id: string;
-  kind: string;  // entity kind: directory, file, class, service, image, group, …
-  parent: string | null;  // the drawn container, null at the top
+/** What the projection decided about a drawn box (nolli/transformations/projection.py). */
+export interface BoxProjection {
   container: boolean;  // unfolded with drawn children
-  label: string;
-  icons: string[];  // what it is, drawn before the label: "D", "m", "C", "svc", "img", "API", "/", verbs ("GET", "WS")
   foldable: boolean;  // has children: clicking unfolds (or − folds)
   leaves: number | null;  // folded: how much is inside
   badge: string;
+  used_by: number;
   utility: boolean;
   chips: Chip[];
   service_color: number | null;
-  uses: string[];  // unfolded boxes: utilities their children use, one line each at the bottom right
   utilities_used: string[];  // ids of the utilities whose edges from this box became badges
-  info: Info;
-  diff?: NodeDiff | null;  // review mode only
-  items?: string[];  // review items shown on this box
-  verdicts?: string[];  // the review's verdicts on it (V ids)
-  review?: Info;  // the card's second part, under a line: what the change did to it, and the verdicts on it
-  verdict?: Verdict | null;  // the worst of them
+  internal_changes: number;
+}
+
+/** How the picture names a box (nolli/formats/descriptions/label.py). */
+export interface Label {
+  text: string;
+  icons: string[];  // what it is, drawn before the label: "D", "m", "C", "svc", "img", "API", "/", verbs ("GET", "WS")
+  prose: string;
+}
+
+/** The review's verdicts that land on a box or edge (nolli/review/verdicts.py). */
+export interface Verdicts { verdicts: string[]; verdict: Verdict | null }
+
+/** What a review shows on a box or edge (nolli/review/card.py). */
+export interface Review {
+  items: string[];  // review items shown on it
+  card: Info;  // the card's second part, under a line: what the change did to it, and the verdicts on it
+}
+
+interface Overlays {
+  label: Label;
+  hover: { text: Info };
+  change?: NodeDiff | null;  // review mode only
+  verdicts?: Verdicts;
+  review?: Review;
+}
+
+/** A module's own code: a small dot inside the module. */
+export interface AnchorNode extends Overlays {
+  id: string; kind: "anchor"; parent: string | null;
+  projection: AnchorProjection;
+}
+
+export interface BoxNode extends Overlays {
+  id: string;
+  kind: string;  // entity kind: directory, file, class, service, image, group, …
+  parent: string | null;  // the drawn container, null at the top
+  projection: BoxProjection;
 }
 
 export type SceneNode = AnchorNode | BoxNode;
 
-export interface SceneEdge {
-  key: string;  // kind|src|dst|subkind, stable across scenes
-  kind: string;
-  subkind: string;
-  src: string;
-  dst: string;
+/** What the projection decided about a drawn edge. */
+export interface EdgeProjection {
   count: number;
   confidence: string;
   via: string[];
@@ -132,19 +162,26 @@ export interface SceneEdge {
   single: boolean;
   weak: boolean;
   heuristic: boolean;
-  /** a lifted line (rollup.lift): the drawn nodes it stands for at each end; null: its own ends */
-  ends: { src: string[]; dst: string[] } | null;
-  /** references only to types: no dependency at run time */
-  types: boolean;
-  info: Info;
-  diff?: EdgeDiff | null;
-  items?: string[];
-  verdicts?: string[];
-  review?: Info;
-  verdict?: Verdict | null;
+  types: boolean;  // references only to types: no dependency at run time
+  type_refs: number;
+  names: Record<string, number>;
+  ends: { src: string[]; dst: string[] } | null;  // a lifted line: the drawn nodes it stands for at each end
 }
 
-export interface SceneState {
+export interface SceneEdge {
+  key: string;  // kind|src|dst|subkind, stable across scenes
+  kind: string;
+  subkind: string;
+  src: string;
+  dst: string;
+  projection: EdgeProjection;
+  hover?: { text: Info };
+  change?: EdgeDiff | null;  // review mode only
+  verdicts?: Verdicts;
+  review?: Review;
+}
+
+export interface ProjectionSpec {
   expanded: string[];
   preset: "default" | "folded" | "changes" | "unfolded" | null;  // the preset that gave expanded; null: unfolded by hand
   roles: string[];
@@ -156,7 +193,7 @@ export interface SceneState {
 }
 
 export interface Scene {
-  state: SceneState;
+  state: ProjectionSpec;
   nodes: SceneNode[];  // drawing order: a container before what it contains
   edges: SceneEdge[];
   groups: { id: string; namespace: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
@@ -181,7 +218,7 @@ export interface Laid {
   edges: { edge: SceneEdge; sections: Point[][]; mark?: Point | null }[];
 }
 
-/** Where a dataset's verdicts came from (review.json, viewer/reviews.py). */
+/** Where a dataset's verdicts came from (review.json, nolli/server/reviews.py). */
 export interface ReviewOrigin {
   by: "agent" | "ci" | "upload" | "unknown"; at?: string;
   model?: string; seconds?: number; turns?: number; cost?: number;  // agent

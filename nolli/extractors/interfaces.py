@@ -1,14 +1,17 @@
-"""Interface families shared by adapters: how an env variable or an external package is
-named, so that a provider in one language and a user in another meet on the same entity
-(an npm package imported in TypeScript and loaded from a CDN by a page is one entity).
-APIs (endpoints) have their own shared structure in ``api.py``."""
+"""Entities that providers and users in any language meet on.
+
+Environment variables, external packages and outside hosts are named the same way
+whichever language provides or uses them (an npm package imported in TypeScript and
+loaded from a CDN by a page is one entity). APIs have their own structure in ``api``.
+"""
 
 from __future__ import annotations
 
 import re
 
-from ..model import CONTAIN, Entity, Provenance, Relation, address
-from . import Context
+from nolli.extractors import Context
+from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.model import address, metamodel
 
 
 def ensure_env(ctx: Context, name: str, extractor: str = "env") -> str:
@@ -17,7 +20,7 @@ def ensure_env(ctx: Context, name: str, extractor: str = "env") -> str:
     eid = address.config(name)
     if not m.has(eid):
         m.add_entity(Entity(eid, "env", name, {}, Provenance(extractor)))
-        m.add_relation(Relation(CONTAIN, m.ensure_root(address.CONFIG, extractor), eid, provenance=Provenance(extractor)))
+        m.add_relation(Relation(metamodel.CONTAIN, m.ensure_root(metamodel.CONFIG, extractor), eid, provenance=Provenance(extractor)))
     return eid
 
 
@@ -26,7 +29,7 @@ def ensure_ext(m, lang: str, name: str, extractor: str = "match") -> str:
     eid = address.package(lang, name)
     if not m.has(eid):
         m.add_entity(Entity(eid, "package", name, {"language": lang}, Provenance(extractor)))
-        m.add_relation(Relation(CONTAIN, m.ensure_root(address.PKG, extractor), eid, provenance=Provenance(extractor)))
+        m.add_relation(Relation(metamodel.CONTAIN, m.ensure_root(metamodel.PKG, extractor), eid, provenance=Provenance(extractor)))
     return eid
 
 
@@ -36,7 +39,7 @@ def ensure_host(m, host: str, extractor: str, path: str | None = None) -> str:
     eid = address.runtime(host)
     if not m.has(eid):
         m.add_entity(Entity(eid, "host", host, {}, Provenance(extractor, path)))
-        m.add_relation(Relation(CONTAIN, m.ensure_root(address.RUNTIME, extractor), eid, provenance=Provenance(extractor, path)))
+        m.add_relation(Relation(metamodel.CONTAIN, m.ensure_root(metamodel.RUNTIME, extractor), eid, provenance=Provenance(extractor, path)))
     return eid
 
 

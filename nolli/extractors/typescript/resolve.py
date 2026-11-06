@@ -1,23 +1,4 @@
-"""TypeScript/JavaScript resolution, run by ``nolli.match``.
-
-``resolve_imports``: module specifiers (``unresolved:js:``) to files, external packages
-or nothing (Node built-ins, dropped like the Python stdlib). A specifier is tried as
-
-- a path relative to the importing file (``./x.js`` also finds ``x.ts``, as TypeScript's
-  NodeNext resolution does; a folder finds its ``index``), or from the repository root
-  (``/x``);
-- a tsconfig/jsconfig ``paths`` alias of a config above the importing file (``@/lib``),
-  then that config's ``baseUrl`` (``src/lib``); ``extends`` of a config in the
-  repository is followed for both;
-- a package of the repository's own (a ``package.json`` with that ``name``, as in npm,
-  pnpm or yarn workspaces): its source entry, or the subpath inside it;
-- else an external package, also from a CDN URL (``https://esm.sh/react@18``).
-
-``resolve_refs``: symbol references (``unresolved:tsref:``) to the class or type they
-name, following re-exports (``export { X } from``, ``export * from``) through barrels,
-else to the file that defines the name. References into external packages are dropped:
-the import edge covers them. Import edges between two files are dropped where
-references between them exist, so an edge count means references, as in Python.
+"""Resolves TypeScript/JavaScript imports and references to targets.
 """
 
 from __future__ import annotations
@@ -27,9 +8,9 @@ import re
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import USE, Entity, Provenance, Relation, address
-from .. import Context
-from ..interfaces import ensure_ext, ensure_host, is_url, package_name
+from nolli.extractors import Context, interfaces
+from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.model import address, metamodel
 
 NODE_BUILTINS = {
     "assert", "buffer", "child_process", "cluster", "crypto", "dgram", "dns", "events", "fs", "http", "http2", "https",
@@ -41,7 +22,7 @@ CONFIG = re.compile(r"^(tsconfig(\.[\w-]+)?|jsconfig)\.json$")
 ENTRY_FIELDS = ("source", "types", "typings", "module", "main")  # package.json, most source-like first
 
 
-def norm(p: PurePosixPath | str) -> str:
+def _norm(p: PurePosixPath | str) -> str:
     parts: list[str] = []
     for part in PurePosixPath(p).parts:
         if part == "..":
@@ -52,11 +33,11 @@ def norm(p: PurePosixPath | str) -> str:
     return "/".join(parts)
 
 
-def read_json(ctx: Context, rel: str) -> dict | None:
+def _read_json(ctx: Context, rel: str) -> dict | None:
     """JSON as tsconfig writes it: comments and trailing commas allowed."""
     try:
         text = ctx.read(rel).decode("utf-8", "replace")
-        text = re.sub(r'("(?:\\.|[^"\\])*")|//[^\n]*|/\*.*?\*/', lambda mo: mo.group(1) or "", text, flags=re.S)
+        text = re.sub(r'("(?:\\.|[^"\\])*")|//[^\n]*|/\*.*?\*/', lambda mo: mo.group(1) or "", text, flags=re.DOTALL)
         cfg = json.loads(re.sub(r",\s*([}\]])", r"\1", text))
     except (OSError, json.JSONDecodeError):
         return None
@@ -77,7 +58,7 @@ class Resolver:
     @staticmethod
     def _configs(ctx: Context, rels: list[str]) -> list[tuple[str, list[tuple[str, str]], str | None]]:
         """(config dir, [(alias prefix, target prefix)], baseUrl dir), deepest first."""
-        raw = {rel: read_json(ctx, rel) or {} for rel in rels}
+        raw = {rel: _read_json(ctx, rel) or {} for rel in rels}
 
         def options(rel: str, depth: int = 0) -> dict:
             """compilerOptions with ``extends`` applied; paths and baseUrl relative to the
@@ -88,13 +69,13 @@ class Resolver:
             ext = cfg.get("extends")
             for e in ([ext] if isinstance(ext, str) else ext or []):
                 if isinstance(e, str) and e.startswith(".") and depth < 5:
-                    target = norm(PurePosixPath(here) / e)
+                    target = _norm(PurePosixPath(here) / e)
                     target = target if target.endswith(".json") else target + ".json"
                     if target in raw:
                         out.update(options(target, depth + 1))
             co = cfg.get("compilerOptions") or {}
             if "baseUrl" in co:
-                out["baseUrl"] = norm(PurePosixPath(here) / co["baseUrl"])
+                out["baseUrl"] = _norm(PurePosixPath(here) / co["baseUrl"])
             if co.get("paths"):
                 out["paths"] = (co["paths"], here)
             return out
@@ -108,9 +89,9 @@ class Resolver:
             base = opts.get("baseUrl", paths_dir)
             for alias, targets in paths.items():
                 if targets and isinstance(targets, list) and isinstance(targets[0], str):
-                    a = alias[:-1] if alias.endswith("*") else alias
-                    t = targets[0][:-1] if targets[0].endswith("*") else targets[0]
-                    aliases.append((a, norm(PurePosixPath(base) / t) + ("/" if t.endswith("/") else "")))
+                    a = alias.removesuffix("*")
+                    t = targets[0].removesuffix("*")
+                    aliases.append((a, _norm(PurePosixPath(base) / t) + ("/" if t.endswith("/") else "")))
             if aliases or "baseUrl" in opts:
                 out.append((d, sorted(aliases, key=lambda x: -len(x[0])), opts.get("baseUrl")))
         return sorted(out, key=lambda c: -len(c[0]))
@@ -121,7 +102,7 @@ class Resolver:
         for rel in rels:
             if "node_modules" in rel:
                 continue
-            pj = read_json(ctx, rel) or {}
+            pj = _read_json(ctx, rel) or {}
             name, d = pj.get("name"), str(PurePosixPath(rel).parent)
             if not isinstance(name, str) or not name or d == "." and not pj.get("workspaces"):
                 continue
@@ -133,7 +114,7 @@ class Resolver:
                 cands += [dot] if isinstance(dot, str) else [v for k, v in (dot.items() if isinstance(dot, dict) else []) if isinstance(v, str)]
             cands += [pj[f] for f in ENTRY_FIELDS if isinstance(pj.get(f), str)]
             for c in cands:
-                entry = self.find(norm(PurePosixPath(d) / c)) or self.find(norm(PurePosixPath(d) / re.sub(r"^(\./)?(dist|build|lib|out)/", "src/", c)))
+                entry = self.find(_norm(PurePosixPath(d) / c)) or self.find(_norm(PurePosixPath(d) / re.sub(r"^(\./)?(dist|build|lib|out)/", "src/", c)))
                 if entry:
                     break
             out[name] = (d, entry or self.find(f"{d}/src") or self.find(d))
@@ -159,24 +140,24 @@ class Resolver:
         """(how, target): ("file", path), ("external", package name), ("stdlib", None) or
         ("unresolved", None)."""
         if spec.startswith("."):
-            f = self.find(norm(PurePosixPath(src_rel).parent / spec))
+            f = self.find(_norm(PurePosixPath(src_rel).parent / spec))
             return ("file", f) if f else ("unresolved", None)
         if spec.startswith("/"):
-            f = self.find(norm(spec))
+            f = self.find(_norm(spec))
             return ("file", f) if f else ("unresolved", None)
         for d, aliases, base in self.configs:
             if d != "." and not src_rel.startswith(d + "/"):
                 continue
             for a, t in aliases:
                 if spec.startswith(a):
-                    f = self.find(norm(t + spec[len(a):]))
+                    f = self.find(_norm(t + spec[len(a):]))
                     if f:
                         return "file", f
             if base is not None:
-                f = self.find(norm(PurePosixPath(base) / spec))
+                f = self.find(_norm(PurePosixPath(base) / spec))
                 if f:
                     return "file", f
-        pkg = package_name(spec)
+        pkg = interfaces.package_name(spec)
         if pkg in self.packages:
             d, entry = self.packages[pkg]
             sub = spec[len(pkg):].lstrip("/")
@@ -193,12 +174,24 @@ class Resolver:
 
 
 def resolve_imports(ctx: Context) -> None:
+    """Bind module specifiers (``unresolved:js:``) to files, external packages or
+    nothing (Node built-ins, dropped like the Python stdlib). A specifier is tried as
+
+    - a path relative to the importing file (``./x.js`` also finds ``x.ts``, as
+      TypeScript's NodeNext resolution does; a folder finds its ``index``), or from the
+      repository root (``/x``);
+    - a tsconfig/jsconfig ``paths`` alias of a config above the importing file
+      (``@/lib``), then that config's ``baseUrl`` (``src/lib``); ``extends`` of a config
+      in the repository is followed for both;
+    - a package of the repository's own (a ``package.json`` with that ``name``, as in
+      npm, pnpm or yarn workspaces): its source entry, or the subpath inside it;
+    - else an external package, also from a CDN URL (``https://esm.sh/react@18``)."""
     m = ctx.model
     res = Resolver(ctx)
     stats: dict[str, int] = defaultdict(int)
     new_relations: list[Relation] = []
     for r in m.relations:
-        key = address.unresolved_key(r.dst, "js") if r.kind == USE else None
+        key = address.unresolved_key(r.dst, "js") if r.kind == metamodel.USE else None
         if key is None:
             new_relations.append(r)
             continue
@@ -214,14 +207,20 @@ def resolve_imports(ctx: Context) -> None:
             if not m.has(dst):
                 m.add_entity(Entity(dst, "unresolved", spec, {"language": "javascript"}, Provenance("match")))
         else:
-            dst = address.repo(target) if how == "file" else ensure_host(m, target, "match") if is_url(spec) else ensure_ext(m, "js", target)
+            dst = address.repo(target) if how == "file" else interfaces.ensure_host(m, target, "match") if interfaces.is_url(spec) else interfaces.ensure_ext(m, "js", target)
         if dst != r.src:
-            new_relations.append(Relation(USE, r.src, dst, "import", 1, "exact", r.provenance, attrs))
+            new_relations.append(Relation(metamodel.USE, r.src, dst, "import", 1, "exact", r.provenance, attrs))
     m.relations = new_relations
     ctx.notes["js-resolution"] = dict(stats)
 
 
 def resolve_refs(ctx: Context) -> None:
+    """Bind symbol references (``unresolved:tsref:``) to the class or type they name,
+    following re-exports (``export { X } from``, ``export * from``) through barrels,
+    else to the file that defines the name. References into external packages are
+    dropped: the import edge covers them. Import edges between two files are dropped
+    where references between them exist, so an edge count means references, as in
+    Python."""
     m = ctx.model
     res = Resolver(ctx)
     exports = ctx.notes.get("ts-exports", {})
@@ -257,7 +256,7 @@ def resolve_refs(ctx: Context) -> None:
     stats: dict[str, int] = defaultdict(int)
     new_relations: list[Relation] = []
     for r in m.relations:
-        if not (r.kind == USE and address.unresolved_key(r.dst, "tsref") is not None):
+        if not (r.kind == metamodel.USE and address.unresolved_key(r.dst, "tsref") is not None):
             new_relations.append(r)
             continue
         ph = m.entities[r.dst].attrs
@@ -270,7 +269,7 @@ def resolve_refs(ctx: Context) -> None:
             stats["self"] += r.count
             continue
         stats["symbol" if address.is_part(dst) else "file"] += r.count
-        new_relations.append(Relation(USE, r.src, dst, "ref", r.count, "exact", r.provenance, dict(r.attrs)))
+        new_relations.append(Relation(metamodel.USE, r.src, dst, "ref", r.count, "exact", r.provenance, dict(r.attrs)))
     m.relations = new_relations
 
     def file_of(eid: str) -> str | None:
@@ -280,12 +279,12 @@ def resolve_refs(ctx: Context) -> None:
 
     covered = set()
     for r in m.relations:
-        if r.kind == USE and r.subkind == "ref" and (address.is_part(r.src) or address.is_part(r.dst) or r.attrs.get("language") == "javascript"):
+        if r.kind == metamodel.USE and r.subkind == "ref" and (address.is_part(r.src) or address.is_part(r.dst) or r.attrs.get("language") == "javascript"):
             a, b = file_of(r.src), file_of(r.dst)
             if a and b:
                 covered.add((a, b))
     before = len(m.relations)
-    m.relations = [r for r in m.relations if not (r.kind == USE and r.subkind == "import" and r.attrs.get("language") == "javascript"
+    m.relations = [r for r in m.relations if not (r.kind == metamodel.USE and r.subkind == "import" and r.attrs.get("language") == "javascript"
                                                   and (r.src, r.dst) in covered)]
     stats["imports_replaced"] = before - len(m.relations)
     ctx.notes["tsref-resolution"] = dict(stats)

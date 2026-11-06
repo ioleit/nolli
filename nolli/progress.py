@@ -1,18 +1,12 @@
-"""What a build is doing, on stderr, while it does it.
-
-A step that takes half a second or more ends with a line saying how long it took; quicker
-ones leave none, so a small repository's build says only that it was built. On a terminal
-the step under way is also one line rewritten in place, with the files it has read so far
-and the time since the build began. Elsewhere (an agent, a pipe) only the finished steps'
-lines are printed.
-"""
+"""Reports on stderr what a build is doing while it does it."""
 
 from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from typing import Iterable, Iterator, TextIO, TypeVar
+from typing import TextIO, TypeVar
 
 T = TypeVar("T")
 SHORT = 0.5  # s: a step this quick leaves no line
@@ -20,6 +14,14 @@ EVERY = 0.1  # s: how often the line under way is rewritten
 
 
 class Progress:
+    """Reports a build's steps on ``stream`` (stderr).
+
+    A step that takes half a second or more (``SHORT``) ends with a line saying how long it
+    took; quicker ones leave none, so a small repository's build says only that it was built.
+    On a terminal the step under way is also one line rewritten in place, with the files it has
+    read so far and the time since the build began. Elsewhere (a pipe) only the finished
+    steps' lines are printed."""
+
     def __init__(self, stream: TextIO | None = None, prefix: str = "", t0: float | None = None):
         self.stream = stream or sys.stderr
         self.live = self.stream.isatty()
@@ -28,7 +30,7 @@ class Progress:
         self.label = ""
         self.last = 0.0
 
-    def under(self, prefix: str) -> "Progress":
+    def under(self, prefix: str) -> Progress:
         """The same progress, its steps labelled ``prefix`` (the side of a change: base, head)."""
         p = Progress(self.stream, f"{self.prefix}{prefix}: ", self.t0)
         p.live = self.live
@@ -80,7 +82,7 @@ class Quiet(Progress):
         super().__init__(stream=sys.stderr)
         self.live = False
 
-    def under(self, prefix: str) -> "Progress":
+    def under(self, prefix: str) -> Progress:
         return self
 
     @contextmanager

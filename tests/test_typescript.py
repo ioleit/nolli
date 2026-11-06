@@ -10,11 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from nolli.build import extract
-from nolli.info import edge_info
-from nolli.labels import module_stem
-from nolli.prose import Ctx
-from nolli.rollup import RolledEdge, is_init
+from nolli.build import _extract_facts
+from nolli.scenes import open_built
+from nolli.formats.descriptions.hover import Source, Ctx, _edge_info
+from nolli.formats.descriptions.label import _module_stem
+from nolli.transformations.reading import Reading as Graph
+from nolli.transformations.rollup import RolledEdge, is_init
 
 FILES = {
     "tsconfig.base.json": '{ // shared\n "compilerOptions": { "baseUrl": "./app/src", "paths": { "@/*": ["./*"] } } }\n',
@@ -66,8 +67,11 @@ def model(tmp_path_factory):
         p.write_text(text)
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "."], cwd=root, check=True)
-    m, ctx = extract(root)
-    return m, ctx
+    return _extract_facts(root)
+
+
+def open_graph(m) -> Graph:
+    return Graph(open_built(*m.split("test@0")))
 
 
 def uses(m, subkind=None):
@@ -79,7 +83,7 @@ def refs_between(m, src, dst):
 
 
 def test_classes_and_types_are_entities(model):
-    m, _ = model
+    m = model
     kinds = {e.id: e.kind for e in m.entities.values() if "#" in e.id}
     assert kinds == {
         "repo:app/src/model/task.ts#Task": "interface",
@@ -98,7 +102,7 @@ def test_classes_and_types_are_entities(model):
 
 
 def test_references_follow_barrels_and_namespaces(model):
-    m, _ = model
+    m = model
     refs = uses(m, "ref")
     # a type through ``export * from`` in the barrel, a value through tsconfig ``paths``
     assert ("repo:app/src/store/store.ts#Store", "repo:app/src/model/task.ts#Task") in refs
@@ -115,18 +119,19 @@ def test_references_follow_barrels_and_namespaces(model):
 
 
 def test_type_only_dependencies(model):
-    m, _ = model
+    m = model
     refs = uses(m, "ref")
     assert refs[("repo:app/src/store/store.ts#Store", "repo:app/src/model/task.ts#Task")].attrs["type_only"], "import type"
     assert refs[("repo:app/src/lib/format.ts", "repo:app/src/model/task.ts#Task")].attrs["type_only"], "used in type positions only"
     assert not refs[("repo:app/src/store/store.ts#Store", "repo:app/src/model/task.ts#Priority")].attrs["type_only"]
-    ctx = Ctx(m, None, set(), set())
+    g = open_graph(m)
+    ctx = Ctx(Source(g.scene), g.scene, set(), set())
     e = RolledEdge("use", "repo:app/src/lib/format.ts", "repo:app/src/model/task.ts#Task", "import", 1, types=1)
-    assert "no dependency at run time" in str(edge_info(ctx, e))
+    assert "no dependency at run time" in str(_edge_info(ctx, e))
 
 
 def test_resolution_particulars(model):
-    m, ctx = model
+    m = model
     imports = uses(m, "import")
     # workspace packages resolve to their source, the entry from ``main`` mapped dist/ -> src/
     assert ("repo:app/src/commands/list.ts", "repo:packages/util/src/index.ts") in uses(m)
@@ -140,11 +145,11 @@ def test_resolution_particulars(model):
     refs = uses(m, "ref")
     assert ("repo:legacy/server.js#Server", "repo:legacy/http.js") in refs
     assert ("repo:legacy/server.js#Server", "repo:legacy/db.js") in refs
-    assert ctx.notes["js-resolution"].get("unresolved", 0) == 0
+    assert m.meta["notes"]["js-resolution"].get("unresolved", 0) == 0
 
 
 def test_declaration_files_are_named_as_modules():
-    assert module_stem("vite-env.d.ts") == "vite-env" and module_stem("api.ts") == "api" and module_stem("a.b.js") == "a.b"
+    assert _module_stem("vite-env.d.ts") == "vite-env" and _module_stem("api.ts") == "api" and _module_stem("a.b.js") == "a.b"
 
 
 def test_imports_of_a_file_that_does_not_parse_whole():
@@ -163,6 +168,6 @@ def test_imports_of_a_file_that_does_not_parse_whole():
 
 
 def test_index_is_the_folders_own_code(model):
-    m, _ = model
-    assert is_init(m, "repo:app/src/model/index.ts")
+    m = model
+    assert is_init(open_graph(m), "repo:app/src/model/index.ts")
     assert m.entities["repo:app/src/model/index.ts"].attrs["reexports"] == ["TaskStore"]

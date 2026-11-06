@@ -1,12 +1,14 @@
-"""TypeScript/JavaScript front-end: modules and imports, classes and types and references
-to them, and library adapters that read TS/JS syntax (fetch/axios/EventSource calls,
+"""The TypeScript and JavaScript language: parser, extractors, resolvers.
+
+The package holds what reads TS/JS syntax: modules and imports, classes and types and
+the references to them, and adapters for libraries (fetch/axios/EventSource calls,
 environment reads). JavaScript is read by the same code: it is TypeScript without the
 type syntax."""
 
 from __future__ import annotations
 
-from .. import Language
-from . import env, fetch, imports, resolve, symbols
+from nolli.extractors import Language
+from nolli.extractors.typescript import env, fetch, imports, resolve, symbols
 
 LANGUAGE = Language(
     name="typescript",

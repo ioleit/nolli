@@ -1,2 +1,5 @@
-"""Markup adapters: what HTML pages and stylesheets load from the repository (scripts,
-stylesheets, images, fonts), as ``use`` edges between files."""
+"""Extractors for what HTML pages and stylesheets load.
+
+What a page or stylesheet loads (scripts, stylesheets, images, fonts, npm packages)
+becomes a ``use`` edge from its file.
+"""

@@ -1,22 +1,24 @@
-"""Python front-end: modules and imports, classes and references, and framework adapters
-that read Python syntax (FastAPI/Flask routes, environment reads)."""
+"""The Python language: its parser, extractors and resolvers.
+
+The package holds what reads Python syntax: modules and imports, classes and the
+references between them, and adapters for frameworks (web routes, environment reads)."""
 
 from __future__ import annotations
 
 import ast
 
-from .. import Language
-from . import env, fastapi, imports, resolve, symbols
+from nolli.extractors import Language
+from nolli.extractors.python import env, fastapi, imports, resolve, symbols
 
 
-def parse(rel: str, source: bytes) -> ast.Module:
+def _parse(rel: str, source: bytes) -> ast.Module:
     return ast.parse(source, filename=rel)
 
 
 LANGUAGE = Language(
     name="python",
     extensions={".py": "python"},
-    parse=parse,
+    parse=_parse,
     extractors=[("python-imports", imports.run), ("python-symbols", symbols.run),
                 ("python-fastapi", fastapi.run), ("python-env", env.run)],
     resolvers=[("python-imports", resolve.resolve_imports), ("python-refs", resolve.resolve_refs)],

@@ -30,7 +30,7 @@ const textW = (s, icons) => Math.max(icons.length && !s ? 20 : 56, s.length * 6.
 
 /** "+12 −3" for a box whose lines changed, "" otherwise. @param {import("../types/nolli").BoxNode} n */
 export function statsText(n) {
-  const d = n.diff;
+  const d = n.change;
   if (!d || (!d.added && !d.removed)) return "";
   return `+${d.added} −${d.removed}`;
 }
@@ -38,27 +38,20 @@ export function statsText(n) {
 /** The size a folded node needs for its label, badge, chips and changed lines. @param {SceneNode} n */
 function leafSize(n) {
   if (isAnchor(n)) return { w: 14, h: 14 };
-  const sub = n.leaves ? "+" + n.leaves : "";
+  const sub = n.projection.leaves ? "+" + n.projection.leaves : "";
   const stats = statsText(n);
   return {
-    w: Math.max(textW(n.label + sub, n.icons), (n.badge ? n.badge.length * 5.4 : 0) + stats.length * 6 + (stats ? 10 : 0) + n.chips.length * 11 + 20),
-    h: (n.badge || n.chips.length || stats) ? 40 : 30,
+    w: Math.max(textW(n.label.text + sub, n.label.icons), (n.projection.badge ? n.projection.badge.length * 5.4 : 0) + stats.length * 6 + (stats ? 10 : 0) + n.projection.chips.length * 11 + 20),
+    h: (n.projection.badge || n.projection.chips.length || stats) ? 40 : 30,
   };
 }
 
 /** @param {SceneNode} n */
-const isContainer = n => !isAnchor(n) && n.container;
+const isContainer = n => !isAnchor(n) && n.projection.container;
 
 // room around a container's children: the header with title, badges and − sits on top
 const CONTAINER_PAD = { top: 30, left: 10, bottom: 10, right: 10 };
 export const HEADER_H = 26;  // the header's hover area (draw.js), above where children start
-export const USES_LINE = 13;  // one line per utility used, bottom right
-
-/** A container's padding: CONTAINER_PAD, plus room at the bottom for its uses list. @param {SceneNode} n */
-function containerPad(n) {
-  const k = isAnchor(n) ? 0 : (n.uses || []).length;
-  return k ? { ...CONTAINER_PAD, bottom: CONTAINER_PAD.bottom + 4 + k * USES_LINE } : CONTAINER_PAD;
-}
 
 /** Drawn children per container id ("ROOT" for the top level), in scene order. @param {Scene} scene */
 function childrenOf(scene) {
@@ -88,7 +81,7 @@ function elkGraph(scene) {
   // anchors go to the first layer and utilities to the last, but ELK refuses an edge between
   // two boxes pinned to the same end (a review keeps a changed edge between utilities): those
   // boxes are left free
-  const first = new Set(scene.nodes.filter(isAnchor).map(n => n.id)), last = new Set(scene.nodes.filter(n => !isAnchor(n) && n.utility).map(n => n.id));
+  const first = new Set(scene.nodes.filter(isAnchor).map(n => n.id)), last = new Set(scene.nodes.filter(n => !isAnchor(n) && n.projection.utility).map(n => n.id));
   for (const e of scene.edges) for (const pinned of [first, last]) if (pinned.has(e.src) && pinned.has(e.dst)) { pinned.delete(e.src); pinned.delete(e.dst); }
   /** @param {SceneNode} n @returns {ElkNode} */
   const build = n => {
@@ -98,7 +91,7 @@ function elkGraph(scene) {
     const node = { id: n.id, layoutOptions: opts };
     if (isContainer(n)) {
       node.children = (kidsOf.get(n.id) || []).map(build);
-      const pad = containerPad(n);
+      const pad = CONTAINER_PAD;
       opts["elk.padding"] = `[top=${pad.top},left=${pad.left},bottom=${pad.bottom},right=${pad.right}]`;
       opts["elk.spacing.nodeNode"] = "16";
       opts["elk.layered.spacing.nodeNodeBetweenLayers"] = "26";
@@ -112,8 +105,8 @@ function elkGraph(scene) {
   };
   // an edge's verdict mark is its label, inline: ELK makes room for it halfway along and routes
   // the edge through its middle (a label without text is left unplaced, so the verdict is its text)
-  const mark = /** @param {SceneEdge} e @param {number} i */ (e, i) => e.verdict
-    ? [{ id: "m" + i, text: e.verdict, width: MARK, height: MARK, layoutOptions: { "elk.edgeLabels.inline": "true" } }] : [];
+  const mark = /** @param {SceneEdge} e @param {number} i */ (e, i) => e.verdicts?.verdict
+    ? [{ id: "m" + i, text: e.verdicts?.verdict, width: MARK, height: MARK, layoutOptions: { "elk.edgeLabels.inline": "true" } }] : [];
   /** @type {ElkEdge[]} */
   const edges = scene.edges.map((e, i) => ({ id: "e" + i, sources: [e.src], targets: [e.dst], labels: mark(e, i), _e: e }));
   return { id: "ROOT", layoutOptions: GRAPH_OPTIONS, children: (kidsOf.get("ROOT") || []).map(build), edges };
