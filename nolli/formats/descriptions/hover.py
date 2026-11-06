@@ -498,11 +498,16 @@ class Hover(Overlay):
         if "source" not in scene.sources:
             return {}
         ctx, deps = _make_ctx(scene)
+        known = lambda x: ctx.g.has(address.owner(x))  # a node the source does not have (a proposed directory): nothing to say
         out: dict[Key, dict] = {}
         for x in scene.model.kinds:
+            if not known(x):
+                continue
             p = scene.find_element(x).get("projection") or {}
             out[x] = {"text": _node_info(ctx, deps, x, p.get("used_by", 0))}
         for e in scene.model.list_edges():
+            if not (known(e.src) and known(e.dst)):
+                continue
             p = scene.find_element(e).get("projection") or {}
             out[e] = {"text": _edge_info(ctx, EdgeFacts(e, p))}
         return out

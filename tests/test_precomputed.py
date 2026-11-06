@@ -1,6 +1,6 @@
 """Overlays answered from a store (nolli/store/precomputed.py): what an overlay said about a
 model kept and read back, as values only or with the overlay behind it, and nothing taken
-from a namesake in another model."""
+from a namesake in another model, except what extraction said about an address."""
 
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ from pathlib import Path
 import pytest
 
 from nolli import transformations
+from nolli.model import EdgeKey, Model, metamodel
 from nolli.model.scene import Element, FixedOverlay, Overlay
-from nolli.store import CachingOverlay, MemoryMaps, PrecomputedOverlay
+from nolli.store import CachingOverlay, ExtractedOverlay, MemoryMaps, PrecomputedOverlay
 from nolli.transformations import projection
 from nolli.transformations.projection import ProjectionSpec
 from tests.helpers import open_dir
@@ -46,6 +47,15 @@ def fold(scene):
     return transformations.apply(scene, projection.fold(MODULES))
 
 
+def propose(scene):
+    """A proposed grouping: a directory that is not there, holding pkg/ (same addresses otherwise)."""
+    m = scene.model
+    kinds = {**m.kinds, "repo:src": "directory"}
+    edges = [e for e in m.edges if e != EdgeKey(metamodel.CONTAIN, "repo:", "repo:pkg")]
+    edges += [EdgeKey(metamodel.CONTAIN, "repo:", "repo:src"), EdgeKey(metamodel.CONTAIN, "repo:src", "repo:pkg")]
+    return Model(f"{m.key}|src", kinds, edges, refs={"source": None})
+
+
 def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):
     store = MemoryMaps()
     values = store.precompute_overlay_values(scene, Counting())
@@ -60,6 +70,24 @@ def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):
     picture = fold(kept)
     assert picture.find_element("repo:pkg/a.py").get("counting") is None
     assert picture.read_all("counting") == {}
+
+
+def test_what_extraction_said_holds_for_a_namesake(scene):
+    assert isinstance(scene.overlays["files"], ExtractedOverlay)
+    proposal = transformations.apply(scene, propose)
+    a, src = proposal.find_element("repo:pkg/a.py"), proposal.find_element("repo:src")
+    assert a.get("files") == scene.find_element("repo:pkg/a.py").get("files") and a.get("files")["module"]
+    assert src.get("files") is None and src.get("symbols") is None  # no namesake: nothing was said
+    assert set(proposal.read_all("files")) == set(scene.read_all("files"))
+    edge = next(e for e in proposal.model.list_edges() if e.src == "repo:pkg/a.py")
+    assert proposal.find_element(edge).get("references") == scene.find_element(edge).get("references")
+    assert src.get("hover") is None and "a" in a.get("hover")["text"]  # nothing to say about what the source does not have
+    # the proposal folds like any scene: roles, modules and references are read off it
+    picture = fold(proposal)
+    assert not picture.model.has("repo:src") and picture.model.has("repo:pkg")  # a folder holding one folder is drawn as that one
+    assert picture.find_element("repo:pkg/a.py").get("label")["text"] == "a"
+    assert picture.find_element("repo:pkg/a.py").get("files")["module"]  # a box that is a node of its source
+    assert picture.find_element("repo:pkg").get("projection")["container"]
 
 
 def test_caching_overlay_reads_what_is_kept_and_computes_the_rest(scene):

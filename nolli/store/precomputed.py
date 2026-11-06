@@ -6,7 +6,10 @@ the overlay said it (``about``). Read back, they come as one of two overlays: on
 says what was kept (``PrecomputedOverlay``: an extractor's word, a map from outside), and one
 that says what was kept where it is acceptable and computes the rest (``CachingOverlay``).
 Neither takes a namesake's values from another model: what a picture or a change says about
-its own elements is kept under its own key, or computed.
+its own elements is kept under its own key, or computed. What extraction said is about an
+address, though, and holds for a namesake: an ``ExtractedOverlay`` (one per shape,
+``vocabulary.SHAPES``) answers for an element of a model made from one scene with what was
+kept for the element of the same address there.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from enum import Enum
 
 from typing import Protocol
 
-from nolli.model import Key, Model
+from nolli.model import Key, Model, vocabulary
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 
 
@@ -62,6 +65,29 @@ class PrecomputedOverlay(Overlay):
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
         return self.stored.load(scene.model.key)
+
+
+class ExtractedOverlay(PrecomputedOverlay):
+    """What extraction said under ``name`` (a shape: what the file tree says, a language, an
+    extractor), kept for the model it was extracted for. Same address, same thing: an element
+    of a model made from one scene (a picture, a proposed grouping) answers with what was kept
+    for its namesake there, the element of the same address, and nothing for one that has no
+    namesake (a box's own code, a proposed directory). A model made from several scenes says
+    itself how its sources' words combine (``merge.SidesSaid``)."""
+
+    def compute(self, element: Element) -> dict | None:
+        kept = self.stored.load(element.model_key).get(element.key)
+        if kept is not None or len(element.scene.sources) != 1:
+            return kept
+        same = element.find_same()
+        return None if same is None else same.get(self.name)
+
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        kept = self.stored.load(scene.model.key)
+        if kept or len(scene.sources) != 1:
+            return kept
+        (src,) = scene.sources.values()
+        return {k: v for k, v in src.read_all(self.name).items() if scene.model.has(k)}
 
 
 class CachingOverlay(Overlay):
@@ -116,7 +142,10 @@ class OverlayStore:
         return _precompute(self.open_maps(overlay.name), scene, overlay, by)
 
     def precomputed_overlay(self, name: str) -> PrecomputedOverlay:
-        """The overlay that says what was kept under ``name`` for an element's model, and nothing else."""
+        """The overlay that says what was kept under ``name`` for an element's model, and nothing
+        else; for a shape of what extraction said, also for a namesake (``ExtractedOverlay``)."""
+        if name in vocabulary.SHAPES:
+            return ExtractedOverlay(name, self.open_maps(name))
         return PrecomputedOverlay(name, self.open_maps(name))
 
     def caching_overlay(self, overlay: Overlay, strategy: CachingStrategy = CachingStrategy.USE_PRECOMPUTED_VALUES) -> CachingOverlay:

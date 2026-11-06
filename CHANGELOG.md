@@ -25,6 +25,10 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   0.7.0 and before are not read. A dataset directory is:
   - a commit: `key.json`, `model.json`, `overlays/`;
   - a change: `key.json`, `change.json`, `base/`, `head/`, `overlays/`.
+- **What extraction said about an address holds for a namesake.** In a model made from one
+  scene (a picture, or a proposed grouping as in `dev/examples/logic.py`) an element of the
+  same address answers with the source's `files`, `symbols`, `references` and `externals`;
+  a node the source does not have says nothing, and the hover text leaves it out.
 - **Verdicts are kept by what they are about** (the `verdicts` map, by address), not by
   the review diagram's node ids. Agents still answer on the diagram's ids.
 - **The viewer's JSON gives each box and edge its overlays under their names**
