@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nolli import transformations
-from nolli.extractors import overlays as overlays_lib
 from nolli.model import Key, Model
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey
 from nolli.model.scene import Overlay, Scene
@@ -30,8 +29,10 @@ def _make_overlays(maps: MapStore) -> list[Overlay]:
 
 
 def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
-    """An extracted model with its extractors' overlays and nolli's (or ``overlays``)."""
-    return Scene(model, [*overlays_lib.make_base_overlays(model, maps), *(_make_overlays(maps) if overlays is None else overlays)])
+    """An extracted model with the maps the store keeps for it (its extractors' word, each a
+    precomputed overlay) and nolli's overlays (or ``overlays``)."""
+    kept = [maps.precomputed_overlay(n) for n in maps.list_map_names(model.key)]
+    return Scene(model, [*kept, *(_make_overlays(maps) if overlays is None else overlays)])
 
 
 def open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:

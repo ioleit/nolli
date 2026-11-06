@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from nolli.model import EdgeKey, FormatError, Key, Model
-from nolli.model.scene import Element, Overlay, Scene, StoredMaps
+from nolli.model.scene import StoredMaps
 from nolli.store.precomputed import OverlayStore
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
@@ -62,58 +62,6 @@ class _MemoryHandle:
 
     def load_about(self, model_key: str) -> dict | None:
         return self.store.about.get((self.name, model_key))
-
-
-
-
-class StoredOverlay(Overlay):
-    """What the store keeps under this name for the element's model: the overlay for anything
-    saved as a map, an extractor's word or an annotation from outside. ``follow``: an element
-    with nothing stored takes what its namesake in a source has (a projected box what the
-    node it is says; a change's node what head, else base, says).
-
-    It does not roll up: a folded box gets nothing from what it stands for, and a drawn edge
-    nothing from the edges it bundles. An overlay that should derives from this one and
-    combines its sources' answers itself (as ``nolli.review.verdicts`` does). A generic
-    combine (concatenating the values, say) may come later."""
-
-    def __init__(self, name: str, stored: StoredMaps, follow: bool = True) -> None:
-        self.name, self.stored, self.follow = name, stored, follow
-
-    def compute(self, element: Element) -> dict | None:
-        """What is stored for the element, else (``follow``) for its namesake in a source."""
-        own = self.stored.load(element.model_key).get(element.key)
-        if own is not None or not self.follow:
-            return own
-        same = element.find_same()
-        return same.get(self.name) if same is not None else None
-
-    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """The model's map; with ``follow``, filled in from the sources' maps for the elements
-        it has nothing for, as ``compute`` does one by one (head's word, else base's, else the
-        source's)."""
-        own = self.stored.load(scene.model.key)
-        if not self.follow or not scene.sources:
-            return own
-        out = dict(own)
-        model = scene.model
-        earlier: list[tuple[str, Scene]] = []  # a namesake in an earlier role, even one that says nothing, is the one followed
-
-        def is_same(role: str, src: Scene, key: Key) -> bool:
-            return key in scene.list_refs(role, key) and src.model.has(key)
-
-        for role in ("head", "base", "source"):
-            src = scene.sources.get(role)
-            if src is None:
-                continue
-            for key, v in src.read_all(self.name).items():
-                if key in out or not model.has(key) or not is_same(role, src, key):
-                    continue
-                if any(is_same(r, s, key) for r, s in earlier):
-                    continue
-                out[key] = v
-            earlier.append((role, src))
-        return out
 
 
 

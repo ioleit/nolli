@@ -264,15 +264,41 @@ def _sum_edge(el: Element) -> dict | None:
             "changes": changes[:40], "more": max(0, len(changes) - 40)}
 
 
+class SidesSaid(Overlay):
+    """What the sides' extractors said, as the change's own: for each node and edge, head's
+    word, else base's (the change's ``overlays``: ``_join_readers``). Same address, same thing,
+    so a map kept for a commit holds for the change's namesake of its node; read from the
+    sides when first asked, kept nowhere."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def compute(self, element: Element) -> dict | None:
+        return element.scene.read_all(self.name).get(element.key)
+
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        model = scene.model
+        out: dict[Key, dict] = {}
+        for role in ("base", "head"):  # head's word last: it replaces base's
+            for k, v in scene.sources[role].read_all(self.name).items():
+                if model.has(k):
+                    out[k] = v
+        return out
+
+
 def union(key: str, meta: dict | None = None):
     """Merge as a transformation: of two scenes by role (``base``, ``head``), the model holding
     every node and edge of either, each referring to its namesake on each side. Same address,
-    same thing: a node or edge is the same on both sides when its address is."""
-    def make(sides: dict[str, Scene]) -> Model:
+    same thing: a node or edge is the same on both sides when its address is, and what the
+    sides' extractors said about it is the change's (``SidesSaid``, one per overlay the
+    meta's ``overlays`` name)."""
+    def make(sides: dict[str, Scene]) -> tuple[Model, list[Overlay]]:
         base, head = sides["base"], sides["head"]
         kinds = {**base.model.kinds, **head.model.kinds}
         owned = {e.dst for e in head.model.edges if e.kind == metamodel.CONTAIN}
         edges = list(head.model.edges) + [e for e in base.model.edges if not (e.kind == metamodel.CONTAIN and e.dst in owned)]
-        return Model(key, kinds, edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
+        about = dict(meta or {})
+        model = Model(key, kinds, edges, refs={"base": None, "head": None}, meta=about, check=False)
+        return model, [SidesSaid(n) for n in about.get("overlays") or []]
 
     return make
