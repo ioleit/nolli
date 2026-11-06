@@ -17,14 +17,14 @@ from nolli.model import EdgeKey, Key, Model
 
 class Overlay:
     """Code that says something about one element: ``compute(element)`` returns its properties
-    (a dict) or None. The file tree's overlay, for one, says a file's role and size.
+    (a dict) or None. The ``files`` overlay, for one, says a file's role and size.
     ``compute_all(scene)`` says it about every element of a scene at once, for the code that
     reads a whole model (the fold, the descriptions, the review); by default by asking
     ``compute`` about each, an overlay that has everything at hand (a stored map) answers
     with that.
 
-    An overlay decides for itself where its knowledge comes from: maps it keeps in a store
-    (``StoredMaps``, by model key, as an extractor saved them), other overlays
+    An overlay decides for itself where its knowledge comes from: maps kept in a store
+    (``StoredMaps``, by model key: what extraction said, a review's verdicts), other overlays
     (``element.get``), or what the element stands for in the models it was made from
     (``element.sources``).
 
@@ -62,12 +62,11 @@ class Overlay:
 
 
 class StoredMaps(Protocol):
-    """What an overlay that keeps maps reads them from: its own maps in a store, by model key
-    (``nolli/store/``, ``MapStore.open_maps(name)``), and nothing else of the store."""
+    """What an overlay reads kept maps from: the maps of one name in a store, by model key
+    (``nolli/store/``, ``MapStore.open_maps(name)``), and nothing else of the store. An
+    overlay only reads; the store writes (``nolli/store/precomputed.py``)."""
 
     def load(self, model_key: str) -> Mapping[Key, dict]: ...
-
-    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None: ...
 
     def load_about(self, model_key: str) -> dict | None: ...
 

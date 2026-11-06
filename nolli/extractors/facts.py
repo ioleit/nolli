@@ -77,7 +77,7 @@ class Relation:
 
 class Facts:
     """Entities and relations as the extractors write them, checked against the metamodel
-    as they grow; ``split()`` turns them into a ``Model`` and, per extractor, what it said.
+    as they grow; ``split()`` turns them into a ``Model`` and what was said, by shape.
 
     An entity's attributes are recorded under the extractor that wrote each of them
     (``current`` while it runs, so a symbols extractor adding ``doc`` to a file the file

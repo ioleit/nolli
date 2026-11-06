@@ -8,8 +8,10 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 - **The core is rewritten around models, overlays and scenes** (NOTES.md, "Model,
   overlays and scenes"). A model is structure only. Everything known about a node or an
-  edge comes from an overlay: one per extractor, plus `change`, `verdicts`, `label`,
-  `hover` and `review`. Merge and projection take a scene and return one, whose elements
+  edge comes from an overlay: what extraction said, by shape (`files`, `symbols`,
+  `references`, `externals`), plus `change`, `verdicts`, `label`, `hover` and `review`.
+  An overlay's values can be kept in the store and read back instead of computed
+  (`precompute_overlay_values`, `caching_overlay`; `dev/examples/cool.py`). Merge and projection take a scene and return one, whose elements
   refer to what they stand for. The packages:
   - `nolli/model` (with `scene.py`), `nolli/keys.py`;
   - `nolli/extractors` (with `facts.py`, the builder extraction writes into);

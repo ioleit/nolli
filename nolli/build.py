@@ -111,7 +111,7 @@ def _load_maps(store: MapStore, m: Model) -> Maps:
 
 def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = run_here,
                        progress: Progress | None = None, rebuild: bool = False) -> tuple[Model, Maps]:
-    """The model of one commit and its extractors' maps: from the store, or extracted from
+    """The model of one commit and the maps kept for it: from the store, or extracted from
     ``clone`` (which has the commit)."""
     progress = progress or Quiet()
     m = None if rebuild else store.load_model(commit)

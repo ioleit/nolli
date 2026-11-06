@@ -1,4 +1,4 @@
-"""Opens models as scenes, with the extractors' overlays and nolli's.
+"""Opens models as scenes, with what extraction said and nolli's overlays.
 
 A model may be one just extracted and kept nowhere, or one kept in a store: a commit, or a
 change merged from its two commits.

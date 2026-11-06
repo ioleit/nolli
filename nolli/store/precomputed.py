@@ -15,8 +15,17 @@ import time
 from collections.abc import Iterable, Mapping
 from enum import Enum
 
+from typing import Protocol
+
 from nolli.model import Key, Model
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
+
+
+class KeptMaps(StoredMaps, Protocol):
+    """A store's handle on the maps of one name: what an overlay reads, and ``save``, which
+    only the store's own methods call."""
+
+    def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None: ...
 
 
 class CachingStrategy(Enum):
@@ -31,7 +40,7 @@ def _describe_values(overlay: Overlay, by: dict | None = None) -> dict:
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
-def _precompute(stored: StoredMaps, scene: Scene, overlay: Overlay, by: dict | None = None) -> Mapping[Key, dict]:
+def _precompute(stored: KeptMaps, scene: Scene, overlay: Overlay, by: dict | None = None) -> Mapping[Key, dict]:
     """What ``overlay`` says about every element of ``scene``, kept in ``stored`` under the
     scene's model key, replacing what was kept; the values. The overlay answers on the scene
     with itself attached (in place of one of the same name), so what it asks of other
@@ -94,7 +103,7 @@ class OverlayStore:
     """What a store that keeps maps (``open_maps``) does with precomputed overlays: the methods
     every store shares, over its handles."""
 
-    def open_maps(self, name: str) -> StoredMaps:  # the store's own
+    def open_maps(self, name: str) -> KeptMaps:  # the store's own
         raise NotImplementedError
 
     def list_map_names(self, model_key: str) -> list[str]:

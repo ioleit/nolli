@@ -13,7 +13,7 @@ from pathlib import Path
 
 from nolli.model import address, metamodel
 
-FORMAT = 2  # of model.json; a model of another format is built again, never read (2: meta names the symbols overlays)
+FORMAT = 3  # of model.json; a model of another format is built again, never read (3: its maps are by shape, meta names no overlays)
 
 
 class FormatError(ValueError):
@@ -54,7 +54,7 @@ class Model:
     """Structure: ``kinds`` (each node's address -> its kind), ``edges``, and for a model made
     by a transformation (a change, a projection) ``refs`` (role -> element -> the elements of
     that source it stands for). ``contain`` edges form the ownership tree. ``key`` names the
-    model (what it is the model of: ``nolli/store/`` keys); stored overlays are kept by it.
+    model (what it is the model of: ``nolli/store/`` keys); its maps are kept by it.
 
     Everything else known about a node or an edge (its name, size, role, a docstring, which
     lines an import is on, a review's verdict) is in overlays, never in the model. Every

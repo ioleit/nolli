@@ -56,7 +56,7 @@ class ModelKey:
         raise NotImplementedError
 
     def format_key(self) -> str:
-        """The key as text: ``Model.key``, which stored overlays are kept by."""
+        """The key as text: ``Model.key``, which a model's maps are kept by."""
         raise NotImplementedError
 
     def to_dict(self) -> dict:

@@ -9,19 +9,21 @@ from typing import Protocol
 
 from nolli.model import Key, Model
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
-from nolli.store.maps import MapStore, MemoryMaps, StoredMaps  # noqa: F401
-from nolli.store.precomputed import CachingOverlay, CachingStrategy, PrecomputedOverlay  # noqa: F401
+from nolli.model.scene import StoredMaps  # noqa: F401
+from nolli.store.maps import MapStore, MemoryMaps  # noqa: F401
+from nolli.store.precomputed import CachingOverlay, CachingStrategy, KeptMaps, PrecomputedOverlay  # noqa: F401
 
 FORMAT = 1  # of key.json and change.json
 
 
 class ModelStore(MapStore, Protocol):
-    """Keeps models by key (a commit's or a change's) and the maps overlays keep for them.
+    """Keeps models by key (a commit's or a change's) and the maps kept for them: what an
+    overlay said about a model (``nolli/store/precomputed.py``).
 
-    ``save_model`` keeps a commit's model with the maps its extractors made; ``save_change``
+    ``save_model`` keeps a commit's model with the maps extraction made; ``save_change``
     keeps a change's own record (what it says about itself, its two sides and the maps kept
-    for the change, git's hunks and a review's verdicts among them); ``open_maps`` gives an
-    overlay a handle on its maps.
+    for the change, git's hunks and a review's verdicts among them); ``open_maps`` is the
+    handle on the maps of one name that the overlay methods share.
 
     Everything stored carries a format; data of another format is not read (a load returns
     None, as if nothing were kept).

@@ -1,7 +1,7 @@
 """The shapes of what overlays say about code, the same for every language.
 
 A shape belongs here when code that works with any language relies on it; what only one
-language knows belongs in that language's own subclass of it.
+language knows is a key of its own in the value, read by that language's code alone.
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ def shape_of(key: str | EdgeKey, speaker: str) -> str:
     return EXTERNALS
 
 
-# At run time these are plain dicts (stored as maps, sent as JSON); a language's overlay
-# returns them and may add keys of its own.
+# At run time these are plain dicts (kept as maps, sent as JSON); an extractor writes them
+# and may add keys of its own.
 
 
 class Reference(TypedDict):
@@ -57,7 +57,7 @@ class EdgeFacts(TypedDict):
 
 
 class FileFacts(TypedDict):
-    """What the file tree's overlay (``fs``) says about a file or directory."""
+    """What the file tree says about a file or directory (``FILES``)."""
     path: str
     role: str  # source, test, docs, config, data, asset, markup, other; a directory's also mixed
     language: NotRequired[str]  # an extracted language's files
@@ -70,7 +70,7 @@ class FileFacts(TypedDict):
 
 
 class ModuleFacts(TypedDict):
-    """What a language's symbols overlay says a module defines outside its classes and types."""
+    """What a language says a module defines outside its classes and types (``SYMBOLS``)."""
     functions: list[str]
     constants: list[str]
     own_lines: int
@@ -79,7 +79,7 @@ class ModuleFacts(TypedDict):
 
 
 class SymbolFacts(TypedDict):
-    """What a language's symbols overlay says about a class, interface, type alias or enum."""
+    """What a language says about a class, interface, type alias or enum (``SYMBOLS``)."""
     path: str
     line: int
     end_line: int

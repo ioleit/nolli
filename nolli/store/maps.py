@@ -6,8 +6,7 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from nolli.model import EdgeKey, FormatError, Key, Model
-from nolli.model.scene import StoredMaps
-from nolli.store.precomputed import OverlayStore
+from nolli.store.precomputed import KeptMaps, OverlayStore
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
 
@@ -19,9 +18,9 @@ class MapStore(Protocol):
     """Keeps maps. A map is kept by model key (``Model.key``) and holds, per node or edge, what
     an overlay says about it, with ``about`` (who made it, when)."""
 
-    def open_maps(self, name: str) -> StoredMaps:
-        """A handle restricted to the maps saved under the overlay ``name``, so the overlay
-        never sees the store itself."""
+    def open_maps(self, name: str) -> KeptMaps:
+        """A handle restricted to the maps kept under ``name``, so an overlay never sees the
+        store itself."""
         ...
 
 
