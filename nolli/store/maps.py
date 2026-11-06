@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from nolli.model import EdgeKey, FormatError, Key
+from nolli.model import EdgeKey, FormatError, Key, Model
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
+from nolli.store.precomputed import OverlayStore
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
 
@@ -26,15 +27,25 @@ class MapStore(Protocol):
 
 
 
-class MemoryMaps:
-    """Maps in memory (a model just extracted, tests)."""
+class MemoryMaps(OverlayStore):
+    """Maps in memory (a model just extracted, tests), and models under any key."""
 
     def __init__(self, maps: dict[str, dict[str, dict[Key, dict]]] | None = None) -> None:
         self.maps = maps if maps is not None else {}  # name -> model key -> values
         self.about: dict[tuple[str, str], dict] = {}
+        self.models: dict[str, Model] = {}
 
     def open_maps(self, name: str) -> _MemoryHandle:
         return _MemoryHandle(self, name)
+
+    def list_map_names(self, model_key: str) -> list[str]:
+        return sorted(n for n, by_model in self.maps.items() if model_key in by_model)
+
+    def load_model(self, key: str) -> Model | None:
+        return self.models.get(key)
+
+    def save_model(self, model: Model) -> None:
+        self.models[model.key] = model
 
 
 class _MemoryHandle:

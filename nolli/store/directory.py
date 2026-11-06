@@ -10,7 +10,9 @@ from pathlib import Path
 
 from nolli.model import Key, Model, keys
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo
+from nolli.model.scene import Scene
 from nolli.store import maps as maps_lib
+from nolli.store.precomputed import OverlayStore
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
 
@@ -18,7 +20,7 @@ FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
 # -- models in directories ------------------------------------------------------------
 
 
-class DirectoryStore:
+class DirectoryStore(OverlayStore):
     """Models as directories under ``root``, one per key, named after it:
 
     - a commit: ``key.json``, ``model.json`` and ``overlays/<name>.json``, one per overlay
@@ -170,6 +172,19 @@ class DirectoryStore:
 
     def open_maps(self, name: str) -> DirectoryMaps:
         return DirectoryMaps(self, name)
+
+    def list_map_names(self, model_key: str) -> list[str]:
+        """The maps kept for a model: the files under its ``overlays/``."""
+        self.check(Repo(model_key.rpartition("@")[0]))
+        self.scan()
+        d = self.places.get(model_key)
+        return sorted(f.stem for f in (d / "overlays").glob("*.json")) if d is not None and (d / "overlays").is_dir() else []
+
+    def save_scene(self, scene: Scene, by: dict | None = None) -> None:
+        """Not yet: this store keeps models under commit and change keys only (``save_model``,
+        ``save_change``). What an overlay says about one it holds is kept with
+        ``precompute_overlay_values``."""
+        raise NotImplementedError("DirectoryStore keeps models by commit or change key: save_model, save_change")
 
     def locate_maps(self, model_key: str, name: str) -> Path | None:
         """Where a model's map is; checked, as every read (the repository is the key's text before ``@``)."""

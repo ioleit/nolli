@@ -6,6 +6,8 @@ overlay; this module holds how overlays are asked, not what any one overlay know
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 from collections.abc import Iterable, Mapping
 from functools import cached_property
 from typing import Protocol
@@ -24,9 +26,26 @@ class Overlay:
     An overlay decides for itself where its knowledge comes from: maps it keeps in a store
     (``StoredMaps``, by model key, as an extractor saved them), other overlays
     (``element.get``), or what the element stands for in the models it was made from
-    (``element.sources``)."""
+    (``element.sources``).
+
+    What it says about a model can be kept in a store and read back instead of computed
+    (``nolli/store/precomputed.py``); ``cache_version`` says which kept values are still its
+    own."""
 
     name: str
+
+    @property
+    def cache_version(self) -> str:
+        """Which precomputed values of this overlay are acceptable: values kept under another
+        version are not read. By default a hash of the class's source, so a change to the code
+        retires what it computed before; an overlay whose answers depend on more than its code
+        (its arguments, a helper it calls) sets its own, ``cache_version = "2"``."""
+        cls = type(self)
+        try:
+            source = inspect.getsource(cls)
+        except (OSError, TypeError):
+            return cls.__qualname__
+        return hashlib.sha256(source.encode()).hexdigest()[:12]
 
     def compute(self, element: Element) -> dict | None:
         raise NotImplementedError
@@ -259,8 +278,14 @@ class FixedOverlay(Overlay):
     """Properties a transformation decided for the elements it made, as an extractor's
     are saved: ``projection`` (what is a container, which lines were lifted)."""
 
-    def __init__(self, name: str, values: Mapping[Key, dict]) -> None:
-        self.name, self.values = name, values
+    def __init__(self, name: str, values: Mapping[Key, dict], cache_version: str = "") -> None:
+        self.name, self.values, self._cache_version = name, values, cache_version
+
+    @property
+    def cache_version(self) -> str:
+        """As given (what made the values says which they are: an extractor's version); else
+        the values are kept under no version and read back whatever it is."""
+        return self._cache_version
 
     def compute(self, element: Element) -> dict | None:
         return self.values.get(element.key)

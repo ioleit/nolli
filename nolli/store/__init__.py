@@ -10,6 +10,7 @@ from typing import Protocol
 from nolli.model import Key, Model
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
 from nolli.store.maps import MapStore, MemoryMaps, StoredMaps, StoredOverlay  # noqa: F401
+from nolli.store.precomputed import CachingOverlay, CachingStrategy, PrecomputedOverlay  # noqa: F401
 
 FORMAT = 1  # of key.json and change.json
 
