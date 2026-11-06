@@ -29,10 +29,10 @@ def _make_overlays(maps: MapStore) -> list[Overlay]:
 
 
 def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
-    """A model as a scene with nolli's default overlays: what extraction said, by shape, as
-    precomputed overlays (one that was never extracted for this model says nothing), and
-    nolli's own (or ``overlays``)."""
-    said = [maps.precomputed_overlay(n) for n in vocabulary.SHAPES]
+    """A model as a scene with nolli's default overlays: what extraction said, by shape, read
+    by address (a shape never extracted for this model says nothing; a model made from this
+    one answers for a namesake with the same), and nolli's own (or ``overlays``)."""
+    said = [maps.by_address(n) for n in vocabulary.SHAPES]
     return Scene(model, [*said, *(_make_overlays(maps) if overlays is None else overlays)])
 
 

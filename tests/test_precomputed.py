@@ -11,7 +11,7 @@ import pytest
 from nolli import transformations
 from nolli.model import EdgeKey, Model, metamodel
 from nolli.model.scene import Element, FixedOverlay, Overlay
-from nolli.store import CachingOverlay, ExtractedOverlay, MemoryMaps, PrecomputedOverlay
+from nolli.store import CachingOverlay, MemoryMaps, PrecomputedOverlay, SourceSaid
 from nolli.transformations import projection
 from nolli.transformations.projection import ProjectionSpec
 from tests.helpers import open_dir
@@ -73,7 +73,7 @@ def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):
 
 
 def test_what_extraction_said_holds_for_a_namesake(scene):
-    assert isinstance(scene.overlays["files"], ExtractedOverlay)
+    assert isinstance(scene.overlays["files"], CachingOverlay) and isinstance(scene.overlays["files"].overlay, SourceSaid)
     proposal = transformations.apply(scene, propose)
     a, src = proposal.find_element("repo:pkg/a.py"), proposal.find_element("repo:src")
     assert a.get("files") == scene.find_element("repo:pkg/a.py").get("files") and a.get("files")["module"]
@@ -119,6 +119,12 @@ def test_values_of_another_version_are_not_read(scene):
     assert behind.asked == ["repo:pkg/a.py"]  # computed: what was kept is version 1's
     assert kept.read_all("counting") == store.precompute_overlay_values(scene, Counting2())  # kept again, this version's
     assert store.open_maps("counting").load_about(scene.model.key)["cache_version"] == "2"
+
+
+def test_an_overlay_without_a_version_reads_whatever_was_kept(scene):
+    store = MemoryMaps()
+    store.open_maps("files").save(scene.model.key, {"repo:pkg/a.py": {"role": "kept"}}, {"cache_version": "fs-9"})
+    assert store.by_address("files").compute(scene.find_element("repo:pkg/a.py")) == {"role": "kept"}
 
 
 def test_values_kept_without_a_version_are_read(scene):
