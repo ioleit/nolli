@@ -283,18 +283,20 @@ def resolve_local(t: Target, local: Path, text: str | None = None, review: bool 
     elif t.kind == "own":
         spec = resolve_own(local, t.head)
     else:
-        spec = _resolve_range(local, t, text)
+        spec = _resolve_range(local, t, text, review)
     r = find_repo(local)
     key: ModelKey = r.make_change(spec.base, spec.head) if spec.is_diff else r.make_commit(spec.head)
     return Asked(key, local, spec, {"title": spec.title, "description": spec.description}, LocalRepository(local))
 
 
-def _resolve_range(local: Path, t: Target, text: str | None) -> ChangeSpec:
+def _resolve_range(local: Path, t: Target, text: str | None, review: bool = False) -> ChangeSpec:
     try:
         return resolve_range(local, t.base, t.head, t.symmetric)
     except ChangeError as exc:
         if text:
             raise
+        if review:
+            raise ChangeError(f"no change to review ({exc}); name one: a branch, <base>..<head>, <commit>^! or a pull request") from None
         raise ChangeError(f"nothing to build by default ({exc}); name a target: a branch or commit as a snapshot, "
                           f"...<branch> for what it adds, <base>..<head>, <commit>^!, WORKTREE, or a pull request") from None
 

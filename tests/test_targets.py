@@ -132,6 +132,8 @@ def test_the_skills_forms_keep_their_meaning_in_a_review(repo):
     assert ends(r, c["f1"], review=True) == (c["c2"], c["f1"])  # merged already: against its parent
     assert ends(r, f"{c['c1']}..{c['f2']}", review=True) == (c["c1"], c["f2"])
     assert ends(r, f"{c['f2']}...main", review=True) == (c["f2"], c["m"])
+    with pytest.raises(ChangeError, match="no change to review.*name one: a branch"):
+        ends(r, None, review=True)  # on the default branch: as before, an error
     unmerge(r, c)
     assert ends(r, None, review=True) == (c["c2"], c["f2"])
     assert ends(r, "feature", review=True) == (c["c2"], c["f2"])  # what it adds to the default branch
