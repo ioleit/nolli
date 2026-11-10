@@ -10,13 +10,14 @@ from pathlib import Path
 
 from nolli import build, scenes, transformations
 from nolli.formats import mermaid
-from nolli.model import EdgeKey, Model, address, metamodel
+from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Scene
+from nolli.model.schema import EntityId, RelationKind
 from nolli.transformations import projection
 
-NOLLI = address.repo("nolli")
-LOGIC = address.repo("nolli/logic")                                 # the proposed parent: no such directory exists
-MEMBERS = [address.repo(f"nolli/{p}") for p in ("transformations", "formats", "sources", "extractors")]
+NOLLI = EntityId.from_path("nolli")
+LOGIC = EntityId.from_path("nolli/logic")                                 # the proposed parent: no such directory exists
+MEMBERS = [EntityId.from_path(f"nolli/{p}") for p in ("transformations", "formats", "sources", "extractors")]
 
 repo = Path(sys.argv[1])
 scene = scenes.open_built(*build.extract(repo))                     # the files as they are, with nolli's overlays
@@ -28,18 +29,18 @@ def group_into_logic(scene: Scene) -> Model:                        # the custom
     in the source and what extraction said about it holds; logic/ is new and nothing is known
     about it but its place."""
     m = scene.model
-    kinds = {**m.kinds, LOGIC: "directory"}
-    moved = {EdgeKey(metamodel.CONTAIN, NOLLI, x) for x in MEMBERS}
+    entities = [*m.entities.values(), Entity(LOGIC, "directory")]
+    moved = {Relation(RelationKind.CONTAIN, NOLLI, x) for x in MEMBERS}
     edges = [e for e in m.edges if e not in moved]
-    edges.append(EdgeKey(metamodel.CONTAIN, NOLLI, LOGIC))
-    edges.extend(EdgeKey(metamodel.CONTAIN, LOGIC, x) for x in MEMBERS)
-    return Model(f"{m.key}|logic", kinds, edges, refs={"source": None})   # checked against the metamodel
+    edges.append(Relation(RelationKind.CONTAIN, NOLLI, LOGIC))
+    edges.extend(Relation(RelationKind.CONTAIN, LOGIC, x) for x in MEMBERS)
+    return Model(f"{m.key}|logic", entities, edges, refs={"source": None})   # each entity and relation checked
 
 
 proposal = transformations.apply(scene, group_into_logic)
 
 # package level: nolli/ unfolded, logic/ one box among its packages
-spec = projection.ProjectionSpec.expanded_if(lambda el: el.key in (address.REPO_ROOT, NOLLI), groups=[], utilities=0)
+spec = projection.ProjectionSpec.expanded_if(lambda el: el.key in (EntityId.REPO_ROOT, NOLLI), groups=[], utilities=0)
 folded = transformations.apply(proposal, projection.fold(spec))
 
 

@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from nolli.model import address, metamodel
+from nolli.model import schema
 from nolli.model.scene import Scene
+from nolli.model.schema import EntityId
 from nolli.review.reading import Reader
 from nolli.transformations import merge
 from nolli.transformations.merge import Links
@@ -19,8 +20,12 @@ MAX_ITEMS = 60
 def detail_box(scene: Scene, x: str) -> dict | None:
     """Everything a reviewer may want about one box of a change: changed files with hunks and
     links, classes with changed lines, nodes added or removed inside it, and the changed
-    dependencies that start or end inside it. None if the change has no such box."""
-    target = address.owner(x)
+    dependencies that start or end inside it. None if the change has no such box (or ``x``,
+    as a request gives it, is no address)."""
+    try:
+        target = EntityId(x).owner
+    except ValueError:
+        return None
     if not scene.has(target):
         return None
     g = Reader(scene)
@@ -33,7 +38,7 @@ def detail_box(scene: Scene, x: str) -> dict | None:
             continue
         a, kind = g.attrs(eid), g.kind(eid)
         if kind == "file" and "git" in d:
-            path = a.get("path", address.path_of(eid))
+            path = a.get("path", eid.path)
             hunks = [{"new": h["new"], "old": h["old"], "added": len(h["added"]), "removed": len(h["removed"]),
                       "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0],
                                          "head" if h["added"] else "base")} for h in d.get("hunks", [])]
@@ -41,7 +46,7 @@ def detail_box(scene: Scene, x: str) -> dict | None:
                           "removed": d.get("removed", 0), "binary": d.get("binary", False), "link": links.diff(path),
                           "blob": links.blob(path, "base" if d["git"] == "D" else "head"), "hunks": hunks[:20],
                           "more_hunks": max(0, len(hunks) - 20)})
-        elif kind in metamodel.SYMBOL_KINDS and (d.get("added") or d.get("removed")) and d["status"] == "same":
+        elif kind in schema.SYMBOL_KINDS and (d.get("added") or d.get("removed")) and d["status"] == "same":
             path = a.get("path")
             first = (d.get("added_lines") or [None])[0]
             classes.append({"id": eid, "name": g.name(eid), "path": path, "added": d.get("added", 0), "removed": d.get("removed", 0),
@@ -76,7 +81,7 @@ def _sum_subtree(scene: Scene, x: str) -> dict | None:
     if status is None:
         return None
     out = {"status": status, **totals, "internal": 0}
-    if scene.model.kinds[x] in metamodel.SYMBOL_KINDS and own.get("status") == "same":
+    if scene.model.entities[x].kind in schema.SYMBOL_KINDS and own.get("status") == "same":
         out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)
     return out | {k: own[k] for k in ("git", "old_path", "renamed_to") if own.get(k)}
 
@@ -112,7 +117,7 @@ def format_name(g: Reader, x: str) -> str:
     kind, a = g.kind(x), g.attrs(x)
     if kind in ("file", "directory"):
         return a.get("path") or g.name(x)
-    if kind in metamodel.SYMBOL_KINDS:
+    if kind in schema.SYMBOL_KINDS:
         return f"{a.get('path')}#{g.name(x)}"
     return g.name(x)
 
@@ -160,7 +165,7 @@ def number_changes(scene: Scene) -> list[dict]:
         if p is not None and g.diff(p).get("status") == st:
             continue  # covered by its parent's item
         inner = [c for c in g.descendants(x) if g.diff(c).get("status") == st]
-        classes = [g.name(c) for c in inner if g.kind(c) in metamodel.SYMBOL_KINDS] if kind not in metamodel.SYMBOL_KINDS else []
+        classes = [g.name(c) for c in inner if g.kind(c) in schema.SYMBOL_KINDS] if kind not in schema.SYMBOL_KINDS else []
         lines = d.get("added", 0) if st == "added" else d.get("removed", 0)
         if kind == "directory":
             lines = sum(g.diff(c).get("added" if st == "added" else "removed", 0) for c in inner if g.kind(c) == "file")
@@ -236,7 +241,7 @@ def number_changes(scene: Scene) -> list[dict]:
 def find_review_cut(scene: Scene) -> list[str]:
     """The boxes to unfold so that every change in source code is drawn: what going to each
     of them unfolds, together. The review diagram and the viewer's "all changes" use it."""
-    out = {address.REPO_ROOT}
+    out = {EntityId.REPO_ROOT}
     for it in list_changes(scene):
         if it["role"] == "source":
             out.update(it["reveal"])

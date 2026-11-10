@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from nolli import extractors
 from nolli.extractors import Context, api
-from nolli.extractors.facts import Provenance, Relation
-from nolli.model import metamodel
+from nolli.extractors.facts import Provenance, RelationFact
+from nolli.model.schema import RelationKind, Scheme
 
 
 def _prune_unresolved(ctx: Context) -> None:
@@ -15,13 +15,13 @@ def _prune_unresolved(ctx: Context) -> None:
     referenced = {r.dst for r in m.relations} | {r.src for r in m.relations}
     for eid in [e for e, ent in m.entities.items() if ent.kind == "unresolved" and e not in referenced]:
         del m.entities[eid]
-    m.relations = [r for r in m.relations if not (r.kind == metamodel.CONTAIN and (r.src not in m.entities or r.dst not in m.entities))]
+    m.relations = [r for r in m.relations if not (r.kind == RelationKind.CONTAIN and (r.src not in m.entities or r.dst not in m.entities))]
     m._parent = m._children = None
     loose = [e for e, ent in m.entities.items() if ent.kind == "unresolved" and m.parent(e) is None]
     if loose:
-        group = m.ensure_root(metamodel.UNRESOLVED, "match")
+        group = m.ensure_root(Scheme.UNRESOLVED, "match")
         for e in loose:
-            m.add_relation(Relation(metamodel.CONTAIN, group, e, provenance=Provenance("match")))
+            m.add_relation(RelationFact(RelationKind.CONTAIN, group, e, provenance=Provenance("match")))
 
 
 def run_all(ctx: Context) -> None:

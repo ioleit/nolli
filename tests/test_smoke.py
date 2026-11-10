@@ -197,7 +197,7 @@ def test_groups_are_a_filter(repo: Path):
 def test_utilities_by_incoming_edges(repo: Path):
     """A box with more than N incoming dependency edges is a utility: its incoming edges
     become badges on their sources. Boxes in groups never are."""
-    from nolli.model.metamodel import USE
+    from nolli.model.schema import RelationKind
     from nolli.transformations.projection import _cut
     from nolli.transformations.rollup import utility_badges
 
@@ -206,10 +206,10 @@ def test_utilities_by_incoming_edges(repo: Path):
     rolled = _cut(Graph(scene), ProjectionSpec(utilities=0)).rolled
     before = list(rolled.edges)
     utilities = utility_badges(g, rolled, min_in=0)  # every used box outside a group
-    targets = {e.dst for e in before if e.kind == USE}
+    targets = {e.dst for e in before if e.kind == RelationKind.USE}
     assert utilities == {t for t in targets if t != "api:"}
-    assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
-    src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
+    assert not any(e.kind == RelationKind.USE and e.dst in utilities for e in rolled.edges)
+    src = next(e.src for e in before if e.kind == RelationKind.USE and e.dst in utilities)
     assert any(k.startswith("util:") for k in rolled.annotations[src])
     rolled = _cut(Graph(scene), ProjectionSpec(utilities=0)).rolled
     assert utility_badges(g, rolled, min_in=1) == set()  # nothing has more than one
@@ -274,12 +274,12 @@ def test_own_code_dot(tmp_path: Path):
 def test_directory_with_source_inside_stays_shown():
     """A directory whose bytes are mostly config is still drawn when it holds source files."""
     from nolli.scenes import open_built
-    from nolli.extractors.facts import Entity, Facts, Provenance
+    from nolli.extractors.facts import EntityFact, Facts, Provenance
 
     m = Facts()
     for eid, kind, role in [("repo:", "directory", "mixed"), ("repo:evals", "directory", "config"), ("repo:evals/probe.py", "file", "source"),
                             ("repo:evals/runs.json", "file", "config"), ("repo:docs", "directory", "docs"), ("repo:docs/a.md", "file", "docs")]:
-        m.add_entity(Entity(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("fs")))
+        m.add_entity(EntityFact(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("fs")))
     for parent, child in [("repo:", "repo:evals"), ("repo:evals", "repo:evals/probe.py"), ("repo:evals", "repo:evals/runs.json"), ("repo:", "repo:docs"), ("repo:docs", "repo:docs/a.md")]:
         m.contain(parent, child, "fs")
     assert hidden_by_role(Graph(open_built(*m.split("test@0")))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}

@@ -16,7 +16,6 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from nolli.model import address
 from nolli.model.scene import Scene
 from nolli.sources.git import ChangeError
 
@@ -127,7 +126,7 @@ def _list_statuses(review: Scene) -> dict[str, str]:
     for el in [*review.list_nodes(), *review.list_edges()]:
         st = (el.get("change") or {}).get("status")
         if st in NEW:
-            out[f"{address.format_identifier(el.key.src)} {address.format_identifier(el.key.dst)}" if el.is_edge else address.format_identifier(el.key)] = st
+            out[f"{el.key.src.as_identifier()} {el.key.dst.as_identifier()}" if el.is_edge else el.key.as_identifier()] = st
     return out
 
 
@@ -140,14 +139,14 @@ def _what(scene: Scene, v: dict, status: dict[str, str]) -> str:
     ids = [t.removesuffix("_g") for t in re.findall(r"n_\w+", v["target"])]
     st = NEW.get(status.get(" ".join(ids), ""), "")
     def name(x: str) -> str:
-        return f"`{changes.format_name(g, address.owner(x))}`"
+        return f"`{changes.format_name(g, x.owner)}`"
     if v["edge"]:
         a, b = v["ends"]
         return f"{st} dependency from {name(a)} to {name(b)}" if st else f"Dependency from {name(a)} to {name(b)}"
     if not v["ends"]:
         return v["label"]
     x = v["ends"][0]
-    if address.is_own_code(x):
+    if x.is_own_code:
         return f"Own code of {name(x)}"
     kind = "module" if g.kind(x) == "file" and g.attrs(x).get("module") else "package" if g.kind(x) == "directory" else g.kind(x)
     return f"{st} {kind} {name(x)}" if st else f"{kind.capitalize()} {name(x)}"

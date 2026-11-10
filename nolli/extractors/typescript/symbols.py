@@ -6,9 +6,9 @@ from __future__ import annotations
 from collections import Counter
 
 from nolli.extractors import Context
-from nolli.extractors.facts import Entity, Provenance, Relation
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
 from nolli.extractors.typescript import imports
-from nolli.model import address, metamodel
+from nolli.model.schema import EntityId, RelationKind
 
 EXTRACTOR = "typescript-symbols"
 DECLS = {"class_declaration": "class", "abstract_class_declaration": "class", "class": "class",
@@ -194,7 +194,7 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = address.repo(rel)
+        fid = EntityId.from_path(rel)
         lang = m.entities[fid].attrs.get("language", "typescript")
         root = tree.root_node
         doc = _file_doc(root)
@@ -236,14 +236,14 @@ def run(ctx: Context) -> None:
                 continue
             if stmt.type == "export_statement" and any(c.type == "default" for c in stmt.children):
                 local.append(("default", name))
-            sid = address.part(fid, name)
+            sid = fid.part(name)
             if name not in symbols:
                 attrs = {"path": rel, "line": stmt.start_point[0] + 1, "end_line": stmt.end_point[0] + 1, "language": lang,
                          "exported": stmt.type == "export_statement"}
                 doc = _doc_comment(stmt)
                 if doc:
                     attrs["doc"] = doc
-                m.add_entity(Entity(sid, kind, name, attrs, Provenance(EXTRACTOR, rel, stmt.start_point[0] + 1)))
+                m.add_entity(EntityFact(sid, kind, name, attrs, Provenance(EXTRACTOR, rel, stmt.start_point[0] + 1)))
                 m.contain(fid, sid, EXTRACTOR)
                 symbols[name] = sid
             symbol_lines += stmt.end_point[0] - stmt.start_point[0] + 1
@@ -268,19 +268,19 @@ def run(ctx: Context) -> None:
 
     ctx.notes["ts-exports"] = exports
     for (src, b), n in pending.items():
-        file = address.path_of(src)
+        file = src.path
         if b[0] == "local":
-            m.add_relation(Relation(metamodel.USE, src, b[1], "ref", n, "exact", Provenance(EXTRACTOR, file),
+            m.add_relation(RelationFact(RelationKind.USE, src, b[1], "ref", n, "exact", Provenance(EXTRACTOR, file),
                                     {"name": b[2], "type_only": values[(src, b)] == 0, "language": "javascript"}))
             continue
         spec, name, type_only = (b[1], "", b[2]) if b[0] == "module" else (b[1], b[2], b[3])
         shown = b[4] if name == "default" else name or spec.rsplit("/", 1)[-1]  # a default import by its local name
         type_only = type_only or values[(src, b)] == 0
         key = f"{spec}@{file}|{name}"
-        uid = address.unresolved("tsref", key)
+        uid = EntityId.from_unresolved("tsref", key)
         if not m.has(uid):
-            m.add_entity(Entity(uid, "unresolved", f"{spec} {name}".strip(),
+            m.add_entity(EntityFact(uid, "unresolved", f"{spec} {name}".strip(),
                                 {"language": "javascript", "ref": True, "spec": spec, "from": file, "name": name}, Provenance(EXTRACTOR)))
-        m.add_relation(Relation(metamodel.USE, src, uid, "ref", n, "exact", Provenance(EXTRACTOR, file),
+        m.add_relation(RelationFact(RelationKind.USE, src, uid, "ref", n, "exact", Provenance(EXTRACTOR, file),
                                 {"name": shown, "type_only": type_only, "language": "javascript"}))
 

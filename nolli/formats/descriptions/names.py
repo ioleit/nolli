@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from urllib.parse import unquote
 
-from nolli.model import address, metamodel, vocabulary
+from nolli.model import vocabulary
 from nolli.model.scene import Element, Overlay
+from nolli.model.schema import EntityId, Scheme
 
-SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "function": "f"}  # metamodel.SYMBOL_KINDS
+SYMBOL_ICON = {"class": "C", "interface": "I", "type": "T", "enum": "E", "function": "f"}  # schema.SYMBOL_KINDS
 VERB_ICON = {"WEBSOCKET": "WS", "DELETE": "DEL", "OPTIONS": "OPT"}
 
 
@@ -32,7 +33,7 @@ def is_module(el: Element) -> bool:
 
 
 def _list_icons(el: Element) -> list[str]:
-    if address.is_own_code(el.key):
+    if el.key.is_own_code:
         return []
     kind = el.kind
     if kind == "directory":
@@ -49,21 +50,20 @@ def _format_name(el: Element) -> str:
     """How a node is called in the picture and in text, read from its address: a file's or
     directory's name, a class's, a package's, a variable's. Where the address leaves something
     out on purpose, from where it is known: the repository's name from the model's meta, a
-    namespace's title from the metamodel, an API's readable form from the extractor that made
-    it (see ``read_api``)."""
+    root group's and an API's readable form from the extractor that made it (see ``read_api``)."""
     x = el.key
-    if address.is_root(x):
-        return el.meta.get("repo") or "repository" if x == address.REPO_ROOT else metamodel.NAMESPACES[address.scheme_of(x)].title
+    if x.is_root:
+        return el.meta.get("repo") or "repository" if x == EntityId.REPO_ROOT else vocabulary.read_external(el).get("name") or x
     scheme, rest = x.split(":", 1)
-    if scheme == metamodel.REPO:
-        fragment = address.fragment_of(x)
-        return fragment[-1] if fragment else address.path_of(x).rsplit("/", 1)[-1]
-    if scheme == metamodel.API:
+    if scheme == Scheme.REPO:
+        fragment = x.fragment
+        return fragment[-1] if fragment else x.path.rsplit("/", 1)[-1]
+    if scheme == Scheme.API:
         return vocabulary.read_external(el).get("name") or rest  # the extractor that made it says how it reads
-    if scheme == metamodel.PKG:
+    if scheme == Scheme.PKG:
         kind, _, name = rest.partition("/")
         return name if kind == "build" else unquote(name)
-    if scheme == metamodel.UNRESOLVED:
+    if scheme == Scheme.UNRESOLVED:
         return rest.split(":", 1)[-1]
     return unquote(rest)
 
@@ -72,7 +72,7 @@ def read_api(el: Element) -> dict:
     """What the extractor that made an API, a path step or an endpoint says about it: its
     protocol, method (the verb), path (with the parameter names the code uses), the readable
     path below its step (``short``)."""
-    if address.scheme_of(el.key) != metamodel.API:
+    if el.key.scheme != Scheme.API:
         return {}
     v = vocabulary.read_external(el)
     return v if "method" in v or "protocol" in v else {}

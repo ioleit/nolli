@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 
-from nolli.model import address
 from nolli.model.scene import Scene
+from nolli.model.schema import EntityId
 
 STYLE_ARROW = {"import": "-->", "http": "==>", "env": "-.->", "deploy": "-.->", "provide": "-.->"}
 KIND_CLASS = {"package": "ext", "service": "deploy", "image": "deploy", "host": "deploy", "group": "group",
@@ -27,7 +27,7 @@ CLASS_DEF = {
 STATUS_STROKE = {"added": "#2e9b4f", "removed": "#c94040", "changed": "#d08a1a"}
 
 
-make_node_id = address.format_identifier
+make_node_id = EntityId.as_identifier
 
 
 def _text(s: str) -> str:
@@ -51,8 +51,8 @@ def list_drawing_order(scene: Scene) -> list[str]:
     """The nodes in the order they are drawn: a projection's (each container before what it
     holds), else down the containment tree; nodes the model no longer has are left out."""
     m = scene.model
-    order = [x for x in m.meta.get("projection", {}).get("order") or [] if x in m.kinds]
-    if len(order) == len(m.kinds):
+    order = [x for x in m.meta.get("projection", {}).get("order") or [] if x in m.entities]
+    if len(order) == len(m.entities):
         return order
     seen, out = set(order), list(order)
     stack = [x for x in reversed(m.list_roots())]

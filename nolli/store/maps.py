@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from nolli.model import EdgeKey, FormatError, Key, Model
+from nolli.model.model import FormatError, Key, Model, Relation
 from nolli.store.precomputed import KeptMaps, OverlayStore
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
@@ -66,8 +66,8 @@ class _MemoryHandle:
 
 
 def dump_map(model_key: str, values: Mapping[Key, dict], about: dict | None) -> dict:
-    nodes = {k: v for k, v in values.items() if not isinstance(k, EdgeKey)}
-    edges = {k.format(): v for k, v in values.items() if isinstance(k, EdgeKey)}
+    nodes = {k: v for k, v in values.items() if not isinstance(k, Relation)}
+    edges = {k.format(): v for k, v in values.items() if isinstance(k, Relation)}
     return {"format": FORMAT, "model": model_key, "about": about, "nodes": nodes, "edges": edges}
 
 
@@ -75,7 +75,7 @@ def parse_map(d: dict) -> tuple[dict[Key, dict], dict | None]:
     if d.get("format") != FORMAT:
         raise FormatError(f"a map of format {d.get('format')!r}, this nolli reads {FORMAT}")
     values: dict[Key, dict] = dict(d.get("nodes") or {})
-    values.update({EdgeKey.parse(k): v for k, v in (d.get("edges") or {}).items()})
+    values.update({Relation.parse(k): v for k, v in (d.get("edges") or {}).items()})
     return values, d.get("about")
 
 

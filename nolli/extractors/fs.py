@@ -7,8 +7,8 @@ from pathlib import PurePosixPath
 
 from nolli import extractors
 from nolli.extractors import Context
-from nolli.extractors.facts import Entity, Provenance
-from nolli.model import address
+from nolli.extractors.facts import EntityFact, Provenance
+from nolli.model.schema import EntityId
 
 # Languages nolli only names (their files are drawn, not read); the extracted languages
 # add their own extensions (``Language.extensions``, see ``lang_by_ext``).
@@ -106,7 +106,7 @@ def run(ctx: Context) -> None:
     ``docs``, ``data``, ``asset``, ``markup`` or ``other``. Roles are attributes: a file
     is left out only when it sits in a generated directory (``GENERATED_DIRS``)."""
     m = ctx.model
-    root = m.add_entity(Entity(address.repo(""), "directory", ctx.repo.name, {"path": ".", "root": True}, Provenance("fs")))
+    root = m.add_entity(EntityFact(EntityId.from_path(""), "directory", ctx.repo.name, {"path": ".", "root": True}, Provenance("fs")))
     seen_dirs = {".": root.id}
     for f in ctx.files:
         rel = ctx.rel(f)
@@ -117,7 +117,7 @@ def run(ctx: Context) -> None:
         for part in f.parts[:-1]:
             acc = f"{acc}/{part}" if acc else part
             if acc not in seen_dirs:
-                d = m.add_entity(Entity(address.repo(acc), "directory", part, {"path": acc}, Provenance("fs", acc)))
+                d = m.add_entity(EntityFact(EntityId.from_path(acc), "directory", part, {"path": acc}, Provenance("fs", acc)))
                 m.contain(parent_id, d.id, "fs")
                 seen_dirs[acc] = d.id
             parent_id = seen_dirs[acc]
@@ -133,7 +133,7 @@ def run(ctx: Context) -> None:
             lines = _count_lines(ctx.repo / f, size)
             if lines is not None:
                 attrs["lines"] = lines
-        e = m.add_entity(Entity(address.repo(rel), "file", f.name, attrs, Provenance("fs", rel)))
+        e = m.add_entity(EntityFact(EntityId.from_path(rel), "file", f.name, attrs, Provenance("fs", rel)))
         m.contain(parent_id, e.id, "fs")
 
     # Directory roles, by bytes: a directory is "source" (or "mixed", when other roles sit

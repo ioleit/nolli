@@ -7,8 +7,8 @@ import shlex
 from pathlib import PurePosixPath
 
 from nolli.extractors import Context
-from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind, Scheme
 
 PY_MODULE = re.compile(r"(?:python[\d.]*\s+-m\s+|uvicorn\s+|gunicorn\s+)([A-Za-z_][\w.]*)(?::\w+)?")
 SCRIPT = re.compile(r"(?:^|\s)((?:[\w./-]+/)?[\w-]+\.(?:py|sh|js|mjs|ts))(?=\s|$)")
@@ -48,11 +48,11 @@ def run(ctx: Context) -> None:
         name = PurePosixPath(rel).name
         if not (name == "Dockerfile" or name.startswith("Dockerfile.") or name.endswith(".Dockerfile")):
             continue
-        group = m.ensure_root(metamodel.PKG, "dockerfile")
-        iid = address.built(rel)  # the image, by its Dockerfile
+        group = m.ensure_root(Scheme.PKG, "dockerfile")
+        iid = EntityId.from_build_recipe(rel)  # the image, by its Dockerfile
         if not m.has(iid):
-            m.add_entity(Entity(iid, "image", rel, {"dockerfile": rel, "context": str(PurePosixPath(rel).parent)}, Provenance("dockerfile", rel)))
-            m.add_relation(Relation(metamodel.CONTAIN, group, iid, provenance=Provenance("dockerfile", rel)))
+            m.add_entity(EntityFact(iid, "image", rel, {"dockerfile": rel, "context": str(PurePosixPath(rel).parent)}, Provenance("dockerfile", rel)))
+            m.add_relation(RelationFact(RelationKind.CONTAIN, group, iid, provenance=Provenance("dockerfile", rel)))
         context = m.entities[iid].attrs.get("context", ".")
         ctx_dir = PurePosixPath("." if context in ("", ".") else context)
         text = ctx.read(rel).decode("utf-8", "replace")
@@ -72,9 +72,9 @@ def run(ctx: Context) -> None:
                     full = (ctx_dir / p) if str(p) not in (".", "") else ctx_dir
                     full_s = str(full) if str(full) not in ("", ".") else "."
                     full_s = full_s.removeprefix("./")
-                    fid = address.repo(full_s)
+                    fid = EntityId.from_path(full_s)
                     if m.has(fid):
-                        m.add_relation(Relation(metamodel.ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))
+                        m.add_relation(RelationFact(RelationKind.ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))
                     else:
                         ctx.notes.setdefault("dockerfile-unmatched-copy", []).append((rel, src))
             elif ins in ("CMD", "ENTRYPOINT"):
@@ -88,11 +88,11 @@ def run(ctx: Context) -> None:
                         pass
                 for mod in PY_MODULE.findall(cmd):
                     cand = mod.replace(".", "/")
-                    for fid in (address.repo(f"{cand}.py"), address.repo(f"{cand}/__init__.py"), address.repo(f"{cand}/__main__.py")):
+                    for fid in (EntityId.from_path(f"{cand}.py"), EntityId.from_path(f"{cand}/__init__.py"), EntityId.from_path(f"{cand}/__main__.py")):
                         if m.has(fid):
-                            m.add_relation(Relation(metamodel.USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
+                            m.add_relation(RelationFact(RelationKind.USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
                             break
                 for script in SCRIPT.findall(cmd):
-                    fid = address.repo(str(ctx_dir / script).removeprefix("./"))
+                    fid = EntityId.from_path(str(ctx_dir / script).removeprefix("./"))
                     if m.has(fid):
-                        m.add_relation(Relation(metamodel.USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
+                        m.add_relation(RelationFact(RelationKind.USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))

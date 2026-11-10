@@ -13,7 +13,7 @@ import pytest
 from nolli.build import extract_commit, fetch_change, run_here
 from nolli.scenes import open_built, open_change_scene
 from nolli.model.keys import Repo
-from nolli.model import Model
+from nolli.model.model import Model
 from nolli.progress import Quiet
 from nolli.sources import CloneCache, FetchError, LocalRepository
 from nolli.store import DirectoryStore

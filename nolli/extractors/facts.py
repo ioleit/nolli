@@ -6,7 +6,12 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
-from nolli.model import EdgeKey, Key, Model, address, metamodel, vocabulary
+from nolli.model import vocabulary
+from nolli.model.model import Entity, Key, Model, Relation
+from nolli.model.schema import EntityId, EntityKind, RelationKind, Scheme
+
+ROOT_NAMES = {Scheme.API: "APIs", Scheme.PKG: "Artifacts", Scheme.RUNTIME: "Runtime",  # what each root group is called
+              Scheme.CONFIG: "Configuration", Scheme.UNRESOLVED: "Unresolved references"}
 
 
 @dataclass
@@ -48,27 +53,33 @@ class Attrs(dict):
 
 
 @dataclass
-class Entity:
-    id: str
+class EntityFact:
+    id: EntityId  # given as text too; one that is no address raises
     kind: str
     name: str
     attrs: dict = field(default_factory=dict)
     provenance: Provenance | None = None
 
+    def __post_init__(self) -> None:
+        self.id = EntityId(self.id)
+
 
 @dataclass
-class Relation:
+class RelationFact:
     """A relation between two entities. ``confidence`` is ``exact`` (resolved by
     construction), ``heuristic`` (matched by name or pattern) or ``statistical``
     (inferred from history)."""
     kind: str
-    src: str
-    dst: str
+    src: EntityId  # given as text too
+    dst: EntityId
     subkind: str = ""
     count: int = 1
     confidence: str = "exact"
     provenance: Provenance | None = None
     attrs: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.src, self.dst = EntityId(self.src), EntityId(self.dst)
 
     @property
     def key(self) -> tuple[str, str, str, str]:
@@ -76,8 +87,8 @@ class Relation:
 
 
 class Facts:
-    """Entities and relations as the extractors write them, checked against the metamodel
-    as they grow; ``split()`` turns them into a ``Model`` and what was said, by shape.
+    """Entities and relations as the extractors write them, their kinds checked as they
+    grow; ``split()`` turns them into a ``Model`` and what was said, by shape.
 
     An entity's attributes are recorded under the extractor that wrote each of them
     (``current`` while it runs, so a symbols extractor adding ``doc`` to a file the file
@@ -85,8 +96,8 @@ class Facts:
     provenance names."""
 
     def __init__(self) -> None:
-        self.entities: dict[str, Entity] = {}
-        self.relations: list[Relation] = []
+        self.entities: dict[str, EntityFact] = {}
+        self.relations: list[RelationFact] = []
         self.meta: dict = {}
         self.current = "fs"  # the extractor running (build.extract sets it)
         self._parent: dict[str, str] | None = None
@@ -94,8 +105,8 @@ class Facts:
 
     # -- building ---------------------------------------------------------
 
-    def add_entity(self, e: Entity) -> Entity:
-        metamodel.check_entity(e.id, address.scheme_of(e.id), address.is_root(e.id), e.kind)
+    def add_entity(self, e: EntityFact) -> EntityFact:
+        e.kind = EntityKind(e.kind)  # raises unless it is a kind
         existing = self.entities.get(e.id)
         if existing:
             if existing.kind != e.kind:
@@ -108,12 +119,12 @@ class Facts:
         self._parent = self._children = None
         return e
 
-    def add_relation(self, r: Relation) -> Relation:
+    def add_relation(self, r: RelationFact) -> RelationFact:
         if r.src not in self.entities or r.dst not in self.entities:
             missing = r.src if r.src not in self.entities else r.dst
             raise KeyError(f"relation {r.kind} {r.src} -> {r.dst}: unknown entity {missing}")
-        metamodel.check_relation(r.kind, r.src, r.dst, address.scheme_of(r.src), address.scheme_of(r.dst))
-        if r.kind == metamodel.CONTAIN:
+        r.kind = RelationKind(r.kind)  # raises unless it is a kind
+        if r.kind == RelationKind.CONTAIN:
             self._parent = self._children = None
         if r.provenance is None:
             r.provenance = Provenance(self.current)
@@ -121,14 +132,15 @@ class Facts:
         return r
 
     def ensure_root(self, scheme: str, extractor: str) -> str:
-        """The root of a namespace (``metamodel.py``), added if missing."""
-        rid, ns = address.root(scheme), metamodel.NAMESPACES[scheme]
+        """The group at the root of a scheme's addresses (``api:``), named for what it holds
+        (``ROOT_NAMES``), added if missing. The repository's root is its directory instead."""
+        rid = EntityId.root(scheme)
         if rid not in self.entities:
-            self.add_entity(Entity(rid, ns.root_kind, ns.title, {"synthetic": True}, Provenance(extractor)))
+            self.add_entity(EntityFact(rid, EntityKind.GROUP, ROOT_NAMES[scheme], {"synthetic": True}, Provenance(extractor)))
         return rid
 
     def contain(self, parent: str, child: str, extractor: str) -> None:
-        self.add_relation(Relation(metamodel.CONTAIN, parent, child, provenance=Provenance(extractor)))
+        self.add_relation(RelationFact(RelationKind.CONTAIN, parent, child, provenance=Provenance(extractor)))
 
     def has(self, entity_id: str) -> bool:
         return entity_id in self.entities
@@ -141,7 +153,7 @@ class Facts:
         parent: dict[str, str] = {}
         children: dict[str, list[str]] = defaultdict(list)
         for r in self.relations:
-            if r.kind == metamodel.CONTAIN:
+            if r.kind == RelationKind.CONTAIN:
                 if r.dst in parent and parent[r.dst] != r.src:
                     raise ValueError(f"{r.dst} has two owners: {parent[r.dst]} and {r.src}")
                 parent[r.dst] = r.src
@@ -175,7 +187,7 @@ class Facts:
             yield c
             stack.extend(self.children(c))
 
-    def relations_of(self, kinds: Iterable[str] = (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE)) -> list[Relation]:
+    def relations_of(self, kinds: Iterable[str] = (RelationKind.USE, RelationKind.PROVIDE, RelationKind.ALLOCATE)) -> list[RelationFact]:
         ks = set(kinds)
         return [r for r in self.relations if r.kind in ks]
 
@@ -195,9 +207,9 @@ class Facts:
                 maps[vocabulary.shape_of(e.id, by.get(k, creator))].setdefault(e.id, {})[k] = v
         edges = set()
         for r in self.relations:
-            k = EdgeKey(r.kind, r.src, r.dst, r.subkind)
+            k = Relation(r.kind, r.src, r.dst, r.subkind)
             edges.add(k)
-            if r.kind == metamodel.CONTAIN:
+            if r.kind == RelationKind.CONTAIN:
                 continue
             p = r.provenance
             ref = {"count": r.count, "confidence": r.confidence, "path": p.path if p else None, **r.attrs}
@@ -205,11 +217,11 @@ class Facts:
                 ref["line"] = p.line
             _check_reference(ref, p.extractor if p else "unknown", k)
             maps[vocabulary.REFERENCES].setdefault(k, {"references": []})["references"].append(ref)
-        model = Model(key, {x: e.kind for x, e in self.entities.items()}, edges, meta=dict(self.meta))
+        model = Model(key, (Entity(x, e.kind) for x, e in self.entities.items()), edges, meta=dict(self.meta))
         return model, {name: dict(v) for name, v in sorted(maps.items())}
 
 
-def _check_reference(ref: dict, extractor: str, key: EdgeKey) -> None:
+def _check_reference(ref: dict, extractor: str, key: Relation) -> None:
     """Raises unless ``ref`` is a ``Reference`` (``nolli/model/vocabulary.py``): every extractor says it
     in the same words, so code that works with any language can count on them."""
     for k in ("count", "confidence", "path"):

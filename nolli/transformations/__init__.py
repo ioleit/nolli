@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 
-from nolli.model import Model
+from nolli.model.model import Model
 from nolli.model.scene import Overlay, Scene
 
 Transformation = Callable[..., "Model | tuple[Model, Overlay | Iterable[Overlay]]"]

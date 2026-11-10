@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from collections.abc import Mapping
 
 from nolli.formats.descriptions import prose
-from nolli.model import EdgeKey, Key
+from nolli.model.model import Key, Relation
 from nolli.model.scene import Element, Overlay, Scene
 from nolli.review import changes
 from nolli.review import verdicts as verdicts_lib
@@ -26,7 +26,7 @@ def _index_items(scene: Scene) -> dict[Key, dict]:
         for x in it["focus"]:
             about.setdefault(x, {})[it["id"]] = what
         for f in it["facts"]:
-            about.setdefault(EdgeKey.parse(f), {})[it["id"]] = what
+            about.setdefault(Relation.parse(f), {})[it["id"]] = what
         listed.setdefault(it["focus"][0], []).append(it)
     out = {k: {"items": sorted(v, key=lambda i: int(i[1:])), "about": v} for k, v in about.items()}
     for k, its in listed.items():
@@ -58,7 +58,7 @@ def _place_box_items(scene: Scene, about: Mapping[Key, dict], on_edges: Mapping[
         return got
 
     out: dict[str, list[str]] = {}
-    for x in scene.model.kinds:
+    for x in scene.model.entities:
         el, placed = scene.find_element(x), set()
         for s in el.sources.get("source", ()):
             for i, it in (about.get(s.key) or {}).get("about", {}).items():
@@ -164,7 +164,7 @@ class Review(Overlay):
             names = {s.key.dst: named[s.key.dst]["name"] for s in el.sources.get("source", ()) if s.is_edge}
             out[e] = {"items": items, "card": _describe_edge(changed.get(e), v.get("own", []), v.get("inside", []), len(items), names)}
         on_boxes = _place_box_items(scene, about, on_edges)
-        for x, kind in scene.model.kinds.items():
+        for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
             items = on_boxes[x]
             v = verdicts.get(x) or {}
             kind = kind if kind != "anchor" else "box"

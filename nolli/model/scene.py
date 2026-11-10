@@ -12,7 +12,8 @@ from collections.abc import Iterable, Mapping
 from functools import cached_property
 from typing import Protocol
 
-from nolli.model import EdgeKey, Key, Model
+from nolli.model.model import Key, Model, Relation
+from nolli.model.schema import EntityId
 
 
 def _hash_source(cls: type) -> str:
@@ -59,7 +60,7 @@ class Overlay:
         """What it says about every node and edge of the scene's model, by key; those it says
         nothing about are left out."""
         out: dict[Key, dict] = {}
-        for key in [*scene.model.kinds, *scene.model.edges]:
+        for key in [*scene.model.entities, *scene.model.edges]:
             v = scene.find_element(key).get(self.name)
             if v is not None:
                 out[key] = v
@@ -101,12 +102,12 @@ class Element:
 
     @property
     def is_edge(self) -> bool:
-        return isinstance(self.key, EdgeKey)
+        return isinstance(self.key, Relation)
 
     @property
     def id(self) -> str:
         """The key as text: a node's address, an edge's ``kind|src|dst|subkind``."""
-        return self.key.format() if isinstance(self.key, EdgeKey) else self.key
+        return self.key.format() if isinstance(self.key, Relation) else self.key
 
     @property
     def meta(self) -> dict:
@@ -215,7 +216,10 @@ class Scene:
     def has(self, key: Key) -> bool:
         return self.model.has(key)
 
-    def find_element(self, key: Key) -> Element:
+    def find_element(self, key: Key | str) -> Element:
+        """The element of ``key``; a node's address may be given as text (read back from JSON)."""
+        if type(key) is str:
+            key = EntityId(key)
         el = self._elements.get(key)
         if el is None:
             if not self.model.has(key):
@@ -224,7 +228,7 @@ class Scene:
         return el
 
     def list_nodes(self) -> list[Element]:
-        return [self.find_element(x) for x in sorted(self.model.kinds)]
+        return [self.find_element(x) for x in sorted(self.model.entities)]
 
     def list_edges(self, kinds: Iterable[str] | None = None) -> list[Element]:
         return [self.find_element(e) for e in self.model.list_edges(kinds)]

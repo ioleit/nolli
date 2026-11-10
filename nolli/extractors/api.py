@@ -11,8 +11,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from nolli.extractors import Context
-from nolli.extractors.facts import Entity, Facts, Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import EntityFact, Facts, Provenance, RelationFact
+from nolli.model import schema
+from nolli.model.schema import EntityId, RelationKind, Scheme
 
 
 @dataclass
@@ -52,11 +53,11 @@ def call(ctx: Context, c: Call) -> None:
     """Reports a call site as ``use(caller file, unresolved:<protocol>:...)``, a
     placeholder ``resolve`` binds to endpoints."""
     m = ctx.model
-    uid = address.unresolved(c.protocol, f"{c.verb} {c.pattern}")
+    uid = EntityId.from_unresolved(c.protocol, f"{c.verb} {c.pattern}")
     if not m.has(uid):
-        m.add_entity(Entity(uid, "unresolved", f"{c.verb} {c.pattern}",
+        m.add_entity(EntityFact(uid, "unresolved", f"{c.verb} {c.pattern}",
                             {"protocol": c.protocol, "method": c.verb, "pattern": c.pattern}, Provenance(c.extractor)))
-    m.add_relation(Relation(metamodel.USE, address.repo(c.file), uid, c.protocol, confidence="heuristic",
+    m.add_relation(RelationFact(RelationKind.USE, EntityId.from_path(c.file), uid, c.protocol, confidence="heuristic",
                             provenance=Provenance(c.extractor, c.file, c.line), attrs={"via": c.via}))
 
 
@@ -69,7 +70,7 @@ def _segments(protocol: str, path: str) -> list[str]:
 def _step_key(seg: str) -> str:
     """Parameters (adapters write them ``{name}``) at one position are one step, whatever
     each route calls them: ``/projects/{name}`` and ``/projects/{project_name}``."""
-    return address.param(seg)
+    return schema.param(seg)
 
 
 @dataclass
@@ -107,7 +108,7 @@ def build(ctx: Context) -> None:
     """Turns the reported operations into one structure, the same for every protocol.
     Runs after every adapter has reported.
 
-    The structure (entity kind, id; ``nolli/model/address.py`` makes the ids)::
+    The structure (entity kind, id; ``EntityId`` in ``nolli/model/schema.py`` makes the ids)::
 
         group     api:                                 "APIs", the root group
         api       api:<protocol>:<key>                 one served API: an app, a server, a service definition
@@ -127,7 +128,7 @@ def build(ctx: Context) -> None:
     if not ops:
         return
     m = ctx.model
-    group = m.ensure_root(metamodel.API, "api")
+    group = m.ensure_root(Scheme.API, "api")
 
     by_api: dict[tuple[str, str], list[Operation]] = defaultdict(list)
     for op in ops:
@@ -141,11 +142,11 @@ def build(ctx: Context) -> None:
 def _add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: list[Operation]) -> None:
     """One API: its node under ``group``, its path steps (``resource``) and its operations (``endpoint``)."""
     prov = Provenance("api")
-    aid = address.api_app(protocol, key)
-    m.add_entity(Entity(aid, "api", name,
+    aid = EntityId.from_api_app(protocol, key)
+    m.add_entity(EntityFact(aid, "api", name,
                         {"protocol": protocol, "key": key, "file": api_ops[0].api_file,
                          "about": api_ops[0].api_about, "operations": len(api_ops)}, prov))
-    m.add_relation(Relation(metamodel.CONTAIN, group, aid, provenance=prov))
+    m.add_relation(RelationFact(RelationKind.CONTAIN, group, aid, provenance=prov))
 
     root = _step()
     for op in api_ops:
@@ -156,13 +157,13 @@ def _add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: 
         s.ops.append(op)
 
     def endpoint(op: Operation, parent: str, name: str) -> None:
-        eid = address.api_operation(aid, _segments(protocol, op.path), op.verb)
+        eid = aid.api_operation(_segments(protocol, op.path), op.verb)
         if not m.has(eid):
-            m.add_entity(Entity(eid, "endpoint", f"{op.verb} {name}".rstrip(),
+            m.add_entity(EntityFact(eid, "endpoint", f"{op.verb} {name}".rstrip(),
                                 {"protocol": protocol, "method": op.verb, "path": op.path, "api": aid, "short": name},
                                 Provenance(op.extractor, op.file, op.line)))
-            m.add_relation(Relation(metamodel.CONTAIN, parent, eid, provenance=prov))
-        m.add_relation(Relation(metamodel.PROVIDE, address.repo(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
+            m.add_relation(RelationFact(RelationKind.CONTAIN, parent, eid, provenance=prov))
+        m.add_relation(RelationFact(RelationKind.PROVIDE, EntityId.from_path(op.file), eid, "route", confidence="exact" if op.exact else "heuristic",
                                 provenance=Provenance(op.extractor, op.file, op.line), attrs={"handler": op.handler}))
 
     def emit(s: _Step, parent: str, path: list[str], label: list[str]) -> None:
@@ -176,9 +177,9 @@ def _add_api(m: Facts, group: str, protocol: str, key: str, name: str, api_ops: 
             for op in s.ops:
                 endpoint(op, parent, text)
             return
-        rid = address.api_step(aid, path)
-        m.add_entity(Entity(rid, "resource", text, {"protocol": protocol, "path": "/" + "/".join(path), "api": aid}, prov))
-        m.add_relation(Relation(metamodel.CONTAIN, parent, rid, provenance=prov))
+        rid = aid.api_step(path)
+        m.add_entity(EntityFact(rid, "resource", text, {"protocol": protocol, "path": "/" + "/".join(path), "api": aid}, prov))
+        m.add_relation(RelationFact(RelationKind.CONTAIN, parent, rid, provenance=prov))
         for op in sorted(s.ops, key=lambda o: o.verb):
             endpoint(op, rid, "")
         for seg, child in sorted(s.children.items()):
@@ -214,8 +215,8 @@ def _http_suffix_matches(route: str, called: str) -> bool:
     return _http_path_matches("/" + "/".join(rs[len(rs) - len(cs):]), called)
 
 
-def _match_http(endpoints: list[Entity], verb: str, pattern: str) -> tuple[list[Entity], str]:
-    def verb_ok(e: Entity) -> bool:
+def _match_http(endpoints: list[EntityFact], verb: str, pattern: str) -> tuple[list[EntityFact], str]:
+    def verb_ok(e: EntityFact) -> bool:
         return verb == "?" or e.attrs["method"] in ("ANY", verb) or verb in e.attrs["method"].split(",")
 
     hits = [e for e in endpoints if verb_ok(e) and _http_path_matches(e.attrs["path"], pattern)]
@@ -226,7 +227,7 @@ def _match_http(endpoints: list[Entity], verb: str, pattern: str) -> tuple[list[
     return [e for e in endpoints if verb_ok(e) and _http_suffix_matches(e.attrs["path"], pattern)], "suffix"
 
 
-def _match_exact(endpoints: list[Entity], verb: str, pattern: str) -> tuple[list[Entity], str]:
+def _match_exact(endpoints: list[EntityFact], verb: str, pattern: str) -> tuple[list[EntityFact], str]:
     """Protocols whose operations are named, not patterned (RPC): verb and path must equal."""
     return [e for e in endpoints if e.attrs["path"] == pattern and verb in ("?", e.attrs["method"])], "exact"
 
@@ -239,14 +240,14 @@ def resolve(ctx: Context) -> None:
     match for other protocols): ``use(caller file, endpoint)``. Unmatched calls stay
     ``unresolved:<protocol>:...``."""
     m = ctx.model
-    endpoints: dict[str, list[Entity]] = defaultdict(list)
+    endpoints: dict[str, list[EntityFact]] = defaultdict(list)
     for e in m.entities.values():
         if e.kind == "endpoint":
             endpoints[e.attrs.get("protocol", "http")].append(e)
     stats: dict[str, int] = defaultdict(int)
-    out: list[Relation] = []
+    out: list[RelationFact] = []
     for r in m.relations:
-        ph = m.entities.get(r.dst) if r.kind == metamodel.USE and address.is_unresolved(r.dst) else None
+        ph = m.entities.get(r.dst) if r.kind == RelationKind.USE and r.dst.is_unresolved else None
         protocol = ph.attrs.get("protocol") if ph is not None else None
         if protocol is None:
             out.append(r)
@@ -255,7 +256,7 @@ def resolve(ctx: Context) -> None:
         if hits:
             stats[f"{protocol} matched-{how}"] += 1
             for e in hits:
-                out.append(Relation(metamodel.USE, r.src, e.id, protocol, 1, "heuristic", r.provenance,
+                out.append(RelationFact(RelationKind.USE, r.src, e.id, protocol, 1, "heuristic", r.provenance,
                                     dict(r.attrs, pattern=ph.attrs["pattern"], match=how)))
         else:
             stats[f"{protocol} unmatched"] += 1

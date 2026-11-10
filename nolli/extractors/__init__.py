@@ -13,7 +13,7 @@ from functools import cache
 from pathlib import Path
 
 from nolli.extractors.facts import Facts
-from nolli.model import address
+from nolli.model.schema import EntityId
 from nolli.progress import Progress, Quiet
 
 
@@ -40,7 +40,7 @@ class Context:
         exts = _language_named(language).extensions
         for f in self.progress.each(self.files):
             rel = self.rel(f)
-            e = self.model.entities.get(address.repo(rel))
+            e = self.model.entities.get(EntityId.from_path(rel))
             if e is None or e.kind != "file" or _ext_of(rel) not in exts:
                 continue
             if tests or e.attrs.get("role") != "test":
@@ -83,7 +83,7 @@ class Language:
     ``names`` says how to write each ``language`` value in text ("TypeScript").
     ``package_body`` names the files that are their folder's own code rather than a
     module of their own, and ``package`` what such a folder is called ("package").
-    The symbols a language extracts are of the kinds in ``metamodel.SYMBOL_KINDS``. ``keep_trees``: parse each
+    The symbols a language extracts are of the kinds in ``schema.SYMBOL_KINDS``. ``keep_trees``: parse each
     file once for all extractors; off for Python, whose ``ast`` trees for a 2,000-file
     repository take 700 MB and make the garbage collector a third of the run time."""
     name: str

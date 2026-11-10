@@ -182,7 +182,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             meta = sc.model.meta or {}
             out["dataset"] = {"name": q["d"], "repo": meta.get("repo"), "commit": meta.get("commit"), "files": meta.get("files"),
-                              "entities": len(sc.model.kinds), "relations": len(sc.model.edges)}
+                              "entities": len(sc.model.entities), "relations": len(sc.model.edges)}
             out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
             self.send_json(out)
         elif path == "/api/mermaid":

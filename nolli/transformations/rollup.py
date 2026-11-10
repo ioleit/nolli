@@ -10,7 +10,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cache
 
-from nolli.model import address, metamodel
+from nolli.model import schema
+from nolli.model.schema import EntityId, RelationKind
 from nolli.transformations import reading
 from nolli.transformations.reading import Reading
 
@@ -20,8 +21,8 @@ HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "data", "asset", "other")
 @dataclass
 class RolledEdge:
     kind: str
-    src: str
-    dst: str
+    src: EntityId  # given as text too
+    dst: EntityId
     subkind: str
     count: int = 0
     confidence: str = "exact"
@@ -36,6 +37,9 @@ class RolledEdge:
     # the drawn nodes a lifted line stands for at each end (lift()); empty: the ends themselves
     ends: dict[str, set[str]] = field(default_factory=lambda: {"src": set(), "dst": set()})
     members: set = field(default_factory=set)  # the edges of the source it stands for
+
+    def __post_init__(self) -> None:
+        self.src, self.dst = EntityId(self.src), EntityId(self.dst)
 
     @property
     def status(self) -> str | None:
@@ -93,7 +97,7 @@ def image_aliases(g: Reading) -> dict[str, str]:
     """image -> service, for images that run as exactly one service (drawn as that service)."""
     runs: dict[str, list[str]] = defaultdict(list)
     for r in g.relations:
-        if r.kind == metamodel.ALLOCATE and r.subkind == "runs_as":
+        if r.kind == RelationKind.ALLOCATE and r.subkind == "runs_as":
             runs[r.src].append(r.dst)
     return {img: svcs[0] for img, svcs in runs.items() if len(svcs) == 1}
 
@@ -104,14 +108,14 @@ def hidden_by_role(g: Reading, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
     result files is "config" while its Python modules are source, and those must stay."""
     rs = set(roles)
     keep: set[str] = set()
-    for x, kind in g.nodes.items():
+    for x, kind in ((n.id, n.kind) for n in g.nodes.values()):
         if kind == "file" and g.file(x).get("role") not in rs:
             p = g.parent(x)
             while p is not None and p not in keep:
                 keep.add(p)
                 p = g.parent(p)
-    return {x for x, kind in g.nodes.items() if kind in ("file", "directory") and g.file(x).get("role") in rs
-            and not g.file(x).get("root") and x not in keep}
+    return {n.id for n in g.nodes.values() if n.kind in ("file", "directory") and g.file(n.id).get("role") in rs
+            and not g.file(n.id).get("root") and n.id not in keep}
 
 
 def chain_end(g: Reading, n: str, hidden: set[str]) -> str:
@@ -162,9 +166,9 @@ def init_anchor_dirs(g: Reading, hidden: set[str]) -> set[str]:
     """Directories whose ``__init__`` body still has edges after the default ones are
     dropped: these get an anchor node when unfolded, the others get nothing."""
     out: set[str] = set()
-    drawn_kinds = ("directory", "file", *metamodel.SYMBOL_KINDS, "service", "image")  # badge targets (externals, env, endpoints) don't count
+    drawn_kinds = ("directory", "file", *schema.SYMBOL_KINDS, "service", "image")  # badge targets (externals, env, endpoints) don't count
     for r in g.relations:
-        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or _default_init_edge(g, r):
+        if r.kind not in (RelationKind.USE, RelationKind.PROVIDE, RelationKind.ALLOCATE) or _default_init_edge(g, r):
             continue
         for end, other in ((r.src, r.dst), (r.dst, r.src)):
             if is_init(g, end) and end not in hidden and g.has(other) and g.kind(other) in drawn_kinds:
@@ -178,7 +182,7 @@ def _file_degree(g: Reading, hidden: set[str]) -> dict[str, int]:
     """Relations touching each leaf entity, for ranking which files to show first."""
     deg: dict[str, int] = defaultdict(int)
     for r in g.relations:
-        if r.kind in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) and r.src not in hidden and r.dst not in hidden:
+        if r.kind in (RelationKind.USE, RelationKind.PROVIDE, RelationKind.ALLOCATE) and r.src not in hidden and r.dst not in hidden:
             deg[r.src] += r.count
             deg[r.dst] += r.count
     return dict(deg)
@@ -197,7 +201,7 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
 
     An unfolded container shows *all* its non-hidden children (a partially opened
     container hides problems); children that are unfolded themselves are walked. An
-    unfolded module also gets ``<module>#`` (address.own_code), the anchor for its own code. Single-child
+    unfolded module also gets ``<module>#`` (``EntityId.own_code``), the anchor for its own code. Single-child
     directory chains are compressed to their end, so ``expanded`` should name chain ends.
     A package's ``__init__`` is not a node: its classes are children of the package and its
     body is the package's anchor ``<dir>#``, present only if it has edges.
@@ -214,9 +218,9 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
             walked.add(n)
         kind = g.kind(n)
         if kind == "file":
-            visible.add(address.own_code(n))
+            visible.add(n.own_code())
         if kind == "directory" and n in anchors:
-            visible.add(address.own_code(n))
+            visible.add(n.own_code())
         for c in g.children(n):
             if c in hidden:
                 continue
@@ -259,13 +263,13 @@ def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[
             if cur in visible:
                 result = cur
                 break
-            if g.kind(cur) == "file" and address.own_code(cur) in visible:
-                result = address.own_code(cur)  # the module is unfolded: its own code
+            if g.kind(cur) == "file" and cur.own_code() in visible:
+                result = cur.own_code()  # the module is unfolded: its own code
                 break
             if is_init(g, cur):
                 p = g.parent(cur)
-                if p is not None and address.own_code(p) in visible:
-                    result = address.own_code(p)  # the package is unfolded: its own code
+                if p is not None and p.own_code() in visible:
+                    result = p.own_code()  # the package is unfolded: its own code
                     break
             cur = g.parent(cur)
         cache[x] = result
@@ -280,7 +284,7 @@ def _fact_key(r) -> str:
 
 
 def _owner_of(node: str) -> str:
-    return address.owner(node)
+    return node.owner
 
 
 def _top_of(g: Reading, node: str, expanded: set[str]) -> str:
@@ -309,14 +313,14 @@ def utility_badges(g: Reading, rolled: RolledUp, min_in: int = 6) -> set[str]:
 
     incoming: dict[str, int] = defaultdict(int)
     for e in rolled.edges:
-        if e.kind == metamodel.USE:
+        if e.kind == RelationKind.USE:
             incoming[e.dst] += 1
     utilities = {d for d, n in incoming.items() if n > min_in and not in_group(d)}
     if not utilities:
         return utilities
     kept = []
     for e in rolled.edges:
-        if e.kind == metamodel.USE and e.dst in utilities and not e.status:  # a changed dependency on a utility stays an edge, so a review sees it
+        if e.kind == RelationKind.USE and e.dst in utilities and not e.status:  # a changed dependency on a utility stays an edge, so a review sees it
             rolled.annotations.setdefault(e.src, {})
             rolled.annotations[e.src]["util:" + e.dst] = rolled.annotations[e.src].get("util:" + e.dst, 0) + e.count
         else:
@@ -357,7 +361,7 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
         return out
 
     for r in g.relations:
-        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or _default_init_edge(g, r):
+        if r.kind not in (RelationKind.USE, RelationKind.PROVIDE, RelationKind.ALLOCATE) or _default_init_edge(g, r):
             continue
         s, d = alias.get(r.src, r.src), alias.get(r.dst, r.dst)
         if s == d or not g.has(s) or not g.has(d):
@@ -377,7 +381,7 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
 
 def drawn_parent(g: Reading, node: str, expanded: set[str]) -> str | None:
     """The unfolded container a drawn node sits in (the own code ``F#`` sits in F)."""
-    if address.is_own_code(node):
+    if node.is_own_code:
         return _owner_of(node)
     p = g.parent(node)
     while p is not None:
@@ -445,13 +449,13 @@ def lift(g: Reading, edges: list[RolledEdge], expanded: set[str], max_lines: int
         done.add((a, b))
         es = pairs[(a, b)]
         spread_src, spread_dst = len({e.src for e in es}), len({e.dst for e in es})
-        liftable_dst = [e for e in es if e.kind != metamodel.PROVIDE]
+        liftable_dst = [e for e in es if e.kind != RelationKind.PROVIDE]
         order = ["dst", "src"] if spread_dst >= spread_src or not liftable_dst else ["src", "dst"]
         for side in order:
             for e in es:
                 if side == "src":
                     e.src = a
-                elif e.kind != metamodel.PROVIDE:
+                elif e.kind != RelationKind.PROVIDE:
                     e.dst = b
                 e.via.add("lift")
             rest = [e for e in lines if e not in es]
@@ -491,7 +495,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
     def add(kind: str, a: str, b: str, sub: str, count: int, conf: str, names: dict[str, int] | None = None,
             base: int | None = None, head: int | None = None, changed: dict[str, str] | None = None,
             types: int = 0, member=None) -> None:
-        if kind == metamodel.PROVIDE:
+        if kind == RelationKind.PROVIDE:
             a, b = b, a  # drawn from the interface to what realises it, so a reader follows client -> API -> implementation
         if a == b or _owner_of(a) == _owner_of(b):
             internal[_owner_of(a)] += count
@@ -522,7 +526,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
         return not ((side == "base" and st == "added") or (side == "head" and st == "removed"))
 
     for r in g.relations:
-        if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or _default_init_edge(g, r) or not on_side(r):
+        if r.kind not in (RelationKind.USE, RelationKind.PROVIDE, RelationKind.ALLOCATE) or _default_init_edge(g, r) or not on_side(r):
             continue
         if g.kind(r.dst) == "unresolved":
             if rep(r.src) is not None:
@@ -563,7 +567,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
             annotations[node][group] += e.count
             if e.changed:
                 annotation_changes[node][group].update(e.changed)
-        elif e.kind == metamodel.ALLOCATE and e.subkind == "copies" and g.has(e.dst) and g.kind(e.dst) == "service":
+        elif e.kind == RelationKind.ALLOCATE and e.subkind == "copies" and g.has(e.dst) and g.kind(e.dst) == "service":
             allocations[e.src].append(e.dst)
         else:
             kept.append(e)

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from nolli.model import metamodel
+from nolli.model import schema
 from nolli.model.scene import Scene
 
 
 def _summarize(scene: Scene) -> dict:
     by_kind: dict[str, int] = defaultdict(int)
-    for k in scene.model.kinds.values():
-        by_kind[k] += 1
+    for x in scene.model.entities.values():
+        by_kind[x.kind] += 1
     rel: dict[str, int] = defaultdict(int)
     for e in scene.model.edges:
         rel[f"{e.kind}/{e.subkind}" if e.subkind else e.kind] += 1
@@ -27,7 +27,7 @@ def make_report(scene: Scene, picture: Scene) -> dict:
     report = {"meta": meta, "summary": _summarize(scene),
               "view": {"visible": p["stats"]["nodes"], "edges": p["stats"]["edges"], "internal": p["internal"],
                        "hidden_relations": p["hidden_relations"], "unresolved": p["unresolved"]},
-              "unresolved": sorted(x for x, k in scene.model.kinds.items() if k == "unresolved"),
+              "unresolved": sorted(x.id for x in scene.model.entities.values() if x.kind == "unresolved"),
               "notes": meta.get("notes", {})}
     if "change" in meta:
         report["diff"] = _count_changes(scene)
@@ -41,7 +41,7 @@ def _count_changes(scene: Scene) -> dict:
         d = el.get("change")
         if d:
             by["entities"][f"{el.kind}/{d['status']}"] += 1
-            if (el.kind == "file" or el.kind in metamodel.SYMBOL_KINDS) and (d.get("added") or d.get("removed")):
+            if (el.kind == "file" or el.kind in schema.SYMBOL_KINDS) and (d.get("added") or d.get("removed")):
                 by["content"][el.kind] += 1
     for el in scene.list_edges():
         d = el.get("change")

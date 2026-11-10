@@ -20,7 +20,7 @@ from enum import Enum
 
 from typing import Protocol
 
-from nolli.model import Key, Model
+from nolli.model.model import Key, Model
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 
 

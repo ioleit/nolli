@@ -7,8 +7,8 @@ import ast
 from collections import Counter
 
 from nolli.extractors import Context
-from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind
 
 FUNC_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 DOC_MAX = 240  # characters of a docstring's summary kept
@@ -57,7 +57,7 @@ def _doc_summary(node) -> str | None:
 
 
 # Module-level assignments that define a type rather than a value, drawn as symbols like
-# classes (kinds from metamodel.SYMBOL_KINDS). Explicit forms are taken as they are: a ``type``
+# classes (kinds from schema.SYMBOL_KINDS). Explicit forms are taken as they are: a ``type``
 # statement, ``X: TypeAlias = ...``, and the factories below. A plain ``X = A | B`` or
 # ``X = dict[str, int]`` counts only when X is CapWords, so ``FLAGS = READ | WRITE`` stays
 # a constant and ``rows = table["x"]`` a value.
@@ -168,7 +168,7 @@ def run(ctx: Context) -> None:
     aliases_by_file: dict[str, dict[str, tuple[str, str]]] = {}
     pending: Counter[tuple[str, tuple]] = Counter()  # (src entity, binding) -> count
     for rel in ctx.sources("python"):
-        fid = address.repo(rel)
+        fid = EntityId.from_path(rel)
         tree = ctx.tree(rel)
         if tree is None:
             continue
@@ -205,11 +205,11 @@ def run(ctx: Context) -> None:
             defined = (node.name, "class") if isinstance(node, ast.ClassDef) else _type_definition(node)
             if defined:
                 name, kind = defined
-                sid = address.part(fid, name)
+                sid = fid.part(name)
                 attrs = {"path": rel, "line": node.lineno, "end_line": node.end_lineno, "language": "python"}
                 if kind == "class" and _doc_summary(node):
                     attrs["doc"] = _doc_summary(node)
-                m.add_entity(Entity(sid, kind, name, attrs, Provenance("python-symbols", rel, node.lineno)))
+                m.add_entity(EntityFact(sid, kind, name, attrs, Provenance("python-symbols", rel, node.lineno)))
                 m.contain(fid, sid, "python-symbols")
                 symbols[name] = sid
             elif isinstance(node, FUNC_DEFS):
@@ -234,11 +234,11 @@ def run(ctx: Context) -> None:
         if b[0] == "from" and len(b) == 4:  # ``name.attr``: resolve.py takes ``attr`` when name is a module
             name = f"{b[2]}.{b[3]}"
         if b[0] == "local":
-            m.add_relation(Relation(metamodel.USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", address.path_of(src)),
+            m.add_relation(RelationFact(RelationKind.USE, src, b[1], "ref", n, "exact", Provenance("python-symbols", src.path),
                                     {"name": name}))
             continue
         key = f"{b[1]}:{name}" if b[0] == "from" else f"{b[1]}:"
-        uid = address.unresolved("pyref", key)
+        uid = EntityId.from_unresolved("pyref", key)
         if not m.has(uid):
-            m.add_entity(Entity(uid, "unresolved", key, {"language": "python", "ref": True}, Provenance("python-symbols")))
-        m.add_relation(Relation(metamodel.USE, src, uid, "ref", n, "exact", Provenance("python-symbols", address.path_of(src)), {"name": name}))
+            m.add_entity(EntityFact(uid, "unresolved", key, {"language": "python", "ref": True}, Provenance("python-symbols")))
+        m.add_relation(RelationFact(RelationKind.USE, src, uid, "ref", n, "exact", Provenance("python-symbols", src.path), {"name": name}))

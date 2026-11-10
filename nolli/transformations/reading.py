@@ -9,8 +9,10 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from urllib.parse import unquote
 
-from nolli.model import EdgeKey, Key, address, metamodel, vocabulary
+from nolli.model import vocabulary
+from nolli.model.model import Entity, Key, Relation
 from nolli.model.scene import Scene
+from nolli.model.schema import RelationKind
 from nolli.model.vocabulary import FileFacts, Reference
 
 CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
@@ -20,7 +22,7 @@ CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 class Rel:
     """An edge with the references it stands for."""
 
-    key: EdgeKey
+    key: Relation
     count: int
     confidence: str
     references: list[Reference] = field(default_factory=list)
@@ -57,10 +59,10 @@ class Reading:
     # -- structure ---------------------------------------------------------------
 
     def has(self, x: str) -> bool:
-        return x in self.model.kinds
+        return x in self.model.entities
 
     def kind(self, x: str) -> str:
-        return self.model.kinds[x]
+        return self.model.entities[x].kind
 
     def parent(self, x: str) -> str | None:
         return self.model.find_parent(x)
@@ -78,13 +80,13 @@ class Reading:
         return self.model.iter_descendants(x)
 
     @property
-    def nodes(self) -> dict[str, str]:
-        return self.model.kinds
+    def nodes(self) -> dict[str, Entity]:
+        return self.model.entities
 
     def segment(self, x: str) -> str:
         """The last step of a node's address: a file's or directory's name, a service's host."""
-        if address.is_repo(x):
-            return address.path_of(x).rsplit("/", 1)[-1] if address.path_of(x) != "." else ""
+        if x.is_repo:
+            return x.path.rsplit("/", 1)[-1] if x.path != "." else ""
         return unquote(x.split(":", 1)[1].rsplit("/", 1)[-1])
 
     # -- what the file tree says ---------------------------------------------------
@@ -114,7 +116,7 @@ class Reading:
         references = vocabulary.read_all_references(self.scene)
         out = []
         for e in self.model.edges:
-            if e.kind == metamodel.CONTAIN:
+            if e.kind == RelationKind.CONTAIN:
                 continue
             refs = references.get(e, [])
             conf = max((r["confidence"] for r in refs), key=lambda c: CONF_RANK.get(c, 0), default="exact")

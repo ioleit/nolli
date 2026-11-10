@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nolli.formats import mermaid
-from nolli.model import Key
+from nolli.model.model import Key
 from nolli.model.scene import Scene
 
 FORMAT = 1
@@ -28,7 +28,7 @@ def export_scene(scene: Scene) -> dict:
     names = [n for n in SHOWN if n in scene.overlays]
     said = {n: scene.read_all(n) for n in names}  # each overlay asked about the whole picture once
     order = mermaid.list_drawing_order(scene)
-    nodes = [{"id": x, "kind": scene.model.kinds[x], "parent": scene.model.find_parent(x), **_describe(x, said)} for x in order]
+    nodes = [{"id": x, "kind": scene.model.entities[x].kind, "parent": scene.model.find_parent(x), **_describe(x, said)} for x in order]
     edges = [{"key": e.format(), "kind": e.kind, "subkind": e.subkind, "src": e.src, "dst": e.dst, **_describe(e, said)}
              for e in scene.model.list_edges()]
     residue = list(meta.get("residue", []))

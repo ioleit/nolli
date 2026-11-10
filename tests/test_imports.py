@@ -1,7 +1,7 @@
 """How nolli's modules import each other (Google's Python style guide, section 2.2, with
 classes allowed): a module names the package it imports from (no relative imports), and
 uses a function or constant of another nolli module through that module
-(``projection.fold``, ``metamodel.USE``), so a call site says whose ``fold`` it is.
+(``projection.fold``, ``schema.SYMBOL_KINDS``), so a call site says whose ``fold`` it is.
 Classes and type aliases (``Scene``, ``Key``) may be imported by name.
 
 The layers above ``datasets.py`` (it, the command line and the server) are not held to it yet."""

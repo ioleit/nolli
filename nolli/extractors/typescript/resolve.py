@@ -9,8 +9,8 @@ from collections import defaultdict
 from pathlib import PurePosixPath
 
 from nolli.extractors import Context, interfaces
-from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind
 
 NODE_BUILTINS = {
     "assert", "buffer", "child_process", "cluster", "crypto", "dgram", "dns", "events", "fs", "http", "http2", "https",
@@ -189,13 +189,13 @@ def resolve_imports(ctx: Context) -> None:
     m = ctx.model
     res = Resolver(ctx)
     stats: dict[str, int] = defaultdict(int)
-    new_relations: list[Relation] = []
+    new_relations: list[RelationFact] = []
     for r in m.relations:
-        key = address.unresolved_key(r.dst, "js") if r.kind == metamodel.USE else None
+        key = r.dst.unresolved_key("js") if r.kind == RelationKind.USE else None
         if key is None:
             new_relations.append(r)
             continue
-        src_rel = address.path_of(r.src)
+        src_rel = r.src.path
         spec = key.removesuffix("@" + src_rel)
         how, target = res.resolve(spec, src_rel)
         stats[how] += 1
@@ -203,13 +203,13 @@ def resolve_imports(ctx: Context) -> None:
         if how == "stdlib":
             continue
         if how == "unresolved":
-            dst = address.unresolved("js", spec)
+            dst = EntityId.from_unresolved("js", spec)
             if not m.has(dst):
-                m.add_entity(Entity(dst, "unresolved", spec, {"language": "javascript"}, Provenance("match")))
+                m.add_entity(EntityFact(dst, "unresolved", spec, {"language": "javascript"}, Provenance("match")))
         else:
-            dst = address.repo(target) if how == "file" else interfaces.ensure_host(m, target, "match") if interfaces.is_url(spec) else interfaces.ensure_ext(m, "js", target)
+            dst = EntityId.from_path(target) if how == "file" else interfaces.ensure_host(m, target, "match") if interfaces.is_url(spec) else interfaces.ensure_ext(m, "js", target)
         if dst != r.src:
-            new_relations.append(Relation(metamodel.USE, r.src, dst, "import", 1, "exact", r.provenance, attrs))
+            new_relations.append(RelationFact(RelationKind.USE, r.src, dst, "import", 1, "exact", r.provenance, attrs))
     m.relations = new_relations
     ctx.notes["js-resolution"] = dict(stats)
 
@@ -228,7 +228,7 @@ def resolve_refs(ctx: Context) -> None:
     def symbol_in(file: str, name: str, depth: int = 0) -> str | None:
         """The entity ``name`` stands for in ``file``: its symbol, the symbol or file a
         re-export leads to, or the file itself if it defines the name (a function)."""
-        sid = address.part(address.repo(file), name)
+        sid = EntityId.from_path(file).part(name)
         if m.has(sid):
             return sid
         ex = exports.get(file)
@@ -242,9 +242,9 @@ def resolve_refs(ctx: Context) -> None:
                 f = res.file(spec, file)
                 if f is None:
                     return None
-                return (symbol_in(f, orig, depth + 1) if orig else None) or address.repo(f)
+                return (symbol_in(f, orig, depth + 1) if orig else None) or EntityId.from_path(f)
         if name in ex["names"]:
-            return address.repo(file)
+            return EntityId.from_path(file)
         for exported, spec, _ in ex["reexports"]:
             if exported == "*":
                 f = res.file(spec, file)
@@ -254,9 +254,9 @@ def resolve_refs(ctx: Context) -> None:
         return None
 
     stats: dict[str, int] = defaultdict(int)
-    new_relations: list[Relation] = []
+    new_relations: list[RelationFact] = []
     for r in m.relations:
-        if not (r.kind == metamodel.USE and address.unresolved_key(r.dst, "tsref") is not None):
+        if not (r.kind == RelationKind.USE and r.dst.unresolved_key("tsref") is not None):
             new_relations.append(r)
             continue
         ph = m.entities[r.dst].attrs
@@ -264,27 +264,27 @@ def resolve_refs(ctx: Context) -> None:
         if f is None:
             stats["external"] += r.count
             continue
-        dst = (symbol_in(f, ph["name"]) if ph["name"] else None) or address.repo(f)
+        dst = (symbol_in(f, ph["name"]) if ph["name"] else None) or EntityId.from_path(f)
         if dst == r.src:
             stats["self"] += r.count
             continue
-        stats["symbol" if address.is_part(dst) else "file"] += r.count
-        new_relations.append(Relation(metamodel.USE, r.src, dst, "ref", r.count, "exact", r.provenance, dict(r.attrs)))
+        stats["symbol" if dst.is_part else "file"] += r.count
+        new_relations.append(RelationFact(RelationKind.USE, r.src, dst, "ref", r.count, "exact", r.provenance, dict(r.attrs)))
     m.relations = new_relations
 
     def file_of(eid: str) -> str | None:
-        if address.is_part(eid):
-            return address.file_of(eid)
-        return eid if address.is_repo(eid) and m.entities[eid].kind == "file" else None
+        if eid.is_part:
+            return eid.file
+        return eid if eid.is_repo and m.entities[eid].kind == "file" else None
 
     covered = set()
     for r in m.relations:
-        if r.kind == metamodel.USE and r.subkind == "ref" and (address.is_part(r.src) or address.is_part(r.dst) or r.attrs.get("language") == "javascript"):
+        if r.kind == RelationKind.USE and r.subkind == "ref" and (r.src.is_part or r.dst.is_part or r.attrs.get("language") == "javascript"):
             a, b = file_of(r.src), file_of(r.dst)
             if a and b:
                 covered.add((a, b))
     before = len(m.relations)
-    m.relations = [r for r in m.relations if not (r.kind == metamodel.USE and r.subkind == "import" and r.attrs.get("language") == "javascript"
+    m.relations = [r for r in m.relations if not (r.kind == RelationKind.USE and r.subkind == "import" and r.attrs.get("language") == "javascript"
                                                   and (r.src, r.dst) in covered)]
     stats["imports_replaced"] = before - len(m.relations)
     ctx.notes["tsref-resolution"] = dict(stats)

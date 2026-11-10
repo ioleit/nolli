@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from tree_sitter_language_pack import get_parser
 
 from nolli.extractors import Context
-from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind
 
 GRAMMAR = {".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",
            ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript"}
@@ -169,15 +169,15 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = address.repo(rel)
+        fid = EntityId.from_path(rel)
         for imp in read(tree):
             attrs = {"type_only": True} if imp.type_only else {"dynamic": True} if imp.dynamic else {}
             pending.append((fid, imp.spec, imp.line, attrs))
     ctx.notes["js-imports"] = pending
     for fid, spec, line, attrs in pending:
         relative = spec.startswith((".", "/"))
-        uid = address.unresolved("js", f"{spec}@{address.path_of(fid)}" if relative else spec)
+        uid = EntityId.from_unresolved("js", f"{spec}@{fid.path}" if relative else spec)
         if not m.has(uid):
-            m.add_entity(Entity(uid, "unresolved", spec, {"language": "javascript"}, Provenance("ts-imports")))
-        m.add_relation(Relation(metamodel.USE, fid, uid, "import", provenance=Provenance("ts-imports", address.path_of(fid), line),
+            m.add_entity(EntityFact(uid, "unresolved", spec, {"language": "javascript"}, Provenance("ts-imports")))
+        m.add_relation(RelationFact(RelationKind.USE, fid, uid, "import", provenance=Provenance("ts-imports", fid.path, line),
                                 attrs=attrs))

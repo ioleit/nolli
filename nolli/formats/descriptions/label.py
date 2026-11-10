@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nolli.formats.descriptions import names
-from nolli.model import Key, address, vocabulary
+from nolli.model import vocabulary
+from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene
 
 
@@ -17,10 +18,10 @@ def _module_stem(file_name: str) -> str:
 
 def _format_path(el: Element, drawn: Element) -> str:
     """A directory's path below the box it is drawn in (a folded chain shows its whole run)."""
-    path = address.path_of(el.key)
+    path = el.key.path
     parent = drawn.parent
-    if parent is not None and address.is_repo(parent.key) and not address.is_own_code(parent.key):
-        above = address.path_of(parent.key)
+    if parent is not None and parent.key.is_repo and not parent.key.is_own_code:
+        above = parent.key.path
         if above != "." and path.startswith(above + "/"):
             return path[len(above) + 1:]
     return path
@@ -29,7 +30,7 @@ def _format_path(el: Element, drawn: Element) -> str:
 def _format_label(el: Element, named: dict, drawn: Element | None = None) -> str:
     """The readable name drawn after the icons; ``named``: what the ``names`` overlay says of
     the node; ``drawn``: the box it is in a picture."""
-    if address.is_own_code(el.key):
+    if el.key.is_own_code:
         return ""
     kind = el.kind
     if kind == "directory":
@@ -76,7 +77,7 @@ class Label(Overlay):
             return {}
         named = scene.sources["source"].read_all("names")
         out: dict[Key, dict] = {}
-        for x, kind in scene.model.kinds.items():
+        for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
             if kind == "anchor":
                 out[x] = {"text": "", "icons": [], "prose": ""}
                 continue

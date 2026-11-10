@@ -6,8 +6,8 @@ from __future__ import annotations
 import ast
 
 from nolli.extractors import Context
-from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind
 
 
 def module_name_of(rel: str) -> str:
@@ -30,7 +30,7 @@ def run(ctx: Context) -> None:
         tree = ctx.tree(rel)
         if tree is None:
             continue
-        fid = address.repo(rel)
+        fid = EntityId.from_path(rel)
         pkg_parts = rel.split("/")[:-1]  # the package a relative import starts from: the file's directory
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -53,9 +53,9 @@ def run(ctx: Context) -> None:
     ctx.notes["py-imports"] = pending
     # Placeholders are created here so the model is complete even before matching.
     for fid, mod, line in pending:
-        uid = address.unresolved("py", mod)
+        uid = EntityId.from_unresolved("py", mod)
         if not m.has(uid):
-            m.add_entity(Entity(uid, "unresolved", mod, {"language": "python"}, Provenance("python-imports")))
+            m.add_entity(EntityFact(uid, "unresolved", mod, {"language": "python"}, Provenance("python-imports")))
         m.add_relation(
-            Relation(metamodel.USE, fid, uid, "import", confidence="exact", provenance=Provenance("python-imports", address.path_of(fid), line))
+            RelationFact(RelationKind.USE, fid, uid, "import", confidence="exact", provenance=Provenance("python-imports", fid.path, line))
         )

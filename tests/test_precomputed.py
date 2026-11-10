@@ -9,8 +9,9 @@ from pathlib import Path
 import pytest
 
 from nolli import transformations
-from nolli.model import EdgeKey, Model, metamodel
+from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Overlay
+from nolli.model.schema import RelationKind
 from nolli.store import MemoryMaps, PrecomputedOverlay, SourceElementOverlay
 from nolli.transformations import projection
 from nolli.transformations.projection import ProjectionSpec
@@ -50,16 +51,16 @@ def fold(scene):
 def propose(scene):
     """A proposed grouping: a directory that is not there, holding pkg/ (same addresses otherwise)."""
     m = scene.model
-    kinds = {**m.kinds, "repo:src": "directory"}
-    edges = [e for e in m.edges if e != EdgeKey(metamodel.CONTAIN, "repo:", "repo:pkg")]
-    edges += [EdgeKey(metamodel.CONTAIN, "repo:", "repo:src"), EdgeKey(metamodel.CONTAIN, "repo:src", "repo:pkg")]
-    return Model(f"{m.key}|src", kinds, edges, refs={"source": None})
+    entities = [*m.entities.values(), Entity("repo:src", "directory")]
+    edges = [e for e in m.edges if e != Relation(RelationKind.CONTAIN, "repo:", "repo:pkg")]
+    edges += [Relation(RelationKind.CONTAIN, "repo:", "repo:src"), Relation(RelationKind.CONTAIN, "repo:src", "repo:pkg")]
+    return Model(f"{m.key}|src", entities, edges, refs={"source": None})
 
 
 def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):
     store = MemoryMaps()
     values = store.precompute_overlay_values(scene, Counting())
-    assert values["repo:pkg/a.py"] == {"kind": "file", "inside": 0} and len(values) == len(scene.model.kinds) + len(scene.model.edges)
+    assert values["repo:pkg/a.py"] == {"kind": "file", "inside": 0} and len(values) == len(scene.model.entities) + len(scene.model.edges)
     about = store.open_maps("counting").load_about(scene.model.key)
     assert about["overlay"] == "counting" and about["cache_version"] == "1" and about["at"]
 
@@ -103,7 +104,7 @@ def test_caching_overlay_reads_what_is_kept_and_computes_the_rest(scene):
     assert folded["kind"] == "file" and folded["inside"] >= 1  # the class folded into the file's box
     assert behind.asked == ["repo:pkg/a.py"]
     assert picture.read_all("counting") == fold(scene.with_overlays(Counting())).read_all("counting")  # as computed live
-    assert all(k in picture.model.kinds or k in picture.model.edges for k in behind.asked)  # never asked about the source's elements
+    assert all(k in picture.model.entities or k in picture.model.edges for k in behind.asked)  # never asked about the source's elements
 
 
 def test_values_of_another_version_are_not_read(scene):

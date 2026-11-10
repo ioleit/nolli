@@ -6,8 +6,8 @@ from __future__ import annotations
 import ast
 
 from nolli.extractors import Context, interfaces
-from nolli.extractors.facts import Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind
 
 
 def run(ctx: Context) -> None:
@@ -15,7 +15,7 @@ def run(ctx: Context) -> None:
     ``os.environ["X"]``, ``os.environ.get("X")`` or ``os.getenv("X")``."""
     m = ctx.model
     for rel in ctx.sources("python", tests=False):
-        fid = address.repo(rel)
+        fid = EntityId.from_path(rel)
         tree = ctx.tree(rel)
         if tree is None:
             continue
@@ -31,4 +31,4 @@ def run(ctx: Context) -> None:
                     if isinstance(a, ast.Constant) and isinstance(a.value, str):
                         name = a.value
             if name:
-                m.add_relation(Relation(metamodel.USE, fid, interfaces.ensure_env(ctx, name, "python-env"), "env", provenance=Provenance("python-env", rel, node.lineno)))
+                m.add_relation(RelationFact(RelationKind.USE, fid, interfaces.ensure_env(ctx, name, "python-env"), "env", provenance=Provenance("python-env", rel, node.lineno)))

@@ -6,13 +6,15 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 
-from nolli.model import EdgeKey, Key, metamodel, vocabulary
+from nolli.model import vocabulary
+from nolli.model.model import Entity, Key, Relation
 from nolli.model.scene import Scene
+from nolli.model.schema import RelationKind
 
 
 @dataclass
 class ChangedEdge:
-    key: EdgeKey
+    key: Relation
     count: int
     diff: dict | None
 
@@ -43,10 +45,10 @@ class Reader:
         self._attrs: dict[str, dict] = {}
 
     def has(self, x: str) -> bool:
-        return x in self.model.kinds
+        return x in self.model.entities
 
     def kind(self, x: str) -> str:
-        return self.model.kinds[x]
+        return self.model.entities[x].kind
 
     def parent(self, x: str) -> str | None:
         return self.model.find_parent(x)
@@ -61,8 +63,8 @@ class Reader:
         return self.model.iter_descendants(x)
 
     @property
-    def nodes(self) -> dict[str, str]:
-        return self.model.kinds
+    def nodes(self) -> dict[str, Entity]:
+        return self.model.entities
 
     def name(self, x: str) -> str:
         return self.names[x]["name"]
@@ -98,7 +100,7 @@ class Reader:
         references = vocabulary.read_all_references(self.scene)
         out = []
         for e in self.model.edges:
-            if e.kind == metamodel.CONTAIN:
+            if e.kind == RelationKind.CONTAIN:
                 continue
             d = self.changes.get(e)
             out.append(ChangedEdge(e, sum(r["count"] for r in references.get(e, ())),

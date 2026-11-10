@@ -6,8 +6,8 @@ import posixpath
 import re
 
 from nolli.extractors import Context, interfaces
-from nolli.extractors.facts import Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind
 
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 TEMPLATE = re.compile(r"\{\{|\{%|\$\{|<%")
@@ -38,10 +38,10 @@ def _target(ctx: Context, rel: str, ref: str) -> tuple[str, str] | None:
     if path.startswith("/"):
         d = here
         while True:
-            fid = address.repo(posixpath.normpath(posixpath.join(d, path.lstrip("/"))))
+            fid = EntityId.from_path(posixpath.normpath(posixpath.join(d, path.lstrip("/"))))
             if _file_exists(ctx, fid):
                 return fid, "heuristic"
-            fid = address.repo(posixpath.normpath(posixpath.join(d, "public", path.lstrip("/"))))
+            fid = EntityId.from_path(posixpath.normpath(posixpath.join(d, "public", path.lstrip("/"))))
             if _file_exists(ctx, fid):
                 return fid, "heuristic"
             if not d:
@@ -49,8 +49,8 @@ def _target(ctx: Context, rel: str, ref: str) -> tuple[str, str] | None:
             d = posixpath.dirname(d)
     else:
         p = posixpath.normpath(posixpath.join(here, path))
-        if not p.startswith("../") and _file_exists(ctx, address.repo(p)):
-            return address.repo(p), "exact"
+        if not p.startswith("../") and _file_exists(ctx, EntityId.from_path(p)):
+            return EntityId.from_path(p), "exact"
     ctx.notes.setdefault("markup-unmatched", []).append((rel, ref))
     return None
 
@@ -82,9 +82,9 @@ def link(ctx: Context, rel: str, ref: str, line: int, how: str, extractor: str) 
     ``markup-unmatched``."""
     pkg = _package(ref.strip(), how)
     t = (interfaces.ensure_ext(ctx.model, "js", pkg[0], extractor), pkg[1]) if pkg else _target(ctx, rel, ref)
-    if t is None or t[0] == address.repo(rel):
+    if t is None or t[0] == EntityId.from_path(rel):
         return
     fid, confidence = t
-    language = ctx.model.entities[address.repo(rel)].attrs.get("language")
-    ctx.model.add_relation(Relation(metamodel.USE, address.repo(rel), fid, "import", 1, confidence, Provenance(extractor, rel, line),
+    language = ctx.model.entities[EntityId.from_path(rel)].attrs.get("language")
+    ctx.model.add_relation(RelationFact(RelationKind.USE, EntityId.from_path(rel), fid, "import", 1, confidence, Provenance(extractor, rel, line),
                                     {"language": language, "via": how}))

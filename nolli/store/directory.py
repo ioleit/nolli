@@ -8,8 +8,9 @@ import threading
 from collections.abc import Mapping
 from pathlib import Path
 
-from nolli.model import Key, Model, keys
+from nolli.model import keys
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo
+from nolli.model.model import Key, Model
 from nolli.model.scene import Scene
 from nolli.store import maps as maps_lib
 from nolli.store.precomputed import OverlayStore

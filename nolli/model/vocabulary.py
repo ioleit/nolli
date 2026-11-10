@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
-from nolli.model import EdgeKey, address
+from nolli.model.model import Relation
 
 if TYPE_CHECKING:
     from nolli.model.scene import Element, Scene
@@ -25,13 +25,13 @@ EXTERNALS = "externals"  # a node outside the repository: how it is called, its 
 SHAPES = (FILES, SYMBOLS, REFERENCES, EXTERNALS)
 
 
-def shape_of(key: str | EdgeKey, speaker: str) -> str:
+def shape_of(key: str | Relation, speaker: str) -> str:
     """The overlay a fact belongs in, by what it is about and who said it: an edge's facts are
     references; a repository node's are files from the file tree (``fs``) and symbols from a
     language; anything outside the repository is externals."""
-    if isinstance(key, EdgeKey):
+    if isinstance(key, Relation):
         return REFERENCES
-    if address.is_repo(key):
+    if key.is_repo:
         return FILES if speaker == "fs" else SYMBOLS
     return EXTERNALS
 
@@ -111,7 +111,7 @@ def read_all_files(scene: Scene) -> Mapping[str, FileFacts]:
     return scene.read_all(FILES)  # type: ignore[return-value]
 
 
-def read_all_references(scene: Scene) -> Mapping[EdgeKey, list[Reference]]:
+def read_all_references(scene: Scene) -> Mapping[Relation, list[Reference]]:
     """The references every edge of a scene stands for, by edge (edges no extractor found
     references for are left out), as ``read_references`` reads them one by one."""
     return {k: v["references"] for k, v in scene.read_all(REFERENCES).items()}  # type: ignore[misc]

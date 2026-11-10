@@ -11,8 +11,10 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
-from nolli.model import EdgeKey, Key, Model, address, metamodel
+from nolli.model import vocabulary
+from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Scene
+from nolli.model.schema import EntityId, EntityKind, RelationKind, Scheme
 from nolli.transformations import rollup
 from nolli.transformations import unfold as unfold_lib
 from nolli.transformations.reading import Reading
@@ -23,7 +25,7 @@ DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in rollup.HIDDEN_ROLES_DEFAU
 DEFAULT_BUDGET = 34
 DEFAULT_UTILITY_IN = 4  # more incoming edges than this: a utility, drawn as badges
 DEFAULT_MAX_LINES = 4  # lines between two drawn boxes at most; more are lifted to a box they are inside (rollup.lift)
-DEFAULT_GROUPS = (address.root(metamodel.API),)  # root groups drawn as boxes; the others are badges on their users
+DEFAULT_GROUPS = (EntityId.root(Scheme.API),)  # root groups drawn as boxes; the others are badges on their users
 PRESETS = ("default", "folded", "changes", "unfolded")
 
 
@@ -81,9 +83,9 @@ def _is_root_group(g: Reading, x: str) -> bool:
 def _find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[str]:
     """The containers a preset unfolds (a change's preset on a plain scene: the default cut)."""
     if st.preset == "folded":
-        return {address.REPO_ROOT}
+        return {EntityId.REPO_ROOT}
     if st.preset == "changes" and st.focus is not None:  # what the caller focuses on
-        return {address.REPO_ROOT, *st.focus}
+        return {EntityId.REPO_ROOT, *st.focus}
     if st.preset == "unfolded":
         return {x for x in g.nodes if x not in hidden and g.children(x)}
     hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
@@ -140,7 +142,7 @@ def fold(st: ProjectionSpec) -> Callable[[Scene], tuple[Model, FixedOverlay]]:
     The nodes are filtered by ``st``, contracted onto the cut through the containment tree
     that the unfolded containers make, and simplified by the roll-up rules (``rollup``).
     Each drawn node keeps the address of what it is (a module's own code is ``<id>#``,
-    ``address.own_code``) and refers to every node it stands for (role ``source``), each
+    ``EntityId.own_code``) and refers to every node it stands for (role ``source``), each
     drawn edge to the edges it bundles, so any overlay can say something about a drawn box
     from what it says about what is inside.
 
@@ -165,7 +167,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     edges = rolled.edges
     out_total: dict[str, int] = defaultdict(int)
     for e in edges:
-        if e.kind == metamodel.USE:
+        if e.kind == RelationKind.USE:
             out_total[e.src] += e.count
     touched = {e.src for e in edges} | {e.dst for e in edges}
     used_by: dict[str, int] = defaultdict(int)  # utility -> boxes whose edges into it became badges
@@ -185,7 +187,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     def node(x: str, parent: str | None, container: bool) -> None:
         order.append(x)
         parent_of[x] = parent
-        if address.is_own_code(x):
+        if x.is_own_code:
             values[x] = {"container": False, "utilities_used": used_utils(x)}
             return
         kids = bool(g.children(x))
@@ -201,7 +203,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
 
     def build(x: str, parent: str | None) -> bool:
         if x in expanded and g.children(x):
-            me = None if x == address.REPO_ROOT else x  # the repository root is the canvas, not a box
+            me = None if x == EntityId.REPO_ROOT else x  # the repository root is the canvas, not a box
             if me is not None:
                 node(x, parent, True)
             ch: list[str] = []
@@ -213,8 +215,8 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
                     continue
                 ch.append(rollup.chain_end(g, kid, hidden) if g.kind(x) == "directory" and g.kind(kid) == "directory" else kid)
             n = 0
-            if address.own_code(x) in visible:
-                node(address.own_code(x), me or parent, False)
+            if x.own_code() in visible:
+                node(x.own_code(), me or parent, False)
                 n += 1
             for kid in ch:
                 if kid in visible or (kid in expanded and g.children(kid)):
@@ -240,7 +242,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
     for x in sorted(g.nodes):
         if x in hidden:
             continue
-        r = x if x in drawn and not address.is_own_code(x) else rep(x)
+        r = x if x in drawn and not x.is_own_code else rep(x)
         if r is not None and r in drawn:
             refs[r].append(x)
     for x in order:
@@ -251,15 +253,15 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
         ps = rollup.drawn_parent(g, e.src, expanded)
         return ps is not None and ps == rollup.drawn_parent(g, e.dst, expanded)
 
-    keys: list[EdgeKey] = []
+    keys: list[Relation] = []
     for e in edges:
         if e.src not in drawn or e.dst not in drawn:
             continue
-        k = EdgeKey(e.kind, e.src, e.dst, e.subkind)
+        k = Relation(e.kind, e.src, e.dst, e.subkind)
         ot = out_total.get(e.src, 0)
         values[k] = {
             "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": _edge_style(e),
-            "local": local(e), "single": e.count == 1, "weak": bool(ot) and e.kind == metamodel.USE and e.count / ot < 0.05 and e.count < 3,
+            "local": local(e), "single": e.count == 1, "weak": bool(ot) and e.kind == RelationKind.USE and e.count / ot < 0.05 and e.count < 3,
             "heuristic": e.confidence == "heuristic",
             "types": e.count > 0 and e.types == e.count,  # references only to types (``type_only``): no run-time dependency
             "type_refs": e.types, "names": dict(e.names),
@@ -271,14 +273,14 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
         refs[k] = sorted(e.members)
         keys.append(k)
 
-    kinds = {x: ("anchor" if address.is_own_code(x) else g.kind(x)) for x in order}
-    contain = [EdgeKey(metamodel.CONTAIN, p, x) for x, p in parent_of.items() if p is not None]
+    entities = [Entity(x, EntityKind.ANCHOR if x.is_own_code else g.kind(x)) for x in order]
+    contain = [Relation(RelationKind.CONTAIN, p, x) for x, p in parent_of.items() if p is not None]
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
     residue += [f"{v} unresolved {k} references" for k, v in sorted(rolled.unresolved.items())]
-    groups = [{"id": r, "namespace": address.scheme_of(r), "name": metamodel.NAMESPACES[address.scheme_of(r)].title, "size": len(g.children(r)), "shown": r in shown_groups}
-              for r in g.roots() if g.kind(r) == "group" and metamodel.NAMESPACES[address.scheme_of(r)].structural and g.children(r)]
+    groups = [{"id": r, "namespace": r.scheme, "name": vocabulary.read_external(g.scene.find_element(r)).get("name") or r, "size": len(g.children(r)), "shown": r in shown_groups}
+              for r in g.roots() if g.kind(r) == "group" and g.children(r)]
     by_role: dict[str, dict[str, int]] = {r: {"files": 0, "dirs": 0} for r in ALL_ROLES}  # for the Show filter ("mixed" is a directory role only)
-    for x, kind in g.nodes.items():
+    for x, kind in ((n.id, n.kind) for n in g.nodes.values()):
         r = g.file(x).get("role")
         if r in by_role and kind in ("file", "directory") and not g.file(x).get("root"):
             by_role[r]["files" if kind == "file" else "dirs"] += 1
@@ -291,5 +293,5 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
                            "internal": dict(rolled.internal), "hidden_relations": rolled.hidden_relations,
                            "unresolved": dict(rolled.unresolved)}}
     key = "project:" + hashlib.sha1(f"{scene.model.key}|{sorted(state.items())}".encode()).hexdigest()[:16]
-    model = Model(key, kinds, [*contain, *keys], refs={"source": {k: tuple(v) for k, v in refs.items()}}, meta=meta, check=False)
+    model = Model(key, entities, [*contain, *keys], refs={"source": {k: tuple(v) for k, v in refs.items()}}, meta=meta, check=False)
     return model, FixedOverlay("projection", values)

@@ -12,8 +12,10 @@ from functools import cached_property
 
 from nolli.formats.descriptions import label, prose
 from nolli.formats.descriptions import names as names_lib
-from nolli.model import EdgeKey, Key, address, metamodel, vocabulary
+from nolli.model import schema, vocabulary
+from nolli.model.model import Key, Relation
 from nolli.model.scene import Element, Overlay, Scene
+from nolli.model.schema import EntityId, RelationKind
 
 
 class Source:
@@ -26,10 +28,10 @@ class Source:
         self._attrs: dict[str, dict] = {}
 
     def has(self, x: str) -> bool:
-        return x in self.model.kinds
+        return x in self.model.entities
 
     def kind(self, x: str) -> str:
-        return self.model.kinds[x]
+        return self.model.entities[x].kind
 
     def children(self, x: str) -> list[str]:
         return self.model.list_children(x)
@@ -117,9 +119,11 @@ class Ctx:
         return (self.scene.find_element(x).get("projection") or {}).get("utilities_used") or []
 
     def name(self, x: str) -> str:
-        """A box as the picture names it: directories end in "/", a module's own code says so."""
-        if address.is_own_code(x):
-            return f"{self.name(address.owner(x))} (own code)"
+        """A box as the picture names it: directories end in "/", a module's own code says so.
+        ``x`` may be text, as overlays' values (``utilities_used``) hold addresses."""
+        x = EntityId(x)
+        if x.is_own_code:
+            return f"{self.name(x.owner)} (own code)"
         e = self.node(x)
         if e.kind in ("service", "image"):
             return e.name.removesuffix("/Dockerfile")  # no "svc " / "img " prefix in prose
@@ -174,7 +178,6 @@ def _by_use(ctx: Ctx, file_id: str, names: list[str]) -> list[str]:
 
 
 
-
 SYMBOL_NOUN = {"class": "class", "interface": "interface", "type": "type alias", "enum": "enum", "function": "function"}
 GENERIC_NOUN = {"directory": "subfolder", "file": "file", **SYMBOL_NOUN, "endpoint": "endpoint", "group": "group",
                 "env": "variable", "service": "service", "image": "image", "package": "package", "host": "host"}
@@ -195,7 +198,7 @@ def _body_of(ctx: Ctx, x: str) -> str | None:
 
 
 def _is_symbol(ctx: Ctx, x: str) -> bool:
-    return ctx.g.kind(x) in metamodel.SYMBOL_KINDS and _language(ctx, x) is not None
+    return ctx.g.kind(x) in schema.SYMBOL_KINDS and _language(ctx, x) is not None
 
 
 def _noun(ctx: Ctx, x: str) -> str:
@@ -332,21 +335,21 @@ class Dependencies:
             return chain
 
         for r, n in m.list_relations():
-            if r.kind not in (metamodel.USE, metamodel.PROVIDE, metamodel.ALLOCATE) or not m.has(r.dst) or not m.has(r.src):
+            if r.kind not in (RelationKind.USE, RelationKind.PROVIDE, RelationKind.ALLOCATE) or not m.has(r.dst) or not m.has(r.src):
                 continue
             dk = m.kind(r.dst)
-            if dk == "package" and r.kind == metamodel.USE:
+            if dk == "package" and r.kind == RelationKind.USE:
                 for b in boxes(r.src):
                     self.ext[b][m.name(r.dst)] += n
-            elif dk == "env" and r.kind == metamodel.USE:
+            elif dk == "env" and r.kind == RelationKind.USE:
                 for b in boxes(r.src):
                     self.env[b].add(m.name(r.dst))
             elif dk == "endpoint":
-                target = self.serves if r.kind == metamodel.PROVIDE else self.calls if r.kind == metamodel.USE else None
+                target = self.serves if r.kind == RelationKind.PROVIDE else self.calls if r.kind == RelationKind.USE else None
                 if target is not None:
                     for b in boxes(r.src):
                         target[b].add(r.dst)
-            elif dk in ("service", "image") and r.kind == metamodel.ALLOCATE:
+            elif dk in ("service", "image") and r.kind == RelationKind.ALLOCATE:
                 for b in boxes(r.src):
                     self.deployed[b].add(m.name(r.dst).removesuffix("/Dockerfile"))
             elif m.kind(r.src) in ("service", "image") and r.subkind == "entrypoint":
@@ -380,13 +383,13 @@ def _node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> str:
 
 def _node_lines(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> list[str]:
     m = ctx.g
-    if address.is_own_code(x):
-        said = _own_code(ctx, address.owner(x))
+    if x.is_own_code:
+        said = _own_code(ctx, x.owner)
         if said:
             return said
-        owner = ctx.name(address.owner(x))
-        if ctx.node(address.owner(x)).kind == "directory":
-            body = next((ctx.node(c).name for c in m.children(address.owner(x)) if m.is_init(c)), "package")
+        owner = ctx.name(x.owner)
+        if ctx.node(x.owner).kind == "directory":
+            body = next((ctx.node(c).name for c in m.children(x.owner) if m.is_init(c)), "package")
             return [prose.say("The code in {}'s {} beyond re-exporting its modules", owner, body)]
         return [prose.say("The code in {} outside its classes and types", owner)]
     e = ctx.node(x)
@@ -467,7 +470,7 @@ def _edge_lines(ctx: Ctx, e) -> list[str]:
 class EdgeFacts:
     """A drawn edge as edge_info reads it: its key and what the projection counted."""
 
-    def __init__(self, key: EdgeKey, p: dict) -> None:
+    def __init__(self, key: Relation, p: dict) -> None:
         self.kind, self.src, self.dst, self.subkind = key.kind, key.src, key.dst, key.subkind
         self.count, self.names, self.types = p.get("count", 0), p.get("names") or {}, p.get("type_refs", 0)
 
@@ -478,7 +481,7 @@ def _make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
     meta = scene.model.meta.get("projection", {})
     ctx = Ctx(Source(src), scene, set(meta.get("expanded", [])), set(meta.get("hidden_nodes", [])),
               set(meta.get("utilities", [])), src.model.meta.get("languages") or {})
-    return ctx, Dependencies(ctx, set(scene.model.kinds))
+    return ctx, Dependencies(ctx, set(scene.model.entities))
 
 
 class Hover(Overlay):
@@ -506,9 +509,9 @@ class Hover(Overlay):
         if "source" not in scene.sources:
             return {}
         ctx, deps = _make_ctx(scene)
-        known = lambda x: ctx.g.has(address.owner(x))  # a node the source does not have (a proposed directory): nothing to say
+        known = lambda x: ctx.g.has(x.owner)  # a node the source does not have (a proposed directory): nothing to say
         out: dict[Key, dict] = {}
-        for x in scene.model.kinds:
+        for x in scene.model.entities:
             if not known(x):
                 continue
             p = scene.find_element(x).get("projection") or {}

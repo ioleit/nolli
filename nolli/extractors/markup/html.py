@@ -6,7 +6,7 @@ from html.parser import HTMLParser
 
 from nolli.extractors import Context
 from nolli.extractors.markup import css, refs
-from nolli.model import address
+from nolli.model.schema import EntityId
 
 EXTENSIONS = (".html", ".htm")
 SRC = {"script": "script", "img": "image", "source": "media", "video": "media", "audio": "media",
@@ -56,7 +56,7 @@ class Page(HTMLParser):
 def run(ctx: Context) -> None:
     for f in ctx.progress.each(ctx.files):
         rel = ctx.rel(f)
-        if rel.lower().endswith(EXTENSIONS) and ctx.model.has(address.repo(rel)):
+        if rel.lower().endswith(EXTENSIONS) and ctx.model.has(EntityId.from_path(rel)):
             page = Page(ctx, rel)
             page.feed(ctx.read(rel).decode("utf-8", "replace"))
             page.close()

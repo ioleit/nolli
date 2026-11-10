@@ -12,17 +12,17 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from nolli import extractors
+from nolli import extractors, scenes
 from nolli.extractors import Context, match
 from nolli.extractors.facts import Facts
-from nolli.model import Key, Model, address
 from nolli.model.keys import ChangeKey, CommitKey
+from nolli.model.model import Key, Model
+from nolli.model.schema import EntityId
 from nolli.progress import Progress, Quiet
 from nolli.sources import Sources, git
 from nolli.store import ModelStore
 from nolli.store.maps import Maps, MapStore
 from nolli.transformations import merge
-from nolli import scenes
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
@@ -75,8 +75,8 @@ def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple
             git.export_commit(repo, sha, Path(tmp))
         m, maps = extract(Path(tmp), progress=progress)
     for values in maps.values():  # the root is the temporary directory
-        if address.REPO_ROOT in values and "name" in values[address.REPO_ROOT]:
-            values[address.REPO_ROOT]["name"] = name
+        if EntityId.REPO_ROOT in values and "name" in values[EntityId.REPO_ROOT]:
+            values[EntityId.REPO_ROOT]["name"] = name
     m.meta.update({"repo": name, "commit": sha[:7]})
     return m, maps
 
@@ -85,7 +85,7 @@ def list_content(repo: Path, base: str, head: str, progress: Progress) -> dict[K
     """The ``content`` map of a change: what git says changed in each file, by the file's
     address (its head path; base path for a deletion)."""
     with progress.step("comparing the commits"):
-        return {address.repo(path): c.to_dict() for path, c in git.list_file_changes(repo, base, head).items()}
+        return {EntityId.from_path(path): c.to_dict() for path, c in git.list_file_changes(repo, base, head).items()}
 
 
 def version() -> str:

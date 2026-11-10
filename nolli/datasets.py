@@ -17,32 +17,58 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from .build import Run, extract, extract_commit, fetch_change, fetch_whole_model, is_fresh, list_content, run_here, version
-from .model import Key, Model
+from . import transformations
+from .build import (
+    Run,
+    extract,
+    extract_commit,
+    fetch_change,
+    fetch_whole_model,
+    is_fresh,
+    list_content,
+    run_here,
+    version,
+)
+from .formats.mermaid import list_ids, render
+from .formats.report import make_report
+from .formats.viewer import export_scene
 from .model.keys import ChangeKey, CommitKey, ModelKey, Repo
+from .model.model import Key, Model
 from .model.scene import Overlay, Scene
 from .progress import Progress, Quiet
-from .review.changes import detail_box, find_review_cut, list_changes
 from .review import ci
+from .review.brief import make_brief
+from .review.changes import detail_box, find_review_cut, list_changes
 from .review.verdicts import (  # noqa: F401 (VERDICTS: for callers)
-    VERDICTS, check_verdicts, describe_verdicts, find_diagram_ids, find_provenance, parse_verdicts, read_verdicts, save_verdicts,
+    VERDICTS,
+    check_verdicts,
+    describe_verdicts,
+    find_diagram_ids,
+    find_provenance,
+    parse_verdicts,
+    read_verdicts,
+    save_verdicts,
+)
+from .scenes import (
+    describe_change_meta,
+    keep_change_scene,
+    keep_commit_scene,
+    merge_built,
+    open_built,
+    open_change_scene,
+    open_commit_scene,
 )
 from .sources import FetchError, Sources, github
-from .sources.git import GitError, find_commit, find_head, find_remote
-from .sources.git import ChangeError, ChangeSpec, find_toplevel
-from .sources.git import resolve as resolve_spec, whole as resolve_whole
+from .sources.git import ChangeError, ChangeSpec, GitError, find_commit, find_head, find_remote, find_toplevel
+from .sources.git import resolve as resolve_spec
+from .sources.git import whole as resolve_whole
 from .store import ModelStore
 from .store.directory import DirectoryStore, write_change, write_commit
 from .store.maps import MapStore, MemoryMaps
-from .scenes import describe_change_meta, keep_change_scene, keep_commit_scene, merge_built, open_built, open_change_scene, open_commit_scene
-from .transformations.merge import is_change, merge_models
-from .formats.mermaid import list_ids, render
-from .formats.viewer import export_scene
-from .formats.report import make_report
-from .review.brief import make_brief
-from . import transformations
 from .transformations import projection
+from .transformations.merge import is_change, merge_models
 from .transformations.projection import DEFAULT_BUDGET, ProjectionSpec
+
 
 class Datasets:
     def __init__(self, store: ModelStore, sources: Sources | None = None) -> None:

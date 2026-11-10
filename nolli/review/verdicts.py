@@ -7,8 +7,9 @@ import re
 from collections import defaultdict
 from collections.abc import Mapping
 
-from nolli.model import Key, address
+from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
+from nolli.model.schema import EntityId
 from nolli.review import changes
 from nolli.review.reading import Reader
 from nolli.store.maps import MapStore
@@ -28,10 +29,10 @@ def find_diagram_ids(scene: Scene) -> dict[str, str]:
     """A diagram's node ids back to what they stand for: nodes (an unfolded one is a subgraph,
     ``<id>_g``), and a module's own code (``<file>#``) or a directory's."""
     out = {}
-    for x, kind in scene.model.kinds.items():
-        out[address.format_identifier(x)] = out[address.format_identifier(x) + "_g"] = x
+    for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
+        out[x.as_identifier()] = out[x.as_identifier() + "_g"] = x
         if kind in ("file", "directory"):
-            out[address.format_identifier(address.own_code(x))] = address.own_code(x)
+            out[x.own_code().as_identifier()] = x.own_code()
     return out
 
 
@@ -120,7 +121,7 @@ def _dump_verdicts(verdicts: list[dict]) -> dict[str, dict]:
 
 def parse_verdicts(values) -> list[dict]:
     """The kept verdicts as a list in their order (V1, V2, …), each with its ``ends``."""
-    out = [{**v, "ends": k.split(PAIR)} for k, rec in values.items() if isinstance(k, str) for v in rec.get("verdicts", [])]
+    out = [{**v, "ends": [EntityId(x) for x in k.split(PAIR)]} for k, rec in values.items() if isinstance(k, str) for v in rec.get("verdicts", [])]
     return sorted(out, key=lambda v: int(v["id"][1:]))
 
 
@@ -130,13 +131,13 @@ def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
     g = Reader(scene)
     out = []
     for v in verdicts:
-        ends = v.get("ends") or []
-        name = lambda x: changes.format_name(g, address.owner(x)) + (" (own code)" if address.is_own_code(x) else "")
+        ends = [EntityId(x) for x in v.get("ends") or []]
+        name = lambda x: changes.format_name(g, x.owner) + (" (own code)" if x.is_own_code else "")
         reveal: list[str] = []
         for x in ends:
-            if not g.has(address.owner(x)):
+            if not g.has(x.owner):
                 continue
-            for a in changes.list_ancestors_to_unfold(g, address.owner(x)) + ([address.owner(x)] if address.is_own_code(x) else []):
+            for a in changes.list_ancestors_to_unfold(g, x.owner) + ([x.owner] if x.is_own_code else []):
                 if a not in reveal:
                     reveal.append(a)
         out.append(v | {"ends": ends, "edge": len(ends) == 2, "reveal": reveal,
@@ -193,7 +194,7 @@ class Verdicts(Overlay):
         out: dict[str, list[dict]] = defaultdict(list)
         for v in self.load(scene):
             if v.get("ends"):
-                out[address.owner(v["ends"][0])].append(v)
+                out[v["ends"][0].owner].append(v)
         return dict(out)
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
@@ -219,7 +220,7 @@ class Verdicts(Overlay):
         if not vs:
             return {"verdicts": [], "verdict": None, "own": [], "inside": []}
         ends = [el.key.src, el.key.dst] if el.is_edge else [el.key]
-        own = [v for v in vs if [address.owner(x) for x in v["ends"]] == ends]
+        own = [v for v in vs if [x.owner for x in v["ends"]] == ends]
         return {"verdicts": [v["id"] for v in vs], "verdict": max((v["verdict"] for v in vs), key=VERDICT_RANK.get),
                 "own": own, "inside": [v for v in vs if v not in own]}
 
@@ -233,10 +234,11 @@ def _iter_boxes(el: Element):
 
 def find_box(scene: Scene, x: str) -> str | None:
     """The drawn box that stands for ``x``: itself if drawn (a module's own code too), else the one
-    holding it (or its owner)."""
+    holding it (or its owner). ``x`` may be text, as a change item's ``focus`` holds addresses."""
+    x = EntityId(x)
     if scene.has(x):
         return x
-    return scene.find_holder(x) or scene.find_holder(address.owner(x))
+    return scene.find_holder(x) or scene.find_holder(x.owner)
 
 
 def _land(scene: Scene, v: dict) -> object | None:

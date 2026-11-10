@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from nolli.extractors import Context, api
 from nolli.extractors.python import imports, resolve
-from nolli.model import address
+from nolli.model.schema import EntityId
 
 METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "websocket", "api_route"}
 
@@ -52,11 +52,11 @@ def run(ctx: Context) -> None:
     module_to_file: dict[str, str] = {}
     for f in ctx.files:
         rel = ctx.rel(f)
-        if rel.endswith(".py") and m.has(address.repo(rel)):
+        if rel.endswith(".py") and m.has(EntityId.from_path(rel)):
             module_to_file[imports.module_name_of(rel)] = rel
 
     for rel in ctx.progress.each(module_to_file.values()):
-        if m.entities[address.repo(rel)].attrs.get("role") == "test":
+        if m.entities[EntityId.from_path(rel)].attrs.get("role") == "test":
             continue
         tree = ctx.tree(rel)
         if tree is None:

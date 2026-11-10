@@ -9,8 +9,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nolli import transformations
-from nolli.model import Key, Model, vocabulary
+from nolli.model import vocabulary
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey
+from nolli.model.model import Key, Model
 from nolli.model.scene import Overlay, Scene
 from nolli.store import ModelStore
 from nolli.store.maps import Maps, MapStore, MemoryMaps

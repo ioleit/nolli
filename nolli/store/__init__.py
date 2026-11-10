@@ -7,8 +7,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from nolli.model import Key, Model
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: part of the protocol)
+from nolli.model.model import Key, Model
 from nolli.model.scene import StoredMaps  # noqa: F401
 from nolli.store.maps import MapStore, MemoryMaps  # noqa: F401
 from nolli.store.precomputed import CachingStrategy, KeptMaps, PrecomputedOverlay, SourceElementOverlay  # noqa: F401

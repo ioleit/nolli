@@ -10,7 +10,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from nolli import build, scenes
-from nolli.model import address, metamodel, vocabulary
+from nolli.model import vocabulary
+from nolli.model.schema import RelationKind
 
 TOP = ("nolli/cli.py", "nolli/server/")
 MIDDLE = ("nolli/datasets.py", "nolli/build.py", "nolli/scenes.py")
@@ -22,7 +23,7 @@ scene = scenes.open_built(*build.extract(repo))
 
 def find_file(x: str) -> str | None:
     """The file a node of the repository is in (None for one outside it)."""
-    return address.path_of(address.file_of(x)) if address.is_repo(x) else None
+    return x.file.path if x.is_repo else None
 
 
 def is_skipped_to(path: str | None) -> bool:
@@ -30,7 +31,7 @@ def is_skipped_to(path: str | None) -> bool:
 
 
 found = defaultdict(lambda: defaultdict(set))  # file above -> file below -> {(name, line)}
-for e in scene.model.list_edges([metamodel.USE]):
+for e in scene.model.list_edges([RelationKind.USE]):
     src, dst = find_file(e.src), find_file(e.dst)
     if src and src.startswith(TOP) and is_skipped_to(dst):
         for r in vocabulary.read_references(scene.find_element(e)):

@@ -9,8 +9,10 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 
-from nolli.model import EdgeKey, Key, Model, address, metamodel, vocabulary
+from nolli.model import schema, vocabulary
+from nolli.model.model import Key, Model, Relation
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
+from nolli.model.schema import EntityId, RelationKind
 
 
 def is_change(scene: Scene) -> bool:
@@ -48,10 +50,10 @@ class Change(Overlay):
         sides = {role: _Side(scene.sources[role]) for role in ("base", "head")}
         content = self.content.load(scene.model.key)
         renames, by_old_path = _list_renames(content), _index_old_paths(content)
-        for x, kind in scene.model.kinds.items():
-            rec = _compare_node(x, kind, sides, content, renames, by_old_path)
+        for x in scene.model.entities.values():
+            rec = _compare_node(x.id, x.kind, sides, content, renames, by_old_path)
             if rec is not None:
-                out[x] = rec
+                out[x.id] = rec
         for e in scene.model.edges:
             rec = _compare_edge(e, scene.model.meta, {role: s.model.has(e) and s.references.get(e, []) for role, s in sides.items()})
             if rec is not None:
@@ -91,7 +93,7 @@ def _compare_node(x: str, kind: str, sides: Mapping[str, _Side], content: Mappin
         gone = renames.get(x)
         if gone:
             rec["renamed_to"] = gone
-    if kind in metamodel.SYMBOL_KINDS:
+    if kind in schema.SYMBOL_KINDS:
         lines = _list_class_lines(x, sides["base"].symbols.get(x, {}) if b else {}, sides["head"].symbols.get(x, {}) if h else {},
                                   content, by_old_path)
         if lines:
@@ -109,13 +111,13 @@ def _compare_node(x: str, kind: str, sides: Mapping[str, _Side], content: Mappin
 def _list_class_lines(x: str, bf: Mapping, hf: Mapping, content: Mapping[Key, dict], by_old_path: Mapping[str, dict]) -> dict | None:
     """git's changed lines inside a class's line range, on each side (``bf``, ``hf``: what the
     class's language says about it there)."""
-    f = address.file_of(x)
+    f = x.file
     c = content.get(f)
     if c is None:  # a class of a renamed file, by its old path
-        c = by_old_path.get(address.path_of(f))
+        c = by_old_path.get(f.path)
     if c is None:
         return None
-    old_path = c.get("old_path") or address.path_of(f)
+    old_path = c.get("old_path") or f.path
     added = [n for hk in c.get("hunks", []) for n in hk["added"] if hf and hf.get("line", 0) <= n <= (hf.get("end_line") or 0)]
     removed = [n for hk in c.get("hunks", []) for n in hk["removed"]
                if bf and bf.get("path") == old_path and bf.get("line", 0) <= n <= (bf.get("end_line") or 0)]
@@ -126,7 +128,7 @@ def _list_class_lines(x: str, bf: Mapping, hf: Mapping, content: Mapping[Key, di
 
 def _list_renames(content: Mapping[Key, dict]) -> dict[str, str]:
     """old file -> its new path, for the files git saw renamed (git's per-file content)."""
-    return {address.repo(v["old_path"]): address.path_of(k) for k, v in content.items() if isinstance(k, str) and v.get("old_path")}
+    return {EntityId.from_path(v["old_path"]): k.path for k, v in content.items() if isinstance(k, str) and v.get("old_path")}
 
 
 # ---------- links ----------
@@ -212,7 +214,7 @@ def _sum_box(el: Element) -> dict | None:
     if status is None:
         return None
     out = {"status": status, **totals, "totals": totals, "internal": internal}
-    if el.kind in metamodel.SYMBOL_KINDS and own.get("status") == "same":
+    if el.kind in schema.SYMBOL_KINDS and own.get("status") == "same":
         out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)  # its own lines; files count them for the module
     for k in ("git", "old_path", "renamed_to"):
         if own.get(k):
@@ -220,7 +222,7 @@ def _sum_box(el: Element) -> dict | None:
     return out
 
 
-def _compare_edge(key: EdgeKey, meta: dict, refs: Mapping[str, list | bool]) -> dict | None:
+def _compare_edge(key: Relation, meta: dict, refs: Mapping[str, list | bool]) -> dict | None:
     """What the change did to an edge, from the references on each side (``refs``: by side, the
     references there, False where that side has no such edge): added, removed, or changed when
     the number of references differs; None when the same."""
@@ -238,7 +240,7 @@ def _compare_edge(key: EdgeKey, meta: dict, refs: Mapping[str, list | bool]) -> 
     return rec | {"fact": _describe_fact(key, meta, rec, b if rec["status"] == "removed" else h)}
 
 
-def _describe_fact(key: EdgeKey, meta: dict, rec: dict, refs: list | bool) -> dict:
+def _describe_fact(key: Relation, meta: dict, rec: dict, refs: list | bool) -> dict:
     """A changed edge of a change for a tooltip or details panel, with a link to where it changed."""
     first = refs[0] if refs else {}
     path = first.get("path")
@@ -291,10 +293,10 @@ def merge_models(key: str, base: Model, head: Model, meta: dict | None = None) -
     """The model holding every node and edge of either side, each referring to its namesake on
     each side (``refs``). Same address, same thing: a node or edge is the same on both sides
     when its address is; a node owned on both sides is owned as head has it."""
-    kinds = {**base.kinds, **head.kinds}
-    owned = {e.dst for e in head.edges if e.kind == metamodel.CONTAIN}
-    edges = list(head.edges) + [e for e in base.edges if not (e.kind == metamodel.CONTAIN and e.dst in owned)]
-    return Model(key, kinds, edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
+    entities = {**base.entities, **head.entities}
+    owned = {e.dst for e in head.edges if e.kind == RelationKind.CONTAIN}
+    edges = list(head.edges) + [e for e in base.edges if not (e.kind == RelationKind.CONTAIN and e.dst in owned)]
+    return Model(key, entities.values(), edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
 
 
 def union(key: str, meta: dict | None = None, kept: Model | None = None):

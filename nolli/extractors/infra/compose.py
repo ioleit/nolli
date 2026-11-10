@@ -8,8 +8,8 @@ from pathlib import PurePosixPath
 import yaml
 
 from nolli.extractors import Context, interfaces
-from nolli.extractors.facts import Entity, Provenance, Relation
-from nolli.model import address, metamodel
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind, Scheme
 
 COMPOSE_NAMES = re.compile(r"(^|/)(docker-)?compose(\.[\w-]+)?\.ya?ml$")
 URL_HOST = re.compile(r"[a-z][a-z0-9+.-]*://(?:[^@/\s]*@)?([A-Za-z0-9_.-]+)(?::\d+)?")
@@ -43,19 +43,19 @@ def run(ctx: Context) -> None:
         services = doc.get("services") or {}
         if not isinstance(services, dict):
             continue
-        group = m.ensure_root(metamodel.RUNTIME, "compose")
+        group = m.ensure_root(Scheme.RUNTIME, "compose")
         base = PurePosixPath(rel).parent
         svc_ids: dict[str, str] = {}
         for name, spec in services.items():
-            sid = address.runtime(name)
+            sid = EntityId.from_host(name)
             attrs = {"compose": rel}
             spec = spec or {}
             if isinstance(spec.get("image"), str):
                 attrs["image"] = spec["image"]
             if spec.get("ports"):
                 attrs["ports"] = [str(p) for p in spec["ports"]]
-            m.add_entity(Entity(sid, "service", name, attrs, Provenance("compose", rel)))
-            m.add_relation(Relation(metamodel.CONTAIN, group, sid, provenance=Provenance("compose", rel)))
+            m.add_entity(EntityFact(sid, "service", name, attrs, Provenance("compose", rel)))
+            m.add_relation(RelationFact(RelationKind.CONTAIN, group, sid, provenance=Provenance("compose", rel)))
             svc_ids[name] = sid
         for name, spec in services.items():
             spec = spec or {}
@@ -70,28 +70,28 @@ def run(ctx: Context) -> None:
                 df_path = (ctx_path / dockerfile)
                 df_rel = str(PurePosixPath(*[p for p in df_path.parts if p != "."])) if df_path.parts else "Dockerfile"
                 df_rel = df_rel.replace("//", "/")
-                iid = address.built(df_rel)  # the image, by its Dockerfile
+                iid = EntityId.from_build_recipe(df_rel)  # the image, by its Dockerfile
                 if not m.has(iid):
-                    m.add_entity(Entity(iid, "image", df_rel, {"dockerfile": df_rel, "context": str(ctx_path) if str(ctx_path) != "." else "."}, Provenance("compose", rel)))
-                    m.add_relation(Relation(metamodel.CONTAIN, m.ensure_root(metamodel.PKG, "compose"), iid, provenance=Provenance("compose", rel)))
-                m.add_relation(Relation(metamodel.ALLOCATE, iid, sid, "runs_as", provenance=Provenance("compose", rel)))
+                    m.add_entity(EntityFact(iid, "image", df_rel, {"dockerfile": df_rel, "context": str(ctx_path) if str(ctx_path) != "." else "."}, Provenance("compose", rel)))
+                    m.add_relation(RelationFact(RelationKind.CONTAIN, m.ensure_root(Scheme.PKG, "compose"), iid, provenance=Provenance("compose", rel)))
+                m.add_relation(RelationFact(RelationKind.ALLOCATE, iid, sid, "runs_as", provenance=Provenance("compose", rel)))
             deps = spec.get("depends_on") or []
             for d in (deps if isinstance(deps, list) else list(deps.keys())):
                 if d in svc_ids:
-                    m.add_relation(Relation(metamodel.USE, sid, svc_ids[d], "depends_on", provenance=Provenance("compose", rel)))
+                    m.add_relation(RelationFact(RelationKind.USE, sid, svc_ids[d], "depends_on", provenance=Provenance("compose", rel)))
             env = spec.get("environment") or {}
             if isinstance(env, list):
                 env = dict(item.split("=", 1) if "=" in item else (item, "") for item in env)
             for k, v in env.items():
                 eid = interfaces.ensure_env(ctx, str(k))
-                m.add_relation(Relation(metamodel.PROVIDE, sid, eid, "env", provenance=Provenance("compose", rel), attrs={"value": str(v)[:200]}))
+                m.add_relation(RelationFact(RelationKind.PROVIDE, sid, eid, "env", provenance=Provenance("compose", rel), attrs={"value": str(v)[:200]}))
                 if PERMISSION_KEY.search(str(k)):
                     continue  # allowed origins name who may call us, not whom we call
                 for host in URL_HOST.findall(str(v)):
                     if host in svc_ids:
                         if host != name:
-                            m.add_relation(Relation(metamodel.USE, sid, svc_ids[host], "url", provenance=Provenance("compose", rel), attrs={"env": str(k)}))
+                            m.add_relation(RelationFact(RelationKind.USE, sid, svc_ids[host], "url", provenance=Provenance("compose", rel), attrs={"env": str(k)}))
                     elif host not in ("localhost", "127.0.0.1", "0.0.0.0") and "." in host:
                         hid = interfaces.ensure_host(m, host, "compose", rel)
-                        m.add_relation(Relation(metamodel.USE, sid, hid, "url", provenance=Provenance("compose", rel), attrs={"env": str(k)}))
+                        m.add_relation(RelationFact(RelationKind.USE, sid, hid, "url", provenance=Provenance("compose", rel), attrs={"env": str(k)}))
         ctx.notes.setdefault("compose-files", []).append(rel)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from nolli import build, scenes, transformations
 from nolli.formats import mermaid
-from nolli.model import Model, address
+from nolli.model.model import Model
 from nolli.model.scene import Element, Scene
 from nolli.transformations import projection
 
@@ -18,7 +18,7 @@ scene = scenes.open_built(*build.extract(repo))                     # the files 
 
 def is_interesting_for_this_oneoff(el: Element) -> bool:
     """Unfold the repository and every directory under nolli/: module level, no classes."""
-    return el.key == "repo:" or el.kind == "directory" and address.path_of(el.key).startswith("nolli")
+    return el.key == "repo:" or el.kind == "directory" and el.key.path.startswith("nolli")
 
 
 spec = projection.ProjectionSpec.expanded_if(is_interesting_for_this_oneoff, groups=[], utilities=0)
@@ -40,7 +40,7 @@ def on_paths(folded: Scene) -> Model:                               # the custom
     """The boxes on a path from datasets.py to store/, and the boxes they are drawn in."""
     m = folded.model
     down = reach(["repo:nolli/datasets.py"], lambda x: [e.dst for e in m.list_out(x)])
-    up = reach([x for x in m.kinds if x.startswith("repo:nolli/store")], lambda x: [e.src for e in m.list_in(x)])
+    up = reach([x for x in m.entities if x.startswith("repo:nolli/store")], lambda x: [e.src for e in m.list_in(x)])
     keep = down & up
     return m.select(keep | {p for x in keep for p in m.iter_ancestors(x)})
 

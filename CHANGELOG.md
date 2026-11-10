@@ -21,6 +21,11 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   - `nolli/sources` (the only place git runs, the change spec, GitHub);
   - `nolli/store` (models, the maps overlays keep, one access check), `nolli/server`;
   - `nolli/datasets.py`, what the command line, CI and the server use.
+- **An address is an `EntityId`** (`nolli/model/schema.py`, which also holds the entity and
+  relation kinds and the schemes; `address.py` and `model_constants.py` are gone): a `str`
+  checked to start with a known scheme, made by its `from_*` constructors and read by its
+  properties (`path`, `fragment`, `owner`, …). `Entity`, `Relation` and the facts turn text
+  into one, so what comes out of a model is one already.
 - **Stored data has a format and is built again when it has another one.** Datasets from
   0.7.0 and before are not read. A dataset directory is:
   - a commit: `key.json`, `model.json`, `overlays/`;

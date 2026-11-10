@@ -6,7 +6,7 @@ import re
 
 from nolli.extractors import Context
 from nolli.extractors.markup import refs
-from nolli.model import address
+from nolli.model.schema import EntityId
 
 COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 IMPORT = re.compile(r"""@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]+)\1""", re.IGNORECASE)
@@ -32,5 +32,5 @@ def scan(ctx: Context, rel: str, text: str, first_line: int = 1, extractor: str 
 def run(ctx: Context) -> None:
     for f in ctx.progress.each(ctx.files):
         rel = ctx.rel(f)
-        if rel.lower().endswith(EXTENSIONS) and ctx.model.has(address.repo(rel)):
+        if rel.lower().endswith(EXTENSIONS) and ctx.model.has(EntityId.from_path(rel)):
             scan(ctx, rel, ctx.read(rel).decode("utf-8", "replace"))

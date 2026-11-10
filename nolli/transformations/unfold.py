@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from nolli.model import address
 from nolli.model.scene import Scene
+from nolli.model.schema import EntityId
 from nolli.transformations import rollup
 from nolli.transformations.reading import Reading
 
@@ -28,7 +28,7 @@ def _unfold_cost(g: Reading, v: str, hidden: set[str], anchors: set[str] = froze
     return n + (1 if v in anchors else 0) - 1
 
 
-def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_expand=(address.REPO_ROOT,), hidden: set[str] | None = None) -> dict:
+def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_expand=(EntityId.REPO_ROOT,), hidden: set[str] | None = None) -> dict:
     """The default cut: unfold the containment forest as far as a node budget allows.
 
     Start with the repository root unfolded (its top-level entries) plus the synthetic
@@ -51,7 +51,7 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
     # in a review, boxes where nothing changed are faded and cost half a box of attention
     changed = _index_changes(g) if diff else {}
     phases = [_score_changes(g, hidden, changed), lca] if diff else [lca]
-    weight = (lambda x: 1.0 if x in changed or address.is_own_code(x) else 0.5) if diff else (lambda x: 1.0)
+    weight = (lambda x: 1.0 if x in changed or x.is_own_code else 0.5) if diff else (lambda x: 1.0)
 
     def cost_of_unfolding(v: str) -> float:
         if not diff:
@@ -65,7 +65,7 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
             room = budget - sum(weight(x) for x in visible)
             best, best_key = None, (0.0, 0.0)
             for v in visible:
-                if address.is_own_code(v) or g.kind(v) not in ("directory", "group", "file") or not g.children(v):
+                if v.is_own_code or g.kind(v) not in ("directory", "group", "file") or not g.children(v):
                     continue
                 if scores.get(v, 0) <= 0:
                     continue
