@@ -2,7 +2,7 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
-## Unreleased
+## 0.9.0
 
 ### Added
 
