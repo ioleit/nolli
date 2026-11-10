@@ -1,4 +1,4 @@
-"""A storage that keeps models and changes in directories with JSON files."""
+"""A storage that keeps models and changes in directories with JSON files, and how a model is written as one (`model.json`)."""
 from __future__ import annotations
 
 import json
@@ -9,13 +9,14 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from nolli.model import keys
-from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo
-from nolli.model.model import Key, Model
+from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo, StringKey
+from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.scene import Scene
 from nolli.store import maps as maps_lib
 from nolli.store.precomputed import OverlayStore
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
+MODEL_FORMAT = 3  # of model.json; a model of another format is built again, never read (3: its maps are by shape, meta names no overlays)
 
 
 # -- models in directories ------------------------------------------------------------
@@ -120,7 +121,7 @@ class DirectoryStore(OverlayStore):
         d = self.places.get(key.format_key())
         if d is None:
             return None
-        m = self.read_json(d / "model.json", Model.from_dict)
+        m = self.read_json(d / "model.json", _parse_model)
         if m is not None:
             m.key = key
         return m
@@ -222,6 +223,38 @@ class DirectoryMaps:
         tmp.replace(f)
 
 
+# -- model.json -----------------------------------------------------------------------
+
+
+def _dump_model(model: Model) -> dict:
+    """A model's ``model.json`` form. A model made from others names their roles under ``refs``
+    when each of its elements stands for its namesake there (a change's sides); one that
+    refers to its sources element by element (a picture) is made again from them, not
+    written."""
+    if any(v is not None for v in model.refs.values()):
+        raise ValueError("a model that refers to its sources element by element is made again from them, not saved")
+    out = {"format": MODEL_FORMAT, "key": model.key.format_key(), "meta": model.meta,
+           "nodes": {x: model.entities[x].kind for x in sorted(model.entities)},
+           "edges": [[e.kind, e.src, e.dst, e.subkind] for e in model.edges]}
+    if model.refs:
+        out["refs"] = dict.fromkeys(model.refs)
+    return out
+
+
+def _parse_model(d: dict) -> Model:
+    """A model from its ``model.json`` form, which carries its ``format``; another format
+    raises ``FormatError`` rather than be misread. Its key is a ``StringKey`` of the text kept:
+    the store sets the key it read the model by."""
+    if d.get("format") != MODEL_FORMAT:
+        raise maps_lib.FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {MODEL_FORMAT}")
+    return Model(StringKey(d.get("key", "")), (Entity(x, k) for x, k in d["nodes"].items()), (Relation(*e) for e in d["edges"]),
+                 refs=d.get("refs"), meta=d.get("meta") or {})
+
+
+def _write_model(f: Path, model: Model) -> None:
+    f.write_text(json.dumps(_dump_model(model), indent=1))
+
+
 def _write_maps(d: Path, model_key: str, maps: Mapping[str, Mapping[Key, dict]]) -> None:
     (d / "overlays").mkdir(exist_ok=True)
     for name, values in maps.items():
@@ -231,7 +264,7 @@ def _write_maps(d: Path, model_key: str, maps: Mapping[str, Mapping[Key, dict]])
 def write_commit(d: Path, key: CommitKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
     model.key = key
     (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
-    model.save(d / "model.json")
+    _write_model(d / "model.json", model)
     _write_maps(d, key.format_key(), maps)
 
 
@@ -242,7 +275,7 @@ def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str,
     (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": about}, indent=1))
     if model is not None:
         model.key = key
-        model.save(d / "model.json")
+        _write_model(d / "model.json", model)
     for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
         (d / side).mkdir(exist_ok=True)
         write_commit(d / side, commit, *sides[side])

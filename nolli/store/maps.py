@@ -6,11 +6,15 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from nolli.model.keys import ModelKey
-from nolli.model.model import FormatError, Key, Model, Relation
+from nolli.model.model import Key, Model, Relation
 from nolli.model.schema import EntityId
 from nolli.store.precomputed import KeptMaps, OverlayStore
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
+
+
+class FormatError(ValueError):
+    """Stored data of a format this version of nolli does not read."""
 
 
 Maps = dict[str, dict[Key, dict]]  # overlay name -> what it says per node and edge of one model

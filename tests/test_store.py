@@ -17,7 +17,7 @@ from nolli.model.keys import Repo, StringKey
 from nolli.model.model import Model
 from nolli.progress import Quiet
 from nolli.sources import CloneCache, FetchError, LocalRepository
-from nolli.store import DirectoryStore
+from nolli.store import DirectoryStore, directory
 from nolli.store.directory import _read_key, write_change
 
 
@@ -94,14 +94,14 @@ def test_directory_store_keeps_models_changes_and_verdicts(tmp_path):
 
 
 def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
-    def broken(self, path):
+    def broken(path, model):
         path.write_text("{")
         raise RuntimeError("half way")
 
     store = DirectoryStore(tmp_path / "data")
     key = Repo("github.com/o/r").make_commit("1" * 40)
     store.save_model(key, model("before"), {})
-    monkeypatch.setattr(Model, "save", broken)
+    monkeypatch.setattr(directory, "_write_model", broken)
     with pytest.raises(RuntimeError):
         store.save_model(key, model("x"), {})
     assert [p.name for p in store.root.iterdir()] == [key.format_name()]  # the model kept before, no work left over

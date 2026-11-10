@@ -15,6 +15,7 @@ from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId, RelationKind
 from nolli.transformations import projection
+from nolli.transformations.select import select
 
 NOLLI = EntityId.from_path("nolli")
 LOGIC = EntityId.from_path("nolli/logic")                                 # the proposed parent: no such directory exists
@@ -47,7 +48,7 @@ folded = transformations.apply(proposal, projection.fold(spec))
 
 def inside_nolli(folded: Scene) -> Model:
     """nolli/ and what is drawn in it, nothing else of the repository."""
-    return folded.model.select({NOLLI, *folded.model.iter_descendants(NOLLI)})
+    return select(folded.model, {NOLLI, *folded.model.iter_descendants(NOLLI)})
 
 
 print(mermaid.render(transformations.apply(folded, inside_nolli)))

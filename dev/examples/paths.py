@@ -11,6 +11,7 @@ from nolli.formats import mermaid
 from nolli.model.model import Model
 from nolli.model.scene import Element, Scene
 from nolli.transformations import projection
+from nolli.transformations.select import select
 
 repo = Path(sys.argv[1])
 scene = scenes.open_built(*build.extract(repo))                     # the files as they are, with nolli's overlays
@@ -42,7 +43,7 @@ def on_paths(folded: Scene) -> Model:                               # the custom
     down = reach(["repo:nolli/datasets.py"], lambda x: [e.dst for e in m.list_out(x)])
     up = reach([x for x in m.entities if x.startswith("repo:nolli/store")], lambda x: [e.src for e in m.list_in(x)])
     keep = down & up
-    return m.select(keep | {p for x in keep for p in m.iter_ancestors(x)})
+    return select(m, keep | {p for x in keep for p in m.iter_ancestors(x)})
 
 
 print(mermaid.render(transformations.apply(folded, on_paths)))

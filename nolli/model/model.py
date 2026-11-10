@@ -5,20 +5,12 @@ A model holds structure only: what else is known about a node or an edge belongs
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from nolli.model.keys import ModelKey, StringKey
 from nolli.model.schema import EntityId, EntityKind, RelationKind
-
-FORMAT = 3  # of model.json; a model of another format is built again, never read (3: its maps are by shape, meta names no overlays)
-
-
-class FormatError(ValueError):
-    """Stored data of a format this version of nolli does not read."""
 
 
 @dataclass(frozen=True)
@@ -155,47 +147,8 @@ class Model:
     def list_in(self, x: str) -> list[Relation]:
         return self._in.get(x, [])
 
-    def select(self, keep) -> Model:
-        """The part of this model with the nodes ``keep`` names and the edges between them (an
-        edge in ``keep`` too), each referring to itself here (``refs``: the same key)."""
-        keep = set(keep)
-        entities = [x for x in self.entities.values() if x.id in keep]
-        edges = [e for e in self.edges if e.src in keep and e.dst in keep]
-        return Model(StringKey(f"{self.key.format_key()}|select"), entities, edges, refs={"source": None}, check=False)
-
     def count_nodes_by_kind(self) -> dict[str, int]:
         out: dict[str, int] = defaultdict(int)
         for x in self.entities.values():
             out[x.kind] += 1
         return dict(sorted(out.items()))
-
-    # -- model.json ----------------------------------------------------------
-
-    def to_dict(self) -> dict:
-        """Its ``model.json`` form. A model made from others names their roles under ``refs``
-        when each of its elements stands for its namesake there (a change's sides); one that
-        refers to its sources element by element (a picture) is made again from them, not
-        written."""
-        if any(v is not None for v in self.refs.values()):
-            raise ValueError("a model that refers to its sources element by element is made again from them, not saved")
-        out = {"format": FORMAT, "key": self.key.format_key(), "meta": self.meta,
-               "nodes": {x: self.entities[x].kind for x in sorted(self.entities)},
-               "edges": [[e.kind, e.src, e.dst, e.subkind] for e in self.edges]}
-        if self.refs:
-            out["refs"] = dict.fromkeys(self.refs)
-        return out
-
-    def save(self, path: Path) -> None:
-        path.write_text(json.dumps(self.to_dict(), indent=1))
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Model:
-        """A model from its ``model.json`` form, which carries its ``format``; another format
-        raises ``FormatError`` rather than be misread."""
-        if d.get("format") != FORMAT:
-            raise FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {FORMAT}")
-        return cls(StringKey(d.get("key", "")), (Entity(x, k) for x, k in d["nodes"].items()), (Relation(*e) for e in d["edges"]), refs=d.get("refs"), meta=d.get("meta") or {})
-
-    @classmethod
-    def load(cls, path: Path) -> Model:
-        return cls.from_dict(json.loads(path.read_text()))
