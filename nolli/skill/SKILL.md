@@ -12,11 +12,13 @@ diagram in nolli's viewer. nolli calls no model; you are the reviewer.
 
 ## 1. The change
 
-What the user named, as `nolli view` takes it:
+What the user named, as `nolli agent brief` takes it:
 
 - nothing: the current branch against the default branch;
 - a branch or commit: what it adds to the default branch;
 - `<base>..<head>`, or `<base>...<head>` (from where they diverged);
+- uncommitted edits: `HEAD..WORKTREE`, or `...WORKTREE` for the branch with them (nolli keeps
+  the files on disk as a commit of their own, so `git show <head>:<path>` reads them);
 - a GitHub pull request: its URL, or `'#123'` (quoted: `#` starts a shell comment). nolli
   asks GitHub for the PR's base and head and fetches them, so the change is the one GitHub's
   "Files changed" tab shows, whatever the local branches are.

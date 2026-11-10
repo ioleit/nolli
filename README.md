@@ -24,7 +24,7 @@ pip install nolli-review
 In a git repository:
 
 ```
-nolli view --whole
+nolli view HEAD
 ```
 
 ### Viewing changes
