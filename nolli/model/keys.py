@@ -115,8 +115,7 @@ class ChangeKey(ModelKey):
 
 @dataclass(frozen=True)
 class StringKey(ModelKey):
-    """A model of no repository, by an arbitrary name: one a transformation made (a selection,
-    a projection), one read from ``model.json`` alone, one built in a test."""
+    """An adhoc key not directly tied to a repository, e.g. for the result of a transformation."""
 
     text: str = ""
 
