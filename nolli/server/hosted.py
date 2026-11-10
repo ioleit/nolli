@@ -38,10 +38,7 @@ repository.
 The viewer is the local one (``serve.py``), its page pinned to the one model; the API is the
 same, without ``/api/list`` and without storing uploaded verdicts.
 
-Verdicts come from two places. A pull request's page looks for what nolli's CI left in the
-PR's comments for its head commit (nolli/review/ci.py) and shows those verdicts, asking GitHub at
-most once a minute per model. And with ``ANTHROPIC_API_KEY`` set where the server runs,
-the viewer's "Review structural changes" starts a review agent (reviews.py) whose
+With ``ANTHROPIC_API_KEY`` set where the server runs, the viewer's "Review structural changes" starts a review agent (reviews.py) whose
 verdicts then are the model's; anyone who can open the page can start one, so the key's
 owner pays for every visitor's review (one run per model at a time, two runs at once).
 """
@@ -80,7 +77,7 @@ from ..sources import CloneCache, FetchError, Sources, github  # noqa: E402
 from ..sources.git import ChangeError, GitError, merge_base  # noqa: E402
 from ..store import DirectoryStore, ModelStore  # noqa: E402
 
-from .reviews import Reviews, ci_pull, from_ci  # noqa: E402
+from .reviews import Reviews  # noqa: E402
 from .serve import Handler, Server, Services, preload  # noqa: E402
 
 OWNER = r"(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
@@ -240,7 +237,6 @@ class Site:
         self.built: dict[str, ModelKey] = {}  # a build's name -> the model it found or built
         self.lock = threading.Lock()
         self.answers: dict[str, tuple[float, dict]] = {}
-        self.ci: dict[str, tuple[float, dict]] = {}  # model name -> when its PR's comments were read, what they had
 
     def find_token(self, owner: str, repo: str) -> str | None:
         """The token for ``owner/repo``, or None to go as nobody (a token that cannot be had is said once)."""
@@ -308,24 +304,6 @@ class Site:
         datasets = Datasets(self.store, self.sources)
         sc = datasets.open_scene(key) if datasets.is_built(key) else None
         return (key, sc) if sc is not None else None
-
-    def ci_review(self, key: ModelKey, m: Scene) -> dict:
-        """What nolli's CI left for a pull request model's head commit (reviews.from_ci), from the
-        PR's comments, read at most once per LOOKUP_TTL."""
-        name = key.format_name()
-        hit = self.ci.get(name)
-        if hit and time.time() - hit[0] < LOOKUP_TTL:
-            return hit[1]
-        pull = ci_pull(m)
-        if pull is None:
-            return {"found": None, "applies": False}
-        owner, repo, n = pull
-        try:
-            info = from_ci(self.store, key, m, self.ask(owner, repo, f"/issues/{n}/comments?per_page=100"))
-        except ChangeError as exc:
-            info = {"found": None, "applies": True, "error": str(exc)}
-        self.ci[name] = (time.time(), info)
-        return info
 
     def start(self, plan: Plan) -> Job:
         """The build of ``plan``: the one under way, or a new one (also after a failed one). It
@@ -449,7 +427,7 @@ class HostedHandler(Handler):
         return self.services.site  # type: ignore[attr-defined, return-value]
 
     def review_status(self, name: str, key: ModelKey, m: Scene) -> dict:
-        return {**super().review_status(name, key, m), "ci": self.site.ci_review(key, m), "server": "serve"}
+        return {**super().review_status(name, key, m), "server": "serve"}
 
     def send_page(self, body: bytes, status: int = 200) -> None:
         self.send_response(status)
@@ -504,8 +482,6 @@ class HostedHandler(Handler):
             key, model = found
             name = key.format_name()
             preload(self.site.store, name)
-            if (model.model.meta.get("change") or {}).get("pr"):
-                self.site.ci_review(key, model)  # before the page: a review found opens on its worst verdict
             self.send_page(viewer_page(name, plan.title))
             return
         job = self.site.start(plan)

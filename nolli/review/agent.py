@@ -89,12 +89,11 @@ class Reviewer:
     def review(self, brief: str, head: str, check: Check, repo: Path, out: Path,
                on_step: Callable[[str, Run], None] | None = None, cancel: threading.Event | None = None) -> Run:
         """As review() below: one Claude conversation reads the brief, may read the change's code
-        with git, and writes verdicts and checks them, as the agent in nolli's CI workflow does
-        with Claude Code. Writes out/verdicts.json only once the verdicts pass the check, reports
-        what it is doing to ``on_step``, stops at the next event of the stream once ``cancel`` is
-        set (Cancelled), raises Failed without verdicts that pass the check. The Run
-        says the model, time and turns; a reviewer that pays otherwise than PRICE subclasses it
-        for its own ``cost``."""
+        with git, and writes verdicts and checks them. Writes out/verdicts.json only once the
+        verdicts pass the check, reports what it is doing to ``on_step``, stops at the next event
+        of the stream once ``cancel`` is set (Cancelled), raises Failed without verdicts that pass
+        the check. The Run says the model, time and turns; a reviewer that pays otherwise than
+        PRICE subclasses it for its own ``cost``."""
         return _review(brief, head, check, repo, out, on_step, cancel)
 
 

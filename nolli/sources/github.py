@@ -37,7 +37,7 @@ def _remotes(repo: Path) -> dict[str, tuple[str, str]]:
     return out
 
 
-AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (token())
+AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (_token())
 
 
 def resolve(repo: Path, change: str, tok: str | None | object = AMBIENT) -> tuple[ChangeSpec, dict]:
@@ -86,7 +86,7 @@ class NotFound(ChangeError):
     """GitHub answered 404: no such thing, or one the token (or nobody) may not see."""
 
 
-def token() -> str | None:
+def _token() -> str | None:
     """A GitHub token, for when one is needed (a private repository, or more than 60 requests
     an hour): $GH_TOKEN or $GITHUB_TOKEN, else the gh CLI's if it is logged in; None if
     there is none."""
@@ -98,11 +98,11 @@ def token() -> str | None:
 
 
 def api(path: str, tok: str | None | object = AMBIENT) -> dict:
-    """GET a GitHub REST path. ``tok``: AMBIENT (the default) uses token(); a server passes the
+    """GET a GitHub REST path. ``tok``: AMBIENT (the default) uses _token(); a server passes the
     viewer's own token, or None to ask as nobody (public repositories only)."""
     req = urllib.request.Request(f"https://api.github.com/{path}", headers={
         "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "nolli"})
-    t = token() if tok is AMBIENT else tok
+    t = _token() if tok is AMBIENT else tok
     if t:
         req.add_header("Authorization", f"Bearer {t}")
     try:
@@ -115,27 +115,3 @@ def api(path: str, tok: str | None | object = AMBIENT) -> dict:
         raise ChangeError(f"GitHub: {path}: {exc.code} {exc.reason}{hint}") from None
     except urllib.error.URLError as exc:
         raise ChangeError(f"GitHub: {path}: {exc.reason}") from None
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
-def download(url: str, tok: str) -> bytes:
-    """A workflow artifact's zip: GitHub answers with a redirect to short-lived storage, which is
-    fetched without the token (the storage rejects it, and should not see it)."""
-    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "nolli",
-                                               "X-GitHub-Api-Version": "2022-11-28", "Authorization": f"Bearer {tok}"})
-    try:
-        with urllib.request.build_opener(_NoRedirect).open(req, timeout=30) as res:
-            return res.read()
-    except urllib.error.HTTPError as exc:
-        if exc.code not in (301, 302, 303, 307, 308) or not exc.headers.get("Location"):
-            raise ChangeError(f"GitHub: downloading {url}: {exc.code} {exc.reason}") from None
-        location = exc.headers["Location"]
-    try:
-        with urllib.request.urlopen(urllib.request.Request(location, headers={"User-Agent": "nolli"}), timeout=120) as res:
-            return res.read()
-    except urllib.error.URLError as exc:
-        raise ChangeError(f"GitHub: downloading the artifact: {exc}") from None

@@ -2,6 +2,16 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## Unreleased
+
+### Removed
+
+- **nolli in CI.** The example workflow (`.github/workflows/nolli.yml`), `nolli ci comment`,
+  `nolli view <owner>/<repo>#<n>@<head>` (a CI run's result, downloaded from GitHub) and
+  `nolli/review/ci.py` are gone, and so are the verdict mark images the comment used
+  (`assets/verdicts/`). `nolli serve` no longer reads verdicts from a PR's comments; its
+  verdicts come from the review agent it runs.
+
 ## 0.8.0
 
 ### Changed

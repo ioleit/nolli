@@ -30,7 +30,7 @@ class DirectoryStore(OverlayStore):
     - a change: ``key.json``, ``change.json`` (what it says about itself), ``base/`` and
       ``head/`` (its commits, as above) and ``overlays/`` (git's hunks, verdicts).
 
-    A directory written elsewhere (``nolli diff -o``, a CI run's artifact) is read the same way.
+    A directory written elsewhere (``nolli diff -o``) is read the same way.
     Every read goes through ``check`` (no-op here: a service built on nolli overrides it).
     """
 

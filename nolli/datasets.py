@@ -1,4 +1,4 @@
-"""nolli as a library: what the command line (``nolli/cli.py``), the CI comment and the server
+"""nolli as a library: what the command line (``nolli/cli.py``) and the server
 (``nolli/server/``) work with. ``Datasets`` is a store of models, where their commits come
 from, and the overlays nolli shows on them; it opens a stored model as a scene (a commit, or
 a change merged from its two commits), draws projections of it, keeps and checks a review's
@@ -36,7 +36,6 @@ from .model.keys import ChangeKey, CommitKey, ModelKey, Repo
 from .model.model import Key, Model
 from .model.scene import Overlay, Scene
 from .progress import Progress, Quiet
-from .review import ci
 from .review.brief import make_brief
 from .review.changes import find_review_cut, list_changes
 from .review.verdicts import (  # noqa: F401 (VERDICTS: for callers)
@@ -131,10 +130,6 @@ class Datasets:
         """A verdicts.json on the change's review diagram ids, read (ValueError if it is bad)."""
         return read_verdicts(text, find_diagram_ids(scene))
 
-    def read_ci_results(self, comments: list) -> list[dict]:
-        """What nolli's CI left in a pull request's comments (GitHub's issue comments)."""
-        return ci.results(comments)
-
     def draw_review(self, scene: Scene) -> Scene:
         """The change as its review diagram draws it: every area that changed in source code
         unfolded. The same for the same change and version of nolli, so verdicts on its ids
@@ -157,10 +152,6 @@ class Datasets:
         meta = scene.model.meta
         budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or DEFAULT_BUDGET
         return make_report(scene, self.draw(scene, ProjectionSpec(budget=budget)))
-
-    def make_ci_comment(self, scene: Scene, skipped: str | None = None) -> str:
-        """The pull request comment of a CI run on the change (``nolli/review/ci.py``)."""
-        return ci.comment(scene, self.draw_review(scene), self.load_verdicts(scene), skipped)
 
     # -- a review's verdicts ---------------------------------------------------------
 
@@ -200,7 +191,6 @@ class Asked:
 
 
 BUILD_ERRORS = (ChangeError, FetchError, GitError)  # what building from a local repository may raise
-is_ci_key, fetch_ci_result = ci.is_key, ci.fetch  # a CI run's result, by the key its PR comment gives
 
 
 def find_repo(repo: Path) -> Repo:

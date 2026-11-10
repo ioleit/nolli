@@ -92,24 +92,9 @@ function origin() {
   const v = status?.verdicts;
   if (!v) return "";
   const when = ago(v.at);
-  if (v.by === "ci") {
-    const dropped = v.dropped ? `; ${v.dropped} did not fit this drawing` : "";
-    return `<a href="${esc(v.link)}" target="_blank" rel="noopener" title="nolli CI's review of this commit, from its PR comment${esc(dropped)}">nolli CI · ${esc(when)} ↗</a>`;
-  }
   if (v.by === "agent") return `<span title="${esc(`A review agent (${v.model}) run here, in ${clock(v.seconds || 0)}`)}">agent · ${esc(when)}</span>`;
   if (v.by === "upload") return `<span title="Loaded from a file">file · ${esc(when)}</span>`;
   return "";
-}
-
-/** What nolli's CI says about this commit, when there are no verdicts yet. */
-function ciNote() {
-  const c = status?.ci;
-  if (!c?.applies) return "";
-  if (c.error) return `Could not ask GitHub for a nolli CI review: ${esc(c.error)}`;
-  if (c.found === "no-review") return `nolli CI ran on this commit without a review agent (no API key in the repository) · <a href="${esc(c.link)}" target="_blank" rel="noopener">comment ↗</a>`;
-  if (c.found === "earlier") return `nolli CI reviewed an earlier push (${esc(c.head)}), not this commit · <a href="${esc(c.link)}" target="_blank" rel="noopener">comment ↗</a>`;
-  if (c.found === "verdicts" && c.dropped) return "nolli CI's verdicts for this commit do not fit this drawing (another nolli version?)";
-  return "No nolli CI review of this commit.";
 }
 
 /** The prompt that asks a coding agent with nolli's skill for this review. */
@@ -180,7 +165,6 @@ export function draw() {
       ${st.can_run ? "" : `<span class="rr-why">${esc(whyNot(st.why_not))}</span>`}
     </div>`;
     if (st.can_run && !run) html += `<div class="rr-meta">A review agent judges every changed box and edge of this drawing. It takes a few minutes; you can keep looking around meanwhile.</div>`;
-    if (st.ci) html += `<div class="rr-meta">${ciNote()}</div>`;
     html += `<details class="rr-more"${ways || !st.can_run ? " open" : ""}><summary>${st.can_run ? "Other ways to review" : "How to get a review"}</summary>${waysHTML()}</details>`;
   } else if (has && ways) html += waysHTML();
   box.innerHTML = html;

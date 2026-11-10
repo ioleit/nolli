@@ -157,7 +157,7 @@ def save_verdicts(maps: MapStore, key, verdicts: list[dict], by: dict) -> None:
 
     They are kept in the change's ``verdicts`` map (``StoredMaps``), by target (a node's
     address, or ``"<a> --> <b>"``), with who made them as its ``about``
-    (``{"by": "agent" | "ci" | "upload", …}``)."""
+    (``{"by": "agent" | "upload", …}``)."""
     import time
 
     at = by.get("at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
