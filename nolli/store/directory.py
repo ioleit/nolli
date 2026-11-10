@@ -178,6 +178,8 @@ class DirectoryStore(OverlayStore):
 
     def list_map_names(self, model_key: str) -> list[str]:
         """The maps kept for a model: the files under its ``overlays/``."""
+        if not _is_kept_here(model_key):
+            return []
         self.check(Repo(model_key.rpartition("@")[0]))
         self.scan()
         d = self.places.get(model_key)
@@ -191,10 +193,19 @@ class DirectoryStore(OverlayStore):
 
     def locate_maps(self, model_key: str, name: str) -> Path | None:
         """Where a model's map is; checked, as every read (the repository is the key's text before ``@``)."""
+        if not _is_kept_here(model_key):
+            return None
         self.check(Repo(model_key.rpartition("@")[0]))
         self.scan()
         d = self.places.get(model_key)
         return None if d is None else d / "overlays" / f"{name}.json"
+
+
+def _is_kept_here(model_key: str) -> bool:
+    """Whether this store can hold maps for ``model_key``: a commit's or a change's
+    (``<repo>@…``). For any other key (the ``StringKey`` of the scene a projection returns)
+    nothing is kept here, so nothing is read: the answer is "none kept", without a lookup."""
+    return "@" in model_key
 
 
 class DirectoryMaps:

@@ -311,3 +311,31 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     described = again.describe_verdicts(sc2)
     assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
     assert again.draw_json(sc2, ProjectionSpec(preset="changes"))["nodes"]
+
+
+def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
+    """A store that refuses every repository but one (as a hosted server's does): the scene a
+    projection returns has a key of no repository, under which nothing is kept, so asking for
+    its kept values reads nothing and answers none; a change of the allowed repository projects
+    in every preset, and a key of another repository is still refused."""
+    from nolli.datasets import Datasets
+    from nolli.model.keys import NotAllowed
+    from nolli.transformations.projection import ProjectionSpec
+
+    path, shas = src
+    change = Repo(str(path)).make_change(shas[0], shas[2])
+
+    class Checked(DirectoryStore):
+        def check(self, repo: Repo) -> None:
+            if repo != change.repo:
+                raise NotAllowed(f"may not read {repo.url!r}")
+
+    store = Checked(tmp_path / "data")
+    fetch_change(store, LocalRepository(path), change, about={"title": "checked"})
+    datasets = Datasets(store)
+    sc = datasets.open_scene(change)
+    for preset in ("folded", "changes", "unfolded"):
+        assert datasets.draw_json(sc, ProjectionSpec(preset=preset))["nodes"]
+    assert store.list_map_names(StringKey().format_key()) == [] and store.locate_maps("", "change") is None
+    with pytest.raises(NotAllowed):
+        store.list_map_names(Repo("github.com/o/other").make_commit("a" * 40).format_key())
