@@ -4,7 +4,58 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ## Unreleased
 
+### Added
+
+- **`nolli build [<target>]`** builds a dataset into the data directory (reusing one built
+  before) and prints its directory; `-o DIR` builds it afresh into DIR with its report and
+  review files. `nolli view` is `build` and then the viewer.
+- **One `<target>` for build, view and agent brief**, read in one place
+  (`datasets.parse_target`, `datasets.resolve_target`; the forms are in `nolli --help`): a
+  dataset directory; a snapshot (`R`, `WORKTREE`); a change (`A..B`, `A...B`, `...B` for what
+  B adds, `R^!` for a commit against its parent, nothing for `...HEAD`); on GitHub a
+  repository's, `/tree/<ref>`, `/commit/<sha>`, `/compare/<a>...<b>` or `/pull/<n>` URL, or
+  `#<n>`. Outside a git repository, GitHub targets are fetched into clones under
+  `<data>/.repos`.
+- **One server for `nolli view` and `nolli serve`** (`nolli/server/serve.py`; `hosted.py` is
+  gone). A page shows one target and builds it on demand: GitHub's paths with the server's host
+  (`/<owner>/<repo>`, `…/tree/<ref>`, `…/commit/<sha>`, `…/compare/<a>...<b>`, `…/pull/<n>`),
+  and on `nolli view`'s server any target, `/?t=<target>`. `nolli view [<target>]` starts the
+  server on the data directory and the repository you are in and opens the target's page,
+  which builds it there (in processes of their own, as `nolli serve` always did).
+- **The viewer's API names a model by its key**: `k=<ModelKey.format_key()>`, which the page
+  carries (`<meta name="nolli-key">`). `ModelKey.parse` reads a key's text back.
+- **`WORKTREE`: the files on disk**, uncommitted edits and untracked files that are not
+  ignored included, as a snapshot or as an end of a change (`HEAD..WORKTREE`,
+  `...WORKTREE`). nolli writes them to the repository as a commit object of its own (no
+  branch, ref or index change); the same files give the same commit, so their build is reused.
+
+### Changed
+
+- **A single revision is a snapshot in `nolli view` and `nolli build`**: `nolli view
+  feature` shows `feature` as a whole; what it adds is `nolli view ...feature`. `nolli agent
+  brief` reads a single revision as before (what it adds, or its own change if it is on the
+  default branch), so installed review skills keep working.
+- **`nolli view` without a target on the default branch is an error** naming the forms; it
+  used to show the whole of HEAD (now `nolli view HEAD`).
+- **`nolli extract` and `nolli diff` are shorthands**: `extract <repo> -o <dir>` is `build
+  WORKTREE --repo <repo> -o <dir>` (so untracked files that are not ignored are extracted too,
+  and uncommitted edits are keyed as their own commit, not as HEAD; a directory that is no
+  git repository is extracted as before), and `diff <repo> <base> <head> -o <dir>` is `build
+  <base>..<head> --repo <repo> -o <dir>`. Their output is unchanged.
+
 ### Removed
+
+- **The viewer's dataset dropdown and `/api/list`**: a page shows the one model its target
+  names. `d=<name>` in the API and `#d=<name>` in the viewer's links are gone with them.
+- **Names in the store's interface**: `ModelStore.find_key` and `list_names`, and
+  `ModelKey.format_name()`. A dataset directory's name is `DirectoryStore`'s own business
+  (`DirectoryStore.find_key` still finds a key by it).
+- **For services built on `nolli serve`**: `HostedHandler` and `HostedServices` are `Handler`
+  and `Services` of `nolli.server.serve`; `Site` takes a store, sources and a work directory,
+  `Site.plan` takes a target's text, and `make_server(store, sources, work, …)` replaces the
+  two servers' own.
+- **`nolli view --whole`**: name a snapshot instead (`HEAD`, a commit, `WORKTREE`, a
+  repository's URL). The option says so when it is used.
 
 - **nolli in CI.** The example workflow (`.github/workflows/nolli.yml`), `nolli ci comment`,
   `nolli view <owner>/<repo>#<n>@<head>` (a CI run's result, downloaded from GitHub) and

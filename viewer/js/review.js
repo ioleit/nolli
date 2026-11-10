@@ -47,14 +47,14 @@ export function visibleItems() { return [...verdicts.filter(v => v.ends.length),
 /** A change or a verdict. @param {string} id @returns {ReviewItem | ReviewVerdict | null} */
 export const itemById = id => items.find(it => it.id === id) || verdicts.find(v => v.id === id) || null;
 
-/** Fetch the dataset's changes and verdicts; empty for a plain dataset. @param {string} name */
-export async function loadItems(name) {
-  const res = await fetch("/api/changes?d=" + encodeURIComponent(name));
+/** Fetch the model's changes and verdicts; empty for a snapshot. @param {string} key the model's key */
+export async function loadItems(key) {
+  const res = await fetch("/api/changes?k=" + encodeURIComponent(key));
   const body = res.ok ? await res.json() : { items: [], verdicts: [] };
   items = body.items;
   verdicts = [.../** @type {ReviewVerdict[]} */ (body.verdicts)].sort((a, b) => RANK[b.verdict] - RANK[a.verdict] || +a.id.slice(1) - +b.id.slice(1));
   open.clear();
-  if (name) follow(name, () => handlers?.reload());  // not awaited: the panel draws the block when it comes
+  if (key) follow(key, () => handlers?.reload());  // not awaited: the panel draws the block when it comes
   return items;
 }
 

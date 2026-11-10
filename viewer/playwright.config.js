@@ -26,5 +26,5 @@ export default defineConfig({
     colorScheme: "light",
     launchOptions: chromium ? { executablePath: chromium } : {},
   },
-  webServer: { command: `${python} e2e/serve_fixture.py ${PORT}`, url: `http://127.0.0.1:${PORT}/api/list`, timeout: 60_000 },
+  webServer: { command: `${python} e2e/serve_fixture.py ${PORT}`, url: `http://127.0.0.1:${PORT}/`, timeout: 60_000 },
 });

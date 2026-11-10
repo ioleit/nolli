@@ -14,7 +14,7 @@ const ELK = readFileSync(createRequire(import.meta.url).resolve("elkjs/lib/elk.b
 async function open(page, hash = "") {
   await page.route("https://cdn.jsdelivr.net/npm/elkjs@*/lib/elk.bundled.js",
     r => r.fulfill({ body: ELK, contentType: "application/javascript" }));
-  await page.goto("/#d=ledger-review" + hash);
+  await page.goto("/?t=ledger-review#" + hash.replace(/^&/, ""));
   await expect(page.locator("#root g.verdict").first()).toBeVisible();
   await page.waitForLoadState("networkidle");
 }

@@ -52,12 +52,20 @@ class ModelKey:
 
     repo: Repo
 
-    def format_name(self) -> str:
+    def format_key(self) -> str:
+        """The key as text: ``Model.key``, which a model's maps are kept by, and what the viewer's
+        API names a model by (``parse`` reads it back)."""
         raise NotImplementedError
 
-    def format_key(self) -> str:
-        """The key as text: ``Model.key``, which a model's maps are kept by."""
-        raise NotImplementedError
+    @classmethod
+    def parse(cls, text: str) -> ModelKey:
+        """The key whose ``format_key()`` is ``text``: ``<repo>@<sha>``, ``<repo>@<base>..<head>``,
+        anything else a StringKey."""
+        repo, at, rest = text.rpartition("@")
+        if not at or not repo or not rest:
+            return StringKey(text)
+        base, dots, head = rest.partition("..")
+        return Repo(repo).make_change(base, head) if dots else Repo(repo).make_commit(rest)
 
     def to_dict(self) -> dict:
         """The key as JSON (``key.json``)."""
@@ -82,9 +90,6 @@ class CommitKey(ModelKey):
         """The change from this commit to ``head``, in the same repository."""
         return ChangeKey(self.repo, self.sha, head)
 
-    def format_name(self) -> str:
-        return f"{self.repo.format_slug()}-{self.sha[:7]}"
-
     def format_key(self) -> str:
         return f"{self.repo.url}@{self.sha}"
 
@@ -103,9 +108,6 @@ class ChangeKey(ModelKey):
     def list_sides(self) -> tuple[CommitKey, CommitKey]:
         return self.repo.make_commit(self.base), self.repo.make_commit(self.head)
 
-    def format_name(self) -> str:
-        return f"{self.repo.format_slug()}-{self.base[:7]}-{self.head[:7]}"
-
     def format_key(self) -> str:
         return f"{self.repo.url}@{self.base}..{self.head}"
 
@@ -118,9 +120,6 @@ class StringKey(ModelKey):
     """An adhoc key not directly tied to a repository, e.g. for the result of a transformation."""
 
     text: str = ""
-
-    def format_name(self) -> str:
-        return self.text
 
     def format_key(self) -> str:
         return self.text

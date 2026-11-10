@@ -12,6 +12,7 @@ in memory: a server that restarts forgets runs under way, not verdicts.
 from __future__ import annotations
 
 import contextvars
+import re
 import shutil
 import tempfile
 import threading
@@ -52,7 +53,7 @@ class Job:
 
 
 class Reviews:
-    """The review runs of one server, by model name."""
+    """The review runs of one server, by model key."""
 
     def __init__(self, reviewer=None, work: Path | None = None):
         """``reviewer``: what runs a review (nolli.reviewer.Reviewer, the default, or a service's
@@ -63,34 +64,34 @@ class Reviews:
             reviewer = Reviewer()
         self.reviewer = reviewer
         self.work = work or Path(tempfile.gettempdir()) / "nolli-reviews"
-        self.jobs: dict[str, Job] = {}
+        self.jobs: dict[ChangeKey, Job] = {}
         self.lock = threading.Lock()
 
-    def job(self, name: str) -> Job | None:
-        return self.jobs.get(name)
+    def job(self, key: ChangeKey) -> Job | None:
+        return self.jobs.get(key)
 
-    def start(self, name: str, store: ModelStore, key: ChangeKey, sources: Sources) -> Job:
-        """The run for ``name``: the one waiting or under way, or a new one. It reads the model
+    def start(self, store: ModelStore, key: ChangeKey, sources: Sources) -> Job:
+        """The run for ``key``: the one waiting or under way, or a new one. It reads the model
         from ``store``, and the change's commits from ``sources`` when its turn comes. It runs in
         the context of the request that started it (contextvars), as a store may need."""
         with self.lock:
-            job = self.jobs.get(name)
+            job = self.jobs.get(key)
             if job and job.state in ("queued", "running"):
                 return job
-            job = self.jobs[name] = Job()
+            job = self.jobs[key] = Job()
         ctx = contextvars.copy_context()
-        threading.Thread(target=ctx.run, args=(self._run, job, name, store, key, sources), daemon=True).start()
+        threading.Thread(target=ctx.run, args=(self._run, job, store, key, sources), daemon=True).start()
         return job
 
-    def cancel(self, name: str) -> Job | None:
-        job = self.jobs.get(name)
+    def cancel(self, key: ChangeKey) -> Job | None:
+        job = self.jobs.get(key)
         if job and job.state in ("queued", "running"):
             job.cancel.set()
             if job.state == "queued":  # nothing to stop yet; its turn will see the flag
                 job.state, job.ended = "cancelled", time.time()
         return job
 
-    def _run(self, job: Job, name: str, store: ModelStore, key: ChangeKey, sources: Sources) -> None:
+    def _run(self, job: Job, store: ModelStore, key: ChangeKey, sources: Sources) -> None:
         from ..review import agent as reviewer
         from ..datasets import Datasets
 
@@ -108,12 +109,12 @@ class Reviews:
                 job.state, job.ended = "cancelled", job.ended or time.time()
                 return
             job.state, job.started = "running", time.time()
-            work = self.work / name
+            work = self.work / re.sub(r"[^A-Za-z0-9._-]+", "_", key.format_key())
             shutil.rmtree(work, ignore_errors=True)
             try:
                 scene = datasets.open_scene(key)
                 if scene is None:
-                    raise ValueError(f"no model of {name}")
+                    raise ValueError(f"no model of {key.format_key()}")
                 out = work / "out"  # what the reviewer writes; its brief, as it read it, beside
                 out.mkdir(parents=True)
                 diagram = datasets.make_review_diagram(scene)

@@ -1,4 +1,4 @@
-// Layout stability over single unfold/fold steps from each dataset's default cut (bench.html).
+// Layout stability over single unfold/fold steps from each model's default cut (bench.html).
 // The result is also left as JSON in #result and window.benchResult for scripts.
 
 import { isAnchor, layout } from "./layout.js";
@@ -17,12 +17,12 @@ const $ = byId;
 /** @param {number} x */
 const fmt = (x, d = 3) => x.toFixed(d);
 
-/** @param {string} d @param {string[]} [expanded] @returns {Promise<Scene>} */
-async function scene(d, expanded) {
-  const p = new URLSearchParams({ d });
+/** @param {string} k a model's key @param {string[]} [expanded] @returns {Promise<Scene>} */
+async function scene(k, expanded) {
+  const p = new URLSearchParams({ k });
   if (expanded) p.set("x", expanded.join(","));
   const res = await fetch("/api/scene?" + p);
-  if (!res.ok) throw new Error(`${d}: ${(await res.json()).error}`);
+  if (!res.ok) throw new Error(`${k}: ${(await res.json()).error}`);
   return res.json();
 }
 
@@ -43,9 +43,8 @@ const mean = (/** @type {number[]} */ xs) => xs.reduce((s, x) => s + x, 0) / (xs
 
 (async () => {
   /** @type {string[]} */
-  const sets = (await (await fetch("/api/list")).json()).map((/** @type {{ name: string }} */ s) => s.name).sort();
-  const ds = params.get("d");
-  const datasets = ds ? ds.split(",") : sets;
+  const datasets = (params.get("k") || "").split(" ").filter(Boolean);
+  if (!datasets.length) { $("status").textContent = "name the models: ?k=<key> <key> …"; return; }
   /** @type {Row[]} */
   const rows = [];
   /** @type {{ dataset: string, results: (Omit<Step, "expanded"> & Stability)[] }[]} */

@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -23,7 +24,8 @@ from nolli.model.keys import Repo
 from nolli.review.verdicts import _keep_verdicts_file, parse_verdicts
 from nolli.sources import LocalRepository
 from nolli.store import DirectoryStore
-from nolli.server import hosted, serve
+from nolli.server import serve
+from nolli.sources import CloneCache
 
 GOOD = json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}])
 
@@ -63,6 +65,11 @@ def open_dataset(ds: Path):
     return store, key, open_change_scene(store, key)
 
 
+def k(ds: Path) -> str:
+    """The dataset's key, as the viewer's API takes it."""
+    return quote(open_dataset(ds)[1].format_key(), safe="")
+
+
 def kept_verdicts(ds: Path) -> list[dict]:
     store, key, _ = open_dataset(ds)
     return parse_verdicts(store.open_maps("verdicts").load(key.format_key()))
@@ -79,7 +86,7 @@ def call(srv, path: str, method: str = "GET", body: bytes | None = None) -> tupl
 
 @pytest.fixture
 def server(dataset):
-    srv = serve.make_server(dataset.parent, port=0, repos={dataset.name: dataset.parent.parent / "shop"})
+    srv = serve.make_local_server(dataset.parent, dataset.parent.parent / "shop", port=0)  # nolli view's
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv
     srv.shutdown()
@@ -95,17 +102,17 @@ def until(cond, seconds: float = 10) -> None:
 
 def test_without_a_key(server, dataset, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    status, st = call(server, f"/api/review?d={dataset.name}")
+    status, st = call(server, f"/api/review?k={k(dataset)}")
     assert status == 200 and st["verdicts"] is None and st["run"] is None
     assert (st["can_run"], st["why_not"], st["uploads"], st["server"]) == (False, "key", True, "view")
-    assert call(server, f"/api/review?d={dataset.name}", "POST")[0] == 409
-    assert call(server, "/api/review?d=nope")[0] == 404
+    assert call(server, f"/api/review?k={k(dataset)}", "POST")[0] == 409
+    assert call(server, "/api/review?k=nope")[0] == 404
 
 
 def test_upload_says_where_the_verdicts_came_from(server, dataset):
     v = [{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}]
-    assert call(server, f"/api/verdicts?d={dataset.name}", "POST", json.dumps(v).encode()) == (200, {"saved": 1})
-    assert call(server, f"/api/review?d={dataset.name}")[1]["verdicts"]["by"] == "upload"
+    assert call(server, f"/api/verdicts?k={k(dataset)}", "POST", json.dumps(v).encode()) == (200, {"saved": 1})
+    assert call(server, f"/api/review?k={k(dataset)}")[1]["verdicts"]["by"] == "upload"
 
 
 def test_a_run_its_cancel_and_its_end(server, dataset, monkeypatch):
@@ -126,18 +133,18 @@ def test_a_run_its_cancel_and_its_end(server, dataset, monkeypatch):
         return run
 
     monkeypatch.setattr(reviewer, "_review", fake)
-    status, st = call(server, f"/api/review?d={dataset.name}", "POST")
+    status, st = call(server, f"/api/review?k={k(dataset)}", "POST")
     assert status == 200 and st["can_run"] and st["run"]["state"] in ("queued", "running")
-    until(lambda: call(server, f"/api/review?d={dataset.name}")[1]["run"]["step"] == "reading shop/cache.py")
-    assert call(server, f"/api/review?d={dataset.name}", "POST")[1]["run"]["state"] == "running"  # one run at a time
-    call(server, f"/api/review/cancel?d={dataset.name}", "POST")
-    until(lambda: call(server, f"/api/review?d={dataset.name}")[1]["run"]["state"] == "cancelled")
+    until(lambda: call(server, f"/api/review?k={k(dataset)}")[1]["run"]["step"] == "reading shop/cache.py")
+    assert call(server, f"/api/review?k={k(dataset)}", "POST")[1]["run"]["state"] == "running"  # one run at a time
+    call(server, f"/api/review/cancel?k={k(dataset)}", "POST")
+    until(lambda: call(server, f"/api/review?k={k(dataset)}")[1]["run"]["state"] == "cancelled")
     assert kept_verdicts(dataset) == []
 
-    call(server, f"/api/review?d={dataset.name}", "POST")
+    call(server, f"/api/review?k={k(dataset)}", "POST")
     go.set()
-    until(lambda: call(server, f"/api/review?d={dataset.name}")[1]["run"]["state"] == "done")
-    st = call(server, f"/api/review?d={dataset.name}")[1]
+    until(lambda: call(server, f"/api/review?k={k(dataset)}")[1]["run"]["state"] == "done")
+    st = call(server, f"/api/review?k={k(dataset)}")[1]
     assert st["verdicts"]["by"] == "agent" and st["verdicts"]["turns"] == 2
     assert [v["verdict"] for v in kept_verdicts(dataset)] == ["fine"]
 
@@ -151,20 +158,22 @@ def test_a_failed_run_keeps_the_verdicts_shown(server, dataset, monkeypatch):
         raise reviewer.Failed("the agent wrote no verdicts")
 
     monkeypatch.setattr(reviewer, "_review", fails)
-    call(server, f"/api/review?d={dataset.name}", "POST")
-    until(lambda: call(server, f"/api/review?d={dataset.name}")[1]["run"]["state"] == "failed")
-    st = call(server, f"/api/review?d={dataset.name}")[1]
+    call(server, f"/api/review?k={k(dataset)}", "POST")
+    until(lambda: call(server, f"/api/review?k={k(dataset)}")[1]["run"]["state"] == "failed")
+    st = call(server, f"/api/review?k={k(dataset)}")[1]
     assert st["run"]["error"] == "the agent wrote no verdicts" and st["verdicts"]["by"] == "upload"
     assert [v["verdict"] for v in kept_verdicts(dataset)] == ["good"]
 
 
 def test_serve_stores_no_uploads(tmp_path, dataset):
     shutil.copytree(dataset, tmp_path / "cache" / "data" / dataset.name)
-    srv = hosted.make_server(tmp_path / "cache", port=0)
+    data = tmp_path / "cache" / "data"
+    srv = serve.make_server(DirectoryStore(data), CloneCache(tmp_path / "cache" / "repos"), tmp_path / "cache", port=0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        assert call(srv, f"/api/verdicts?d={dataset.name}", "POST", b"[]")[0] == 405
-        st = call(srv, f"/api/review?d={dataset.name}")[1]
+        key = k(data / dataset.name)
+        assert call(srv, f"/api/verdicts?k={key}", "POST", b"[]")[0] == 405
+        st = call(srv, f"/api/review?k={key}")[1]
         assert st["server"] == "serve" and st["uploads"] is False and st["verdicts"] is None
     finally:
         srv.shutdown()
@@ -192,16 +201,16 @@ def test_a_service_brings_its_own_reviewer(tmp_path, dataset, monkeypatch):
             return reviewer.Run(turns=1, model="mine-1")
 
     mine = Mine()
-    srv = hosted.make_server(dataset.parent.parent, port=0, token=hosted.Token(), reviewer=mine,  # the dataset is in <cache>/data
-                             sources=LocalRepository(dataset.parent.parent / "shop"))
+    srv = serve.make_server(DirectoryStore(dataset.parent), LocalRepository(dataset.parent.parent / "shop"), dataset.parent.parent,
+                            port=0, token=serve.Token(), reviewer=mine)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        st = call(srv, f"/api/review?d={dataset.name}")[1]
+        st = call(srv, f"/api/review?k={k(dataset)}")[1]
         assert (st["can_run"], st["why_not"], st["model"]) == (False, "No reviews left for this installation.", "mine-1")
         mine.why = None
-        call(srv, f"/api/review?d={dataset.name}", "POST")
-        until(lambda: call(srv, f"/api/review?d={dataset.name}")[1]["run"]["state"] in ("done", "failed"))
-        st = call(srv, f"/api/review?d={dataset.name}")[1]
+        call(srv, f"/api/review?k={k(dataset)}", "POST")
+        until(lambda: call(srv, f"/api/review?k={k(dataset)}")[1]["run"]["state"] in ("done", "failed"))
+        st = call(srv, f"/api/review?k={k(dataset)}")[1]
         assert st["run"]["state"] == "done", st["run"]["error"]
         assert st["verdicts"]["by"] == "agent" and st["verdicts"]["model"] == "mine-1"
     finally:

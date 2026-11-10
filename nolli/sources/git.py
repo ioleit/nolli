@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import io
+import os
 import re
 import subprocess
 import tarfile
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,7 +43,7 @@ def find_toplevel(path: Path) -> Path:
         raise ChangeError(f"{path} is not in a git repository") from None
 
 
-def find_commit(repo: Path, rev: str) -> str:
+def _find_commit(repo: Path, rev: str) -> str:
     """The full sha of a revision that names a commit."""
     try:
         return run_git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
@@ -51,7 +53,7 @@ def find_commit(repo: Path, rev: str) -> str:
 
 def find_head(repo: Path) -> str | None:
     try:
-        return find_commit(repo, "HEAD")
+        return _find_commit(repo, "HEAD")
     except (GitError, FileNotFoundError):
         return None
 
@@ -191,7 +193,7 @@ def merge_base(repo: Path, a: str, b: str) -> str:
     except GitError:
         out = ""
     if not out:
-        raise ChangeError(f"{a} and {b} have no common ancestor; name both ends: nolli view <base>..<head>")
+        raise ChangeError(f"{a[:7]} and {b[:7]} have no common ancestor; name both ends: <base>..<head>")
     return out
 
 
@@ -200,55 +202,93 @@ def _first_parent(repo: Path, sha: str) -> str | None:
     return parents[0] if parents else None
 
 
-def resolve(repo: Path, spec: str | None) -> ChangeSpec:
-    """The change that ``spec`` names in ``repo`` (what ``nolli view`` shows):
+WORKTREE = "WORKTREE"  # the revision that names the files on disk (_snapshot_worktree)
 
-    - nothing: the current branch against the default branch (from where they diverged to
-      HEAD); on the default branch itself, or with nothing new on the branch, HEAD as a whole;
-    - ``A..B``: exactly from A to B;
-    - ``A...B``: from where A and B diverged to B (what B adds, as a pull request shows it);
-    - ``--whole`` (a separate option): HEAD, or the commit given, as a whole;
-    - one revision R: what R adds to the default branch, from where they diverged to R; if R
-      is already on the default branch (a commit, or a merged pull request's merge commit),
-      R's own change against its first parent.
 
-    The default branch is ``origin/HEAD`` if the clone has it, else ``main`` or ``master``
-    (remote-tracking first). Only commits count: changes in the working tree are not seen.
-    """
-    if spec and "..." in spec:
-        a, _, b = spec.partition("...")
-        head = find_commit(repo, b or "HEAD")
-        return _describe(repo, ChangeSpec(head=head, base=merge_base(repo, find_commit(repo, a or "HEAD"), head)), b or "HEAD")
-    if spec and ".." in spec:
-        a, _, b = spec.partition("..")
-        return _describe(repo, ChangeSpec(head=find_commit(repo, b or "HEAD"), base=find_commit(repo, a or "HEAD")), b or "HEAD")
-    rev = spec or "HEAD"
-    head = find_commit(repo, rev)
-    main = _default_branch(repo)
-    if main is None:
-        if spec is None:
-            return _describe(repo, ChangeSpec(head=head), rev)
-        raise ChangeError(f"no default branch (origin/HEAD, main or master) to compare {spec!r} with; "
-                          f"name both ends: nolli view <base>..{spec}")
-    base = merge_base(repo, find_commit(repo, main), head)
-    if base != head:
-        return _describe(repo, ChangeSpec(head=head, base=base), rev)
-    if spec is None:  # on the default branch, or nothing new on this one: the whole of HEAD
-        return _describe(repo, ChangeSpec(head=head), rev)
+def _find_point(repo: Path, rev: str) -> str:
+    """The full sha of a revision, or of the working tree's snapshot for ``WORKTREE``."""
+    return _snapshot_worktree(repo) if rev == WORKTREE else _find_commit(repo, rev)
+
+
+def _snapshot_worktree(repo: Path) -> str:
+    """The files on disk as a commit: HEAD plus uncommitted edits, staged or not, and untracked
+    files that are not ignored. The commit is written to the repository's objects only (no
+    branch, ref or index changes; git prunes it as any unreferenced object), with fixed author,
+    date and message, so the same files on the same HEAD give the same sha. Without edits it is
+    HEAD itself."""
+    if subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "-q", WORKTREE], capture_output=True, check=False).returncode == 0:
+        raise ChangeError(f"{repo} has a branch or tag called {WORKTREE}, which nolli reads as the files on disk; "
+                          f"rename it, or name it as refs/heads/{WORKTREE}")
+    head = find_head(repo)
+    with tempfile.TemporaryDirectory(prefix="nolli-index-") as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        run_git(repo, "read-tree", *([head] if head else ["--empty"]), env=env)
+        run_git(repo, "add", "-A", "--", ".", env=env)
+        tree = run_git(repo, "write-tree", env=env).strip()
+    if head and tree == run_git(repo, "rev-parse", f"{head}^{{tree}}").strip():
+        return head
+    date = run_git(repo, "log", "-1", "--format=%cI", head).strip() if head else "1970-01-01T00:00:00Z"
+    env = {**os.environ, "GIT_AUTHOR_NAME": "nolli", "GIT_AUTHOR_EMAIL": "nolli@localhost", "GIT_AUTHOR_DATE": date,
+           "GIT_COMMITTER_NAME": "nolli", "GIT_COMMITTER_EMAIL": "nolli@localhost", "GIT_COMMITTER_DATE": date}
+    return run_git(repo, "commit-tree", tree, *(["-p", head] if head else []), "-m", UNCOMMITTED, env=env).strip()
+
+
+UNCOMMITTED = "Uncommitted edits"  # the subject of a working tree's snapshot
+
+
+def resolve_snapshot(repo: Path, rev: str) -> ChangeSpec:
+    """One commit (or the working tree) as a whole: the target ``R`` or ``WORKTREE``."""
+    return describe(repo, ChangeSpec(head=_find_point(repo, rev)), rev)
+
+
+def resolve_range(repo: Path, a: str | None, b: str | None, symmetric: bool) -> ChangeSpec:
+    """``A..B`` (exactly from A to B) or, ``symmetric``, ``A...B`` (from where they diverged
+    to B). An end left out is HEAD, except a left-out A of ``...B``: the default branch.
+    Raises ChangeError for a change with nothing in it."""
+    head = _find_point(repo, b or "HEAD")
+    if symmetric:
+        left = a or _default_branch(repo)
+        if left is None:
+            raise ChangeError(f"no default branch (origin/HEAD, main or master) to compare {b or 'HEAD'} with; "
+                              f"name both ends: <base>...{b or 'HEAD'}")
+        base = merge_base(repo, _find_point(repo, left), head)
+    else:
+        base = _find_point(repo, a or "HEAD")
+    if base == head:
+        what = f"{a or ''}{'...' if symmetric else '..'}{b or ''}"
+        hint = f"; {b or 'HEAD'} is on {left}: {b or 'HEAD'}^! is its own change" if symmetric and not a else ""
+        raise ChangeError(f"{what} is no change (both ends are {head[:7]}){hint}")
+    return describe(repo, ChangeSpec(head=head, base=base), b or "HEAD")
+
+
+def resolve_own(repo: Path, rev: str) -> ChangeSpec:
+    """``R^!``: commit R against its first parent."""
+    head = _find_point(repo, rev)
     parent = _first_parent(repo, head)
     if parent is None:
-        return _describe(repo, ChangeSpec(head=head), rev)
-    return _describe(repo, ChangeSpec(head=head, base=parent), rev)
+        raise ChangeError(f"{rev} has no parent; build it as a snapshot: {rev}")
+    return describe(repo, ChangeSpec(head=head, base=parent), rev)
 
 
-def whole(repo: Path, rev: str = "HEAD") -> ChangeSpec:
-    """One commit as a whole, no change: ``nolli view --whole [<commit>]``."""
-    return _describe(repo, ChangeSpec(head=find_commit(repo, rev)), rev)
+def resolve_adds(repo: Path, rev: str) -> ChangeSpec:
+    """What R adds, as ``nolli agent brief R`` has always read a single revision: from where R
+    left the default branch to R; if R is on the default branch already (a commit, or a merged
+    pull request's merge commit), R against its first parent; a root commit as a whole."""
+    head = _find_point(repo, rev)
+    main = _default_branch(repo)
+    if main is None:
+        raise ChangeError(f"no default branch (origin/HEAD, main or master) to compare {rev!r} with; name both ends: <base>...{rev}")
+    base = merge_base(repo, _find_commit(repo, main), head)
+    if base != head:
+        return describe(repo, ChangeSpec(head=head, base=base), rev)
+    parent = _first_parent(repo, head)
+    return describe(repo, ChangeSpec(head=head, base=parent), rev)
 
 
-def _describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
-    """Title and description from the commits: one commit gives its subject and body; several
-    give the branch's name (or the range) and the list of their subjects."""
+def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
+    """``ch`` with its title and description from its commits (``rev``: what the user called its
+    head): one commit gives its subject and body; several give the branch's name (or the
+    range) and the list of their subjects."""
     if not ch.is_diff:
         ch.title = run_git(repo, "log", "-1", "--format=%s", ch.head).strip()
         return ch
@@ -258,11 +298,13 @@ def _describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
         _sha, subject, body = commits[0]
         ch.title, ch.description = subject, body.strip()
         return ch
-    name = rev if rev not in ("HEAD", "") and not _looks_like_sha(rev) else None
+    name = rev if rev not in ("HEAD", "", WORKTREE) and not _looks_like_sha(rev) else None
     if name is None:
-        branch = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() if rev in ("HEAD", "") else ""
+        branch = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() if rev in ("HEAD", "", WORKTREE) else ""
         name = branch if branch and branch != "HEAD" else None
     ch.title = name or f"{ch.base[:7]}..{ch.head[:7]}"
+    if rev == WORKTREE and ch.title != UNCOMMITTED:
+        ch.title += f" with {UNCOMMITTED.lower()}"
     ch.description = "\n".join(f"- {subject} ({sha[:7]})" for sha, subject, _ in reversed(commits))
     if ch.description:
         ch.description = f"{len(commits)} commits:\n\n{ch.description}"

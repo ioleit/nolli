@@ -12,11 +12,13 @@ diagram in nolli's viewer. nolli calls no model; you are the reviewer.
 
 ## 1. The change
 
-What the user named, as `nolli view` takes it:
+What the user named, as `nolli agent brief` takes it:
 
 - nothing: the current branch against the default branch;
 - a branch or commit: what it adds to the default branch;
 - `<base>..<head>`, or `<base>...<head>` (from where they diverged);
+- uncommitted edits: `HEAD..WORKTREE`, or `...WORKTREE` for the branch with them (nolli keeps
+  the files on disk as a commit of their own, so `git show <head>:<path>` reads them);
 - a GitHub pull request: its URL, or `'#123'` (quoted: `#` starts a shell comment). nolli
   asks GitHub for the PR's base and head and fetches them, so the change is the one GitHub's
   "Files changed" tab shows, whatever the local branches are.
@@ -68,7 +70,7 @@ Start the viewer in the background; it serves until stopped:
 nolli view <dataset> --no-open
 ```
 
-It prints `viewer: http://127.0.0.1:<port>/#d=<name>` (to stderr; redirect it to a file to
+It prints `viewer: http://127.0.0.1:<port>/?t=<dataset>` (to stderr; redirect it to a file to
 read it). Give the user that URL, and say how to stop the viewer (stop that process). On
 the user's own machine you can drop `--no-open` to open their browser; if they look from
 another machine, `--host <an address of this one they can reach>` (and `--port`). The

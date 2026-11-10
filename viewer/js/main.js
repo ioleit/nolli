@@ -37,7 +37,7 @@ const showError = msg => {
   if (!shown) { loading("error: " + msg); byId("loading").classList.add("error"); }
 };
 
-const loadingDataset = () => loading(`loading ${state.name} …`, "reading the model and working out the picture");
+const loadingDataset = () => loading("loading …", "reading the model and laying it out");
 
 /**
  * What the canvas says until the first picture is drawn; null once it is.
@@ -86,7 +86,7 @@ async function refresh(keepZoom = false) {
   /** @type {HTMLElement} */ (document.querySelector('#presets [data-preset="changes"]')).hidden = !sc.diff;
   syncControls(); sidebar(sc, () => refresh(true));
   if (sc.diff) {
-    if (itemsFor !== state.name) { await loadItems(state.name || ""); itemsFor = state.name; }
+    if (itemsFor !== state.key) { await loadItems(state.key || ""); itemsFor = state.key; }
     renderPanel(sc, reviewHandlers);
   } else showPanel(false);
   document.body.classList.toggle("dim", !!sc.diff && state.dim);
@@ -280,21 +280,15 @@ for (const b of document.querySelectorAll("#presets [data-preset]")) b.addEventL
 function choosePreset(p) { state.preset = p; state.expanded = null; refresh(); }
 select("theme").addEventListener("change", () => { state.theme = select("theme").value; chooseTheme(state.theme); writeHash(); });
 themeOptions();
-select("dataset").addEventListener("change", async () => {
-  Object.assign(state, DEFAULTS, { name: select("dataset").value, item: null }); shown = null;
-  byId("root").replaceChildren();  // the last dataset's picture would stand behind the loading message
-  await enter();
-});
-
 /**
- * Open the dataset in state.name. A review with verdicts starts folded and goes to the
+ * Open the model the page shows (state.key). A review with verdicts starts folded and goes to the
  * first (worst) verdict: the picture as a whole, then the first thing to look at. Anything
  * else, or a link that says what to show, starts as it says.
  * @param {string | null} [item] an item named in the link
  */
 async function enter(item = null) {
   loadingDataset();
-  const res = state.expanded === null && state.preset === "default" && !item ? await fetch("/api/changes?d=" + encodeURIComponent(state.name || "")) : null;
+  const res = state.expanded === null && state.preset === "default" && !item ? await fetch("/api/changes?k=" + encodeURIComponent(state.key || "")) : null;
   const first = res && res.ok ? (await res.json()).verdicts.length > 0 : false;
   if (first) state.preset = "folded";
   await refresh();
@@ -310,18 +304,11 @@ for (const b of document.querySelectorAll("#views [data-view]")) b.addEventListe
 });
 
 (async () => {
-  // a page served for one dataset (nolli serve) names it; the local viewer offers all it has
-  const pinned = document.querySelector('meta[name="nolli-dataset"]')?.getAttribute("content");
-  /** @type {{ name: string }[]} */
-  const sets = pinned ? [{ name: pinned }] : await (await fetch("/api/list")).json();
-  const sel = select("dataset");
-  if (pinned) sel.hidden = true;
-  for (const s of sets) { const o = document.createElement("option"); o.value = s.name; o.textContent = s.name; sel.appendChild(o); }
+  // the page names the model it shows (nolli/server/serve.py, viewer_page)
+  const key = document.querySelector('meta[name="nolli-key"]')?.getAttribute("content");
+  if (!key) { loading("no model", "open a target's page: /?t=<target>, or a GitHub path"); return; }
   const h = readHash(location.hash.slice(1));
-  const name = h.name && sets.some(s => s.name === h.name) ? h.name : (sets[0] && sets[0].name);
-  if (!name) { loading("no datasets"); return; }
-  sel.value = name;
-  Object.assign(state, h.st, { name, theme: initialTheme(h.theme), view: h.view, item: h.item, dim: h.dim });
+  Object.assign(state, h.st, { key, theme: initialTheme(h.theme), view: h.view, item: h.item, dim: h.dim });
   applyTheme(state.theme);
   // a link to an item unfolds what it needs (the hash may come from a different view state)
   await enter(h.item);

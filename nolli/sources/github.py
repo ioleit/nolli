@@ -9,21 +9,66 @@ import shutil
 import subprocess
 import urllib.error
 import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
-from nolli.sources import git
+from nolli.sources import CloneCache, git
 from nolli.sources.git import ChangeError, ChangeSpec
 
-URL = re.compile(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/pulls?/(\d+)(?:[/?#].*)?$")
+URL = re.compile(r"^https?://github\.com/([^/]+)/([^/?#]+?)(?:\.git)?(/[^?#]*)?(?:[?#].*)?$")
 NUMBER = re.compile(r"^(?:#|pr:|pr/)(\d+)$", re.IGNORECASE)
 REMOTE = re.compile(r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
 
 
-def is_pull_request(change: str | None) -> bool:
-    """Whether ``change`` names a pull request: its URL
-    (``https://github.com/<owner>/<repo>/pull/<n>``), or ``#<n>`` (also ``pr:<n>``, ``pr/<n>``)
-    for a PR of the repository's GitHub remote."""
-    return bool(change and (URL.match(change) or NUMBER.match(change)))
+@dataclass
+class Target:
+    """A target on GitHub (nolli/cli.py lists the forms): a repository at its default branch
+    (``ref`` None) or at ``ref``, a commit's own change, a comparison, or a pull request."""
+    owner: str
+    name: str
+    kind: str  # "repo", "commit", "compare", "pull"
+    ref: str | None = None  # repo: the branch, tag or commit; commit: the sha
+    base: str | None = None  # compare
+    head: str | None = None  # compare
+    symmetric: bool = True  # compare: <base>...<head> (else <base>..<head>)
+    number: int | None = None  # pull
+
+
+def parse_target(text: str | None, local: Path | None = None) -> Target | None:
+    """The GitHub target ``text`` names, None if it names none: a URL of github.com, or
+    ``#<n>`` (also ``pr:<n>``, ``pr/<n>``) for a pull request of ``local``'s GitHub remote
+    (``upstream``, else ``origin``, else any). Raises ChangeError for a github.com URL nolli
+    cannot build, or ``#<n>`` without a GitHub remote."""
+    if not text:
+        return None
+    n = NUMBER.match(text)
+    if n:
+        gh = _remotes(local) if local is not None else {}
+        pick = "upstream" if "upstream" in gh else "origin" if "origin" in gh else next(iter(gh), None)
+        if pick is None:
+            raise ChangeError(f"{text}: {local or 'this directory'} has no GitHub remote; give the pull request's URL")
+        return Target(*gh[pick], "pull", number=int(n.group(1)))
+    m = URL.match(text)
+    if not m:
+        return None
+    owner, name, rest = m.group(1), m.group(2), (m.group(3) or "").strip("/")
+    part, _, tail = rest.partition("/")
+    if not rest:
+        return Target(owner, name, "repo")
+    if part == "tree" and tail:
+        return Target(owner, name, "repo", ref=tail)
+    if part == "commit" and tail:
+        return Target(owner, name, "commit", ref=tail.split("/")[0])
+    if part in ("pull", "pulls") and tail.split("/")[0].isdigit():
+        return Target(owner, name, "pull", number=int(tail.split("/")[0]))
+    if part == "compare" and ".." in tail:
+        symmetric = "..." in tail
+        base, _, head = tail.partition("..." if symmetric else "..")
+        if base and head:
+            return Target(owner, name, "compare", base=base, head=head, symmetric=symmetric)
+    raise ChangeError(f"{text}: nolli builds a repository, /tree/<ref>, /commit/<sha>, /compare/<a>...<b> or /pull/<n> on GitHub")
 
 
 def _remotes(repo: Path) -> dict[str, tuple[str, str]]:
@@ -37,56 +82,82 @@ def _remotes(repo: Path) -> dict[str, tuple[str, str]]:
     return out
 
 
-AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (_token())
+AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (find_token())
 
 
-def resolve(repo: Path, change: str, tok: str | None | object = AMBIENT) -> tuple[ChangeSpec, dict]:
-    """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``. ``tok`` as for api().
-
-    ``change`` is the PR's URL, or its number (``#<n>``) on the repository's GitHub remote
-    (``upstream``, else ``origin``, else any). GitHub's REST API gives the PR's title,
-    description, base and head; the head (``pull/<n>/head``) and the base branch are fetched
-    into ``repo``, storing objects only, no branch or tag. The change is the one GitHub's
-    "Files changed" tab shows: from where the head left the base branch to the head."""
-    m = URL.match(change)
-    gh = _remotes(repo)
-    if m:
-        owner, name, number = m.group(1), m.group(2), int(m.group(3))
-    else:
-        number = int(NUMBER.match(change).group(1))
-        pick = "upstream" if "upstream" in gh else "origin" if "origin" in gh else next(iter(gh), None)
-        if pick is None:
-            raise ChangeError(f"{repo} has no GitHub remote; give the PR's URL, or its commits: nolli view <base>..<head>")
-        owner, name = gh[pick]
-    return _fetch_pull(repo, owner, name, number, api(f"repos/{owner}/{name}/pulls/{number}", tok))
+@dataclass
+class Answer:
+    """What GitHub says a target is: the commits to fetch, and what the change says about
+    itself. ``base`` is the change's base, or with ``merge`` the tip it left (the change starts
+    where head and base diverged, which needs the commits: ``finish_target``)."""
+    head: str
+    base: str | None = None
+    merge: bool = False
+    title: str = ""
+    description: str = ""
+    pr: int | None = None
 
 
-def _fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tuple[ChangeSpec, dict]:
-    """resolve() for a PR whose answer from GitHub's API (``pr``: its head, base, title, body) is
-    at hand: fetch its commits into ``repo``, asking GitHub nothing more."""
-    gh = _remotes(repo)
-    # fetch from the clone's own remote for that repository if it has one (its credentials), else by URL
-    remote = next((r for r, (o, n) in gh.items() if (o.lower(), n.lower()) == (owner.lower(), name.lower())),
+def ask_target(t: Target, get: Callable[[str], dict] | None = None) -> Answer:
+    """What ``t`` names, as GitHub's REST API says. ``get``: how a path is asked (default:
+    api(), with the token of whoever runs nolli); a server passes its own (its token, its cache)."""
+    get = get or api
+    path = f"repos/{t.owner}/{t.name}"
+    if t.kind == "pull":
+        pr = get(f"{path}/pulls/{t.number}")
+        return Answer(pr["head"]["sha"], pr["base"]["sha"], merge=True, title=pr.get("title") or f"PR #{t.number}",
+                      description=(pr.get("body") or "").replace("\r\n", "\n").strip(), pr=t.number)
+    if t.kind == "commit":
+        c = get(f"{path}/commits/{quote(t.ref or '', safe='')}")
+        parents = [p["sha"] for p in c.get("parents", [])]
+        if not parents:
+            raise ChangeError(f"{t.owner}/{t.name}@{c['sha'][:7]} has no parent; build it as a snapshot: "
+                              f"https://github.com/{t.owner}/{t.name}/tree/{c['sha']}")
+        subject, _, body = (c.get("commit", {}).get("message") or "").partition("\n")
+        return Answer(c["sha"], parents[0], title=subject, description=body.strip())
+    if t.kind == "compare":
+        head, base = (get(f"{path}/commits/{quote(r or '', safe='')}")["sha"] for r in (t.head, t.base))
+        return Answer(head, base, merge=t.symmetric)
+    ref = t.ref or get(path)["default_branch"]
+    return Answer(get(f"{path}/commits/{quote(ref, safe='')}")["sha"], title=f"{t.owner}/{t.name} at {ref}")
+
+
+def fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
+    """Fetch ``shas`` of github.com/<owner>/<name> into the local repository ``repo``, objects
+    only (no branch or tag): from its own remote for that repository if it has one (its
+    credentials), else by URL."""
+    missing = [s for s in shas if not git.has_commit(repo, s)]
+    if not missing:
+        return
+    remote = next((r for r, (o, n) in _remotes(repo).items() if (o.lower(), n.lower()) == (owner.lower(), name.lower())),
                   f"https://github.com/{owner}/{name}")
     try:
-        git.run_git(repo, "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote,
-            f"pull/{number}/head", pr["base"]["ref"])
-    except ChangeError as exc:
-        raise ChangeError(f"could not fetch PR #{number} from {remote}: {exc}") from None
-    head, base_tip = pr["head"]["sha"], pr["base"]["sha"]
-    for sha in (head, base_tip):
-        if not git.has_commit(repo, sha):
-            raise ChangeError(f"commit {sha[:7]} of PR #{number} is not in {repo} after fetching it")
-    ch = ChangeSpec(head=head, base=git.merge_base(repo, base_tip, head), title=pr.get("title") or f"PR #{number}",
-                description=(pr.get("body") or "").replace("\r\n", "\n").strip())
-    return ch, {"pr": number, "remote": f"https://github.com/{owner}/{name}"}
+        git.run_git(repo, "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote, *missing)
+    except git.GitError as exc:
+        raise ChangeError(f"could not fetch {', '.join(s[:7] for s in missing)} from {remote}: {exc}") from None
+
+
+def finish_target(t: Target, a: Answer, clone: Path) -> ChangeSpec:
+    """The change (or snapshot) ``a`` names, in ``clone``, which has its commits."""
+    if a.base is None:
+        return ChangeSpec(head=a.head, title=a.title) if a.title else git.describe(clone, ChangeSpec(head=a.head), a.head)
+    base = git.merge_base(clone, a.base, a.head) if a.merge else a.base
+    if base == a.head:
+        raise ChangeError(f"{t.owner}/{t.name}: no change ({a.head[:7]} is on {a.base[:7]})")
+    ch = ChangeSpec(head=a.head, base=base, title=a.title, description=a.description)
+    return ch if a.title else git.describe(clone, ch, t.head or a.head)
+
+
+def make_clone_cache(root: Path) -> CloneCache:
+    """Bare clones under ``root``, fetched with the token of whoever runs nolli."""
+    return CloneCache(root, lambda owner, name: find_token())
 
 
 class NotFound(ChangeError):
     """GitHub answered 404: no such thing, or one the token (or nobody) may not see."""
 
 
-def _token() -> str | None:
+def find_token() -> str | None:
     """A GitHub token, for when one is needed (a private repository, or more than 60 requests
     an hour): $GH_TOKEN or $GITHUB_TOKEN, else the gh CLI's if it is logged in; None if
     there is none."""
@@ -98,11 +169,11 @@ def _token() -> str | None:
 
 
 def api(path: str, tok: str | None | object = AMBIENT) -> dict:
-    """GET a GitHub REST path. ``tok``: AMBIENT (the default) uses _token(); a server passes the
+    """GET a GitHub REST path. ``tok``: AMBIENT (the default) uses find_token(); a server passes the
     viewer's own token, or None to ask as nobody (public repositories only)."""
     req = urllib.request.Request(f"https://api.github.com/{path}", headers={
         "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "nolli"})
-    t = _token() if tok is AMBIENT else tok
+    t = find_token() if tok is AMBIENT else tok
     if t:
         req.add_header("Authorization", f"Bearer {t}")
     try:

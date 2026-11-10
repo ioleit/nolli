@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import html
 import json
+import re
 import shutil
 import socket
 import statistics
@@ -129,24 +131,40 @@ class Server:
         deadline = time.time() + 60
         while True:
             try:
-                names = [d["name"] for d in json.loads(self.get("/api/list"))]
-                if dataset.name not in names:
-                    raise RuntimeError(f"{nolli} view serves {names}, not {dataset.name}")
-                self.name = dataset.name
+                self.names = self.find_name(dataset)
                 return
             except OSError:
                 if time.time() > deadline or self.proc.poll() is not None:
                     raise RuntimeError(f"{nolli} view {dataset} did not start") from None
                 time.sleep(0.2)
 
+    def find_name(self, dataset: Path) -> dict:
+        """How this version's API names the dataset: by its key (``k``, the page of
+        ``/?t=<dataset>`` says it) or, before 0.9, by its directory's name (``d``)."""
+        page = self.get("/?t=" + urllib.parse.quote(str(dataset), safe="")).decode() if self.answers("/") else ""
+        m = re.search(r'name="nolli-key" content="([^"]*)"', page)
+        if m:
+            return {"k": html.unescape(m.group(1))}
+        names = [d["name"] for d in json.loads(self.get("/api/list"))]
+        if dataset.name not in names:
+            raise RuntimeError(f"{self.nolli} view serves {names}, not {dataset.name}")
+        return {"d": dataset.name}
+
+    def answers(self, path: str) -> bool:
+        try:
+            self.get(path)
+            return True
+        except urllib.error.HTTPError:
+            return False
+
     def get(self, path: str) -> bytes:
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=60) as r:
             return r.read()
 
     def ask(self, path: str, query: dict, as_json: bool = True):
-        """The answer to ``path?d=<dataset>&query``; {"error": ...} for an HTTP error or a timeout."""
+        """The answer to ``path?<the dataset>&query``; {"error": ...} for an HTTP error or a timeout."""
         try:
-            body = self.get(path + "?" + urllib.parse.urlencode({"d": self.name, **query}))
+            body = self.get(path + "?" + urllib.parse.urlencode({**self.names, **query}))
         except urllib.error.HTTPError as exc:
             return {"error": f"HTTP {exc.code}"}
         except TimeoutError:
@@ -155,7 +173,7 @@ class Server:
 
     def fetch_scene(self, query: dict) -> tuple[dict, float]:
         t0 = time.perf_counter()
-        body = self.get("/api/scene?" + urllib.parse.urlencode({"d": self.name, **query}))
+        body = self.get("/api/scene?" + urllib.parse.urlencode({**self.names, **query}))
         return json.loads(body), (time.perf_counter() - t0) * 1000
 
     def close(self) -> None:
