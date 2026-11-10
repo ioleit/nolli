@@ -2,10 +2,8 @@
 started from the viewer ("Review structural changes").
 
 A change's review is its ``verdicts`` map (nolli/review/verdicts.py) and who made them, the
-map's ``about``: ``{"by": "agent" | "ci" | "upload", "at": <ISO time>, ...}``, with the model, time and cost
-of an agent run here, or the link to the CI comment they were read from. A pull request's
-model can take its verdicts from nolli's CI (from_ci(), given the PR's comments; the server
-asks GitHub for them). A run (nolli/review/agent.py) works in a directory of its own under the
+map's ``about``: ``{"by": "agent" | "upload", "at": <ISO time>, ...}``, with the model, time and cost
+of an agent run here. A run (nolli/review/agent.py) works in a directory of its own under the
 server's work directory (its transcript stays there until the next run) and replaces the
 verdicts only when its own pass nolli's check, so the ones shown stay until then. Runs live
 in memory: a server that restarts forgets runs under way, not verdicts.
@@ -14,8 +12,6 @@ in memory: a server that restarts forgets runs under way, not verdicts.
 from __future__ import annotations
 
 import contextvars
-import json
-import re
 import shutil
 import tempfile
 import threading
@@ -23,8 +19,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..model.keys import ChangeKey, ModelKey
-from ..model.scene import Scene
+from ..model.keys import ChangeKey
 from ..sources import Sources
 from ..store import ModelStore
 
@@ -34,39 +29,6 @@ STEPS_KEPT = 6  # the latest steps a page shows under the one under way
 
 def now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def ci_pull(scene: Scene) -> tuple[str, str, int] | None:
-    """The GitHub pull request a change was built from: (owner, repo, number), or None."""
-    d = scene.model.meta.get("change") or {}
-    match = re.match(r"^https://github\.com/([^/]+)/([^/]+)$", d.get("remote") or "")
-    return (match.group(1), match.group(2), int(d["pr"])) if match and d.get("pr") else None
-
-
-def from_ci(store: ModelStore, key: ModelKey, scene: Scene, comments: list | dict) -> dict:
-    """What nolli's CI left in a pull request's comments (GitHub's answer) for the change's head
-    commit: ``{"found": "verdicts" | "no-review" | "earlier" | None, "applies": True, ...}``. Its
-    verdicts, checked against this change's diagram, become the change's, unless it has some
-    already. A result of another format (an earlier nolli) is not read."""
-    from ..datasets import Datasets
-
-    head = scene.model.meta["change"]["head"]
-    found = Datasets(store).read_ci_results(comments if isinstance(comments, list) else [])
-    info: dict = {"found": None, "applies": True}
-    mine = [r for r in found if r["head"] == head]
-    if not mine:
-        if found:
-            info.update(found="earlier", head=found[0]["head"][:7], link=found[0]["link"])
-        return info
-    r = mine[0]
-    info.update(link=r["link"], at=r["at"], nolli=r.get("nolli"), found="verdicts" if r.get("verdicts") else "no-review")
-    datasets = Datasets(store)
-    if r.get("verdicts") and datasets.find_provenance(key) is None:
-        ok, errors = datasets.check_verdicts(scene, json.dumps(r["verdicts"]))
-        info["dropped"] = len(errors)
-        if ok:
-            datasets.keep_verdicts(key, ok, {"by": "ci", "link": r["link"], "at": r["at"], "nolli": r.get("nolli"), "dropped": len(errors)})
-    return info
 
 
 @dataclass

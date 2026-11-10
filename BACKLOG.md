@@ -36,10 +36,6 @@ solution; solutions are for whoever picks it up.
   extraction a parse of the whole commit, a dataset only a build from kept extractions. In
   a trial with a small limit the clone went first because builds touched it before they
   wrote their datasets.
-- **CI runs a review on every push**, one model call each, also for changes nobody needs
-  reviewed (only docs, only assets). Idea (owner, 2026-10-31): repository owners keep one
-  or more nolli views or scenes of their repository as files in it; a PR is reviewed only
-  if its changes show in one of them, and otherwise gets maybe no comment at all.
 
 - Parse each Python file once; today imports, classes, routes and env reads each parse
   the file again (a 3,000-file repo takes 21 s, most of it parsing).

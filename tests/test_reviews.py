@@ -1,13 +1,11 @@
 """Reviews in the viewer's server (nolli/server/reviews.py, /api/review): where the verdicts came from,
 whether a review agent can run, a run's states through start, cancel and the end, uploads
-where they are stored and refused where they are not, and verdicts read from nolli's CI
-comments by nolli serve. The agent itself (nolli/review/agent.py) is replaced: it needs the API."""
+where they are stored and refused where they are not. The agent itself (nolli/review/agent.py) is replaced: it needs the API."""
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 import threading
 import time
 import urllib.error
@@ -21,11 +19,9 @@ import subprocess
 from nolli.review import agent as reviewer
 from nolli.build import fetch_change
 from nolli.scenes import open_change_scene
-from nolli.review.ci import comment as ci_comment
 from nolli.model.keys import Repo
-from nolli.review.verdicts import find_provenance, _keep_verdicts_file, parse_verdicts, save_verdicts
+from nolli.review.verdicts import _keep_verdicts_file, parse_verdicts
 from nolli.sources import LocalRepository
-from nolli.datasets import Datasets
 from nolli.store import DirectoryStore
 from nolli.server import hosted, serve
 
@@ -38,7 +34,7 @@ def git(repo: Path, *args: str) -> str:
 
 @pytest.fixture
 def dataset(tmp_path: Path) -> Path:
-    """A change's dataset as a CI run builds it for PR #7 of me/shop, in <tmp>/data; the
+    """A change's dataset as built for PR #7 of me/shop, in <tmp>/data; the
     repository it came from in <tmp>/shop."""
     r = tmp_path / "shop"
     (r / "shop").mkdir(parents=True)
@@ -65,24 +61,6 @@ def open_dataset(ds: Path):
     store = DirectoryStore(ds.parent)
     key = store.find_key(ds.name)
     return store, key, open_change_scene(store, key)
-
-
-def comment(ds: Path, verdicts: str | None = None) -> str:
-    """The PR comment nolli's CI writes for the dataset, with ``verdicts`` (a verdicts.json) if
-    given; the dataset itself is left as it was."""
-    if verdicts is None:
-        store, _key, sc = open_dataset(ds)
-        return ci_comment(sc, Datasets(store).draw_review(sc), Datasets(store).load_verdicts(sc))
-    with tempfile.TemporaryDirectory() as tmp:
-        shutil.copytree(ds, Path(tmp) / ds.name)
-        store, key, sc = open_dataset(Path(tmp) / ds.name)
-        _keep_verdicts_file(store, key, sc, verdicts, {"by": "agent"})
-        return ci_comment(sc, Datasets(store).draw_review(sc), Datasets(store).load_verdicts(sc))
-
-
-def bot_comment(text: str, login: str = "nolli-review[bot]", n: int = 1) -> dict:
-    return {"user": {"login": login, "type": "Bot" if login.endswith("[bot]") else "User"}, "body": text,
-            "html_url": f"https://github.com/me/shop/pull/7#issuecomment-{n}", "updated_at": f"2026-11-0{n}T00:00:00Z"}
 
 
 def kept_verdicts(ds: Path) -> list[dict]:
@@ -180,52 +158,17 @@ def test_a_failed_run_keeps_the_verdicts_shown(server, dataset, monkeypatch):
     assert [v["verdict"] for v in kept_verdicts(dataset)] == ["good"]
 
 
-def test_serve_reads_the_ci_review_and_stores_no_uploads(tmp_path, dataset, monkeypatch):
-    text = comment(dataset, GOOD)
+def test_serve_stores_no_uploads(tmp_path, dataset):
     shutil.copytree(dataset, tmp_path / "cache" / "data" / dataset.name)
-    site = hosted.Site(tmp_path / "cache")
-    key = site.store.find_key(dataset.name)
-    m = open_change_scene(site.store, key)
-    asked = []
-
-    def api(path, tok):
-        asked.append(path)
-        return [bot_comment(text)]
-
-    monkeypatch.setattr(hosted.github, "api", api)
-    info = site.ci_review(key, m)
-    assert asked == ["repos/me/shop/issues/7/comments?per_page=100"] and info["found"] == "verdicts"
-    assert find_provenance(site.store, key)["by"] == "ci"
-    assert parse_verdicts(site.store.open_maps("verdicts").load(key.format_key()))[0]["verdict"] == "good"
-    assert site.ci_review(key, m) is info and len(asked) == 1  # asked once a minute at most
-
     srv = hosted.make_server(tmp_path / "cache", port=0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         assert call(srv, f"/api/verdicts?d={dataset.name}", "POST", b"[]")[0] == 405
         st = call(srv, f"/api/review?d={dataset.name}")[1]
-        assert st["server"] == "serve" and st["uploads"] is False and st["verdicts"]["by"] == "ci" and st["ci"]["found"] == "verdicts"
+        assert st["server"] == "serve" and st["uploads"] is False and st["verdicts"] is None
     finally:
         srv.shutdown()
         srv.server_close()
-
-
-def test_from_ci_without_github(dataset):
-    from nolli.server.reviews import ci_pull, from_ci
-
-    store, key, m = open_dataset(dataset)
-    assert ci_pull(m) == ("me", "shop", 7)
-    without = comment(dataset)  # a run without an agent: no verdicts in it
-    reviewed = comment(dataset, GOOD)
-
-    assert from_ci(store, key, m, []) == {"found": None, "applies": True}
-    assert from_ci(store, key, m, [bot_comment(without)])["found"] == "no-review" and find_provenance(store, key) is None
-    info = from_ci(store, key, m, [bot_comment(reviewed)])
-    assert info["found"] == "verdicts" and info["dropped"] == 0
-    assert find_provenance(store, key)["by"] == "ci" and [v["verdict"] for v in kept_verdicts(dataset)] == ["good"]
-    save_verdicts(store, key, kept_verdicts(dataset), {"by": "agent"})  # a review run here since: kept
-    from_ci(store, key, m, [bot_comment(reviewed)])
-    assert find_provenance(store, key)["by"] == "agent"
 
 
 def test_a_service_brings_its_own_reviewer(tmp_path, dataset, monkeypatch):
@@ -251,7 +194,6 @@ def test_a_service_brings_its_own_reviewer(tmp_path, dataset, monkeypatch):
     mine = Mine()
     srv = hosted.make_server(dataset.parent.parent, port=0, token=hosted.Token(), reviewer=mine,  # the dataset is in <cache>/data
                              sources=LocalRepository(dataset.parent.parent / "shop"))
-    monkeypatch.setattr(srv.services.site, "ci_review", lambda key, m: {"found": None, "applies": False})
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         st = call(srv, f"/api/review?d={dataset.name}")[1]

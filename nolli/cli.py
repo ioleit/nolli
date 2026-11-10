@@ -2,7 +2,6 @@
 
     nolli view [<change> | <dataset dir>] [--whole] [--repo DIR] [--data DIR] [--port N] [--no-open] [--rebuild]
     nolli agent brief [<change>] | agent check <dataset> | agent skill [--install DIR]
-    nolli ci comment <dataset> [--skipped no-key|fork]
     nolli serve [--cache DIR] [--keep SIZE] [--builds N] [--timeout S] [--max-repo SIZE] [--host H] [--port N]
     nolli extract <repo> -o <out_dir> [--budget N]
     nolli diff <repo> <base> <head> -o <out_dir> [--budget N] [--pr N] [--title T] [--description FILE]
@@ -10,9 +9,7 @@
 view shows a change of the git repository you are in, or of --repo: by default the
 current branch against the default branch; <change> can be a branch or commit (what it
 adds to the default branch), <base>..<head> or <base>...<head> (see nolli/sources/git.py), or
-a GitHub pull request: its URL, or '#<n>' on the repository's GitHub remote (nolli/sources/github.py),
-or the key a CI run's PR comment gives, <owner>/<repo>#<n>@<head> (nolli/review/ci.py): that run's
-dataset, downloaded from GitHub, verdicts and all.
+a GitHub pull request: its URL, or '#<n>' on the repository's GitHub remote (nolli/sources/github.py).
 It builds the change's dataset under --data (default: $NOLLI_DATA, else
 $XDG_DATA_HOME/nolli or ~/.local/share/nolli), reusing one built before, then serves the
 viewer on it and opens it in the browser.
@@ -21,8 +18,6 @@ agent is for a review agent (the skill, nolli agent skill): brief builds the dat
 prints where review.md (what to do) is and where verdicts.json goes (both in a directory of
 the agent's own, <data>/.agent/<name>); check validates the verdicts against the diagram they
 answer and, when they pass, makes them the dataset's review.
-
-ci is for nolli's CI workflow: comment prints the pull request comment for a run's dataset.
 
 serve is view as a service for GitHub repositories: /<owner>/<repo>/pull/<n> on its host shows
 that PR (nolli/server/hosted.py), for every repository its token can read.
@@ -140,15 +135,6 @@ def cmd_view(args: argparse.Namespace) -> int:
     ds = Path(args.change).expanduser() if args.change else None
     if ds and (ds / "key.json").is_file():  # a dataset directory, as nolli agent brief prints it
         return serve(DirectoryStore(ds.resolve().parent), ds.resolve().name, args.host, args.port, not args.no_open)
-    from .datasets import BUILD_ERRORS, fetch_ci_result, is_ci_key
-
-    if is_ci_key(args.change):  # a CI run's result, as its PR comment names it
-        try:
-            ds = fetch_ci_result(args.change, find_data_dir(args.data))
-        except BUILD_ERRORS as exc:
-            print(f"nolli view: {exc}", file=sys.stderr)
-            return 2
-        return serve(DirectoryStore(ds.parent), ds.name, args.host, args.port, not args.no_open)
     b = build(args, "view")
     if b is None:
         return 2
@@ -239,24 +225,6 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_ci_comment(args: argparse.Namespace) -> int:
-    """nolli ci comment: the PR comment for a CI run's dataset, on stdout."""
-    from .datasets import Datasets
-
-    ds = Path(args.dataset).expanduser().resolve()
-    datasets = Datasets(DirectoryStore(ds.parent))
-    key = datasets.find_key(ds.name)
-    try:
-        scene = datasets.open_scene(key) if isinstance(key, ChangeKey) else None
-        if scene is None:
-            raise ValueError(f"{ds} is not a change's dataset")
-        print(datasets.make_ci_comment(scene, args.skipped), end="")
-    except (OSError, ValueError) as exc:
-        print(f"nolli ci comment: {exc}", file=sys.stderr)
-        return 2
-    return 0
-
-
 def cmd_skill(args: argparse.Namespace) -> int:
     """nolli agent skill: print the review skill, or install it where an agent finds skills."""
     from importlib.resources import files
@@ -302,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     vw = sub.add_parser("view", help="show a change of a git repository (or one commit as a whole) in the viewer")
     vw.add_argument("change", nargs="?", help="a branch or commit, <base>..<head> or <base>...<head>, or a GitHub PR's "
-                    "URL or '#<n>', or a CI result's key <owner>/<repo>#<n>@<head> (default: the current branch against the default branch)")
+                    "URL or '#<n>' (default: the current branch against the default branch)")
     vw.add_argument("--repo", default=".", help="the repository (default: the one you are in)")
     vw.add_argument("--data", help="where datasets are kept (default: $NOLLI_DATA, else $XDG_DATA_HOME/nolli or ~/.local/share/nolli)")
     vw.add_argument("--budget", type=int, default=34)
@@ -331,13 +299,6 @@ def main(argv: list[str] | None = None) -> int:
     sk.add_argument("--install", metavar="DIR", help="a skills directory, e.g. ~/.claude/skills or .claude/skills; "
                     "writes DIR/nolli-review/SKILL.md")
     sk.set_defaults(fn=cmd_skill)
-    ci = sub.add_parser("ci", help="for nolli's CI workflow: the pull request comment of a run")
-    cisub = ci.add_subparsers(dest="ci_cmd", required=True)
-    cc = cisub.add_parser("comment", help="print the PR comment for a run's dataset (Markdown)")
-    cc.add_argument("dataset", help="the dataset directory")
-    cc.add_argument("--skipped", choices=("no-key", "fork"), help="why no review agent ran: the repository has no API key "
-                    "for one, or the PR comes from a fork (which gets no secrets)")
-    cc.set_defaults(fn=cmd_ci_comment)
     sv = sub.add_parser("serve", help="the viewer as a service: GitHub's paths (/<owner>/<repo>/pull/<n>) on this host, "
                         "for every repository $NOLLI_GITHUB_TOKEN can read (without it, public ones), "
                         "to everyone who can reach the host")

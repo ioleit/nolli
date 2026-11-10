@@ -205,9 +205,8 @@ export interface Laid {
 
 /** Where a dataset's verdicts came from (review.json, nolli/server/reviews.py). */
 export interface ReviewOrigin {
-  by: "agent" | "ci" | "upload" | "unknown"; at?: string;
+  by: "agent" | "upload" | "unknown"; at?: string;
   model?: string; seconds?: number; turns?: number; cost?: number;  // agent
-  link?: string; nolli?: string; dropped?: number;  // ci
 }
 
 /** A review agent run started from the viewer. */
@@ -225,5 +224,4 @@ export interface ReviewStatus {
   uploads: boolean;
   model: string;
   server: "view" | "serve";
-  ci?: { applies: boolean; found: "verdicts" | "no-review" | "earlier" | null; link?: string; at?: string; head?: string; dropped?: number; error?: string };
 }
