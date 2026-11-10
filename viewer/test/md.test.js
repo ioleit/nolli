@@ -1,4 +1,4 @@
-// The Markdown subset of the hover cards (js/md.js), on text as nolli/formats/descriptions/prose.py writes it.
+// The Markdown subset of the hover cards (js/md.js), on text as nolli/logic/formats/descriptions/prose.py writes it.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

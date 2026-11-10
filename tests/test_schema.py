@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.extractors.facts import EntityFact, Facts, RelationFact
+from nolli.logic.extractors.facts import EntityFact, Facts, RelationFact
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.schema import EntityId, EntityKind, RelationKind, Scheme
 

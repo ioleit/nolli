@@ -1,4 +1,4 @@
-"""What a target names (nolli/datasets.py: parse_target, resolve_target; nolli/sources/git.py),
+"""What a target names (nolli/datasets.py: parse_target, resolve_target; nolli/logic/sources/git.py),
 on a small git history:
 
     main:    c1 - c2 ------- m (merge of feature, --no-ff)
@@ -18,7 +18,7 @@ import pytest
 
 from nolli.cli import main
 from nolli.datasets import Target, parse_target, resolve_target
-from nolli.sources.git import WORKTREE, ChangeError, _default_branch
+from nolli.logic.sources.git import WORKTREE, ChangeError, _default_branch
 
 
 def git(repo: Path, *args: str) -> str:

@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from nolli.model.keys import StringKey
 from nolli.build import _extract_facts
+from nolli.logic.formats.descriptions.hover import Ctx, Source, _edge_info
+from nolli.logic.formats.descriptions.label import _module_stem
+from nolli.logic.transformations.projection.reading import Reading as Graph
+from nolli.logic.transformations.projection.rollup import RolledEdge, is_init
+from nolli.model.keys import StringKey
 from nolli.scenes import open_built
-from nolli.formats.descriptions.hover import Source, Ctx, _edge_info
-from nolli.formats.descriptions.label import _module_stem
-from nolli.transformations.projection.reading import Reading as Graph
-from nolli.transformations.projection.rollup import RolledEdge, is_init
 
 FILES = {
     "tsconfig.base.json": '{ // shared\n "compilerOptions": { "baseUrl": "./app/src", "paths": { "@/*": ["./*"] } } }\n',
@@ -157,7 +157,7 @@ def test_imports_of_a_file_that_does_not_parse_whole():
     """A syntax the grammar cannot read (Vitest's ``importOriginal<typeof import(...)>()``)
     makes the root an ERROR node; the imports above and below it still bind their names
     for the whole module."""
-    from nolli.extractors.typescript.imports import parse, read
+    from nolli.logic.extractors.typescript.imports import parse, read
     src = (b"import { a } from './a'\n"
            b"vi.mock('./b', async (importOriginal) => {\n"
            b"    const actual = await importOriginal<typeof import('./b')>()\n"

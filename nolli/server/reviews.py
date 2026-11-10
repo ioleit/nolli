@@ -20,8 +20,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..logic.sources import Sources
 from ..model.keys import ChangeKey
-from ..sources import Sources
 from ..store import ModelStore
 
 RUNS = threading.BoundedSemaphore(2)  # agent runs at the same time; the rest wait their turn
@@ -92,8 +92,8 @@ class Reviews:
         return job
 
     def _run(self, job: Job, store: ModelStore, key: ChangeKey, sources: Sources) -> None:
-        from ..review import agent as reviewer
         from ..datasets import Datasets
+        from ..review import agent as reviewer
 
         datasets = Datasets(store)
 

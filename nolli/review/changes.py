@@ -7,13 +7,11 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from nolli.logic.transformations.merge import Links
 from nolli.model import schema
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId
 from nolli.review.reading import Reader
-from nolli.transformations.merge import Links
-
-
 
 # ---------- the numbered changes a reviewer (person or agent) goes through ----------
 

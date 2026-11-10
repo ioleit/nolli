@@ -12,17 +12,16 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from helpers import draw, find_node, open_dir
-from nolli.model.keys import StringKey
-from nolli.build import _extract_facts
 
-from nolli.transformations.projection.reading import Reading as Graph
-from nolli import transformations
-from nolli.transformations import projection
-from nolli.transformations.projection import ProjectionSpec
-from nolli.transformations.projection.rollup import hidden_by_role, image_aliases, lift, rollup
-from nolli.transformations.projection.unfold import find_default_cut
+from nolli.build import _extract_facts
+from nolli.logic import transformations
+from nolli.logic.transformations import projection
+from nolli.logic.transformations.projection import ProjectionSpec
+from nolli.logic.transformations.projection.reading import Reading as Graph
+from nolli.logic.transformations.projection.rollup import hidden_by_role, image_aliases, lift, rollup
+from nolli.logic.transformations.projection.unfold import find_default_cut
+from nolli.model.keys import StringKey
 
 FILES = {
     "backend/__init__.py": "",
@@ -132,9 +131,9 @@ def test_lift_ends_when_provide_lines_cannot_merge():
     """Five modules implementing one shown API under max_lines 4: the provide lines keep
     their module end by design, so the pair cannot get under the limit. Lifting must
     leave it over the limit and return instead of picking it again forever (issue #49)."""
+    from nolli.logic.extractors.facts import EntityFact, Facts, Provenance
+    from nolli.logic.transformations.projection.rollup import RolledEdge
     from nolli.scenes import open_built
-    from nolli.extractors.facts import EntityFact, Facts, Provenance
-    from nolli.transformations.projection.rollup import RolledEdge
 
     m = Facts()
     m.ensure_root("api", "test")
@@ -221,9 +220,9 @@ def test_groups_are_a_filter(repo: Path):
 def test_utilities_by_incoming_edges(repo: Path):
     """A box with more than N incoming dependency edges is a utility: its incoming edges
     become badges on their sources. Boxes in groups never are."""
+    from nolli.logic.transformations.projection import _cut
+    from nolli.logic.transformations.projection.rollup import utility_badges
     from nolli.model.schema import RelationKind
-    from nolli.transformations.projection import _cut
-    from nolli.transformations.projection.rollup import utility_badges
 
     scene = open_dir(repo)
     g = Graph(scene)
@@ -297,8 +296,8 @@ def test_own_code_dot(tmp_path: Path):
 
 def test_directory_with_source_inside_stays_shown():
     """A directory whose bytes are mostly config is still drawn when it holds source files."""
+    from nolli.logic.extractors.facts import EntityFact, Facts, Provenance
     from nolli.scenes import open_built
-    from nolli.extractors.facts import EntityFact, Facts, Provenance
 
     m = Facts()
     for eid, kind, role in [("repo:", "directory", "mixed"), ("repo:evals", "directory", "config"), ("repo:evals/probe.py", "file", "source"),
@@ -324,7 +323,7 @@ def test_box_names_are_icons_then_a_name(repo: Path):
 
 def test_markdown_from_repository_text():
     """Names and docstrings from a repository can't turn into Markdown (prose.py)."""
-    from nolli.formats.descriptions.prose import code, _esc, quote, say
+    from nolli.logic.formats.descriptions.prose import _esc, code, quote, say
 
     assert say("{} references {} in {}", "api/", "1 name", "lib/") == "`api/` references `1 name` in `lib/`"
     assert code("a`b") == "``a`b``" and code("`x`") == "`` `x` ``"
@@ -340,9 +339,9 @@ def test_mermaid_draws_the_scene(repo: Path):
     canvas, not a subgraph."""
     import re
 
-    from nolli.formats.mermaid import make_node_id as nid
-    from nolli.formats.mermaid import render
-    from nolli.formats.viewer import export_scene
+    from nolli.logic.formats.mermaid import make_node_id as nid
+    from nolli.logic.formats.mermaid import render
+    from nolli.logic.formats.viewer import export_scene
 
     scene = open_dir(repo)
     for st in (ProjectionSpec(budget=12), ProjectionSpec(preset="folded"), ProjectionSpec(preset="unfolded"),
@@ -359,7 +358,7 @@ def test_mermaid_draws_the_scene(repo: Path):
 
 def test_presets(repo: Path):
     """A preset names a cut; the scene says which one gave it, and none once boxes are given."""
-    from nolli.formats.viewer import export_scene
+    from nolli.logic.formats.viewer import export_scene
     from nolli.server.serve import parse_spec
 
     scene = open_dir(repo)
@@ -375,8 +374,8 @@ def test_mermaid_ids(repo: Path):
     """The id map sent with the Mermaid text names every box drawn, by the id the text uses."""
     import re
 
-    from nolli.formats.mermaid import list_ids, render
-    from nolli.formats.viewer import export_scene
+    from nolli.logic.formats.mermaid import list_ids, render
+    from nolli.logic.formats.viewer import export_scene
 
     projected = transformations.apply(open_dir(repo), projection.fold(ProjectionSpec(expanded=["repo:", "repo:backend"])))
     sc = export_scene(projected)

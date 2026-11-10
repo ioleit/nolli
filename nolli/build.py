@@ -12,17 +12,18 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from nolli import extractors, scenes
-from nolli.extractors import Context, match
-from nolli.extractors.facts import Facts
+from nolli import scenes
+from nolli.logic import extractors
+from nolli.logic.extractors import Context, match
+from nolli.logic.extractors.facts import Facts
+from nolli.logic.sources import Sources, git
+from nolli.logic.transformations import merge
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey, StringKey
 from nolli.model.model import Key, Model
 from nolli.model.schema import EntityId
 from nolli.progress import Progress, Quiet
-from nolli.sources import Sources, git
 from nolli.store import ModelStore
 from nolli.store.maps import Maps, MapStore
-from nolli.transformations import merge
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 

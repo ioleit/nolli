@@ -10,11 +10,12 @@ kept."""
 import sys
 from pathlib import Path
 
-from nolli import build, scenes, transformations
+from nolli import build, scenes
+from nolli.logic import transformations
+from nolli.logic.transformations import projection
 from nolli.model.keys import StringKey
 from nolli.model.scene import Element, Overlay, Scene
 from nolli.store.maps import MemoryMaps
-from nolli.transformations import projection
 
 repo = Path(sys.argv[1])
 scene = scenes.open_built(*build.extract(repo, key=StringKey("nolli@worktree")))   # the files as they are, with nolli's overlays

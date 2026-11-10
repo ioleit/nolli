@@ -8,20 +8,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from nolli import transformations
+from nolli.logic import transformations
+from nolli.logic.transformations import merge
 from nolli.model import vocabulary
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey
 from nolli.model.model import Key, Model
 from nolli.model.scene import Overlay, Scene
 from nolli.store import ModelStore
 from nolli.store.maps import Maps, MapStore, MemoryMaps
-from nolli.transformations import merge
 
 
 def _make_derived_overlays() -> list[Overlay]:
     """What nolli derives from any model's facts and keeps with it at build time
     (``keep_commit_scene``, ``keep_change_scene``): how its nodes are called (``names``)."""
-    from nolli.formats.descriptions.names import Names
+    from nolli.logic.formats.descriptions.names import Names
 
     return [Names()]
 
@@ -30,8 +30,8 @@ def _make_change_overlays(maps: MapStore) -> list[Overlay]:
     """What a change says about itself, computed from its sides: what changed (``change``) and
     which numbered changes each node and edge is about (``review``). Kept with the change at
     diff time (``keep_change_scene``) and read back from there (``open_change_scene``)."""
+    from nolli.logic.transformations.merge import Change
     from nolli.review.card import Review
-    from nolli.transformations.merge import Change
 
     return [Change(maps.open_maps("content")), Review()]
 
@@ -51,11 +51,11 @@ def _describe_scene_meta(base: Model, head: Model, about: dict, content: Mapping
 
 def _make_overlays(maps: MapStore) -> list[Overlay]:
     """The overlays nolli shows on any scene, on top of what extraction said."""
-    from nolli.formats.descriptions.hover import Hover
-    from nolli.formats.descriptions.label import Label
+    from nolli.logic.formats.descriptions.hover import Hover
+    from nolli.logic.formats.descriptions.label import Label
+    from nolli.logic.transformations.merge import Change
     from nolli.review.card import Review
     from nolli.review.verdicts import Verdicts
-    from nolli.transformations.merge import Change
 
     derived = [maps.caching_overlay(o) for o in _make_derived_overlays()]
     return [*derived, Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]

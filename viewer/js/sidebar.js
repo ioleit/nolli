@@ -14,7 +14,7 @@ const GROUP_HELP = {
   unresolved: "References the extractors saw but could not bind, as one box you can unfold. References into it are never drawn: the residue counts them, by language.",
 };
 
-/** @type {Record<string, string>} how nolli/extractors/fs.py assigns each role */
+/** @type {Record<string, string>} how nolli/logic/extractors/fs.py assigns each role */
 const ROLE_HELP = {
   source: "Code in a language nolli knows.",
   mixed: "Folders holding source next to files of other roles.",

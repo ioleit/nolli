@@ -2,6 +2,18 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## Unreleased
+
+### Changed
+
+- **`nolli/logic/` holds what nolli computes between a repository and what it shows**:
+  `extractors`, `sources`, `transformations` and `formats` moved under it from `nolli/`
+  (`dev/examples/logic.py` had proposed the directory; `app.py` now proposes the next one
+  the same way). Imports change accordingly: `nolli.logic.transformations`, and so on.
+- **`projection` is a package**: `reading`, `rollup` and `unfold`, used by the projection
+  only, moved into `nolli/logic/transformations/projection/`. `projection.fold` and
+  `ProjectionSpec` are imported as before.
+
 ## 0.9.0
 
 ### Added

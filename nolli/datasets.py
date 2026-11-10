@@ -5,9 +5,9 @@ a change merged from its two commits), draws projections of it, keeps and checks
 verdicts, and builds what is missing.
 
 Below it: the model and its scenes (``nolli/model/``), the store (``nolli/store/``), where
-commits come from (``nolli/sources/``), extraction (``nolli/extractors/``, run by
-``nolli/build.py``), the transformations (``nolli/transformations/``), the review
-(``nolli/review/``) and the formats (``nolli/formats/``), which take a scene.
+commits come from (``nolli/logic/sources/``), extraction (``nolli/logic/extractors/``, run by
+``nolli/build.py``), the transformations (``nolli/logic/transformations/``), the review
+(``nolli/review/``) and the formats (``nolli/logic/formats/``), which take a scene.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import transformations
 from .build import (
     Run,
     extract,
@@ -29,9 +28,26 @@ from .build import (
     run_here,
     version,
 )
-from .formats.mermaid import list_ids, render
-from .formats.report import make_report
-from .formats.viewer import export_scene
+from .logic import transformations
+from .logic.formats.mermaid import list_ids, render
+from .logic.formats.report import make_report
+from .logic.formats.viewer import export_scene
+from .logic.sources import FetchError, LocalRepository, Sources, github
+from .logic.sources.git import (
+    WORKTREE,
+    ChangeError,
+    ChangeSpec,
+    GitError,
+    find_remote,
+    find_toplevel,
+    resolve_adds,
+    resolve_own,
+    resolve_range,
+    resolve_snapshot,
+)
+from .logic.transformations import projection
+from .logic.transformations.merge import is_change, merge_models
+from .logic.transformations.projection import DEFAULT_BUDGET, ProjectionSpec
 from .model.keys import ChangeKey, CommitKey, ModelKey, Repo
 from .model.model import Key, Model
 from .model.scene import Overlay, Scene
@@ -57,25 +73,9 @@ from .scenes import (
     open_change_scene,
     open_commit_scene,
 )
-from .sources import FetchError, LocalRepository, Sources, github
-from .sources.git import (
-    WORKTREE,
-    ChangeError,
-    ChangeSpec,
-    GitError,
-    find_remote,
-    find_toplevel,
-    resolve_adds,
-    resolve_own,
-    resolve_range,
-    resolve_snapshot,
-)
 from .store import ModelStore
 from .store.directory import DirectoryStore, write_change, write_commit
 from .store.maps import MapStore, MemoryMaps
-from .transformations import projection
-from .transformations.merge import is_change, merge_models
-from .transformations.projection import DEFAULT_BUDGET, ProjectionSpec
 
 
 class Datasets:

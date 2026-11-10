@@ -18,15 +18,15 @@ def test_paths_from_datasets_to_store():
 
 def test_skips_past_datasets_build_scenes():
     out = subprocess.run([sys.executable, str(ROOT / "dev/examples/skips.py"), str(ROOT)], capture_output=True, text=True, check=True).stdout
-    assert "nolli/server/serve.py\n" in out and "-> nolli/transformations/projection/__init__.py: " in out
+    assert "nolli/server/serve.py\n" in out and "-> nolli/logic/transformations/projection/__init__.py: " in out
     assert "-> nolli/datasets.py" not in out and "-> nolli/model/" not in out
 
 
-def test_logic_groups_four_packages():
-    out = subprocess.run([sys.executable, str(ROOT / "dev/examples/logic.py"), str(ROOT)], capture_output=True, text=True, check=True).stdout
+def test_app_groups_the_layers_above_logic():
+    out = subprocess.run([sys.executable, str(ROOT / "dev/examples/app.py"), str(ROOT)], capture_output=True, text=True, check=True).stdout
     assert out.startswith("flowchart TD")
-    assert 'n_repo_nolli_logic["logic/"]' in out and "n_repo_nolli_datasets_py" in out
-    assert "n_repo_nolli_extractors" not in out  # folded into logic/
+    assert 'n_repo_nolli_app["app/"]' in out and "n_repo_nolli_logic" in out
+    assert "n_repo_nolli_datasets_py" not in out and "n_repo_nolli_server" not in out  # folded into app/
     assert "n_repo_dev" not in out and "n_repo_viewer" not in out  # nothing outside nolli/
 
 

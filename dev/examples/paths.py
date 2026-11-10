@@ -6,11 +6,12 @@ predicate, a custom transformation that keeps the boxes on a path, and the resul
 import sys
 from pathlib import Path
 
-from nolli import build, scenes, transformations
-from nolli.formats import mermaid
+from nolli import build, scenes
+from nolli.logic import transformations
+from nolli.logic.formats import mermaid
+from nolli.logic.transformations import projection
+from nolli.logic.transformations.select import select
 from nolli.model.scene import Element, Scene
-from nolli.transformations import projection
-from nolli.transformations.select import select
 
 repo = Path(sys.argv[1])
 scene = scenes.open_built(*build.extract(repo))                     # the files as they are, with nolli's overlays

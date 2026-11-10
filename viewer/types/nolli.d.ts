@@ -1,15 +1,15 @@
-// The shapes the viewer works with. The scene is what nolli/formats/viewer.py makes of a projected scene (GET /api/scene).
+// The shapes the viewer works with. The scene is what nolli/logic/formats/viewer.py makes of a projected scene (GET /api/scene).
 
 export interface Chip { id: string; name: string; color: number }
 
 /**
- * What hovering over a box or an edge shows (nolli/formats/descriptions/hover.py): Markdown, one paragraph per
+ * What hovering over a box or an edge shows (nolli/logic/formats/descriptions/hover.py): Markdown, one paragraph per
  * sentence, `code spans` for the values in it, a "> " quoted paragraph for a docstring,
- * [problem](verdict:problem) for a verdict's mark (nolli/formats/descriptions/prose.py, rendered by js/md.js).
+ * [problem](verdict:problem) for a verdict's mark (nolli/logic/formats/descriptions/prose.py, rendered by js/md.js).
  */
 export type Info = string;
 
-// ---------- review mode (a change: nolli/transformations/merge.py, verdicts.py, review.py) ----------
+// ---------- review mode (a change: nolli/logic/transformations/merge.py, verdicts.py, review.py) ----------
 
 export type Status = "added" | "removed" | "changed";
 export type Verdict = "blunder" | "problem" | "question" | "fine" | "good" | "brilliant";
@@ -74,7 +74,7 @@ export interface ReviewVerdict {
 
 /**
  * Each drawn box and edge comes with what every overlay says about it, under the overlay's
- * name (nolli/formats/viewer.py). The ones the viewer draws are typed here; others (a
+ * name (nolli/logic/formats/viewer.py). The ones the viewer draws are typed here; others (a
  * research overlay) arrive under their own names and show as they are.
  */
 
@@ -84,7 +84,7 @@ export interface AnchorProjection {
   utilities_used: string[];  // ids of the utilities whose edges from it became badges
 }
 
-/** What the projection decided about a drawn box (nolli/transformations/projection/__init__.py). */
+/** What the projection decided about a drawn box (nolli/logic/transformations/projection/__init__.py). */
 export interface BoxProjection {
   container: boolean;  // unfolded with drawn children
   foldable: boolean;  // has children: clicking unfolds (or − folds)
@@ -98,7 +98,7 @@ export interface BoxProjection {
   internal_changes: number;
 }
 
-/** How the picture names a box (nolli/formats/descriptions/label.py). */
+/** How the picture names a box (nolli/logic/formats/descriptions/label.py). */
 export interface Label {
   text: string;
   icons: string[];  // what it is, drawn before the label: "D", "m", "C", "svc", "img", "API", "/", verbs ("GET", "WS")

@@ -6,14 +6,14 @@ import subprocess
 from pathlib import Path
 
 from nolli.build import extract, extract_commit, list_content
-from nolli.scenes import merge_built, open_built
-from nolli.formats.viewer import export_scene
-from nolli.progress import Quiet
+from nolli.logic import transformations
+from nolli.logic.formats.viewer import export_scene
+from nolli.logic.transformations import projection
+from nolli.logic.transformations.projection import ProjectionSpec
 from nolli.model.keys import StringKey
 from nolli.model.scene import Scene
-from nolli import transformations
-from nolli.transformations import projection
-from nolli.transformations.projection import ProjectionSpec
+from nolli.progress import Quiet
+from nolli.scenes import merge_built, open_built
 
 
 def open_dir(path: Path, key: str = "test@0") -> Scene:
