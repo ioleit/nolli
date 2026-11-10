@@ -313,10 +313,11 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     assert again.draw_json(sc2, ProjectionSpec(preset="changes"))["nodes"]
 
 
-def test_a_store_that_checks_access_projects_a_change_it_allows(src, tmp_path):
-    """A store that refuses every repository but one (as a hosted server's does) still projects
-    that repository's change: the projected scene's model has a key of no repository, so asking
-    the store for what was kept for it checks nothing and finds nothing."""
+def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
+    """A store that refuses every repository but one (as a hosted server's does): the scene a
+    projection returns has a key of no repository, under which nothing is kept, so asking for
+    its kept values reads nothing and answers none; a change of the allowed repository projects
+    in every preset, and a key of another repository is still refused."""
     from nolli.datasets import Datasets
     from nolli.model.keys import NotAllowed
     from nolli.transformations.projection import ProjectionSpec
