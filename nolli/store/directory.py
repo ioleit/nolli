@@ -227,18 +227,15 @@ class DirectoryMaps:
 
 
 def _dump_model(model: Model) -> dict:
-    """A model's ``model.json`` form. A model made from others names their roles under ``refs``
-    when each of its elements stands for its namesake there (a change's sides); one that
-    refers to its sources element by element (a picture) is made again from them, not
-    written."""
+    """A model's ``model.json`` form: its structure, without ``refs``. What a model made from
+    others refers to is the transformation's to say when it makes the scene (``merge.union``
+    for a kept change); one that refers to its sources element by element (a picture) is
+    made again from them, not written."""
     if any(v is not None for v in model.refs.values()):
         raise ValueError("a model that refers to its sources element by element is made again from them, not saved")
-    out = {"format": MODEL_FORMAT, "key": model.key.format_key(), "meta": model.meta,
-           "nodes": {x: model.entities[x].kind for x in sorted(model.entities)},
-           "edges": [[e.kind, e.src, e.dst, e.subkind] for e in model.edges]}
-    if model.refs:
-        out["refs"] = dict.fromkeys(model.refs)
-    return out
+    return {"format": MODEL_FORMAT, "key": model.key.format_key(), "meta": model.meta,
+            "nodes": {x: model.entities[x].kind for x in sorted(model.entities)},
+            "edges": [[e.kind, e.src, e.dst, e.subkind] for e in model.edges]}
 
 
 def _parse_model(d: dict) -> Model:
@@ -248,7 +245,7 @@ def _parse_model(d: dict) -> Model:
     if d.get("format") != MODEL_FORMAT:
         raise maps_lib.FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {MODEL_FORMAT}")
     return Model(StringKey(d.get("key", "")), (Entity(x, k) for x, k in d["nodes"].items()), (Relation(*e) for e in d["edges"]),
-                 refs=d.get("refs"), meta=d.get("meta") or {})
+                 meta=d.get("meta") or {})  # a ``refs`` kept by an older nolli is ignored
 
 
 def _write_model(f: Path, model: Model) -> None:

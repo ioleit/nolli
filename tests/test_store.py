@@ -174,7 +174,10 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     assert sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
     assert sorted(f.name for f in store.locate(first).iterdir()) == ["base", "change.json", "head", "key.json", "model.json", "overlays"]
     assert sorted(f.name for f in (store.locate(first) / "overlays").iterdir()) == ["change.json", "content.json", "names.json", "review.json"]
-    assert store.load_model(first).refs == {"base": None, "head": None}  # the merged model, each node its namesake on each side
+    assert "refs" not in json.loads((store.locate(first) / "model.json").read_text())  # union says what it refers to
+    added = sc.find_element("repo:shop/cache.py")
+    assert added.find_same("head") is not None and added.find_same("base") is None  # each node its namesake on each side
+    assert any(el.find_same("base") and el.find_same("head") for el in sc.list_nodes())
 
     calls.clear()
     assert fetch_change(store, sources, first, run=counting(calls))["title"] == "a cache"

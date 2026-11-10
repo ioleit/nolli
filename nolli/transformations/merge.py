@@ -302,13 +302,15 @@ def merge_models(key: ModelKey, base: Model, head: Model, meta: dict | None = No
 
 def union(key: ModelKey, meta: dict | None = None, kept: Model | None = None):
     """Merge as a transformation: of two scenes by role (``base``, ``head``), the merged model
-    (``merge_models``, or ``kept``: the same as it was kept at diff time, with ``meta`` on top),
+    (``merge_models``, or ``kept``: the same as it was kept at diff time, with ``meta`` on top
+    and referring to its namesakes on the sides as ``merge_models`` does),
     and what extraction said about it on the sides as the change's (``SidesSaid``, one per
     shape)."""
     def make(sides: dict[str, Scene]) -> tuple[Model, list[Overlay]]:
         if kept is None:
             return merge_models(key, sides["base"].model, sides["head"].model, meta), [SidesSaid(n) for n in vocabulary.SHAPES]
         kept.meta = {**kept.meta, **(meta or {})}
+        kept.refs = dict.fromkeys(sides)  # each node its namesake on each side, as merge_models has it
         return kept, [SidesSaid(n) for n in vocabulary.SHAPES]
 
     return make
