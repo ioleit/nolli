@@ -37,6 +37,11 @@ class Overlay:
     (``element.get``), or what the element stands for in the models it was made from
     (``element.sources``).
 
+    What it says about an element is about what that element stands for, and nothing else.
+    A folded box stands for what it holds, so an overlay may sum that up; what a
+    transformation left out (a projection's hidden roles) is cut, and no element says
+    anything about it.
+
     What it says about a model can be kept in a store and read back instead of computed
     (``nolli/store/precomputed.py``); ``cache_version`` says which kept values are still its
     own."""

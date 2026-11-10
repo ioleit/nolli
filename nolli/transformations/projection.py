@@ -142,7 +142,9 @@ def fold(st: ProjectionSpec) -> Callable[[Scene], Scene]:
     Each drawn node keeps the address of what it is (a module's own code is ``<id>#``,
     ``EntityId.own_code``) and refers to every node it stands for (role ``source``), each
     drawn edge to the edges it bundles, so any overlay can say something about a drawn box
-    from what it says about what is inside.
+    from what it says about what is inside. What the filter hides (roles not in
+    ``st.roles``, what the other side lacks) no drawn node stands for: it is cut, so a change
+    only to hidden files leaves its box unchanged.
 
     What the projection itself decided is its own overlay, ``projection``: which boxes are
     containers, which lines were lifted, utilities drawn as badges, deployment chips, how the
