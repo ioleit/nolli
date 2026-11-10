@@ -1,4 +1,4 @@
-"""What the tests share: a directory's facts, its scene, a picture of it, a change of two commits."""
+"""Helpers shared by the tests for building scenes of directories and changes and drawing them."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def open_dir(path: Path, key: str = "test@0") -> Scene:
 
 
 def draw(scene: Scene, **state) -> dict:
-    """The viewer's JSON of the picture ``ProjectionSpec(**state)`` draws of ``scene``."""
+    """The viewer's JSON of ``scene`` projected with ``ProjectionSpec(**state)``."""
     return export_scene(transformations.apply(scene, projection.fold(ProjectionSpec(**state))))
 
 

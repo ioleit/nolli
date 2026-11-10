@@ -82,7 +82,7 @@ def _read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
         edges.append({"src": el.key.src, "dst": el.key.dst, "subkind": el.key.subkind, "count": p.get("count", 0),
                       "style": p.get("style"), "types": p.get("types"), "local": p.get("local"), "weak": p.get("weak"),
                       "diff": el.get("change")})
-    return nodes, edges, "change" in scene.model.meta  # a picture of a change
+    return nodes, edges, "change" in scene.model.meta  # whether the scene is drawn from a change
 
 
 def list_ids(scene: Scene) -> dict[str, str]:

@@ -36,9 +36,7 @@ class ChangedEdge:
 
 
 class Reader:
-    """What the review reads off a change: the structure from the model, where a file or class
-    is and what role it plays (the file tree, its language), how the picture names it, and what
-    changed (the ``change`` overlay)."""
+    """Utilities for reviewing a Scene representing a change."""
 
     def __init__(self, scene: Scene) -> None:
         self.scene, self.model = scene, scene.model

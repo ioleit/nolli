@@ -34,4 +34,4 @@ def test_cool_overlay_kept_and_read_back():
     out = subprocess.run([sys.executable, str(ROOT / "dev/examples/cool.py"), str(ROOT)], capture_output=True, text=True, check=True).stdout
     assert "live: repo:nolli/model/scene.py: cool node, bro" in out
     assert "cool folded node comprising" in out and "cool edge, bro" in out
-    assert out.rstrip().endswith("live and kept agree on the scene and the module-level picture")
+    assert out.rstrip().endswith("live and kept agree on the scene and the module-level projection")

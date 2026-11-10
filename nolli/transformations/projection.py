@@ -1,7 +1,4 @@
-"""Folds a scene down to the boxes and lines of one picture.
-
-A ``ProjectionSpec`` says what to unfold, which nodes to show and how to simplify the edges;
-``fold`` makes the folded scene.
+"""Applies a projection, which folds (collapses) some entities into aggregates according to a ``ProjectionSpec``.
 """
 
 from __future__ import annotations
@@ -44,7 +41,7 @@ class ProjectionSpec:
     budget: int = DEFAULT_BUDGET
     groups: list[str] = field(default_factory=lambda: list(DEFAULT_GROUPS))  # shown root groups
     utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
-    side: str = "both"  # a change: "base" or "head" draws one commit, "both" the merged picture
+    side: str = "both"  # for a change, "base" or "head" draws one commit and "both" the merged model
     max_lines: int = DEFAULT_MAX_LINES  # lines drawn between two boxes at most (rollup.lift)
     focus: list[str] | None = None  # what the "changes" preset unfolds; the caller says (for a change: nolli.review.changes.find_review_cut)
     unfold: Callable[[Element], bool] | None = field(default=None, repr=False, compare=False)  # instead of expanded: asked per container

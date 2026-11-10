@@ -1,6 +1,4 @@
-"""Describes the boxes and edges of a picture in plain sentences.
-
-It computes the ``hover`` overlay from the facts in the model a picture was drawn from.
+"""Computes the ``hover`` overlay for a model, which describes each element in prose.
 """
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ from nolli.model.schema import EntityId, RelationKind
 
 
 class Source:
-    """What the hover text reads off the scene a picture was drawn from: the structure from the
+    """What the hover text reads off the scene: the structure from the
     model, what a file is from the file tree, what a module or class defines from its language,
     what an API is from its extractor, the references behind an edge."""
 
@@ -96,8 +94,7 @@ class NodeView:
 
 @dataclass
 class Ctx:
-    """What a description may look at: the scene drawn from (``g``), the projected scene, its
-    unfolded and hidden nodes and utilities, and how the picture names things."""
+    """Context that the hover description uses."""
     g: Source
     scene: Scene
     expanded: set[str]
@@ -110,7 +107,7 @@ class Ctx:
 
     @cached_property
     def labels(self) -> Mapping[Key, dict]:
-        """How the picture names its boxes (the ``label`` overlay), read once."""
+        """The ``label`` overlay of every box in the scene."""
         return self.scene.read_all("label")
 
     def list_utilities_used(self, x: str) -> list[str]:
@@ -119,8 +116,9 @@ class Ctx:
         return (self.scene.find_element(x).get("projection") or {}).get("utilities_used") or []
 
     def name(self, x: str) -> str:
-        """A box as the picture names it: directories end in "/", a module's own code says so.
-        ``x`` may be text, as overlays' values (``utilities_used``) hold addresses."""
+        """The name of a box in hover text. A directory's name ends in "/", and a module's own
+        code is "<module> (own code)". ``x`` may be a plain string, since overlay values such
+        as ``utilities_used`` hold addresses as strings."""
         x = EntityId(x)
         if x.is_own_code:
             return f"{self.name(x.owner)} (own code)"
@@ -311,9 +309,9 @@ def _size(ctx: Ctx, x: str) -> str | None:
 
 
 class Dependencies:
-    """What each drawn box uses outside the picture, from the facts (not the badges): the
-    external packages, environment variables, endpoints and deployment its code touches,
-    collected once per picture for every drawn box."""
+    """The external packages, environment variables, endpoints and deployment that the code
+    in each drawn box uses. Taken from the facts rather than the badges, and built once for
+    all boxes of a scene."""
 
     def __init__(self, ctx: Ctx, drawn: set[str]):
         m = ctx.g
@@ -485,31 +483,33 @@ def _make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
 
 
 class Hover(Overlay):
-    """The ``hover`` overlay: ``{"text": ...}`` for each drawn box and edge, a description in
-    Markdown (see ``prose``), one paragraph per sentence, with code spans for the data in it
-    ("`api-mock` references `1 name` in `lib/`") and a quoted paragraph for what the code says
-    about itself (a docstring).
+    """A Markdown description of each drawn box and edge, as ``{"text": ...}``.
 
-    What a box is, is said from the facts extraction wrote into the model, the same way for
-    every language: a module (``module``) and its language's name (``meta["languages"]``), a
-    folder made a package by its package body (``body``), the classes and types inside a
-    module, doc comments (``doc``), and a module's own code (``functions``, ``constants``,
-    ``reexports``, ``own_lines``). Then what unfolding a folder shows, its size, and what a box
-    depends on outside the picture (external packages, utilities, environment, deployment,
-    HTTP). An edge says what it carries: the names it references, calls, variables or a
+    Each sentence is its own paragraph, the data in it is in code spans ("`api-mock`
+    references `1 name` in `lib/`"), and a docstring is a quoted paragraph (see ``prose``).
+
+    A box's description is built from the facts extraction wrote into the model and reads the
+    same for every language. It says what the box is, such as a module (``module``) in some
+    language (``meta["languages"]``), a folder that a package body (``body``) makes a package,
+    the classes and types in a module, doc comments (``doc``) and a module's own code
+    (``functions``, ``constants``, ``reexports``, ``own_lines``). It then says what unfolding a
+    folder would show, how big the box is, and what it depends on that is not drawn as an edge,
+    such as external packages, utilities, environment, deployment and HTTP. An edge's
+    description lists what it carries, the names it references or calls, variables, or a
     deployment relation."""
 
     name = "hover"
 
     def compute(self, el: Element) -> dict | None:
-        return el.scene.read_all(self.name).get(el.key)  # described as a whole (compute_all)
+        return el.scene.read_all(self.name).get(el.key)  # computed for the whole scene in compute_all
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """Every box and edge of a picture described, from one reading of what it was drawn from."""
+        """Descriptions of all boxes and edges, built from the scene this one was drawn from.
+        A scene not drawn from another has none."""
         if "source" not in scene.sources:
             return {}
         ctx, deps = _make_ctx(scene)
-        known = lambda x: ctx.g.has(x.owner)  # a node the source does not have (a proposed directory): nothing to say
+        known = lambda x: ctx.g.has(x.owner)  # the source lacks nodes that were added, such as a proposed directory
         out: dict[Key, dict] = {}
         for x in scene.model.entities:
             if not known(x):

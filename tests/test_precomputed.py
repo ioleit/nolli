@@ -68,10 +68,9 @@ def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):
     kept = scene.with_overlays(store.strictly_precomputed_overlay("counting"))
     assert kept.find_element("repo:pkg/a.py").get("counting") == {"kind": "file", "inside": 0}
     assert kept.read_all("counting") == values
-    # a picture is another model: nothing kept for it, and no namesake's values taken
-    picture = fold(kept)
-    assert picture.find_element("repo:pkg/a.py").get("counting") is None
-    assert picture.read_all("counting") == {}
+    projection = fold(kept)
+    assert projection.find_element("repo:pkg/a.py").get("counting") is None
+    assert projection.read_all("counting") == {}
 
 
 def test_what_extraction_said_holds_for_a_namesake(scene):
@@ -85,12 +84,11 @@ def test_what_extraction_said_holds_for_a_namesake(scene):
     assert proposal.find_element(edge).get("references") == scene.find_element(edge).get("references")
     assert src.get("hover") is None and "a" in a.get("hover")["text"]  # nothing to say about what the source does not have
     # the proposal folds like any scene: roles, modules and references are read off it
-    picture = fold(proposal)
-    assert not picture.model.has("repo:src") and picture.model.has("repo:pkg")  # a folder holding one folder is drawn as that one
-    assert picture.find_element("repo:pkg/a.py").get("label")["text"] == "a"
-    assert picture.find_element("repo:pkg/a.py").get("files")["module"]  # a box that is a node of its source
-    assert picture.find_element("repo:pkg").get("projection")["container"]
-
+    projection = fold(proposal)
+    assert not projection.model.has("repo:src") and projection.model.has("repo:pkg")  # a folder holding one folder is drawn as that one
+    assert projection.find_element("repo:pkg/a.py").get("label")["text"] == "a"
+    assert projection.find_element("repo:pkg/a.py").get("files")["module"]  # a box that is a node of its source
+    assert projection.find_element("repo:pkg").get("projection")["container"]
 
 def test_caching_overlay_reads_what_is_kept_and_computes_the_rest(scene):
     store = MemoryMaps()
@@ -100,13 +98,12 @@ def test_caching_overlay_reads_what_is_kept_and_computes_the_rest(scene):
     assert kept.find_element("repo:pkg/a.py").get("counting") == {"kind": "file", "inside": 0}
     assert behind.asked == []  # answered from the store
 
-    picture = fold(kept)  # nothing kept for the picture: computed, box by box
-    folded = picture.find_element("repo:pkg/a.py").get("counting")
+    projection = fold(kept)  
+    folded = projection.find_element("repo:pkg/a.py").get("counting")
     assert folded["kind"] == "file" and folded["inside"] >= 1  # the class folded into the file's box
     assert behind.asked == ["repo:pkg/a.py"]
-    assert picture.read_all("counting") == fold(scene.with_overlays(Counting())).read_all("counting")  # as computed live
-    assert all(k in picture.model.entities or k in picture.model.edges for k in behind.asked)  # never asked about the source's elements
-
+    assert projection.read_all("counting") == fold(scene.with_overlays(Counting())).read_all("counting")  # as computed live
+    assert all(k in projection.model.entities or k in projection.model.edges for k in behind.asked)  # never asked about the source's elements
 
 def test_values_of_another_version_are_not_read(scene):
     store = MemoryMaps()

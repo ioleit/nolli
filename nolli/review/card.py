@@ -144,12 +144,12 @@ class Review(Overlay):
     name = "review"
 
     def compute(self, el: Element) -> dict | None:
-        return el.scene.read_all(self.name).get(el.key)  # answered as a whole (compute_all)
+        return el.scene.read_all(self.name).get(el.key)  # computed for the whole scene in compute_all
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """On the change itself, which numbered changes each node and edge is about. On a picture
-        of it, what each drawn edge carries first, then what each box shows, and the cards; it
-        reads the picture's verdicts and changes whole."""
+        """For the change itself, the numbered changes each node and edge is about. For a scene
+        drawn from the change, what each drawn edge carries, what each box shows, and the
+        cards, built from that scene's verdicts and changes as a whole."""
         if "change" not in scene.model.meta:
             return {}
         if "source" not in scene.sources:

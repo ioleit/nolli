@@ -1,15 +1,17 @@
 """Overlays answered from values a store keeps, and keeping them there.
 
-An overlay's values for one model are precomputed by asking it about the whole scene once
-and keeping the answer under the overlay's name and the model's key, with which version of
-the overlay said it (``about``). Read back, they come as a ``PrecomputedOverlay``: what was
-kept, where it is acceptable, and what its fallback says otherwise. Three fallbacks, three
-ways to read: nothing (``strictly_precomputed_overlay``: a picture's or a change's word about
-its own elements, kept under its own key and never taken from a namesake in another model);
-the overlay that kept the values, computing the rest (``caching_overlay``); and the source's
-word for the element of the same address (``precomputed_overlay``, ``SourceElementOverlay``),
-for values that are facts about an address, what extraction said, which hold for a namesake
-in a model made from the one they were kept for.
+An overlay's values for one model can be computed once for the whole scene and kept in the
+store under the overlay's name and the model's key, together with the overlay's version
+(``about``). A ``PrecomputedOverlay`` reads them back and uses the kept value where it is
+acceptable. Otherwise it falls back in one of three ways.
+
+- ``strictly_precomputed_overlay`` has no fallback. It is for values about the elements of
+  one particular model, such as a projection's or a change's, which never carry over to an
+  element of the same address in another model.
+- ``caching_overlay`` falls back to the overlay that kept the values, which computes the rest.
+- ``precomputed_overlay`` falls back to the source scene's value for the element of the same
+  address (``SourceElementOverlay``). It is for values that are facts about an address, such
+  as what extraction found, which also hold in a model made from the one they were kept for.
 """
 
 from __future__ import annotations
@@ -54,13 +56,15 @@ def _precompute(stored: KeptMaps, scene: Scene, overlay: Overlay, by: dict | Non
 
 
 class SourceElementOverlay(Overlay):
-    """What the scene's one source says under ``name`` about the element of the same address:
-    the fallback of an overlay read by address. Same address, same thing: an element of a
-    model made from one scene (a picture, a proposed grouping) stands for its namesake there,
-    and nothing is said for one that has no namesake (a box's own code, a proposed directory).
-    On a scene with no source, or several, nothing: a model made from several scenes says
-    itself how its sources' words combine (``merge.SidesSaid``). It makes no values of its own,
-    so it has no version: whatever was kept is acceptable."""
+    """The value of overlay ``name`` in the scene's single source, for the element of the same
+    address. It is the fallback of an overlay whose values are facts about an address.
+
+    An element of a model made from one scene, such as a projection or a proposed grouping,
+    stands for the element of the same address in that scene. An element with no such
+    counterpart, such as a box's own code or a proposed directory, gets nothing. So does a
+    scene with no source or with several, since a model made from several scenes defines how
+    their values combine (``merge.SidesSaid``). It computes no values of its own, so it has no
+    version and accepts whatever was kept."""
 
     cache_version = ""
 

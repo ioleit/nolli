@@ -155,7 +155,7 @@ def _under(g: Reading, x: str, d: str) -> bool:
 
 def _default_init_edge(g: Reading, r) -> bool:
     """An edge from a package body to something inside its own package: the re-export /
-    submodule import every ``__init__`` has. Not a dependency; dropped from the picture."""
+    submodule import every ``__init__`` has. It is not a dependency and is not drawn."""
     if not is_init(g, r.src):
         return False
     d = g.parent(r.src)
@@ -298,7 +298,7 @@ def _top_of(g: Reading, node: str, expanded: set[str]) -> str:
 
 
 def utility_badges(g: Reading, rolled: RolledUp, min_in: int = 6) -> set[str]:
-    """Boxes with more than ``min_in`` incoming dependency edges in the picture are
+    """Boxes with more than ``min_in`` incoming dependency edges are
     utilities: all those edges become badges on their sources ("→ observability"), like
     externals, since a box that many arrows point at mostly adds clutter. Edges are counted
     as drawn (one per arrow, whatever its count); groups and what's inside them are never
@@ -475,14 +475,14 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
 
     ``shown_groups``: root groups (the namespaces' roots: Artifacts, Configuration, Runtime,
     APIs) drawn as boxes, folded or not, like any other box; edges to them are drawn. Other
-    root groups are filtered out of the picture: their edges become annotations on the other
+    root groups are not drawn. An edge to one of them becomes an annotation on its other
     end ("uses 42 external packages"), and an edge between two of them is left out.
     Cross-cutting things are omnipresent; drawn, they hide the structure. Interfaces
     (endpoints, env variables) are boxes in their group like anything else: a call or a read
     ends on the endpoint or variable when its group is shown, and becomes an annotation on
     the caller or reader when it is not.
-    ``side``: in a diff model, "base" or "head" draws one commit only; "both" draws the
-    merged picture, with removed facts counted on their base side."""
+    ``side`` is "base" or "head" to draw one commit of a change, or "both" to draw the
+    merged model, where removed facts are counted on their base side."""
     alias = image_aliases(g)
     rep = representative(g, visible, hidden, alias)
     edges: dict[tuple, RolledEdge] = {}
@@ -503,7 +503,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
                 internal_changes[_owner_of(a)].update(changed)
             return
         if sub == "ref":
-            sub = "import"  # references are the fine-grained form of imports; one edge kind in the picture
+            sub = "import"  # references are the fine-grained form of imports and are drawn as imports
         key = (kind, a, b, sub)
         e = edges.get(key)
         if e is None:

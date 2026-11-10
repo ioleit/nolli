@@ -1,10 +1,11 @@
 """A custom overlay on every node and edge of a checkout, kept so it is not computed twice:
 python dev/examples/cool.py <nolli checkout>
 
-An example of nolli as a library: a scene of the files as they are, an overlay of our own that
-says something about each element and knows what a folded box stands for; its answers kept in
-a store for the scene and for one picture of it, and the kept overlay used in its place on
-those and on a picture nobody kept."""
+An example of nolli as a library. It opens a scene of the files as they are and defines an
+overlay of its own, which says something about each element and handles folded boxes. The
+overlay's values are kept in a store for the scene and for one projection of it, and the
+kept overlay is then used instead, both on those and on a projection whose values were not
+kept."""
 
 import sys
 from pathlib import Path
@@ -51,13 +52,13 @@ print(len(live.read_all("cool")), "elements have a remark")
 
 store = MemoryMaps()                                                # or a DirectoryStore
 
-# module level: every directory unfolded, nothing else (a common picture; a named preset may come later)
+# module level: every directory unfolded, nothing else (a common projection; a named preset may come later)
 modules = projection.ProjectionSpec.expanded_if(lambda el: el.key == "repo:" or el.kind == "directory", groups=[], utilities=0)
-# one directory unfolded: a picture nobody keeps
+# one directory unfolded, a projection whose values are not kept
 one_dir = projection.ProjectionSpec.expanded_if(lambda el: el.key in ("repo:", "repo:nolli", "repo:nolli/model"), groups=[], utilities=0)
 
 store.save_scene(live)                                              # the model, and what every overlay says about it
-store.precompute_overlay_values(transformations.apply(live, projection.fold(modules)), Cool())   # one more picture, this overlay only
+store.precompute_overlay_values(transformations.apply(live, projection.fold(modules)), Cool())   # a projection, this overlay only
 print("kept:", store.list_map_names(scene.model.key.format_key()), "for the scene;", [k for k in store.maps["cool"]], "for cool")
 
 cool = store.caching_overlay(Cool())                                # Cool, answered from its kept values where they exist
@@ -69,4 +70,4 @@ show("kept", kept, kept_modules, kept_one_dir)
 
 for a, b in [(live, kept), (transformations.apply(live, projection.fold(modules)), kept_modules)]:
     assert a.read_all("cool") == b.read_all("cool")
-print("live and kept agree on the scene and the module-level picture")
+print("live and kept agree on the scene and the module-level projection")

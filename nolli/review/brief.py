@@ -92,8 +92,8 @@ ids of an edge drawn in the diagram:
 [{"target": "n_fs_src_app_py --> n_fs_src_db_py", "verdict": "question", "reason": "…"}]
 ```
 """
-    picture = "\n## The diagram\n\n```mermaid\n" + mermaid + "```\n"
+    diagram = "\n## The diagram\n\n```mermaid\n" + mermaid + "```\n"
     if description:  # its headings go two levels down, under this one
         description = re.sub(r"^(#{1,4}) ", r"##\1 ", description.strip(), flags=re.MULTILINE)
     desc = f"\n## The description\n\nRead this after the diagram (step 2).\n\n{description}\n" if description else ""
-    return head + howto + picture + desc
+    return head + howto + diagram + desc

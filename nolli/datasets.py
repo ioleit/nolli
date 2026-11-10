@@ -1,7 +1,7 @@
 """nolli as a library: what the command line (``nolli/cli.py``), the CI comment and the server
 (``nolli/server/``) work with. ``Datasets`` is a store of models, where their commits come
 from, and the overlays nolli shows on them; it opens a stored model as a scene (a commit, or
-a change merged from its two commits), draws pictures of it, keeps and checks a review's
+a change merged from its two commits), draws projections of it, keeps and checks a review's
 verdicts, and builds what is missing.
 
 Below it: the model and its scenes (``nolli/model/``), the store (``nolli/store/``), where
@@ -102,22 +102,22 @@ class Datasets:
         else:
             fetch_whole_model(self.store, self.sources, key, run=run, progress=progress, rebuild=rebuild)
 
-    # -- pictures ------------------------------------------------------------------
+    # -- Projections ------------------------------------------------------------------
 
     def draw(self, scene: Scene, state: ProjectionSpec) -> Scene:
-        """The picture ``state`` asks for; a change's "changes" preset unfolds what it changed."""
+        """The projection ``state`` asks for; a change's "changes" preset unfolds what it changed."""
         if state.preset == "changes" and state.focus is None and is_change(scene):
             state.focus = find_review_cut(scene)
         return transformations.apply(scene, projection.fold(state))
 
     def draw_json(self, scene: Scene, state: ProjectionSpec) -> dict:
-        """The picture as the viewer reads it (``nolli/formats/viewer.py``)."""
+        """The projection as JSON."""
         return export_scene(self.draw(scene, state))
 
     def draw_mermaid(self, scene: Scene, state: ProjectionSpec, fade: bool = True) -> tuple[str, dict[str, str]]:
-        """The picture as Mermaid, and each Mermaid node id to the box it is."""
-        picture = self.draw(scene, state)
-        return render(picture, fade=fade), list_ids(picture)
+        """The projection as Mermaid, and each Mermaid node id to the box it is."""
+        drawn = self.draw(scene, state)
+        return render(drawn, fade=fade), list_ids(drawn)
 
     def list_changes(self, scene: Scene) -> list[dict]:
         """A change's numbered changes ([] for a commit)."""
@@ -157,7 +157,7 @@ class Datasets:
                           (scene.model.meta.get("change") or {}).get("description"))
 
     def make_report(self, scene: Scene) -> dict:
-        """What a model is, in numbers (``report.json``), with its default picture's size."""
+        """The ``report.json`` of a model, its counts and the size of its default projection."""
         meta = scene.model.meta
         budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or DEFAULT_BUDGET
         return make_report(scene, self.draw(scene, ProjectionSpec(budget=budget)))

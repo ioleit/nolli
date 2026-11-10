@@ -5,7 +5,7 @@
 
 Each version extracts the same repositories with its own ``nolli extract`` and serves them
 with its own ``nolli view``; the same requests go to both: the presets, and unfolding
-containers one at a time from the default picture, as the viewer asks when you click. The
+containers one at a time from the default projection, as the viewer asks when you click. The
 table gives the median time of each request and whether both versions drew the same boxes.
 The release (or the ref, checked out with ``git worktree``) is installed into a virtual
 environment under the work directory. Extracted datasets are kept per version (the release

@@ -153,7 +153,7 @@ def run(ctx: Context) -> None:
     Functions are not entities: a module's functions and its module-level code
     are the module's own body, so their references are attributed to the module
     itself. A module without classes therefore has nothing to unfold. This is
-    deliberate: the picture is about architecture, not call graphs.
+    deliberate: nolli shows architecture, not call graphs.
 
     References are ``use`` relations with subkind ``ref`` (attrs ``name``: the name
     used): from the class whose body mentions a name (methods count for their class)

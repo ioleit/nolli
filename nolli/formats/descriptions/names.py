@@ -1,4 +1,4 @@
-"""How a node is called: the ``names`` overlay, read from its address and what extraction said."""
+"""The ``names`` overlay, the readable name and icons of each node."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ VERB_ICON = {"WEBSOCKET": "WS", "DELETE": "DEL", "OPTIONS": "OPT"}
 
 
 class Names(Overlay):
-    """The ``names`` overlay: how a node is called, the same in every picture of its scene. Its
-    readable ``name`` (``_format_name``) and the ``icons`` that say what it is (``_list_icons``:
-    ``D`` directory, ``m`` module, ``C`` class and the other symbols, ``svc``/``img``, ``API``,
-    ``/`` a path step, the verbs of an endpoint). A fact about an address: kept with a model at
-    build time and read back from there."""
+    """The readable ``name`` and the ``icons`` of each node.
+
+    The icons are the ones ``label.Label`` describes. A node's name and icons follow from its
+    address and the extracted facts alone, so they are the same in every scene drawn from the
+    model. They are computed when a model is built and kept with it."""
 
     name = "names"
 
@@ -28,7 +28,8 @@ class Names(Overlay):
 
 
 def is_module(el: Element) -> bool:
-    """A file of an extracted language (the file tree marks it): drawn ``m``, unfoldable."""
+    """Whether the node is a source file in a language nolli extracts. Such a file is a
+    module, drawn with ``m`` and unfoldable into its symbols."""
     return el.kind == "file" and bool(vocabulary.read_file(el).get("module"))
 
 
@@ -47,10 +48,9 @@ def _list_icons(el: Element) -> list[str]:
 
 
 def _format_name(el: Element) -> str:
-    """How a node is called in the picture and in text, read from its address: a file's or
-    directory's name, a class's, a package's, a variable's. Where the address leaves something
-    out on purpose, from where it is known: the repository's name from the model's meta, a
-    root group's and an API's readable form from the extractor that made it (see ``read_api``)."""
+    """The node's readable name, mostly the last part of its address, such as a file, class
+    or package name. The repository's name comes from the model's meta, and root groups and
+    APIs, whose addresses are not readable, take their names from the extractor that made them."""
     x = el.key
     if x.is_root:
         return el.meta.get("repo") or "repository" if x == EntityId.REPO_ROOT else vocabulary.read_external(el).get("name") or x
@@ -59,7 +59,7 @@ def _format_name(el: Element) -> str:
         fragment = x.fragment
         return fragment[-1] if fragment else x.path.rsplit("/", 1)[-1]
     if scheme == Scheme.API:
-        return vocabulary.read_external(el).get("name") or rest  # the extractor that made it says how it reads
+        return vocabulary.read_external(el).get("name") or rest
     if scheme == Scheme.PKG:
         kind, _, name = rest.partition("/")
         return name if kind == "build" else unquote(name)
@@ -69,9 +69,8 @@ def _format_name(el: Element) -> str:
 
 
 def read_api(el: Element) -> dict:
-    """What the extractor that made an API, a path step or an endpoint says about it: its
-    protocol, method (the verb), path (with the parameter names the code uses), the readable
-    path below its step (``short``)."""
+    """The extractor's record of an API, path step or endpoint, with its ``protocol``,
+    ``method``, ``path`` and ``short``, the path below the parent step. Empty for other nodes."""
     if el.key.scheme != Scheme.API:
         return {}
     v = vocabulary.read_external(el)

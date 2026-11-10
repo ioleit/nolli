@@ -1,6 +1,4 @@
-"""Chooses which containers to unfold so a picture fits a node budget.
-
-It makes the default cut, for a plain scene and for a change.
+"""Chooses which containers to unfold so a projection fits a node budget.
 """
 
 from __future__ import annotations

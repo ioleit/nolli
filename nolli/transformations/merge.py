@@ -36,15 +36,16 @@ class Change(Overlay):
         self.content = content
 
     def compute(self, el: Element) -> dict | None:
-        if is_change(el.scene):  # compared as a whole (compute_all)
+        if is_change(el.scene):  # computed for the whole change in compute_all
             return el.scene.read_all(self.name).get(el.key)
-        if "source" in el.scene.sources:  # a picture: what changed underneath, from what it stands for
+        if "source" in el.scene.sources:  # a drawn scene sums up the changes of what each element stands for
             return _sum_edge(el) if el.is_edge else _sum_box(el)
         return None
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """On a change: every node and edge compared between the two sides' maps. On a picture of
-        a commit: nothing changed, so nothing."""
+        """For a change, each node and edge compared between the maps of its two sides. A
+        scene drawn from a change sums those up element by element, and a scene of a single
+        commit has no changes."""
         if not is_change(scene):
             return Overlay.compute_all(self, scene) if "change" in scene.model.meta else {}
         out: dict[Key, dict] = {}
@@ -175,9 +176,9 @@ class Links:
 # ---------- the change in numbers ----------
 
 def describe_change(about: dict, content: Mapping[Key, dict]) -> dict:
-    """What a change says about itself (title, pr, description, base, head, remote, …), with
-    git's totals (files changed, lines added and removed) and the link to it: its model's
-    ``meta["change"]``, which every picture of it carries along."""
+    """The ``meta["change"]`` of a change's model, which scenes drawn from it carry along.
+    It holds what the change says about itself (title, pr, description, base, head, remote,
+    …), git's totals of files changed and lines added and removed, and a link to it."""
     d = dict(about)
     d.update({"base_short": (d.get("base") or "")[:7], "head_short": (d.get("head") or "")[:7], "files_changed": len(content),
               "added": sum(c.get("added", 0) for c in content.values()), "removed": sum(c.get("removed", 0) for c in content.values())})

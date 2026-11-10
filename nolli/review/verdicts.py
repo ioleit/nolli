@@ -198,8 +198,8 @@ class Verdicts(Overlay):
         return dict(out)
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """On the change itself: the verdicts starting at each node, all at once; on a picture
-        of a commit, nothing."""
+        """For the change itself, the verdicts starting at each node. A scene drawn from the
+        change computes them element by element, and a scene of a single commit has none."""
         if "source" in scene.sources:
             return Overlay.compute_all(self, scene) if "change" in scene.model.meta else {}
         return {x: {"starting": vs} for x, vs in self.group(scene).items()}
@@ -242,12 +242,13 @@ def find_box(scene: Scene, x: str) -> str | None:
 
 
 def _land(scene: Scene, v: dict) -> object | None:
-    """Where a verdict is shown in a picture: on the drawn box that stands for its target, or on
-    the drawn edge that carries the edge between its two ends. Roll-up and fan bundling both
-    draw an edge between boxes that contain its ends (a folded box, or the unfolded box a bundle
-    ends at), so that is the drawn edge between the boxes around the two ends, the innermost
-    there is. An edge that fell inside one box lands on that box; one drawn as a badge, on its
-    source."""
+    """The drawn box or edge a verdict is shown on.
+
+    A verdict on a node is shown on the box that stands for the node. A verdict on an edge is
+    shown on the drawn edge between the innermost boxes around its two ends, since roll-up and
+    fan bundling draw an edge between boxes that contain its ends (a folded box, or the
+    unfolded box a bundle ends at). An edge that falls inside one box is shown on that box,
+    and one drawn as a badge on its source."""
     ends = [find_box(scene, x) for x in v["ends"]]
     if not ends or None in ends:
         return None

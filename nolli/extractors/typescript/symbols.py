@@ -167,7 +167,7 @@ def run(ctx: Context) -> None:
     interfaces and type aliases are what Python's data classes are: the shapes modules
     agree on, so they are atoms like classes. Functions are not entities, components
     included: a module's functions and its top-level code are the module's own body, as
-    in Python (the picture is about architecture, not call graphs). A declaration merged
+    in Python (nolli shows architecture, not call graphs). A declaration merged
     from several statements (an interface declared twice, a class and an interface of
     one name) is one entity, at its first statement.
 

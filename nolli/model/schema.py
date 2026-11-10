@@ -48,7 +48,7 @@ class EntityKind(StrEnum):
     PACKAGE = "package"
     GROUP = "group"
     UNRESOLVED = "unresolved"
-    ANCHOR = "anchor"  # a picture's box for a node's own code
+    ANCHOR = "anchor"  # a drawn box for a node's own code
 
 
 SYMBOL_KINDS = (EntityKind.CLASS, EntityKind.INTERFACE, EntityKind.TYPE, EntityKind.ENUM, EntityKind.FUNCTION)  # module-viewtype elements inside a file

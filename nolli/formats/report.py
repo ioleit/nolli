@@ -18,12 +18,12 @@ def _summarize(scene: Scene) -> dict:
     return {"entities": dict(sorted(by_kind.items())), "relations": dict(sorted(rel.items()))}
 
 
-def make_report(scene: Scene, picture: Scene) -> dict:
-    """What a model is, in numbers (``report.json``): its meta, how many nodes and edges of
-    each kind, the default picture's size, the unresolved references, and for a change how
-    many things changed. ``picture``: the scene's default picture, whose size the report gives."""
+def make_report(scene: Scene, drawn: Scene) -> dict:
+    """The ``report.json`` of a model. It holds the model's meta, the number of nodes and
+    edges of each kind, the size of ``drawn``, the scene's default projection, the unresolved
+    references, and for a change how much changed."""
     meta = scene.model.meta
-    p = picture.model.meta["projection"]
+    p = drawn.model.meta["projection"]
     report = {"meta": meta, "summary": _summarize(scene),
               "view": {"visible": p["stats"]["nodes"], "edges": p["stats"]["edges"], "internal": p["internal"],
                        "hidden_relations": p["hidden_relations"], "unresolved": p["unresolved"]},

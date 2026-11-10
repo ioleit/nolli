@@ -26,20 +26,20 @@ def export_scene(scene: Scene) -> dict:
     client can diff two scenes to animate the step between them."""
     meta = scene.model.meta.get("projection", {})
     names = [n for n in SHOWN if n in scene.overlays]
-    said = {n: scene.read_all(n) for n in names}  # each overlay asked about the whole picture once
+    said = {n: scene.read_all(n) for n in names}  # each overlay asked once, for the whole scene
     order = mermaid.list_drawing_order(scene)
     nodes = [{"id": x, "kind": scene.model.entities[x].kind, "parent": scene.model.find_parent(x), **_describe(x, said)} for x in order]
     edges = [{"key": e.format(), "kind": e.kind, "subkind": e.subkind, "src": e.src, "dst": e.dst, **_describe(e, said)}
              for e in scene.model.list_edges()]
     residue = list(meta.get("residue", []))
-    if meta.get("utilities"):  # named as the picture names them
+    if meta.get("utilities"):  # each utility by its label's prose
         residue.append("utilities: " + ", ".join((scene.find_element(u).get("label") or {}).get("prose", u) for u in meta["utilities"]
                                                  if scene.has(u)))
     out = {"format": FORMAT, "state": meta.get("state"), "nodes": nodes, "edges": edges, "groups": meta.get("groups", []),
            "roles": meta.get("roles", []), "residue": residue, "stats": dict(meta.get("stats", {})),
            "overlays": names}
     d = scene.model.meta.get("change")
-    if d:  # a picture of a change: what the change says about itself (``meta["change"]``)
+    if d:  # the scene is drawn from a change
         out["diff"] = {k: d.get(k) for k in ("base", "head", "base_short", "head_short", "remote", "pr", "files_changed", "added",
                                             "removed", "title", "link")}
     return out

@@ -111,8 +111,8 @@ class Element:
 
     @property
     def meta(self) -> dict:
-        """What the element's model says about itself (a change's ``meta["change"]``, a picture's
-        ``meta["projection"]``)."""
+        """The meta of the element's model, such as a change's ``meta["change"]`` or a
+        projection's ``meta["projection"]``."""
         return self._scene.model.meta
 
     def find_holder(self, key: Key, role: str = "source") -> Element | None:
