@@ -137,7 +137,7 @@ def _leaf_count(g: Reading, x: str) -> int:
     return n
 
 
-def fold(st: ProjectionSpec) -> Callable[[Scene], tuple[Model, FixedOverlay]]:
+def fold(st: ProjectionSpec) -> Callable[[Scene], Scene]:
     """The projection as a transformation: what ``st`` asks for, of the scene it is given.
 
     The nodes are filtered by ``st``, contracted onto the cut through the containment tree
@@ -151,10 +151,14 @@ def fold(st: ProjectionSpec) -> Callable[[Scene], tuple[Model, FixedOverlay]]:
     containers, which lines were lifted, utilities drawn as badges, deployment chips, how the
     drawn edges count. The model's ``meta["projection"]`` keeps the state, the drawing
     order, the filter's groups and roles, and what was left out (``residue``)."""
-    return lambda scene: _fold_model(scene, st)
+    def make(scene: Scene) -> Scene:
+        model, refs, decided = _fold_model(scene, st)
+        return Scene(model, [decided], {"source": scene}, {"source": refs})
+
+    return make
 
 
-def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
+def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tuple[Key, ...]], FixedOverlay]:
     """The folded model: its nodes the boxes drawn, each keeping its address and referring to
     what it stands for, its edges the lines drawn, each referring to the edges it bundles; and
     the projection's overlay, what it decided about them."""
@@ -294,5 +298,5 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
                            "internal": dict(rolled.internal), "hidden_relations": rolled.hidden_relations,
                            "unresolved": dict(rolled.unresolved)}}
     key = StringKey("project:" + hashlib.sha1(f"{scene.model.key.format_key()}|{sorted(state.items())}".encode()).hexdigest()[:16])
-    model = Model(key, entities, [*contain, *keys], refs={"source": {k: tuple(v) for k, v in refs.items()}}, meta=meta, check=False)
-    return model, FixedOverlay("projection", values)
+    model = Model(key, entities, [*contain, *keys], meta=meta, check=False)
+    return model, {k: tuple(v) for k, v in refs.items()}, FixedOverlay("projection", values)

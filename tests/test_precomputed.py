@@ -11,7 +11,7 @@ import pytest
 from nolli import transformations
 from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Model, Relation
-from nolli.model.scene import Element, FixedOverlay, Overlay
+from nolli.model.scene import Element, FixedOverlay, Overlay, Scene
 from nolli.model.schema import RelationKind
 from nolli.store import MemoryMaps, PrecomputedOverlay, SourceElementOverlay
 from nolli.transformations import projection
@@ -55,7 +55,7 @@ def propose(scene):
     entities = [*m.entities.values(), Entity("repo:src", "directory")]
     edges = [e for e in m.edges if e != Relation(RelationKind.CONTAIN, "repo:", "repo:pkg")]
     edges += [Relation(RelationKind.CONTAIN, "repo:", "repo:src"), Relation(RelationKind.CONTAIN, "repo:src", "repo:pkg")]
-    return Model(StringKey(f"{m.key.format_key()}|src"), entities, edges, refs={"source": None})
+    return Scene(Model(StringKey(f"{m.key.format_key()}|src"), entities, edges), [], {"source": scene}, {"source": None})
 
 
 def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):

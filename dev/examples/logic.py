@@ -25,7 +25,7 @@ repo = Path(sys.argv[1])
 scene = scenes.open_built(*build.extract(repo))                     # the files as they are, with nolli's overlays
 
 
-def group_into_logic(scene: Scene) -> Model:                        # the custom transformation
+def group_into_logic(scene: Scene) -> Scene:                        # the custom transformation
     """The same model with one more directory, logic/ under nolli/, holding the four packages
     in place of nolli/ itself. Every node and edge keeps its address, so it is its namesake's
     in the source and what extraction said about it holds; logic/ is new and nothing is known
@@ -36,7 +36,8 @@ def group_into_logic(scene: Scene) -> Model:                        # the custom
     edges = [e for e in m.edges if e not in moved]
     edges.append(Relation(RelationKind.CONTAIN, NOLLI, LOGIC))
     edges.extend(Relation(RelationKind.CONTAIN, LOGIC, x) for x in MEMBERS)
-    return Model(StringKey(f"{m.key.format_key()}|logic"), entities, edges, refs={"source": None})   # each entity and relation checked
+    model = Model(StringKey(f"{m.key.format_key()}|logic"), entities, edges)   # each entity and relation checked
+    return Scene(model, [], {"source": scene}, {"source": None})     # each element its namesake in the source
 
 
 proposal = transformations.apply(scene, group_into_logic)
@@ -46,9 +47,9 @@ spec = projection.ProjectionSpec.expanded_if(lambda el: el.key in (EntityId.REPO
 folded = transformations.apply(proposal, projection.fold(spec))
 
 
-def inside_nolli(folded: Scene) -> Model:
+def inside_nolli(folded: Scene) -> Scene:
     """nolli/ and what is drawn in it, nothing else of the repository."""
-    return select(folded.model, {NOLLI, *folded.model.iter_descendants(NOLLI)})
+    return select(folded, {NOLLI, *folded.model.iter_descendants(NOLLI)})
 
 
 print(mermaid.render(transformations.apply(folded, inside_nolli)))

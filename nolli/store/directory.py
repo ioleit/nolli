@@ -227,12 +227,8 @@ class DirectoryMaps:
 
 
 def _dump_model(model: Model) -> dict:
-    """A model's ``model.json`` form: its structure, without ``refs``. What a model made from
-    others refers to is the transformation's to say when it makes the scene (``merge.union``
-    for a kept change); one that refers to its sources element by element (a picture) is
-    made again from them, not written."""
-    if any(v is not None for v in model.refs.values()):
-        raise ValueError("a model that refers to its sources element by element is made again from them, not saved")
+    """A model's ``model.json`` form: its structure. What a model made from others stands for
+    there is its scene's, said again when the scene is made (``merge.union`` for a kept change)."""
     return {"format": MODEL_FORMAT, "key": model.key.format_key(), "meta": model.meta,
             "nodes": {x: model.entities[x].kind for x in sorted(model.entities)},
             "edges": [[e.kind, e.src, e.dst, e.subkind] for e in model.edges]}

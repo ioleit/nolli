@@ -8,7 +8,6 @@ from pathlib import Path
 
 from nolli import build, scenes, transformations
 from nolli.formats import mermaid
-from nolli.model.model import Model
 from nolli.model.scene import Element, Scene
 from nolli.transformations import projection
 from nolli.transformations.select import select
@@ -37,13 +36,13 @@ def reach(froms, step):
     return seen
 
 
-def on_paths(folded: Scene) -> Model:                               # the custom transformation
+def on_paths(folded: Scene) -> Scene:                               # the custom transformation
     """The boxes on a path from datasets.py to store/, and the boxes they are drawn in."""
     m = folded.model
     down = reach(["repo:nolli/datasets.py"], lambda x: [e.dst for e in m.list_out(x)])
     up = reach([x for x in m.entities if x.startswith("repo:nolli/store")], lambda x: [e.src for e in m.list_in(x)])
     keep = down & up
-    return select(m, keep | {p for x in keep for p in m.iter_ancestors(x)})
+    return select(folded, keep | {p for x in keep for p in m.iter_ancestors(x)})
 
 
 print(mermaid.render(transformations.apply(folded, on_paths)))

@@ -189,29 +189,46 @@ class Element:
         return f"Element({self.id!r} in {self.model_key!r})"
 
 
+Refs = dict[str, dict[Key, tuple[Key, ...]] | None]  # role -> element -> the elements of that source it stands for
+
+
 class Scene:
     """A model, the overlays that apply to it, and the scenes its references point into
     (``sources``, by role).
+
+    A scene made from others (by a transformation: a change, a projection) says by ``refs``,
+    for each role of ``sources``, what each of its elements stands for there: the elements
+    of that source by key, or None when each element stands for its namesake (a change's
+    sides). It has its sources' overlays (an overlay of its own of the same name replaces
+    one of theirs), and its model's ``meta`` has theirs under its own.
 
     It hands out elements. An element asks an overlay through it (``get``); once an overlay
     has answered for the whole model (``read_all``), the scene keeps that and answers elements
     from it. An overlay asking for itself about the same element raises ``OverlayCycle``
     rather than loop."""
 
-    def __init__(self, model: Model, overlays: Iterable[Overlay], sources: Mapping[str, Scene] | None = None) -> None:
+    def __init__(self, model: Model, overlays: Iterable[Overlay], sources: Mapping[str, Scene] | None = None,
+                 refs: Refs | None = None) -> None:
+        self.sources = dict(sources or {})
+        self.refs: Refs = dict(refs or {})
+        if self.refs.keys() != self.sources.keys():
+            raise ValueError(f"refs for roles {sorted(self.refs)}, sources of roles {sorted(self.sources)}")
+        meta: dict = {}
+        for s in self.sources.values():
+            meta.update(s.model.meta)
+        model.meta = {**meta, **model.meta}
         self.model = model
         self.overlays: dict[str, Overlay] = {}
-        for o in overlays:
+        for o in [o for s in self.sources.values() for o in s.overlays.values()] + list(overlays):
             self.overlays[o.name] = o
-        self.sources = dict(sources or {})
         self._elements: dict[Key, Element] = {}
         self._whole: dict[str, Mapping[Key, dict]] = {}  # what an overlay said about the whole model, by overlay name
         self._holders: dict[str, dict[Key, Key]] = {}  # by role: a source's key -> the element here that refers to it
         self._busy: set[tuple[str, Key]] = set()  # (overlay, key) being computed, to catch a cycle
 
     def with_overlays(self, *more: Overlay) -> Scene:
-        """The same model and sources with more overlays (one of the same name replaces it)."""
-        return Scene(self.model, [*self.overlays.values(), *more], self.sources)
+        """The same model, sources and refs with more overlays (one of the same name replaces it)."""
+        return Scene(self.model, [*self.overlays.values(), *more], self.sources, self.refs)
 
     def has(self, key: Key) -> bool:
         return self.model.has(key)
@@ -237,10 +254,10 @@ class Scene:
         return [self.find_element(x) for x in self.model.list_roots()]
 
     def list_refs(self, role: str, key: Key) -> tuple[Key, ...]:
-        refs = self.model.refs.get(role)
-        if refs is None:  # the same key on that side (a change's sides)
-            return (key,) if role in self.model.refs else ()
-        return refs.get(key, ())
+        if role not in self.refs:
+            return ()
+        refs = self.refs[role]
+        return (key,) if refs is None else refs.get(key, ())  # None: its namesake (a change's sides)
 
     def find_holder(self, key: Key, role: str = "source") -> Key | None:
         """The key of the element that refers to ``key`` of its ``role`` source (the innermost,
@@ -248,7 +265,7 @@ class Scene:
         held = self._holders.get(role)
         if held is None:
             held = self._holders[role] = {}
-            for k, ks in (self.model.refs.get(role) or {}).items():
+            for k, ks in (self.refs.get(role) or {}).items():
                 for x in ks:
                     held[x] = k
         return held.get(key)

@@ -7,7 +7,7 @@ whole in the change's totals and its links on GitHub.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from nolli.model import schema, vocabulary
 from nolli.model.keys import ModelKey
@@ -291,26 +291,26 @@ class SidesSaid(Overlay):
 
 
 def merge_models(key: ModelKey, base: Model, head: Model, meta: dict | None = None) -> Model:
-    """The model holding every node and edge of either side, each referring to its namesake on
-    each side (``refs``). Same address, same thing: a node or edge is the same on both sides
+    """The model holding every node and edge of either side, each standing for its namesake on
+    each side (``union`` says so). Same address, same thing: a node or edge is the same on both sides
     when its address is; a node owned on both sides is owned as head has it."""
     entities = {**base.entities, **head.entities}
     owned = {e.dst for e in head.edges if e.kind == RelationKind.CONTAIN}
     edges = list(head.edges) + [e for e in base.edges if not (e.kind == RelationKind.CONTAIN and e.dst in owned)]
-    return Model(key, entities.values(), edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
+    return Model(key, entities.values(), edges, meta=dict(meta or {}), check=False)
 
 
-def union(key: ModelKey, meta: dict | None = None, kept: Model | None = None):
-    """Merge as a transformation: of two scenes by role (``base``, ``head``), the merged model
-    (``merge_models``, or ``kept``: the same as it was kept at diff time, with ``meta`` on top
-    and referring to its namesakes on the sides as ``merge_models`` does),
-    and what extraction said about it on the sides as the change's (``SidesSaid``, one per
-    shape)."""
-    def make(sides: dict[str, Scene]) -> tuple[Model, list[Overlay]]:
+def union(key: ModelKey, meta: dict | None = None, kept: Model | None = None) -> Callable[[Mapping[str, Scene]], Scene]:
+    """Merge as a transformation: of two scenes by role (``base``, ``head``), the scene of the
+    merged model (``merge_models``, or ``kept``: the same as it was kept at diff time, with
+    ``meta`` on top), each element standing for its namesake on each side, and what
+    extraction said about it on the sides as the change's (``SidesSaid``, one per shape)."""
+    def make(sides: Mapping[str, Scene]) -> Scene:
         if kept is None:
-            return merge_models(key, sides["base"].model, sides["head"].model, meta), [SidesSaid(n) for n in vocabulary.SHAPES]
-        kept.meta = {**kept.meta, **(meta or {})}
-        kept.refs = dict.fromkeys(sides)  # each node its namesake on each side, as merge_models has it
-        return kept, [SidesSaid(n) for n in vocabulary.SHAPES]
+            model = merge_models(key, sides["base"].model, sides["head"].model, meta)
+        else:
+            model = kept
+            model.meta = {**model.meta, **(meta or {})}
+        return Scene(model, [SidesSaid(n) for n in vocabulary.SHAPES], sides, dict.fromkeys(sides))
 
     return make

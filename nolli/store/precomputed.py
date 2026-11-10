@@ -157,7 +157,7 @@ class OverlayStore:
     def load_model(self, key) -> Model | None:  # the store's own, by its kind of key
         raise NotImplementedError
 
-    def open_scene(self, key, overlays: Iterable[Overlay] = (), sources: Mapping[str, Scene] | None = None) -> Scene | None:
+    def open_scene(self, key, overlays: Iterable[Overlay] = ()) -> Scene | None:
         """A kept model as a scene, None if the store does not have it: each of ``overlays`` as
         a caching overlay, and every other map kept for the model as strictly precomputed."""
         model = self.load_model(key)
@@ -166,7 +166,7 @@ class OverlayStore:
         own = [self.caching_overlay(o) for o in overlays]
         named = {o.name for o in own}
         kept = [self.strictly_precomputed_overlay(n) for n in self.list_map_names(model.key.format_key()) if n not in named]
-        return Scene(model, [*kept, *own], sources)
+        return Scene(model, [*kept, *own])
 
     def save_scene(self, scene: Scene, by: dict | None = None) -> None:
         """Keep the scene's model (``save_model``) and what every overlay on it says about it."""

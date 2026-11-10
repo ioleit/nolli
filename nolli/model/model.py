@@ -66,22 +66,20 @@ Key = EntityId | Relation  # a node's address, or an edge's
 
 
 class Model:
-    """Structure: ``entities`` (by address), ``edges`` (relations), and for a model made
-    by a transformation (a change, a projection) ``refs`` (role -> element -> the elements of
-    that source it stands for). ``contain`` edges form the ownership tree. ``key`` names the
-    model (what it is the model of, a ``ModelKey``); its maps are kept by its text (``format_key``).
+    """Structure: ``entities`` (by address) and ``edges`` (relations). ``contain`` edges form
+    the ownership tree; what a model made from others stands for there is its scene's
+    (``Scene.refs``). ``key`` names the model (what it is the model of, a ``ModelKey``); its
+    maps are kept by its text (``format_key``).
 
     Everything else known about a node or an edge (its name, size, role, a docstring, which
     lines an import is on, a review's verdict) is in overlays, never in the model. Unless
     ``check`` is False, every edge's ends must be among its entities."""
 
     def __init__(self, key: ModelKey = StringKey(), entities: Iterable[Entity] = (), edges: Iterable[Relation] = (),
-                 refs: dict[str, dict[Key, tuple[Key, ...]]] | None = None, meta: dict | None = None,
-                 check: bool = True) -> None:
+                 meta: dict | None = None, check: bool = True) -> None:
         self.key = key
         self.entities: dict[EntityId, Entity] = {x.id: x for x in entities}
         self.edges: list[Relation] = sorted(set(edges))
-        self.refs = refs or {}
         self.meta: dict = meta or {}
         self._edge_set = set(self.edges)
         parent: dict[str, str] = {}
