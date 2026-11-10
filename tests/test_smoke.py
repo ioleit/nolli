@@ -13,9 +13,16 @@ from pathlib import Path
 
 import pytest
 
-from nolli.build import extract
-from nolli.rollup import hidden_by_role, image_aliases, lift, rollup
-from nolli.view import default_view
+from helpers import draw, find_node, open_dir
+from nolli.model.keys import StringKey
+from nolli.build import _extract_facts
+
+from nolli.transformations.reading import Reading as Graph
+from nolli import transformations
+from nolli.transformations import projection
+from nolli.transformations.projection import ProjectionSpec
+from nolli.transformations.rollup import hidden_by_role, image_aliases, lift, rollup
+from nolli.transformations.unfold import find_default_cut
 
 FILES = {
     "backend/__init__.py": "",
@@ -67,7 +74,7 @@ def rel_set(m, kind, subkind=None):
 
 
 def test_model_binds_the_seams(repo: Path):
-    m, ctx = extract(repo)
+    m = _extract_facts(repo)
     uses = rel_set(m, "use")
     # imports resolve inside the repo, relative and absolute; Python references bind at
     # symbol level (module-level code -> a module variable stays at file level)
@@ -105,11 +112,11 @@ def test_model_binds_the_seams(repo: Path):
 
 
 def test_default_cut_lifts_frontend_to_backend(repo: Path):
-    m, _ = extract(repo)
-    view = default_view(m, budget=12)
-    hidden = hidden_by_role(m) | set(image_aliases(m))
-    rolled = rollup(m, set(view["visible"]), hidden, shown_groups={"api:"})
-    rolled.edges = lift(m, rolled.edges, set(view["expanded"]))
+    g = Graph(open_dir(repo))
+    view = find_default_cut(g, budget=12)
+    hidden = hidden_by_role(g) | set(image_aliases(g))
+    rolled = rollup(g, set(view["visible"]), hidden, shown_groups={"api:"})
+    rolled.edges = lift(g, rolled.edges, set(view["expanded"]))
     calls = [e for e in rolled.edges if e.subkind == "http"]
     assert calls, "frontend -> APIs edge"
     assert all(e.src.startswith("repo:frontend") and e.dst == "api:" for e in calls)
@@ -124,10 +131,8 @@ def test_default_cut_lifts_frontend_to_backend(repo: Path):
 def test_scene_of_default_cut(repo: Path):
     """The scene the viewer draws: stable ids, every node's parent drawn before it, edges
     between drawn nodes, and a state the client can send back unchanged."""
-    from nolli.scene import SceneState, scene
-
-    m, _ = extract(repo)
-    sc = scene(m, SceneState(budget=12))
+    scene = open_dir(repo)
+    sc = draw(scene, budget=12)
     ids = [n["id"] for n in sc["nodes"]]
     assert len(ids) == len(set(ids))
     seen: set[str] = set()
@@ -136,60 +141,55 @@ def test_scene_of_default_cut(repo: Path):
         seen.add(n["id"])
     assert all(e["src"] in seen and e["dst"] in seen for e in sc["edges"])
     assert len({e["key"] for e in sc["edges"]}) == len(sc["edges"])
-    assert any(e["style"] == "http" for e in sc["edges"])
-    again = scene(m, SceneState(expanded=sc["state"]["expanded"], budget=12))
+    assert any(e["projection"]["style"] == "http" for e in sc["edges"])
+    again = draw(scene, expanded=sc["state"]["expanded"], budget=12)
     assert again["nodes"] == sc["nodes"] and again["edges"] == sc["edges"]
 
 
 def test_folding_drops_what_was_unfolded_inside(repo: Path):
-    from nolli.scene import SceneState, scene
-
-    m, _ = extract(repo)
-    inner = SceneState(expanded=["repo:", "repo:backend", "repo:backend/store.py"])
-    assert "repo:backend/store.py" in scene(m, inner)["state"]["expanded"]
-    folded = scene(m, SceneState(expanded=["repo:", "repo:backend/store.py"]))
+    scene = open_dir(repo)
+    inner = draw(scene, expanded=["repo:", "repo:backend", "repo:backend/store.py"])
+    assert "repo:backend/store.py" in inner["state"]["expanded"]
+    folded = draw(scene, expanded=["repo:", "repo:backend/store.py"])
     assert folded["state"]["expanded"] == ["repo:"]
 
 
 def test_hover_descriptions(repo: Path):
     """Every drawn box and edge describes itself in plain sentences, with the data set apart."""
-    from nolli.scene import SceneState, scene
-
-    m, _ = extract(repo)
+    scene = open_dir(repo)
     text = lambda line: line.replace("`", "")  # noqa: E731
-    sc = scene(m, SceneState(budget=12))
+    info = lambda item: item["hover"]["text"]  # noqa: E731
+    sc = draw(scene, budget=12)
     for item in sc["nodes"] + sc["edges"]:
-        assert item["info"], item.get("id") or item.get("key")
-        assert isinstance(item["info"], str)
-        assert not any(t in text(item["info"]) for t in ("fs:", "py:", "svc ", "img ")), item["info"]
-    http = next(e for e in sc["edges"] if e["style"] == "http")
-    assert "to endpoints served by" in text(http["info"])
+        assert info(item), item.get("id") or item.get("key")
+        assert isinstance(info(item), str)
+        assert not any(t in text(info(item)) for t in ("fs:", "py:", "svc ", "img ")), info(item)
+    http = next(e for e in sc["edges"] if e["projection"]["style"] == "http")
+    assert "to endpoints served by" in text(info(http))
     # with the APIs group hidden, calls are in the caller's hover text, not edges
-    folded = scene(m, SceneState(budget=12, groups=[]))
-    assert not any(e["style"] == "http" for e in folded["edges"])
-    app = next(n for n in folded["nodes"] if n["id"] == "repo:frontend/src/App.tsx")
-    assert "Calls 1 HTTP endpoint" in text(app["info"]).split("\n\n")
+    folded = draw(scene, budget=12, groups=[])
+    assert not any(e["projection"]["style"] == "http" for e in folded["edges"])
+    app = find_node(folded, "repo:frontend/src/App.tsx")
+    assert "Calls 1 HTTP endpoint" in text(info(app)).split("\n\n")
     # a Python reference edge names what it uses ("api/ references Store in store")
-    imp = next(e for e in sc["edges"] if e["style"] == "import" and " references " in text(e["info"]))
-    assert "`Store`" in imp["info"], imp["info"]
+    imp = next(e for e in sc["edges"] if e["projection"]["style"] == "import" and " references " in text(info(e)))
+    assert "`Store`" in info(imp), info(imp)
 
 
 def test_groups_are_a_filter(repo: Path):
     """A shown group is a box like any other (edges attach to it, it unfolds); a group the
     filter hides is not drawn, its edges are badges, and it can't be unfolded."""
-    from nolli.scene import SceneState, scene
-
-    m, _ = extract(repo)
-    shown = scene(m, SceneState(budget=12, groups=["api:"]))
-    apis = next(n for n in shown["nodes"] if n["id"] == "api:")
-    assert apis["foldable"] and not apis["container"]
+    scene = open_dir(repo)
+    shown = draw(scene, budget=12, groups=["api:"])
+    apis = find_node(shown, "api:")
+    assert apis["projection"]["foldable"] and not apis["projection"]["container"]
     assert any("api:" in (e["src"], e["dst"]) for e in shown["edges"])
     assert {g["id"]: g["shown"] for g in shown["groups"]}["api:"] is True
 
-    opened = scene(m, SceneState(expanded=shown["state"]["expanded"] + ["api:"], groups=["api:"]))
+    opened = draw(scene, expanded=shown["state"]["expanded"] + ["api:"], groups=["api:"])
     assert any(n["parent"] == "api:" for n in opened["nodes"])
 
-    hidden = scene(m, SceneState(expanded=shown["state"]["expanded"] + ["api:"], groups=[]))
+    hidden = draw(scene, expanded=shown["state"]["expanded"] + ["api:"], groups=[])
     assert "api:" not in hidden["state"]["expanded"]
     assert all(n["id"] != "api:" and n["parent"] != "api:" for n in hidden["nodes"])
     assert not any(n["id"] in ("config:", "runtime:") for n in hidden["nodes"])  # env set by deployment: both hidden, no edge
@@ -198,58 +198,56 @@ def test_groups_are_a_filter(repo: Path):
 def test_utilities_by_incoming_edges(repo: Path):
     """A box with more than N incoming dependency edges is a utility: its incoming edges
     become badges on their sources. Boxes in groups never are."""
-    from nolli.model import USE
-    from nolli.rollup import utility_badges
-    from nolli.scene import SceneState, compute
+    from nolli.model.schema import RelationKind
+    from nolli.transformations.projection import _cut
+    from nolli.transformations.rollup import utility_badges
 
-    m, _ = extract(repo)
-    _x, _h, _v, rolled, _u = compute(m, SceneState(utilities=0))
+    scene = open_dir(repo)
+    g = Graph(scene)
+    rolled = _cut(Graph(scene), ProjectionSpec(utilities=0)).rolled
     before = list(rolled.edges)
-    utilities = utility_badges(m, rolled, min_in=0)  # every used box outside a group
-    targets = {e.dst for e in before if e.kind == USE}
+    utilities = utility_badges(g, rolled, min_in=0)  # every used box outside a group
+    targets = {e.dst for e in before if e.kind == RelationKind.USE}
     assert utilities == {t for t in targets if t != "api:"}
-    assert not any(e.kind == USE and e.dst in utilities for e in rolled.edges)
-    src = next(e.src for e in before if e.kind == USE and e.dst in utilities)
+    assert not any(e.kind == RelationKind.USE and e.dst in utilities for e in rolled.edges)
+    src = next(e.src for e in before if e.kind == RelationKind.USE and e.dst in utilities)
     assert any(k.startswith("util:") for k in rolled.annotations[src])
-    _x, _h, _v, rolled, _u = compute(m, SceneState(utilities=0))
-    assert utility_badges(m, rolled, min_in=1) == set()  # nothing has more than one
+    rolled = _cut(Graph(scene), ProjectionSpec(utilities=0)).rolled
+    assert utility_badges(g, rolled, min_in=1) == set()  # nothing has more than one
 
 
 def test_folder_text_matches_unfolding(repo: Path):
     """A folder's sentence counts exactly the boxes that unfolding then draws, and modules
     report their lines (from the Python front-end's describe module)."""
     import re
-    from nolli.scene import SceneState, scene
 
-    m, _ = extract(repo)
+    scene = open_dir(repo)
     text = lambda line: line.replace("`", "")  # noqa: E731
-    before = scene(m, SceneState(expanded=["repo:"]))
-    backend = next(n for n in before["nodes"] if n["id"] == "repo:backend")
-    said = text(backend["info"].split("\n\n")[0])
+    before = draw(scene, expanded=["repo:"])
+    backend = find_node(before, "repo:backend")
+    said = text(backend["hover"]["text"].split("\n\n")[0])
     assert said.startswith("backend/ is a Python package with "), said
     promised = sum(int(n) for n in re.findall(r"(\d+) ", said))
-    after = scene(m, SceneState(expanded=["repo:", "repo:backend"]))
+    after = draw(scene, expanded=["repo:", "repo:backend"])
     drawn = [n for n in after["nodes"] if n["parent"] == "repo:backend" and n["kind"] != "anchor"]
     assert promised == len(drawn), (said, [n["id"] for n in drawn])
-    store = next(n for n in after["nodes"] if n["id"] == "repo:backend/store.py")
-    assert re.search(r"is a Python module with \d+ lines? and 1 class", text(store["info"])), store["info"]
-    assert not any("pkgs" in (n.get("badge") or "") for n in after["nodes"])  # dependencies are in the text, not on the box
+    store = find_node(after, "repo:backend/store.py")
+    assert re.search(r"is a Python module with \d+ lines? and 1 class", text(store["hover"]["text"])), store["hover"]["text"]
+    assert not any("pkgs" in (n.get("projection", {}).get("badge") or "") for n in after["nodes"])  # dependencies are in the text, not on the box
 
 
 def test_docstrings(tmp_path: Path):
     """Module, class and package docstrings are read from the syntax tree, not imported,
     and shown as their own line."""
-    from nolli.scene import SceneState, scene
-
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg/__init__.py").write_text('"""Tools for frobbing.\n\nLong details nobody reads."""\n')
     (tmp_path / "pkg/core.py").write_text('"""The core frobber."""\nimport sys\nsys.exit("must not run")\n\n'
                                           'class Frob:\n    """Frobs one thing at a time."""\n')
-    m, _ = extract(tmp_path)
+    m = _extract_facts(tmp_path)
     assert m.entities["repo:pkg/core.py"].attrs["doc"] == "The core frobber."
     assert m.entities["repo:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
-    sc = scene(m, SceneState(expanded=["repo:", "repo:pkg", "repo:pkg/core.py"]))
-    docs = {n["id"]: [p[2:].replace("\\", "") for p in n["info"].split("\n\n") if p.startswith("> ")] for n in sc["nodes"]}
+    sc = draw(open_dir(tmp_path), expanded=["repo:", "repo:pkg", "repo:pkg/core.py"])
+    docs = {n["id"]: [p[2:].replace("\\", "") for p in n["hover"]["text"].split("\n\n") if p.startswith("> ")] for n in sc["nodes"]}
     assert docs["repo:pkg"] == ["Tools for frobbing."]  # first paragraph only
     assert docs["repo:pkg/core.py#Frob"] == ["Frobs one thing at a time."]
 
@@ -257,20 +255,18 @@ def test_docstrings(tmp_path: Path):
 def test_own_code_dot(tmp_path: Path):
     """A module's own-code dot names its functions (most referenced first) and constants;
     a package's names what its __init__.py defines and re-exports."""
-    from nolli.scene import SceneState, scene
-
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg/__init__.py").write_text("from .core import Frob, frob\n\ndef setup():\n    return Frob()\n")
     (tmp_path / "pkg/core.py").write_text("LIMIT = 3\n\ndef helper():\n    pass\n\ndef frob():\n    return Frob()\n\n"
                                           "class Frob:\n    def go(self):\n        return frob()\n")
     (tmp_path / "pkg/use.py").write_text("from .core import frob\nfrob(); frob()\n")
-    m, _ = extract(tmp_path)
+    m = _extract_facts(tmp_path)
     core = m.entities["repo:pkg/core.py"].attrs
     assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
     assert m.entities["repo:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
-    sc = scene(m, SceneState(expanded=["repo:", "repo:pkg", "repo:pkg/core.py"]))
+    sc = draw(open_dir(tmp_path), expanded=["repo:", "repo:pkg", "repo:pkg/core.py"])
     text = lambda line: line.replace("`", "")  # noqa: E731
-    info = {n["id"]: text(n["info"]).split("\n\n") for n in sc["nodes"]}
+    info = {n["id"]: text(n["hover"]["text"]).split("\n\n") for n in sc["nodes"]}
     assert info["repo:pkg/core.py#"][0] == "core defines frob and helper"  # frob is referenced, helper not
     assert "the constant LIMIT" in info["repo:pkg/core.py#"][1]
     assert any("re-exports Frob and frob" in t for t in info.get("repo:pkg#", [])) or "repo:pkg#" not in info
@@ -278,27 +274,24 @@ def test_own_code_dot(tmp_path: Path):
 
 def test_directory_with_source_inside_stays_shown():
     """A directory whose bytes are mostly config is still drawn when it holds source files."""
-    from nolli.model import Entity, Model, Provenance
-    from nolli.rollup import hidden_by_role
+    from nolli.scenes import open_built
+    from nolli.extractors.facts import EntityFact, Facts, Provenance
 
-    m = Model()
+    m = Facts()
     for eid, kind, role in [("repo:", "directory", "mixed"), ("repo:evals", "directory", "config"), ("repo:evals/probe.py", "file", "source"),
                             ("repo:evals/runs.json", "file", "config"), ("repo:docs", "directory", "docs"), ("repo:docs/a.md", "file", "docs")]:
-        m.add_entity(Entity(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("t")))
+        m.add_entity(EntityFact(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("fs")))
     for parent, child in [("repo:", "repo:evals"), ("repo:evals", "repo:evals/probe.py"), ("repo:evals", "repo:evals/runs.json"), ("repo:", "repo:docs"), ("repo:docs", "repo:docs/a.md")]:
-        m.contain(parent, child, "t")
-    assert hidden_by_role(m) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
+        m.contain(parent, child, "fs")
+    assert hidden_by_role(Graph(open_built(*m.split(StringKey("test@0"))))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
 
 
 def test_box_names_are_icons_then_a_name(repo: Path):
     """Every box: small icons saying what it is, then a readable name."""
-    from nolli.scene import SceneState, scene
-
-    m, _ = extract(repo)
     app = "api:http:backend/main.py:app"
     worlds = app + "/api/worlds"
-    sc = scene(m, SceneState(expanded=["repo:", "repo:backend", "api:", app, worlds], groups=["api:"]))
-    names = {n["id"]: (n["icons"], n["label"]) for n in sc["nodes"] if "icons" in n}
+    sc = draw(open_dir(repo), expanded=["repo:", "repo:backend", "api:", app, worlds], groups=["api:"])
+    names = {n["id"]: (n["label"]["icons"], n["label"]["text"]) for n in sc["nodes"] if "label" in n}
     assert names["repo:backend/store.py"] == (["m"], "store")
     assert names[app] == (["API"], "backend")
     assert names[worlds] == (["/"], "api/worlds")
@@ -308,11 +301,11 @@ def test_box_names_are_icons_then_a_name(repo: Path):
 
 def test_markdown_from_repository_text():
     """Names and docstrings from a repository can't turn into Markdown (prose.py)."""
-    from nolli.prose import code, esc, quote, say
+    from nolli.formats.descriptions.prose import code, _esc, quote, say
 
     assert say("{} references {} in {}", "api/", "1 name", "lib/") == "`api/` references `1 name` in `lib/`"
     assert code("a`b") == "``a`b``" and code("`x`") == "`` `x` ``"
-    assert esc("__init__.py *[x](y)*") == r"\_\_init\_\_.py \*\[x\](y)\*"
+    assert _esc("__init__.py *[x](y)*") == r"\_\_init\_\_.py \*\[x\](y)\*"
     assert quote("The core\n  frobber.") == "> The core frobber."
     # a docstring's own code spans stay, backslashes and all; the rest is text
     assert quote("Used by ``nolli/cli.py`` and `a_b`, not *this* or ` alone") == r"> Used by ``nolli/cli.py`` and `a_b`, not \*this\* or \` alone"
@@ -324,14 +317,16 @@ def test_mermaid_draws_the_scene(repo: Path):
     canvas, not a subgraph."""
     import re
 
-    from nolli.mermaid import nid, render
-    from nolli.scene import SceneState, scene
+    from nolli.formats.mermaid import make_node_id as nid
+    from nolli.formats.mermaid import render
+    from nolli.formats.viewer import export_scene
 
-    m, _ = extract(repo)
-    for st in (SceneState(budget=12), SceneState(preset="folded"), SceneState(preset="unfolded"),
-               SceneState(expanded=["repo:", "repo:backend"])):
-        sc = scene(m, st)
-        text = render(sc)
+    scene = open_dir(repo)
+    for st in (ProjectionSpec(budget=12), ProjectionSpec(preset="folded"), ProjectionSpec(preset="unfolded"),
+               ProjectionSpec(expanded=["repo:", "repo:backend"])):
+        projected = transformations.apply(scene, projection.fold(st))
+        sc = export_scene(projected)
+        text = render(projected)
         boxes = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+?)(?:_g)? ?[\[(]", line))}
         assert boxes == {nid(n["id"]) for n in sc["nodes"]}
         edges = [line for line in text.splitlines() if re.match(r"\s*n_\w+ (?:-->|-\.->|==>)", line)]
@@ -341,29 +336,31 @@ def test_mermaid_draws_the_scene(repo: Path):
 
 def test_presets(repo: Path):
     """A preset names a cut; the scene says which one gave it, and none once boxes are given."""
-    from nolli.scene import SceneState, scene, state_from_query
+    from nolli.formats.viewer import export_scene
+    from nolli.server.serve import parse_spec
 
-    m, _ = extract(repo)
-    folded = scene(m, state_from_query({"p": "folded"}))
+    scene = open_dir(repo)
+    folded = export_scene(transformations.apply(scene, projection.fold(parse_spec({"p": "folded"}))))
     assert folded["state"]["expanded"] == ["repo:"] and folded["state"]["preset"] == "folded"
-    unfolded = scene(m, SceneState(preset="unfolded"))
+    unfolded = draw(scene, preset="unfolded")
     assert {"repo:backend", "repo:backend/api"} <= set(unfolded["state"]["expanded"])
-    assert scene(m, SceneState(preset="changes"))["state"]["preset"] == "default"  # not a change's dataset
-    assert scene(m, state_from_query({"p": "folded", "x": "repo:,repo:backend"}))["state"]["preset"] is None
+    assert draw(scene, preset="changes")["state"]["preset"] == "default"  # not a change's dataset
+    assert export_scene(transformations.apply(scene, projection.fold(parse_spec({"p": "folded", "x": "repo:,repo:backend"}))))["state"]["preset"] is None
 
 
 def test_mermaid_ids(repo: Path):
     """The id map sent with the Mermaid text names every box drawn, by the id the text uses."""
     import re
 
-    from nolli.mermaid import ids, render
-    from nolli.scene import SceneState, scene
+    from nolli.formats.mermaid import list_ids, render
+    from nolli.formats.viewer import export_scene
 
-    m, _ = extract(repo)
-    sc = scene(m, SceneState(expanded=["repo:", "repo:backend"]))
-    text = render(sc)
+    projected = transformations.apply(open_dir(repo), projection.fold(ProjectionSpec(expanded=["repo:", "repo:backend"])))
+    sc = export_scene(projected)
+    text = render(projected)
     drawn = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+)\s*[\[(]", line))}
-    assert ids(sc).keys() == drawn and set(ids(sc).values()) == {n["id"] for n in sc["nodes"]}
+    ids = list_ids(projected)
+    assert ids.keys() == drawn and set(ids.values()) == {n["id"] for n in sc["nodes"]}
 
 
 def test_type_definitions_and_module_attributes(tmp_path: Path):
@@ -381,7 +378,7 @@ def test_type_definitions_and_module_attributes(tmp_path: Path):
         "from pkg.keys import Key, Sha, Commit\nfrom pkg import keys\nfrom . import keys as k\n"
         "def f(a: Key, b: Sha) -> Commit:\n    keys.parse({}); keys.LIMIT; k.parse({}); Commit.__name__\n"
     )
-    m, _ = extract(tmp_path)
+    m = _extract_facts(tmp_path)
     kinds = {e.name: e.kind for e in m.entities.values() if e.id.startswith("repo:pkg/keys.py#")}
     assert kinds == {"Commit": "class", "Change": "class", "Key": "type", "Sha": "type", "Names": "type"}
     uses = {(r.dst, r.attrs.get("name")): r.count for r in m.relations

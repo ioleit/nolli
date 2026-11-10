@@ -1,42 +1,45 @@
-"""Interface families shared by adapters: how an env variable or an external package is
-named, so that a provider in one language and a user in another meet on the same entity
-(an npm package imported in TypeScript and loaded from a CDN by a page is one entity).
-APIs (endpoints) have their own shared structure in ``api.py``."""
+"""Entities that providers and users in any language meet on.
+
+Environment variables, external packages and outside hosts are named the same way
+whichever language provides or uses them (an npm package imported in TypeScript and
+loaded from a CDN by a page is one entity). APIs have their own structure in ``api``.
+"""
 
 from __future__ import annotations
 
 import re
 
-from ..model import CONTAIN, Entity, Provenance, Relation, address
-from . import Context
+from nolli.extractors import Context
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind, Scheme
 
 
 def ensure_env(ctx: Context, name: str, extractor: str = "env") -> str:
     """The setting an environment variable is (``config:NAME``)."""
     m = ctx.model
-    eid = address.config(name)
+    eid = EntityId.from_config(name)
     if not m.has(eid):
-        m.add_entity(Entity(eid, "env", name, {}, Provenance(extractor)))
-        m.add_relation(Relation(CONTAIN, m.ensure_root(address.CONFIG, extractor), eid, provenance=Provenance(extractor)))
+        m.add_entity(EntityFact(eid, "env", name, {}, Provenance(extractor)))
+        m.add_relation(RelationFact(RelationKind.CONTAIN, m.ensure_root(Scheme.CONFIG, extractor), eid, provenance=Provenance(extractor)))
     return eid
 
 
 def ensure_ext(m, lang: str, name: str, extractor: str = "match") -> str:
     """A third-party package as ``lang``'s imports name it (``pkg:npm/elkjs``)."""
-    eid = address.package(lang, name)
+    eid = EntityId.from_package(lang, name)
     if not m.has(eid):
-        m.add_entity(Entity(eid, "package", name, {"language": lang}, Provenance(extractor)))
-        m.add_relation(Relation(CONTAIN, m.ensure_root(address.PKG, extractor), eid, provenance=Provenance(extractor)))
+        m.add_entity(EntityFact(eid, "package", name, {"language": lang}, Provenance(extractor)))
+        m.add_relation(RelationFact(RelationKind.CONTAIN, m.ensure_root(Scheme.PKG, extractor), eid, provenance=Provenance(extractor)))
     return eid
 
 
 def ensure_host(m, host: str, extractor: str, path: str | None = None) -> str:
     """A host outside, reached by URL (``runtime:fonts.googleapis.com``); ``path``: the file
     that names it."""
-    eid = address.runtime(host)
+    eid = EntityId.from_host(host)
     if not m.has(eid):
-        m.add_entity(Entity(eid, "host", host, {}, Provenance(extractor, path)))
-        m.add_relation(Relation(CONTAIN, m.ensure_root(address.RUNTIME, extractor), eid, provenance=Provenance(extractor, path)))
+        m.add_entity(EntityFact(eid, "host", host, {}, Provenance(extractor, path)))
+        m.add_relation(RelationFact(RelationKind.CONTAIN, m.ensure_root(Scheme.RUNTIME, extractor), eid, provenance=Provenance(extractor, path)))
     return eid
 
 

@@ -1,5 +1,5 @@
 // The viewer only lays out and draws. Which boxes exist, which edges connect them, and
-// every label, badge and emphasis flag come from the server: /api/scene (nolli/scene.py).
+// every label, badge and emphasis flag come from the server: /api/scene (nolli/model/scene.py).
 //
 //   state.js    scene state and viewer settings, URL hash, scene query
 //   layout.js   scene -> positions and edge routes (ELK), no DOM
@@ -141,12 +141,12 @@ const reviewHandlers = {
   reload: () => { itemsFor = null; refresh(true); },
 };
 
-/** The drawn boxes and edges that show a change or carry a verdict (scene.nodes[].items / .verdicts,
+/** The drawn boxes and edges that show a change or carry a verdict (scene.nodes[].review.items / .verdicts.verdicts,
  * the same on edges). @param {string} id */
 function targets(id) {
   if (!scene) return { ids: [], keys: [] };
-  const on = (/** @type {{ items?: string[], verdicts?: string[] }} */ x) => (id.startsWith("V") ? x.verdicts : x.items)?.includes(id);
-  return { ids: scene.nodes.filter(n => "items" in n && on(n)).map(n => n.id), keys: scene.edges.filter(on).map(e => e.key) };
+  const on = (/** @type {{ review?: { items: string[] }, verdicts?: { verdicts: string[] } }} */ x) => (id.startsWith("V") ? x.verdicts?.verdicts : x.review?.items)?.includes(id);
+  return { ids: scene.nodes.filter(on).map(n => n.id), keys: scene.edges.filter(on).map(e => e.key) };
 }
 
 /** Go to an item: unfold what it needs, then (once drawn) centre on it and flash it. @param {string} id */

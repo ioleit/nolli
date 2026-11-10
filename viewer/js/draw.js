@@ -2,7 +2,7 @@
 // back a handle per drawn node so an animation can move it (update) and fade it.
 
 import { showTip, hideTip, pinTip } from "./tip.js";
-import { HEADER_H, ICON_GAP, ICON_H, USES_LINE, iconW, iconsW, isAnchor, statsText } from "./layout.js";
+import { HEADER_H, ICON_GAP, ICON_H, iconW, iconsW, isAnchor, statsText } from "./layout.js";
 import { wasDrag } from "./panzoom.js";
 import { ICON, glyph } from "./verdicts.js";
 
@@ -63,8 +63,8 @@ const at = b => `translate(${b.x},${b.y})`;
 
 /** @param {SceneEdge} e @param {boolean} review */
 function edgeClass(e, review) {
-  return ["edge", e.local && "local", e.single && "single", e.weak && "weak", e.style, e.heuristic && "heuristic", e.types && "types",
-    e.diff ? "d-" + e.diff.status : review && "d-same", e.verdict && "v-" + e.verdict].filter(Boolean).join(" ");
+  return ["edge", e.projection.local && "local", e.projection.single && "single", e.projection.weak && "weak", e.projection.style, e.projection.heuristic && "heuristic", e.projection.types && "types",
+    e.change ? "d-" + e.change.status : review && "d-same", e.verdicts?.verdict && "v-" + e.verdicts?.verdict].filter(Boolean).join(" ");
 }
 
 /**
@@ -105,11 +105,11 @@ const iconClass = icon => icon === "/" ? "path" : icon.replace(/[^A-Za-z]/g, "")
  */
 function buildBox(n, p, h) {
   const onToggle = h ? h.toggle : null;
-  const isC = n.container;
+  const isC = n.projection.container;
   const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind,
-    n.diff ? "d-" + n.diff.status : h && h.review ? "d-same" : "", n.verdict ? "v-" + n.verdict : ""].join(" "), transform: at(p), "data-id": n.id });
+    n.change ? "d-" + n.change.status : h && h.review ? "d-same" : "", n.verdicts?.verdict ? "v-" + n.verdicts?.verdict : ""].join(" "), transform: at(p), "data-id": n.id });
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
-  const icons = n.icons;
+  const icons = n.label.icons;
   const centred = !isC && !icons.length;
   let ix = isC ? 7 : 6;
   for (const icon of icons) {
@@ -121,10 +121,10 @@ function buildBox(n, p, h) {
     ix += w + ICON_GAP;
   }
   const t = el("text", { x: centred ? p.w / 2 : ix + 1, y: isC ? 18 : 19, "text-anchor": centred ? "middle" : "start", "font-weight": isC ? "600" : "400" });
-  t.textContent = n.label; grp.appendChild(t);
+  t.textContent = n.label.text; grp.appendChild(t);
   // container header: title, then badges right-aligned (truncated to the room left), then the
   // fold button; a container narrower than its title gets the button right after the title
-  const titleW = n.label.length * 7.2 + 8 + iconsW(icons);
+  const titleW = n.label.text.length * 7.2 + 8 + iconsW(icons);
   /** @param {number} w */
   const foldX = w => (isC && w < titleW + 40) ? titleW + 10 : w - 14;
   const stats = statsText(n), statsW = stats ? stats.length * 6 + 8 : 0;  // changed lines, "+12 −3"
@@ -149,43 +149,36 @@ function buildBox(n, p, h) {
     header = el("g", { class: "header", "data-id": n.id }); header.appendChild(el("rect", { x: 0, y: 0, width: titleW + statsW, height: HEADER_H }));
     top.appendChild(header); top.appendChild(f);
   }
-  if (n.utility) grp.classList.add("utility");
+  if (n.projection.utility) grp.classList.add("utility");
   /** @type {SVGElement | null} */
   let leaves = null, badge = null;
-  if (!isC && n.leaves) { leaves = el("text", { class: "badge", x: p.w - 5, y: 10, "text-anchor": "end" }); leaves.textContent = "+" + n.leaves; grp.appendChild(leaves); }
+  if (!isC && n.projection.leaves) { leaves = el("text", { class: "badge", x: p.w - 5, y: 10, "text-anchor": "end" }); leaves.textContent = "+" + n.projection.leaves; grp.appendChild(leaves); }
   // changed lines: after the title in a container's header, on the second line of a folded box
   /** @type {SVGElement | null} */
   let statsEl = null;
-  if (stats && n.diff) {
-    statsEl = el("text", { class: "stats", x: isC ? titleW + 4 : 6 + n.chips.length * 11, y: isC ? 18 : 33 });
-    const a = el("tspan", { class: "plus" }); a.textContent = `+${n.diff.added}`; statsEl.appendChild(a);
-    const r = el("tspan", { class: "minus", dx: 4 }); r.textContent = `−${n.diff.removed}`; statsEl.appendChild(r);
+  if (stats && n.change) {
+    statsEl = el("text", { class: "stats", x: isC ? titleW + 4 : 6 + n.projection.chips.length * 11, y: isC ? 18 : 33 });
+    const a = el("tspan", { class: "plus" }); a.textContent = `+${n.change.added}`; statsEl.appendChild(a);
+    const r = el("tspan", { class: "minus", dx: 4 }); r.textContent = `−${n.change.removed}`; statsEl.appendChild(r);
     grp.appendChild(statsEl);
   }
   /** the badge text that fits a container w wide @param {number} w */
-  const fitted = w => { if (!isC || !n.badge) return n.badge; const room = Math.floor((w - 36 - titleW - statsW) / 5.4); return room < 6 ? "" : n.badge.length > room ? n.badge.slice(0, room - 1) + "…" : n.badge; };
+  const fitted = w => { if (!isC || !n.projection.badge) return n.projection.badge; const room = Math.floor((w - 36 - titleW - statsW) / 5.4); return room < 6 ? "" : n.projection.badge.length > room ? n.projection.badge.slice(0, room - 1) + "…" : n.projection.badge; };
   /** @param {number} w */
-  const badgeX = w => isC ? w - 28 : stats ? w - 6 : (w + n.chips.length * 11) / 2;
-  if (fitted(p.w)) { badge = el("text", { class: "badge", x: badgeX(p.w), y: isC ? 18 : 33, "text-anchor": isC || stats ? "end" : "middle" }); badge.textContent = fitted(p.w); if (isC) badge.appendChild(el("title")).textContent = n.badge; grp.appendChild(badge); }
+  const badgeX = w => isC ? w - 28 : stats ? w - 6 : (w + n.projection.chips.length * 11) / 2;
+  if (fitted(p.w)) { badge = el("text", { class: "badge", x: badgeX(p.w), y: isC ? 18 : 33, "text-anchor": isC || stats ? "end" : "middle" }); badge.textContent = fitted(p.w); if (isC) badge.appendChild(el("title")).textContent = n.projection.badge; grp.appendChild(badge); }
   // the review's verdict on what this box contains, on its top-right corner
   /** @type {SVGElement | null} */
   let mark = null;
-  if (n.verdict) { mark = verdictMark(n.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
-  n.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
-  // an unfolded box lists the utilities its children use, one per line, bottom right
-  /** @type {SVGElement[]} */
-  const uses = isC ? (n.uses || []).map(u => { const x = el("text", { class: "badge uses", "text-anchor": "end" }); x.textContent = "→ " + u; grp.appendChild(x); return x; }) : [];
-  /** @param {Box} b */
-  const placeUses = b => uses.forEach((x, i) => { x.setAttribute("x", String(b.w - 8)); x.setAttribute("y", String(b.h - 8 - (uses.length - 1 - i) * USES_LINE)); });
-  placeUses(p);
-  if (n.service_color !== null && n.service_color !== undefined) rect.setAttribute("stroke", color(n.service_color));
-  if (onToggle && !isC && n.foldable) grp.addEventListener("click", ev => { if (wasDrag()) return; ev.stopPropagation(); onToggle(n.id); });
+  if (n.verdicts?.verdict) { mark = verdictMark(n.verdicts?.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
+  n.projection.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
+  if (n.projection.service_color !== null && n.projection.service_color !== undefined) rect.setAttribute("stroke", color(n.projection.service_color));
+  if (onToggle && !isC && n.projection.foldable) grp.addEventListener("click", ev => { if (wasDrag()) return; ev.stopPropagation(); onToggle(n.id); });
 
   /** @param {Box} b */
   const update = b => {
     grp.setAttribute("transform", at(b));
     rect.setAttribute("width", String(b.w)); rect.setAttribute("height", String(b.h));
-    placeUses(b);
     if (centred) t.setAttribute("x", String(b.w / 2));
     if (top && foldRect && foldText) { const fx = foldX(b.w); top.setAttribute("transform", at(b)); foldRect.setAttribute("x", String(fx - 9)); foldText.setAttribute("x", String(fx)); }
     if (leaves) leaves.setAttribute("x", String(b.w - 5));
@@ -252,7 +245,7 @@ export function draw(g, scene, laid, handlers) {
       if (pts.length > 1) ge.appendChild(el("polygon", { class: "head", points: head(pts) }));
       ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
     }
-    if (e.verdict && mark) { const vm = verdictMark(e.verdict, mark.x, mark.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
+    if (e.verdicts?.verdict && mark) { const vm = verdictMark(e.verdicts?.verdict, mark.x, mark.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
     // the card goes beside the pointer, off the edge's line and its two ends (lit, see interestOf)
     ge.addEventListener("mouseenter", ev => focus(ge, e, /** @type {MouseEvent} */ (ev)));
     ge.addEventListener("mousemove", ev => { if (!lit.has(ge)) focus(ge, e, /** @type {MouseEvent} */ (ev)); });  // back from its mark
@@ -268,7 +261,7 @@ export function draw(g, scene, laid, handlers) {
     const box = boxEl.get(n.id);
     if (!box) continue;
     // an unfolded box: from its header only (the area inside belongs to its children)
-    const from = ("container" in n && n.container) ? g.querySelector(`g.header[data-id="${CSS.escape(n.id)}"]`) : box;
+    const from = n.projection.container ? g.querySelector(`g.header[data-id="${CSS.escape(n.id)}"]`) : box;
     if (!from) continue;
     from.addEventListener("mouseenter", ev => focus(from, n, /** @type {MouseEvent} */ (ev)));
     from.addEventListener("mouseleave", blur);
@@ -300,8 +293,8 @@ function interest(scene, boxEl, edgeEl, edgesAt) {
     if (key !== null) { const e = edgeByKey.get(key); return [edgeEl.get(key) || x, ...(e ? boxes([e.src, e.dst]) : [])]; }
     const id = x.getAttribute("data-id") || "", n = nodeById.get(id), box = boxEl.get(id) || x;
     if (!n) return [box];
-    if ("container" in n && n.container) return [box, ...edgesAt.get(id) || []];  // its own edges: the bundles at its boundary
-    return [box, ...edgesAt.get(id) || [], ...boxes(n.utilities_used || [])];
+    if (n.projection.container) return [box, ...edgesAt.get(id) || []];  // its own edges: the bundles at its boundary
+    return [box, ...edgesAt.get(id) || [], ...boxes(n.projection.utilities_used || [])];
   };
 }
 

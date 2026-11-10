@@ -5,12 +5,13 @@ import { ALL_ROLES, state } from "./state.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene */
 
-/** @type {Record<string, string>} what showing a group means, by its namespace (nolli/model/address.py); the server names the groups */
+/** @type {Record<string, string>} what showing a root group means, by the scheme of its address (nolli/model/schema.py); the extractors name the groups */
 const GROUP_HELP = {
   api: "What this repo serves for others to call: one box per app, unfolding along its paths to the operations. Calls go into it, and from it to the handlers that realise them. Hidden: the callers' hover text counts their calls.",
   config: "Settings the code reads at runtime (environment variables), as one box you can unfold. Readers point into it, and from it to the services that set them. Hidden: the readers' hover text counts what they read.",
   runtime: "What runs: Compose services and the hosts outside they reach, as one box you can unfold. Hidden: the hover text of the code they touch says so.",
   pkg: "Artifacts: third-party packages and the images built here, as one box you can unfold. Hidden: the importers' hover text names them.",
+  unresolved: "References the extractors saw but could not bind, as one box you can unfold. References into it are never drawn: the residue counts them, by language.",
 };
 
 /** @type {Record<string, string>} how nolli/extractors/fs.py assigns each role */

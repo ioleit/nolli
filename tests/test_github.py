@@ -1,12 +1,12 @@
 """Which arguments of nolli view name a GitHub pull request, and which remotes are on
-GitHub (nolli/github.py). The API and the fetch are not tested here: they need the network."""
+GitHub (nolli/sources/github.py). The API and the fetch are not tested here: they need the network."""
 
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
-from nolli.github import is_pull_request, remotes
+from nolli.sources.github import is_pull_request, _remotes
 
 
 def test_pull_request_specs():
@@ -25,4 +25,4 @@ def test_remotes(tmp_path: Path):
     git("remote", "add", "origin", "git@github.com:me/fork.git")
     git("remote", "add", "upstream", "https://github.com/them/proj")
     git("remote", "add", "work", "git@git.example.com:proj.git")
-    assert remotes(tmp_path) == {"origin": ("me", "fork"), "upstream": ("them", "proj")}
+    assert _remotes(tmp_path) == {"origin": ("me", "fork"), "upstream": ("them", "proj")}

@@ -1,0 +1,141 @@
+"""Utils for GitHub repos and PRs."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+from nolli.sources import git
+from nolli.sources.git import ChangeError, ChangeSpec
+
+URL = re.compile(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/pulls?/(\d+)(?:[/?#].*)?$")
+NUMBER = re.compile(r"^(?:#|pr:|pr/)(\d+)$", re.IGNORECASE)
+REMOTE = re.compile(r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
+
+
+def is_pull_request(change: str | None) -> bool:
+    """Whether ``change`` names a pull request: its URL
+    (``https://github.com/<owner>/<repo>/pull/<n>``), or ``#<n>`` (also ``pr:<n>``, ``pr/<n>``)
+    for a PR of the repository's GitHub remote."""
+    return bool(change and (URL.match(change) or NUMBER.match(change)))
+
+
+def _remotes(repo: Path) -> dict[str, tuple[str, str]]:
+    """The repository's GitHub remotes: name -> (owner, repo)."""
+    out = {}
+    for line in git.run_git(repo, "remote", "-v").splitlines():
+        name, url, *_ = line.split()
+        m = REMOTE.match(url)
+        if m:
+            out[name] = (m.group(1), m.group(2))
+    return out
+
+
+AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (token())
+
+
+def resolve(repo: Path, change: str, tok: str | None | object = AMBIENT) -> tuple[ChangeSpec, dict]:
+    """The PR's change, and what the dataset records about it: ``{"pr", "remote"}``. ``tok`` as for api().
+
+    ``change`` is the PR's URL, or its number (``#<n>``) on the repository's GitHub remote
+    (``upstream``, else ``origin``, else any). GitHub's REST API gives the PR's title,
+    description, base and head; the head (``pull/<n>/head``) and the base branch are fetched
+    into ``repo``, storing objects only, no branch or tag. The change is the one GitHub's
+    "Files changed" tab shows: from where the head left the base branch to the head."""
+    m = URL.match(change)
+    gh = _remotes(repo)
+    if m:
+        owner, name, number = m.group(1), m.group(2), int(m.group(3))
+    else:
+        number = int(NUMBER.match(change).group(1))
+        pick = "upstream" if "upstream" in gh else "origin" if "origin" in gh else next(iter(gh), None)
+        if pick is None:
+            raise ChangeError(f"{repo} has no GitHub remote; give the PR's URL, or its commits: nolli view <base>..<head>")
+        owner, name = gh[pick]
+    return _fetch_pull(repo, owner, name, number, api(f"repos/{owner}/{name}/pulls/{number}", tok))
+
+
+def _fetch_pull(repo: Path, owner: str, name: str, number: int, pr: dict) -> tuple[ChangeSpec, dict]:
+    """resolve() for a PR whose answer from GitHub's API (``pr``: its head, base, title, body) is
+    at hand: fetch its commits into ``repo``, asking GitHub nothing more."""
+    gh = _remotes(repo)
+    # fetch from the clone's own remote for that repository if it has one (its credentials), else by URL
+    remote = next((r for r, (o, n) in gh.items() if (o.lower(), n.lower()) == (owner.lower(), name.lower())),
+                  f"https://github.com/{owner}/{name}")
+    try:
+        git.run_git(repo, "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote,
+            f"pull/{number}/head", pr["base"]["ref"])
+    except ChangeError as exc:
+        raise ChangeError(f"could not fetch PR #{number} from {remote}: {exc}") from None
+    head, base_tip = pr["head"]["sha"], pr["base"]["sha"]
+    for sha in (head, base_tip):
+        if not git.has_commit(repo, sha):
+            raise ChangeError(f"commit {sha[:7]} of PR #{number} is not in {repo} after fetching it")
+    ch = ChangeSpec(head=head, base=git.merge_base(repo, base_tip, head), title=pr.get("title") or f"PR #{number}",
+                description=(pr.get("body") or "").replace("\r\n", "\n").strip())
+    return ch, {"pr": number, "remote": f"https://github.com/{owner}/{name}"}
+
+
+class NotFound(ChangeError):
+    """GitHub answered 404: no such thing, or one the token (or nobody) may not see."""
+
+
+def token() -> str | None:
+    """A GitHub token, for when one is needed (a private repository, or more than 60 requests
+    an hour): $GH_TOKEN or $GITHUB_TOKEN, else the gh CLI's if it is logged in; None if
+    there is none."""
+    t = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if t or not shutil.which("gh"):
+        return t
+    r = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=False)
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def api(path: str, tok: str | None | object = AMBIENT) -> dict:
+    """GET a GitHub REST path. ``tok``: AMBIENT (the default) uses token(); a server passes the
+    viewer's own token, or None to ask as nobody (public repositories only)."""
+    req = urllib.request.Request(f"https://api.github.com/{path}", headers={
+        "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "nolli"})
+    t = token() if tok is AMBIENT else tok
+    if t:
+        req.add_header("Authorization", f"Bearer {t}")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return json.load(res)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404 and tok is not AMBIENT:
+            raise NotFound(f"GitHub: {path}: 404") from None
+        hint = "" if t else " (no token: set GH_TOKEN, or log in with gh, for a private repository)"
+        raise ChangeError(f"GitHub: {path}: {exc.code} {exc.reason}{hint}") from None
+    except urllib.error.URLError as exc:
+        raise ChangeError(f"GitHub: {path}: {exc.reason}") from None
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def download(url: str, tok: str) -> bytes:
+    """A workflow artifact's zip: GitHub answers with a redirect to short-lived storage, which is
+    fetched without the token (the storage rejects it, and should not see it)."""
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "nolli",
+                                               "X-GitHub-Api-Version": "2022-11-28", "Authorization": f"Bearer {tok}"})
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=30) as res:
+            return res.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (301, 302, 303, 307, 308) or not exc.headers.get("Location"):
+            raise ChangeError(f"GitHub: downloading {url}: {exc.code} {exc.reason}") from None
+        location = exc.headers["Location"]
+    try:
+        with urllib.request.urlopen(urllib.request.Request(location, headers={"User-Agent": "nolli"}), timeout=120) as res:
+            return res.read()
+    except urllib.error.URLError as exc:
+        raise ChangeError(f"GitHub: downloading the artifact: {exc}") from None

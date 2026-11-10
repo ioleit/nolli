@@ -1,13 +1,4 @@
-"""Deployment: what goes into each image, from Dockerfiles.
-
-- ``COPY``/``ADD`` sources that exist in the repository are ``allocate``
-  directory/file -> image (subkind copies). Sources are relative to the build
-  context (from compose if known, else the Dockerfile's directory).
-- ``CMD``/``ENTRYPOINT`` naming a Python module (``python -m a.b``,
-  ``uvicorn a.b:app``) or a script file are ``use`` image -> file
-  (subkind entrypoint).
-Images not referenced by any compose file are created here as well.
-"""
+"""Reads what goes into each image and what it starts, from Dockerfiles."""
 
 from __future__ import annotations
 
@@ -15,14 +6,15 @@ import re
 import shlex
 from pathlib import PurePosixPath
 
-from ...model import ALLOCATE, CONTAIN, USE, Entity, Provenance, Relation, address
-from .. import Context
+from nolli.extractors import Context
+from nolli.extractors.facts import EntityFact, Provenance, RelationFact
+from nolli.model.schema import EntityId, RelationKind, Scheme
 
 PY_MODULE = re.compile(r"(?:python[\d.]*\s+-m\s+|uvicorn\s+|gunicorn\s+)([A-Za-z_][\w.]*)(?::\w+)?")
 SCRIPT = re.compile(r"(?:^|\s)((?:[\w./-]+/)?[\w-]+\.(?:py|sh|js|mjs|ts))(?=\s|$)")
 
 
-def instructions(text: str) -> list[tuple[str, str]]:
+def _instructions(text: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     buf = ""
     for raw in text.splitlines():
@@ -41,21 +33,30 @@ def instructions(text: str) -> list[tuple[str, str]]:
 
 
 def run(ctx: Context) -> None:
+    """Adds an image per Dockerfile (unless one exists already) and:
+
+    - ``COPY``/``ADD`` sources that exist in the repository are ``allocate``
+      directory/file -> image (subkind copies). Sources are relative to the image's
+      build context if one is known, else to the Dockerfile's directory.
+    - ``CMD``/``ENTRYPOINT`` naming a Python module (``python -m a.b``,
+      ``uvicorn a.b:app``) or a script file are ``use`` image -> file
+      (subkind entrypoint).
+    """
     m = ctx.model
     for f in ctx.files:
         rel = ctx.rel(f)
         name = PurePosixPath(rel).name
         if not (name == "Dockerfile" or name.startswith("Dockerfile.") or name.endswith(".Dockerfile")):
             continue
-        group = m.ensure_root(address.PKG, "dockerfile")
-        iid = address.built(rel)  # the image, by its Dockerfile
+        group = m.ensure_root(Scheme.PKG, "dockerfile")
+        iid = EntityId.from_build_recipe(rel)  # the image, by its Dockerfile
         if not m.has(iid):
-            m.add_entity(Entity(iid, "image", rel, {"dockerfile": rel, "context": str(PurePosixPath(rel).parent)}, Provenance("dockerfile", rel)))
-            m.add_relation(Relation(CONTAIN, group, iid, provenance=Provenance("dockerfile", rel)))
+            m.add_entity(EntityFact(iid, "image", rel, {"dockerfile": rel, "context": str(PurePosixPath(rel).parent)}, Provenance("dockerfile", rel)))
+            m.add_relation(RelationFact(RelationKind.CONTAIN, group, iid, provenance=Provenance("dockerfile", rel)))
         context = m.entities[iid].attrs.get("context", ".")
         ctx_dir = PurePosixPath("." if context in ("", ".") else context)
         text = ctx.read(rel).decode("utf-8", "replace")
-        for lineno, (ins, arg) in enumerate(instructions(text), 1):
+        for lineno, (ins, arg) in enumerate(_instructions(text), 1):
             if ins in ("COPY", "ADD"):
                 try:
                     toks = shlex.split(arg)
@@ -70,10 +71,10 @@ def run(ctx: Context) -> None:
                     p = PurePosixPath(src.rstrip("/"))
                     full = (ctx_dir / p) if str(p) not in (".", "") else ctx_dir
                     full_s = str(full) if str(full) not in ("", ".") else "."
-                    full_s = full_s[2:] if full_s.startswith("./") else full_s
-                    fid = address.repo(full_s)
+                    full_s = full_s.removeprefix("./")
+                    fid = EntityId.from_path(full_s)
                     if m.has(fid):
-                        m.add_relation(Relation(ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))
+                        m.add_relation(RelationFact(RelationKind.ALLOCATE, fid, iid, "copies", provenance=Provenance("dockerfile", rel, lineno)))
                     else:
                         ctx.notes.setdefault("dockerfile-unmatched-copy", []).append((rel, src))
             elif ins in ("CMD", "ENTRYPOINT"):
@@ -87,11 +88,11 @@ def run(ctx: Context) -> None:
                         pass
                 for mod in PY_MODULE.findall(cmd):
                     cand = mod.replace(".", "/")
-                    for fid in (address.repo(f"{cand}.py"), address.repo(f"{cand}/__init__.py"), address.repo(f"{cand}/__main__.py")):
+                    for fid in (EntityId.from_path(f"{cand}.py"), EntityId.from_path(f"{cand}/__init__.py"), EntityId.from_path(f"{cand}/__main__.py")):
                         if m.has(fid):
-                            m.add_relation(Relation(USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
+                            m.add_relation(RelationFact(RelationKind.USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
                             break
                 for script in SCRIPT.findall(cmd):
-                    fid = address.repo(str(ctx_dir / script).removeprefix("./"))
+                    fid = EntityId.from_path(str(ctx_dir / script).removeprefix("./"))
                     if m.has(fid):
-                        m.add_relation(Relation(USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))
+                        m.add_relation(RelationFact(RelationKind.USE, iid, fid, "entrypoint", provenance=Provenance("dockerfile", rel, lineno)))

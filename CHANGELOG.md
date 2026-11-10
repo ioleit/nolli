@@ -2,6 +2,49 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
+## Unreleased
+
+### Changed
+
+- **The core is rewritten around models, overlays and scenes** (NOTES.md, "Model,
+  overlays and scenes"). A model is structure only. Everything known about a node or an
+  edge comes from an overlay: what extraction said, by shape (`files`, `symbols`,
+  `references`, `externals`), plus `change`, `verdicts`, `label`, `hover` and `review`.
+  An overlay's values can be kept in the store and read back instead of computed
+  (`precompute_overlay_values`, `caching_overlay`; `dev/examples/cool.py`). Merge and projection take a scene and return one, whose elements
+  refer to what they stand for. The packages:
+  - `nolli/model` (with `scene.py`), `nolli/keys.py`;
+  - `nolli/extractors` (with `facts.py`, the builder extraction writes into);
+  - `nolli/transformations` (merge with the overlay that says what changed, projection);
+  - `nolli/formats` (viewer JSON, Mermaid, the report; `descriptions/`: label, hover text);
+  - `nolli/review` (verdicts, the card, the brief, the agent, the CI comment, the numbered changes);
+  - `nolli/sources` (the only place git runs, the change spec, GitHub);
+  - `nolli/store` (models, the maps overlays keep, one access check), `nolli/server`;
+  - `nolli/datasets.py`, what the command line, CI and the server use.
+- **An address is an `EntityId`** (`nolli/model/schema.py`, which also holds the entity and
+  relation kinds and the schemes; `address.py` and `model_constants.py` are gone): a `str`
+  checked to start with a known scheme, made by its `from_*` constructors and read by its
+  properties (`path`, `fragment`, `owner`, …). `Entity`, `Relation` and the facts turn text
+  into one, so what comes out of a model is one already.
+- **Stored data has a format and is built again when it has another one.** Datasets from
+  0.7.0 and before are not read. A dataset directory is:
+  - a commit: `key.json`, `model.json`, `overlays/`;
+  - a change: `key.json`, `change.json`, `base/`, `head/`, `overlays/`.
+- **What extraction said about an address holds for a namesake.** In a model made from one
+  scene (a picture, or a proposed grouping as in `dev/examples/logic.py`) an element of the
+  same address answers with the source's `files`, `symbols`, `references` and `externals`;
+  a node the source does not have says nothing, and the hover text leaves it out.
+- **Verdicts are kept by what they are about** (the `verdicts` map, by address), not by
+  the review diagram's node ids. Agents still answer on the diagram's ids.
+- **`/api/node` is gone.** No released viewer asked for it (its details pane was removed
+  before 0.1.1), and nothing else did.
+- **The viewer's JSON gives each box and edge its overlays under their names**
+  (`projection`, `label`, `hover`, `change`, `verdicts`, `review`).
+- **A change's hover texts list every name an edge references.** Merging used to keep one
+  fact per edge.
+- **"unfolded" finishes on every repository.** Edge lifting looped when it could not bring
+  two boxes under the line limit.
+
 ## 0.7.0
 
 ### Changed

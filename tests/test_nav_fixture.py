@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from helpers import draw
+from nolli.scenes import open_change_scene
 from nolli.cli import main
-from nolli.model import Model
-from nolli.review import read_verdicts
-from nolli.scene import SceneState, scene
+from nolli.store import DirectoryStore
 
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
 import nav_repo  # noqa: E402
@@ -34,7 +34,7 @@ def test_verdicts_pass_the_check(dataset, capsys):
     (["repo:tasks/jobs", "repo:tasks/store", "repo:tasks/store/users"], ("repo:tasks/jobs/worker.py", "repo:tasks/store/users/repo.py")),
 ])
 def test_a_verdict_follows_its_edge_when_rolled_up(dataset, unfolded, edge):
-    m = Model.load(dataset / "model.json")
-    sc = scene(m, SceneState(expanded=["repo:", "repo:tasks", *unfolded]), read_verdicts((dataset / "verdicts.json").read_text()))
-    assert [(e["src"], e["dst"]) for e in sc["edges"] if "V1" in e["verdicts"]] == [edge]
-    assert not [n["id"] for n in sc["nodes"] if n["verdicts"]]
+    store = DirectoryStore(dataset.parent)
+    sc = draw(open_change_scene(store, store.find_key(dataset.name)), expanded=["repo:", "repo:tasks", *unfolded])
+    assert [(e["src"], e["dst"]) for e in sc["edges"] if "V1" in e["verdicts"]["verdicts"]] == [edge]
+    assert not [n["id"] for n in sc["nodes"] if n["verdicts"]["verdicts"]]

@@ -1,4 +1,4 @@
-"""What nolli view shows for what the user typed (nolli/change.py), on a small git history:
+"""What nolli view shows for what the user typed (nolli/sources/git.py), on a small git history:
 
     main:    c1 - c2 ------- m (merge of feature, --no-ff)
                     \\       /
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.change import ChangeError, default_branch, resolve, whole
+from nolli.sources.git import ChangeError, _default_branch, resolve, whole
 
 
 def git(repo: Path, *args: str) -> str:
@@ -45,7 +45,7 @@ def repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
 
 def test_default_branch(repo):
     r, _ = repo
-    assert default_branch(r) == "main"
+    assert _default_branch(r) == "main"
 
 
 def test_on_main_without_spec_is_the_whole_head(repo):

@@ -1,6 +1,5 @@
-"""Python resolution, run by ``nolli.match``: import placeholders (``unresolved:py:``) to
-files, the stdlib (dropped) or external packages, and symbol references
-(``unresolved:pyref:``) to classes, following re-exports, else to the module's file."""
+"""Resolves Python imports and symbol references to their targets.
+"""
 
 from __future__ import annotations
 
@@ -8,14 +7,15 @@ import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
 
-from ...model import SYMBOL_KINDS, USE, Relation, address
-from .. import Context
-from ..interfaces import ensure_ext
+from nolli.extractors import Context, interfaces
+from nolli.extractors.facts import RelationFact
+from nolli.model import schema
+from nolli.model.schema import EntityId, RelationKind
 
 SOURCE_ROOTS = ("src", "lib", "python")
 
 
-def python_module_map(m) -> dict[str, str]:
+def _python_module_map(m) -> dict[str, str]:
     """dotted module -> entity id (file or directory for namespace packages)."""
     out: dict[str, str] = {}
     for e in m.entities.values():
@@ -50,7 +50,7 @@ def module_candidates(mod: str, from_rel: str) -> list[str]:
     return out
 
 
-def resolve_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
+def _resolve_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
     for cand in module_candidates(mod, from_rel):
         parts = cand.split(".")
         for i in range(len(parts), 0, -1):
@@ -64,25 +64,27 @@ def resolve_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | Non
 
 
 def resolve_imports(ctx: Context) -> None:
+    """Bind import placeholders (``unresolved:py:``) to files or external packages;
+    imports of the standard library are dropped."""
     m = ctx.model
-    modmap = python_module_map(m)
+    modmap = _python_module_map(m)
     stdlib = set(sys.stdlib_module_names)
-    rewrites: list[tuple[Relation, str | None, str]] = []  # (relation, new dst or None, status)
+    rewrites: list[tuple[RelationFact, str | None, str]] = []  # (relation, new dst or None, status)
     for r in m.relations:
-        mod = address.unresolved_key(r.dst, "py") if r.kind == USE else None
+        mod = r.dst.unresolved_key("py") if r.kind == RelationKind.USE else None
         if mod is None:
             continue
         parts = mod.split(".")
-        target = resolve_module(mod, address.path_of(r.src), modmap)
+        target = _resolve_module(mod, r.src.path, modmap)
         if target:
             rewrites.append((r, target, "file"))
         elif parts[0] in stdlib or parts[0] in ("__future__",):
             rewrites.append((r, None, "stdlib"))
         else:
-            rewrites.append((r, ensure_ext(m, "py", parts[0]), "external"))
+            rewrites.append((r, interfaces.ensure_ext(m, "py", parts[0]), "external"))
 
     # ``from a.b import c`` produced both a.b and a.b.c; keep the most specific resolution per line.
-    by_line: dict[tuple[str, int | None], list[tuple[Relation, str | None, str]]] = defaultdict(list)
+    by_line: dict[tuple[str, int | None], list[tuple[RelationFact, str | None, str]]] = defaultdict(list)
     for item in rewrites:
         r = item[0]
         by_line[(r.src, r.provenance.line if r.provenance else None)].append(item)
@@ -91,14 +93,14 @@ def resolve_imports(ctx: Context) -> None:
         files = [it for it in items if it[2] == "file"]
         if len(files) > 1:
             # prefer targets that are not __init__/directories when a sibling resolved deeper
-            deep = [it for it in files if not (address.path_of(it[1]).endswith("/__init__.py") or m.entities[it[1]].kind == "directory")]
+            deep = [it for it in files if not (it[1].path.endswith("/__init__.py") or m.entities[it[1]].kind == "directory")]
             if deep:
                 for it in files:
                     if it not in deep:
                         drop.add(id(it[0]))
-    new_relations: list[Relation] = []
+    new_relations: list[RelationFact] = []
     for r in m.relations:
-        if r.kind == USE and address.unresolved_key(r.dst, "py") is not None:
+        if r.kind == RelationKind.USE and r.dst.unresolved_key("py") is not None:
             continue
         new_relations.append(r)
     seen: set[tuple] = set()
@@ -109,12 +111,12 @@ def resolve_imports(ctx: Context) -> None:
         if key in seen:
             continue
         seen.add(key)
-        new_relations.append(Relation(USE, r.src, dst, "import", 1, "exact", r.provenance, {"language": "python"}))
+        new_relations.append(RelationFact(RelationKind.USE, r.src, dst, "import", 1, "exact", r.provenance, {"language": "python"}))
     m.relations = new_relations
     ctx.notes["py-resolution"] = {"file": sum(1 for _, _, s in rewrites if s == "file"), "external": sum(1 for _, _, s in rewrites if s == "external"), "stdlib": sum(1 for _, _, s in rewrites if s == "stdlib")}
 
 
-def exact_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
+def _exact_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
     for cand in module_candidates(mod, from_rel):
         if cand in modmap:
             return modmap[cand]
@@ -122,26 +124,27 @@ def exact_module(mod: str, from_rel: str, modmap: dict[str, str]) -> str | None:
 
 
 def resolve_refs(ctx: Context) -> None:
-    """Bind symbol references to symbols (following re-exports), else to the module's file.
+    """Bind symbol references (``unresolved:pyref:``) to symbols, following re-exports,
+    else to the module's file.
     References into external modules are dropped: the import edge covers them. Import
     edges between two files are dropped where references between them exist, so an edge
     count means references, not import statements."""
     m = ctx.model
-    modmap = python_module_map(m)
+    modmap = _python_module_map(m)
     aliases = ctx.notes.get("py-aliases", {})
-    symbols = {e.id for e in m.entities.values() if e.kind in SYMBOL_KINDS}
+    symbols = {e.id for e in m.entities.values() if e.kind in schema.SYMBOL_KINDS}
 
     def symbol_in(file_rel: str, name: str, depth: int = 0) -> str | None:
-        sid = address.repo(file_rel, name)
+        sid = EntityId.from_path(file_rel, name)
         if sid in symbols:
             return sid
         al = aliases.get(file_rel, {}).get(name)
         if al and depth < 4:
-            f = exact_module(al[0], file_rel, modmap) or resolve_module(al[0], file_rel, modmap)
+            f = _exact_module(al[0], file_rel, modmap) or _resolve_module(al[0], file_rel, modmap)
             if f and m.entities[f].kind == "file":
-                return symbol_in(address.path_of(f), al[1], depth + 1) or exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
+                return symbol_in(f.path, al[1], depth + 1) or _exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
             if f:
-                return exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
+                return _exact_module(f"{al[0]}.{al[1]}", file_rel, modmap) or f
         return None
 
     def resolve(key: str, src_rel: str) -> tuple[str | None, str | None]:
@@ -151,34 +154,34 @@ def resolve_refs(ctx: Context) -> None:
         mod, _, name = key.partition(":")
         if name:
             name, _, attr = name.partition(".")
-            f = exact_module(mod, src_rel, modmap) or resolve_module(mod, src_rel, modmap)
+            f = _exact_module(mod, src_rel, modmap) or _resolve_module(mod, src_rel, modmap)
             if not f:
                 return None, None
-            sym = symbol_in(address.path_of(f), name) if m.entities[f].kind == "file" else None
-            target = sym or exact_module(f"{mod}.{name}", src_rel, modmap) or f
+            sym = symbol_in(f.path, name) if m.entities[f].kind == "file" else None
+            target = sym or _exact_module(f"{mod}.{name}", src_rel, modmap) or f
             if not attr:
                 return target, None
             if target != f and m.entities[target].kind == "file":  # name is a module: attr in it
-                return symbol_in(address.path_of(target), attr) or target, attr
+                return symbol_in(target.path, attr) or target, attr
             return target, name
         parts = mod.split(".")
         for i in range(len(parts), 0, -1):
-            f = exact_module(".".join(parts[:i]), src_rel, modmap)
+            f = _exact_module(".".join(parts[:i]), src_rel, modmap)
             if f:
                 rest = parts[i:]
                 if rest and m.entities[f].kind == "file":
-                    return symbol_in(address.path_of(f), rest[0]) or f, None
+                    return symbol_in(f.path, rest[0]) or f, None
                 return f, None
         return None, None
 
     stats = defaultdict(int)
-    new_relations: list[Relation] = []
+    new_relations: list[RelationFact] = []
     for r in m.relations:
-        key = address.unresolved_key(r.dst, "pyref") if r.kind == USE else None
+        key = r.dst.unresolved_key("pyref") if r.kind == RelationKind.USE else None
         if key is None:
             new_relations.append(r)
             continue
-        dst, name = resolve(key, address.path_of(r.src))
+        dst, name = resolve(key, r.src.path)
         if dst is None:
             stats["external"] += r.count
         elif dst == r.src:
@@ -188,21 +191,21 @@ def resolve_refs(ctx: Context) -> None:
             attrs = dict(r.attrs)
             if name:
                 attrs["name"] = name
-            new_relations.append(Relation(USE, r.src, dst, "ref", r.count, "exact", r.provenance, attrs))
+            new_relations.append(RelationFact(RelationKind.USE, r.src, dst, "ref", r.count, "exact", r.provenance, attrs))
     m.relations = new_relations
 
     def file_of(eid: str) -> str | None:
-        if address.is_part(eid):
-            return address.file_of(eid)
-        return eid if address.is_repo(eid) and m.entities[eid].kind == "file" else None
+        if eid.is_part:
+            return eid.file
+        return eid if eid.is_repo and m.entities[eid].kind == "file" else None
 
     covered = set()
     for r in m.relations:
-        if r.kind == USE and r.subkind == "ref":
+        if r.kind == RelationKind.USE and r.subkind == "ref":
             a, b = file_of(r.src), file_of(r.dst)
             if a and b:
                 covered.add((a, b))
     before = len(m.relations)
-    m.relations = [r for r in m.relations if not (r.kind == USE and r.subkind == "import" and r.attrs.get("language") == "python" and (r.src, r.dst) in covered)]
+    m.relations = [r for r in m.relations if not (r.kind == RelationKind.USE and r.subkind == "import" and r.attrs.get("language") == "python" and (r.src, r.dst) in covered)]
     stats["imports_replaced"] = before - len(m.relations)
     ctx.notes["pyref-resolution"] = dict(stats)

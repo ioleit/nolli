@@ -1,7 +1,7 @@
 # nolli reviews nolli: on every push to a pull request, build the change's dataset (from where
 # the PR left main to its head), let a review agent judge it, store the dataset as an artifact
 # and comment on the PR with the verdicts and the command that opens them
-# (nolli view <owner>/<repo>#<n>@<head>, nolli/ci.py). One comment per pushed commit, so the
+# (nolli view <owner>/<repo>#<n>@<head>, nolli/review/ci.py). One comment per pushed commit, so the
 # conversation reads commit, review, commit, review; a re-run on the same commit updates its
 # comment. Results are kept per commit for 7 days, none once the PR closes. Never blocks: the
 # comment is for information.

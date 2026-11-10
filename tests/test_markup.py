@@ -9,8 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from nolli.build import extract
-from nolli.rollup import hidden_by_role
+from nolli.model.keys import StringKey
+from nolli.build import _extract_facts
+from nolli.scenes import open_built
+from nolli.transformations.reading import Reading as Graph
+from nolli.transformations.rollup import hidden_by_role
 
 FILES = {
     "site/index.html": (
@@ -59,7 +62,7 @@ def model(tmp_path_factory):
         p.write_text(text)
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "."], cwd=root, check=True)
-    return extract(root)
+    return _extract_facts(root)
 
 
 def loads(m) -> dict[tuple[str, str], tuple[str, str]]:
@@ -68,7 +71,7 @@ def loads(m) -> dict[tuple[str, str], tuple[str, str]]:
 
 
 def test_what_a_page_loads(model):
-    m, _ = model
+    m = model
     page = {dst: how for (src, dst), how in loads(m).items() if src == "repo:site/index.html"}
     assert page == {
         "repo:site/css/site.css": ("stylesheet", "exact"),
@@ -84,7 +87,7 @@ def test_what_a_page_loads(model):
 
 
 def test_what_a_stylesheet_loads(model):
-    m, ctx = model
+    m = model
     sheet = {dst: how for (src, dst), how in loads(m).items() if src == "repo:site/css/site.css"}
     assert sheet == {
         "repo:site/css/base.css": ("import", "exact"),
@@ -92,14 +95,13 @@ def test_what_a_stylesheet_loads(model):
         "pkg:npm/tailwindcss": ("import", "heuristic"),
         "repo:site/fonts/a.woff2": ("url", "exact"),
     }, "comments and data: URLs are skipped"
-    assert ("site/index.html", "img/missing.png") in ctx.notes["markup-unmatched"]
+    assert ("site/index.html", "img/missing.png") in m.meta["notes"]["markup-unmatched"]
 
 
 def test_a_root_path_from_the_pages_directory(model):
-    m, _ = model
-    assert loads(m)[("repo:app/index.html", "repo:app/src/main.ts")] == ("script", "heuristic")
+    assert loads(model)[("repo:app/index.html", "repo:app/src/main.ts")] == ("script", "heuristic")
 
 
 def test_pages_are_shown_by_default(model):
-    m, _ = model
-    assert "repo:site/index.html" not in hidden_by_role(m), "a page's edges would be dropped with it"
+    g = Graph(open_built(*model.split(StringKey("test@0"))))
+    assert "repo:site/index.html" not in hidden_by_role(g), "a page's edges would be dropped with it"

@@ -1,9 +1,9 @@
 # Viewer
 
-`serve.py` is a small local server (standard library only): static files, the datasets
-under `--data`, `/api/scene` and `/api/mermaid`. This directory is installed as the package
-`nolli.viewer` (see `pyproject.toml`), and `nolli view` starts the server; run as a script
-from a clone (`python viewer/serve.py --data …`), it imports `nolli` from that clone.
+`nolli/server/serve.py` is a small local server (standard library only): these static files,
+the datasets under `--data`, `/api/scene` and `/api/mermaid`. This directory is installed as
+the package `nolli.viewer` (see `pyproject.toml`), and `nolli view` starts the server; from a
+clone, `python -m nolli.server.serve --data …`.
 
 The viewer computes nothing itself: on every click it asks the server for the scene of a
 scene state (`/api/scene?d=<dataset>&x=<unfolded ids>&…`, or `p=<preset>` instead of `x`;
