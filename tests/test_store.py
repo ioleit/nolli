@@ -5,6 +5,7 @@ built once, its commits' models reused."""
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -220,3 +221,99 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     old = open_change_scene(older, change)
     assert old.overlays["change"].find_kept(change.format_key()) is None
     assert Datasets(older).draw_json(old, ProjectionSpec(preset="changes")) == datasets.draw_json(kept, ProjectionSpec(preset="changes"))
+
+
+def test_maps_read_back_from_json_are_keyed_by_addresses_and_relations():
+    """A map kept as JSON reads back as it was given: nodes keyed by ``EntityId`` (so their
+    methods work on keys read from disk), edges by ``Relation``."""
+    from nolli.model.model import Relation
+    from nolli.model.schema import EntityId, RelationKind
+    from nolli.store.maps import dump_map, parse_map
+
+    a, b = EntityId.from_path("a.py"), EntityId.from_path("b.py", "B")
+    e = Relation(RelationKind.USE, a, b, "import")
+    values, about = parse_map(json.loads(json.dumps(dump_map("m", {a: {"x": 1}, a.own_code(): {}, e: {"y": 2}}, {"by": "t"}))))
+    assert values == {a: {"x": 1}, a.own_code(): {}, e: {"y": 2}} and about == {"by": "t"}
+    assert all(type(k) is (Relation if isinstance(k, Relation) else EntityId) for k in values)
+    assert next(k for k in values if k == a).path == "a.py"
+
+
+@pytest.fixture
+def renaming(tmp_path: Path) -> tuple[Path, str, str]:
+    """A repository whose second commit renames a module (and edits it), changes a class,
+    adds a module using the renamed one and removes another: (path, base, head)."""
+    r = tmp_path / "renaming"
+    (r / "shop").mkdir(parents=True)
+    git(tmp_path, "init", "-q", "-b", "main", str(r))
+    git(r, "config", "user.email", "t@example.com")
+    git(r, "config", "user.name", "t")
+    (r / "shop" / "__init__.py").write_text("")
+    (r / "shop" / "store.py").write_text("class Store:\n    def get(self):\n        return 1\n")
+    (r / "shop" / "legacy.py").write_text("from shop.store import Store\n\n\ndef helper():\n    return Store()\n\n\nDEFAULT = helper()\n")
+    (r / "shop" / "gone.py").write_text("import os\n\nX = os.getcwd()\n")
+    git(r, "add", ".")
+    git(r, "commit", "-q", "-m", "base")
+    base = git(r, "rev-parse", "HEAD")
+    git(r, "mv", "shop/legacy.py", "shop/helpers.py")
+    (r / "shop" / "helpers.py").write_text("from shop.store import Store\n\n\ndef helper():\n    return Store()\n\n\nDEFAULT = helper()\nOTHER = 2\n")
+    (r / "shop" / "store.py").write_text("class Store:\n    def get(self):\n        return 2\n\n    def put(self, x):\n        return x\n")
+    (r / "shop" / "api.py").write_text("from shop.helpers import helper\n\n\ndef handle():\n    return helper().get()\n")
+    git(r, "rm", "-q", "shop/gone.py")
+    git(r, "add", ".")
+    git(r, "commit", "-q", "-m", "head")
+    return r, base, git(r, "rev-parse", "HEAD")
+
+
+def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renaming, tmp_path):
+    """What ``nolli view`` does with a change: build it into a store, then, in a store opened
+    afresh on the same directory (so every map is read back from JSON), draw it in every
+    preset and side, list its changes, describe every box, brief the agent, and keep and
+    describe verdicts. A rename is what git's per-file content says the most about."""
+    from nolli.datasets import Datasets
+    from nolli.model.schema import EntityId
+    from nolli.transformations.projection import ProjectionSpec
+
+    path, base, head = renaming
+    change = Repo(str(path)).make_change(base, head)
+    fetch_change(DirectoryStore(tmp_path / "data"), LocalRepository(path), change, about={"title": "rename"})
+
+    store = DirectoryStore(tmp_path / "data")
+    datasets = Datasets(store)
+    sc = datasets.open_scene(change)
+    renamed = EntityId.from_path("shop/helpers.py")
+    assert sc.find_element(renamed).get("change")["old_path"] == "shop/legacy.py"
+
+    for preset in ("folded", "changes", "unfolded", "whole"):
+        for side in (None, "base", "head"):
+            st = ProjectionSpec(preset=preset, **({"side": side} if side else {}))
+            assert datasets.draw_json(sc, st)["nodes"]
+            text, ids = datasets.draw_mermaid(sc, st)
+            assert text and ids
+    unfolded = datasets.draw_json(sc, ProjectionSpec(expanded=["repo:", "repo:shop"]))
+    assert {n["id"] for n in unfolded["nodes"]} >= {"repo:shop/helpers.py", "repo:shop/api.py", "repo:shop/store.py"}
+
+    items = datasets.list_changes(sc)
+    assert items and any("repo:shop/helpers.py" in it["focus"] for it in items)
+    for x in sc.model.entities:
+        datasets.detail_box(sc, x)
+        datasets.detail_box(sc, str(x))  # as a request gives it
+        if x.is_repo:
+            datasets.detail_box(sc, x.own_code())
+    assert datasets.detail_box(sc, "repo:shop")["files"]
+    assert datasets.detail_box(sc, "") is None and datasets.detail_box(sc, "bogus") is None
+
+    brief = datasets.make_review_brief(sc)
+    assert "helpers" in brief
+    review_ids = [i for i in re.findall(r"\bn_\w+", datasets.make_review_diagram(sc)) if not i.endswith("_g")]
+    verdicts = [{"target": t, "verdict": "good", "reason": "fine"} for t in dict.fromkeys(review_ids)]
+    kept, problems = datasets.check_verdicts(sc, json.dumps(verdicts))
+    assert kept and not problems, problems
+    datasets.keep_verdicts(change, kept, {"by": "test"})
+
+    again = Datasets(DirectoryStore(tmp_path / "data"))  # the verdicts read back from JSON too
+    sc2 = again.open_scene(change)
+    described = again.describe_verdicts(sc2)
+    assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
+    assert again.draw_json(sc2, ProjectionSpec(preset="changes"))["nodes"]
+    for x in sc2.model.entities:
+        again.detail_box(sc2, x)

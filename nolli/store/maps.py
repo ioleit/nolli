@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from nolli.model.model import FormatError, Key, Model, Relation
+from nolli.model.schema import EntityId
 from nolli.store.precomputed import KeptMaps, OverlayStore
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
@@ -72,9 +73,11 @@ def dump_map(model_key: str, values: Mapping[Key, dict], about: dict | None) -> 
 
 
 def parse_map(d: dict) -> tuple[dict[Key, dict], dict | None]:
+    """A map as ``dump_map`` wrote it, keyed as it was given: a node by its ``EntityId``, an edge
+    by its ``Relation``; a node key that is no address raises ``ValueError``."""
     if d.get("format") != FORMAT:
         raise FormatError(f"a map of format {d.get('format')!r}, this nolli reads {FORMAT}")
-    values: dict[Key, dict] = dict(d.get("nodes") or {})
+    values: dict[Key, dict] = {EntityId(k): v for k, v in (d.get("nodes") or {}).items()}
     values.update({Relation.parse(k): v for k, v in (d.get("edges") or {}).items()})
     return values, d.get("about")
 
