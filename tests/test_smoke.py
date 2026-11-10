@@ -128,6 +128,29 @@ def test_default_cut_lifts_frontend_to_backend(repo: Path):
     assert any("pkg:" in a for a in rolled.annotations.values())
 
 
+def test_lift_ends_when_provide_lines_cannot_merge():
+    """Five modules implementing one shown API under max_lines 4: the provide lines keep
+    their module end by design, so the pair cannot get under the limit. Lifting must
+    leave it over the limit and return instead of picking it again forever (issue #49)."""
+    from nolli.scenes import open_built
+    from nolli.extractors.facts import EntityFact, Facts, Provenance
+    from nolli.transformations.rollup import RolledEdge
+
+    m = Facts()
+    m.ensure_root("api", "test")
+    m.add_entity(EntityFact("repo:", "directory", "repro", {"root": True}, Provenance("fs")))
+    m.add_entity(EntityFact("repo:app", "directory", "app", {}, Provenance("fs")))
+    m.contain("repo:", "repo:app", "fs")
+    modules = [f"repo:app/route{i}.py" for i in range(5)]
+    for mod in modules:
+        m.add_entity(EntityFact(mod, "file", mod.rsplit("/", 1)[-1], {}, Provenance("fs")))
+        m.contain("repo:app", mod, "fs")
+    g = Graph(open_built(*m.split(StringKey("test@0"))))
+    edges = [RolledEdge("provide", "api:", mod, "route", count=1) for mod in modules]
+    lines = lift(g, edges, {"repo:", "repo:app"}, max_lines=4)
+    assert sorted((e.src, e.dst) for e in lines) == [("api:", mod) for mod in modules]
+
+
 def test_scene_of_default_cut(repo: Path):
     """The scene the viewer draws: stable ids, every node's parent drawn before it, edges
     between drawn nodes, and a state the client can send back unchanged."""
