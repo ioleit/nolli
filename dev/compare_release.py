@@ -1,6 +1,8 @@
-"""Times /api/scene of this checkout against a nolli release from PyPI, or against a git ref.
+"""Times /api/scene of this checkout against a nolli release from PyPI, or against a git ref;
+with --compare, lists every field in which the two versions' answers differ.
 
     python dev/compare_release.py [--release 0.7.0 | --ref origin/main] [--work DIR] [--runs 5]
+                                  [--diff REPO BASE HEAD ...] [--compare [--nodes 20]]
                                   [repo URL or path ...]
 
 Each version extracts the same repositories with its own ``nolli extract`` and serves them
@@ -11,11 +13,24 @@ The release (or the ref, checked out with ``git worktree``) is installed into a 
 environment under the work directory. Extracted datasets are kept per version (the release
 number, or the commit of the ref or of this checkout, with ``-dirty`` for uncommitted
 changes, re-extracted every run), so a changed format is never read by the other version.
+
+``--diff REPO BASE HEAD`` (repeatable) adds a change dataset, made by each version's own
+``nolli diff``; the repository is cloned with its history. ``--compare`` asks both versions
+the presets, Mermaid, ``/api/node`` for the default projection's boxes, and for a change also
+``/api/changes`` and the brief, and prints each field that differs: how often, and one
+example. The viewer JSON of format 1 (overlays under their names) is read back into the
+older flat fields first (``projection.*``, ``label.text`` as ``label``, ``hover.text`` as
+``info``, ``change`` as ``diff``, ``review.card`` as ``review``, ``review.items`` as ``items``,
+``verdicts.verdicts`` and ``verdicts.verdict`` as themselves), so a field that only moved is not a difference.
+
+Prerequisites: git, network access for the release and the repositories, and this
+checkout's ``nolli`` next to the Python that runs the script (``uv run python ...``).
 """
 
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import shutil
 import socket
@@ -23,8 +38,10 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
+from collections import Counter
 from pathlib import Path
 
 REPOS = [
@@ -68,13 +85,33 @@ def _checkout_version() -> str:
     return git("rev-parse", "--short", "HEAD") + ("-dirty" if git("status", "--porcelain", "--", "nolli") else "")
 
 
-def _clone(work: Path, repo: str) -> Path:
+def _clone(work: Path, repo: str, history: bool = False) -> Path:
+    """A local checkout of ``repo``: the path itself, or a clone kept under the work directory
+    (shallow, or with its whole history for a change)."""
     if Path(repo).is_dir():
         return Path(repo).resolve()
-    out = work / "repos" / repo.rstrip("/").rsplit("/", 1)[-1]
+    out = work / ("repos-full" if history else "repos") / repo.rstrip("/").rsplit("/", 1)[-1]
     if not out.exists():
-        _run("git", "clone", "-q", "--depth", "1", repo, out)
+        _run("git", "clone", "-q", *(["--filter=blob:none"] if history else ["--depth", "1"]), repo, out)
     return out
+
+
+class Dataset:
+    """A commit (``base`` None: the checkout as it is) or a change of one repository."""
+
+    def __init__(self, src: Path, base: str | None = None, head: str | None = None) -> None:
+        self.src, self.base, self.head = src, base, head
+        self.name = src.name if base is None else f"{src.name}-{base.replace('/', '_')}..{head.replace('/', '_')}"
+
+    @property
+    def is_change(self) -> bool:
+        return self.base is not None
+
+    def build(self, nolli: Path, out: Path, cwd: Path) -> None:
+        if self.is_change:
+            _run(nolli, "diff", self.src, self.base, self.head, "-o", out, cwd=cwd)
+        else:
+            _run(nolli, "extract", self.src, "-o", out, cwd=cwd)
 
 
 def _find_free_port() -> int:
@@ -106,6 +143,16 @@ class Server:
     def get(self, path: str) -> bytes:
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=60) as r:
             return r.read()
+
+    def ask(self, path: str, query: dict, as_json: bool = True):
+        """The answer to ``path?d=<dataset>&query``; {"error": ...} for an HTTP error or a timeout."""
+        try:
+            body = self.get(path + "?" + urllib.parse.urlencode({"d": self.name, **query}))
+        except urllib.error.HTTPError as exc:
+            return {"error": f"HTTP {exc.code}"}
+        except TimeoutError:
+            return {"error": "timed out"}
+        return json.loads(body) if as_json else body.decode()
 
     def fetch_scene(self, query: dict) -> tuple[dict, float]:
         t0 = time.perf_counter()
@@ -151,6 +198,137 @@ def _time(server: Server, query: dict, runs: int) -> tuple[float | None, dict | 
     return statistics.median(times), scene
 
 
+_IGNORED = {("stats", "ms"), ("dataset", "repo")}  # timings; the dataset's path differs per version
+_RENAMED = {"label": {"text": "label", "icons": "icons"}, "hover": {"text": "info"},  # format 1 -> the flat fields
+            "review": {"card": "review", "items": "items"}, "verdicts": {"verdicts": "verdicts", "verdict": "verdict"}}
+
+
+def _flatten_element(x: dict) -> dict:
+    """A box or edge of viewer JSON format 1 in the flat fields of the format before it."""
+    out = {}
+    for k, v in x.items():
+        if k == "projection" and isinstance(v, dict):
+            out.update(v)
+        elif k in _RENAMED and isinstance(v, dict):
+            for kk, vv in v.items():
+                out[_RENAMED[k].get(kk, f"{k}.{kk}")] = vv
+        elif k == "change":
+            out["diff"] = v
+        else:
+            out[k] = v
+    return out
+
+
+def _canonical_scene(sc: dict) -> dict:
+    """Viewer JSON with boxes by id and edges by key, so they are compared one by one."""
+    if "error" in sc:
+        return sc
+    flat = _flatten_element if sc.get("format") else (lambda x: x)
+    return {**{k: v for k, v in sc.items() if k not in ("nodes", "edges", "format", "overlays")},
+            "nodes": {n["id"]: flat(n) for n in sc["nodes"]},
+            "edges": {e["key"]: flat(e) for e in sc["edges"]}}
+
+
+def _list_differences(a, b, path: tuple = ()):
+    """(path, a, b) for each place two JSON values differ; a missing side is ``...``."""
+    if path[-2:] in _IGNORED or a == b:
+        return
+    if isinstance(a, dict) and isinstance(b, dict):
+        for k in sorted(set(a) | set(b), key=str):
+            yield from _list_differences(a.get(k, ...), b.get(k, ...), (*path, k))
+    elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b) and all(isinstance(x, dict) for x in a + b):
+        for i, (x, y) in enumerate(zip(a, b)):
+            yield from _list_differences(x, y, (*path, i))
+    else:
+        yield path, a, b
+
+
+def _pattern(path: tuple) -> str:
+    """A difference's path with the box, edge and list index left out: where in the answer it is."""
+    out = []
+    for i, p in enumerate(path):
+        keyed = i > 0 and path[i - 1] in ("nodes", "edges")
+        out.append("[]" if keyed or isinstance(p, int) else f".{p}")
+    return "".join(out).lstrip(".") or "(the answer)"
+
+
+def _short(v, n: int = 100) -> str:
+    t = "(missing)" if v is ... else json.dumps(v, ensure_ascii=False)
+    return t if len(t) <= n else t[: n - 1] + "…"
+
+
+def _is_empty(v) -> bool:
+    return v is None or v is False or v == 0 or v in ("", [], {})
+
+
+def _report_json(name: str, a, b, labels: list[str]) -> list[str]:
+    """Markdown lines on how two answers differ, one per kind of difference: values that
+    differ; fields only one version sends, with a value; fields one version sends empty
+    (null, 0, false, "", [], {}) where the other sends none, all on one line."""
+    diffs = list(_list_differences(a, b))
+    if not diffs:
+        return [f"- {name}: same"]
+    first: dict[str, tuple] = {}
+    counts = Counter()
+    empty: dict[str, set[str]] = {labels[0]: set(), labels[1]: set()}
+    for path, x, y in diffs:
+        p = _pattern(path)
+        if (x is ... and _is_empty(y)) or (y is ... and _is_empty(x)):
+            empty[labels[1] if x is ... else labels[0]].add(p)
+            continue
+        counts[p] += 1
+        first.setdefault(p, (path, x, y))
+    lines = [f"- {name}: {len(diffs)} differences"]
+    for p, n in sorted(counts.items(), key=lambda kv: (first[kv[0]][1] is ... or first[kv[0]][2] is ..., -kv[1], kv[0])):
+        path, x, y = first[p]
+        where = next((str(path[i + 1]) for i, q in enumerate(path[:-1]) if q in ("nodes", "edges")), None)
+        eg = f" (e.g. {where})" if where else ""
+        if x is ... or y is ...:
+            lines.append(f"  - `{p}` ×{n}{eg}: only {labels[0] if y is ... else labels[1]}, {_short(y if x is ... else x)}")
+        else:
+            lines.append(f"  - `{p}` ×{n}{eg}: {labels[0]} {_short(x)}; {labels[1]} {_short(y)}")
+    for label, fields in empty.items():
+        if fields:
+            lines.append(f"  - empty, only {label}: " + ", ".join(f"`{f}`" for f in sorted(fields)))
+    return lines
+
+
+def _report_text(name: str, a: str | dict, b: str | dict, labels: list[str]) -> list[str]:
+    """Markdown lines on how two text answers differ: how many lines, and the first few."""
+    if a == b:
+        return [f"- {name}: same"]
+    if not (isinstance(a, str) and isinstance(b, str)):  # an error on one side
+        return [f"- {name}: {labels[0]} {_short(a)}; {labels[1]} {_short(b)}"]
+    diff = difflib.unified_diff(a.splitlines(), b.splitlines(), labels[0], labels[1], n=0, lineterm="")
+    changed = [line for line in diff if line[:1] in "+-" and not line.startswith(("+++", "---"))]
+    lines = [f"- {name}: {len(changed)} lines differ"]
+    lines += [f"  - `{line[:140]}`" for line in changed[:6]]
+    return lines
+
+
+def _compare(servers: dict[str, Server], ds: Dataset, nodes: int) -> list[str]:
+    """What both versions answer on one dataset, and how they differ."""
+    labels = list(servers)
+    a, b = servers.values()
+    presets = ["default", "folded", "unfolded"] + (["changes"] if ds.is_change else [])
+    out = [f"### {ds.name}", ""]
+    for p in presets:
+        out += _report_json(f"`/api/scene p={p}`", _canonical_scene(a.ask("/api/scene", {"p": p})),
+                            _canonical_scene(b.ask("/api/scene", {"p": p})), labels)
+    out += _report_text("`/api/mermaid`", a.ask("/api/mermaid", {}, as_json=False),
+                        b.ask("/api/mermaid", {}, as_json=False), labels)
+    if ds.is_change:
+        out += _report_json("`/api/changes`", a.ask("/api/changes", {}), b.ask("/api/changes", {}), labels)
+        out += _report_text("`/api/brief`", a.ask("/api/brief", {}, as_json=False), b.ask("/api/brief", {}, as_json=False), labels)
+    drawn = _canonical_scene(a.ask("/api/scene", {"p": "default"})).get("nodes", {})
+    asked = [x for x in drawn if not x.endswith("#")][:nodes]
+    per_node = {x: (a.ask("/api/node", {"id": x}), b.ask("/api/node", {"id": x})) for x in asked}
+    out += _report_json(f"`/api/node` ({len(asked)} boxes of the default projection)",
+                        {"nodes": {x: v[0] for x, v in per_node.items()}},
+                        {"nodes": {x: v[1] for x, v in per_node.items()}}, labels)
+    return out + [""]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("repos", nargs="*", default=REPOS)
@@ -160,6 +338,10 @@ def main() -> int:
     ap.add_argument("--work", type=Path, default=Path.home() / ".cache" / "nolli-compare")
     ap.add_argument("--runs", type=int, default=5)
     ap.add_argument("--unfold", type=int, default=6, help="containers to unfold one at a time")
+    ap.add_argument("--diff", nargs=3, action="append", default=[], metavar=("REPO", "BASE", "HEAD"),
+                    help="also a change dataset: REPO between the revisions BASE and HEAD (repeatable)")
+    ap.add_argument("--compare", action="store_true", help="list how the answers differ instead of timing them")
+    ap.add_argument("--nodes", type=int, default=20, help="with --compare: boxes to ask /api/node about")
     args = ap.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
     if args.ref:
@@ -172,19 +354,26 @@ def main() -> int:
     versions = {base_label: base, f"this checkout ({head_key})": Path(sys.executable).with_name("nolli")}
     keys = dict(zip(versions, (base_key, head_key)))
 
-    print(f"| repository | request | {' | '.join(versions)} | ratio | same boxes |")
-    print("|---|---|" + "---:|" * len(versions) + "---:|---|")
-    for repo in args.repos:
-        src = _clone(args.work, repo)
+    datasets = [Dataset(_clone(args.work, r)) for r in args.repos]
+    datasets += [Dataset(_clone(args.work, r, history=True), base, head) for r, base, head in args.diff]
+    if args.compare:
+        print(f"## {' vs '.join(versions)}\n", flush=True)
+    else:
+        print(f"| repository | request | {' | '.join(versions)} | ratio | same boxes |")
+        print("|---|---|" + "---:|" * len(versions) + "---:|---|")
+    for ds in datasets:
         servers = {}
         for label, nolli in versions.items():
-            out = args.work / "data" / keys[label] / src.name
+            out = args.work / "data" / keys[label] / ds.name
             if keys[label].endswith("-dirty") or not any((out / f).exists() for f in ("key.json", "model.json")):
                 if out.exists():
                     shutil.rmtree(out)
-                _run(nolli, "extract", src, "-o", out, cwd=args.work)
+                ds.build(nolli, out, cwd=args.work)
             servers[label] = Server(nolli, out)
         try:
+            if args.compare:
+                print("\n".join(_compare(servers, ds, args.nodes)), flush=True)
+                continue
             first = next(iter(servers.values()))
             queries = _make_queries(first.fetch_scene({"p": "default"})[0], args.unfold)
             for name, query in queries:
@@ -192,13 +381,16 @@ def main() -> int:
                 ms = [results[v][0] for v in versions]
                 cells = " | ".join("timed out" if m is None else f"{m:.0f} ms" for m in ms)
                 if None in ms:
-                    print(f"| {src.name} | {name} | {cells} | | |", flush=True)
+                    print(f"| {ds.name} | {name} | {cells} | | |", flush=True)
                     continue
                 boxes = [_list_boxes(results[v][1]) for v in versions]
+                labels = list(versions)
                 same = "yes" if all(b == boxes[0] for b in boxes) else "no"
                 if same == "no":
-                    print(f"  {src.name} {name}: only in one version: {sorted(boxes[0] ^ boxes[-1])[:8]}", file=sys.stderr)
-                print(f"| {src.name} | {name} | {cells} | {ms[-1] / ms[0]:.2f} | {same} |", flush=True)
+                    for label, mine, other in ((labels[0], boxes[0], boxes[-1]), (labels[-1], boxes[-1], boxes[0])):
+                        if mine - other:
+                            print(f"  {ds.name} {name}: only in {label}: {sorted(mine - other)[:8]}", file=sys.stderr)
+                print(f"| {ds.name} | {name} | {cells} | {ms[-1] / ms[0]:.2f} | {same} |", flush=True)
         finally:
             for s in servers.values():
                 s.close()
