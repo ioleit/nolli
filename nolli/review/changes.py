@@ -11,79 +11,8 @@ from nolli.model import schema
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId
 from nolli.review.reading import Reader
-from nolli.transformations import merge
 from nolli.transformations.merge import Links
 
-MAX_ITEMS = 60
-
-
-def detail_box(scene: Scene, x: str) -> dict | None:
-    """Everything a reviewer may want about one box of a change: changed files with hunks and
-    links, classes with changed lines, nodes added or removed inside it, and the changed
-    dependencies that start or end inside it. None if the change has no such box (or ``x``,
-    as a request gives it, is no address)."""
-    try:
-        target = EntityId(x).owner
-    except ValueError:
-        return None
-    if not scene.has(target):
-        return None
-    g = Reader(scene)
-    links = Links(scene.model.meta.get("change") or {})
-    sub = {target} | set(g.descendants(target))
-    files, classes, entities = [], [], []
-    for eid in sorted(sub):
-        d = g.diff(eid)
-        if not d:
-            continue
-        a, kind = g.attrs(eid), g.kind(eid)
-        if kind == "file" and "git" in d:
-            path = a.get("path", eid.path)
-            hunks = [{"new": h["new"], "old": h["old"], "added": len(h["added"]), "removed": len(h["removed"]),
-                      "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0],
-                                         "head" if h["added"] else "base")} for h in d.get("hunks", [])]
-            files.append({"id": eid, "path": path, "git": d["git"], "old_path": d.get("old_path"), "added": d.get("added", 0),
-                          "removed": d.get("removed", 0), "binary": d.get("binary", False), "link": links.diff(path),
-                          "blob": links.blob(path, "base" if d["git"] == "D" else "head"), "hunks": hunks[:20],
-                          "more_hunks": max(0, len(hunks) - 20)})
-        elif kind in schema.SYMBOL_KINDS and (d.get("added") or d.get("removed")) and d["status"] == "same":
-            path = a.get("path")
-            first = (d.get("added_lines") or [None])[0]
-            classes.append({"id": eid, "name": g.name(eid), "path": path, "added": d.get("added", 0), "removed": d.get("removed", 0),
-                            "lines": [a.get("line"), a.get("end_line")], "link": links.diff(path, first) if path else None})
-        if d["status"] in ("added", "removed"):
-            path = a.get("path")
-            entities.append({"id": eid, "kind": kind, "name": g.name(eid), "status": d["status"], "path": path,
-                             "link": (links.blob(path, "base" if d["status"] == "removed" else "head", a.get("line"),
-                                                 a.get("end_line")) if path else None)})
-    deps = [r.diff["fact"] for r in g.relations if r.diff and (r.src in sub or r.dst in sub)]
-    deps.sort(key=lambda c: ({"added": 0, "removed": 1, "changed": 2}[c["status"]], c["src"], c["dst"]))
-    a = g.attrs(target)
-    return {"id": x, "kind": g.kind(target), "name": g.name(target), "path": a.get("path"), "diff": _sum_subtree(scene, target),
-            "files": files[:MAX_ITEMS], "more_files": max(0, len(files) - MAX_ITEMS),
-            "classes": classes[:MAX_ITEMS], "entities": entities[:MAX_ITEMS], "more_entities": max(0, len(entities) - MAX_ITEMS),
-            "dependencies": deps[:MAX_ITEMS], "more_dependencies": max(0, len(deps) - MAX_ITEMS),
-            "link": links.diff(a["path"]) if g.kind(target) == "file" and a.get("path") else None}
-
-
-def _sum_subtree(scene: Scene, x: str) -> dict | None:
-    """What changed in a node of a change and everything under it: its own status, the totals."""
-    own = scene.find_element(x).get("change") or {}
-    totals = dict.fromkeys(merge.TOTALS, 0)
-    seen = False
-    for y in [x, *scene.model.iter_descendants(x)]:
-        rec = scene.find_element(y).get("change")
-        if rec:
-            seen = True
-            for k in merge.TOTALS:
-                totals[k] += (rec.get("totals") or {}).get(k, 0)
-    status = own.get("status") if own.get("status") in ("added", "removed") else "changed" if seen else None
-    if status is None:
-        return None
-    out = {"status": status, **totals, "internal": 0}
-    if scene.model.entities[x].kind in schema.SYMBOL_KINDS and own.get("status") == "same":
-        out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)
-    return out | {k: own[k] for k in ("git", "old_path", "renamed_to") if own.get(k)}
 
 
 # ---------- the numbered changes a reviewer (person or agent) goes through ----------

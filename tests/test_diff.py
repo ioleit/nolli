@@ -109,7 +109,7 @@ def test_repository_untouched(repo):
 def test_scene_review(repo):
     from nolli.datasets import find_repo
     from nolli.transformations.merge import Links
-    from nolli.review.changes import detail_box
+    from nolli.review.changes import list_changes
 
     path, base, head = repo
     git(path, "remote", "add", "origin", "git@github.com:acme/demo.git")
@@ -131,13 +131,12 @@ def test_scene_review(repo):
     assert "repo:app/store.py#Index" in ids("head") and "repo:app/old.py" not in ids("head")
     # the default view unfolds towards the change
     assert "repo:app" in draw(sc)["state"]["expanded"]
-    # details: files with hunks and links into the PR's files view
-    det = detail_box(sc, "repo:app")
-    store = next(f for f in det["files"] if f["path"] == "app/store.py")
+    # the numbered changes: an edited file with hunks and links into the PR's files view
+    items = list_changes(sc)
+    store = next(it for it in items if it["category"] == "content" and it["focus"] == ["repo:app/store.py"])
     assert store["link"] == f"https://github.com/acme/demo/pull/7/files#{Links.anchor('app/store.py')}"
     assert store["hunks"] and store["hunks"][0]["link"].startswith(store["link"] + "R")
-    assert any(c["name"] == "Store" for c in det["classes"])
-    assert any(e["id"] == "repo:app/store.py#Index" and e["status"] == "added" for e in det["entities"])
+    assert any(c["name"] == "Store" for c in store["classes"])
 
 
 def test_items_verdicts_and_export(repo):

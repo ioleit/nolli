@@ -38,7 +38,7 @@ from .model.scene import Overlay, Scene
 from .progress import Progress, Quiet
 from .review import ci
 from .review.brief import make_brief
-from .review.changes import detail_box, find_review_cut, list_changes
+from .review.changes import find_review_cut, list_changes
 from .review.verdicts import (  # noqa: F401 (VERDICTS: for callers)
     VERDICTS,
     check_verdicts,
@@ -122,10 +122,6 @@ class Datasets:
     def list_changes(self, scene: Scene) -> list[dict]:
         """A change's numbered changes ([] for a commit)."""
         return list_changes(scene) if is_change(scene) else []
-
-    def detail_box(self, scene: Scene, x: str) -> dict | None:
-        """Everything about one box of a change (None for a commit, or no such box)."""
-        return detail_box(scene, x) if is_change(scene) else None
 
     def describe_verdicts(self, scene: Scene) -> list[dict]:
         """A change's kept verdicts with what the viewer says about each."""

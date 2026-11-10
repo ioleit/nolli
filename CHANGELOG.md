@@ -36,6 +36,8 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   a node the source does not have says nothing, and the hover text leaves it out.
 - **Verdicts are kept by what they are about** (the `verdicts` map, by address), not by
   the review diagram's node ids. Agents still answer on the diagram's ids.
+- **`/api/node` is gone.** No released viewer asked for it (its details pane was removed
+  before 0.1.1), and nothing else did.
 - **The viewer's JSON gives each box and edge its overlays under their names**
   (`projection`, `label`, `hover`, `change`, `verdicts`, `review`).
 - **A change's hover texts list every name an edge references.** Merging used to keep one

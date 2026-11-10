@@ -72,21 +72,6 @@ export interface ReviewVerdict {
   label: string;  // how to name it: "path" or "a → b"
 }
 
-/** GET /api/node: everything about one box in a diff dataset. */
-export interface Details {
-  id: string; kind: string; name: string; path: string | null; link: string | null;
-  diff: NodeDiff | null;
-  files: { id: string; path: string; git: string; old_path: string | null; added: number; removed: number; binary: boolean;
-           link: string | null; blob: string | null; hunks: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[];
-           more_hunks: number }[];
-  more_files: number;
-  classes: { id: string; name: string; path: string | null; added: number; removed: number; lines: (number | null)[]; link: string | null }[];
-  entities: { id: string; kind: string; name: string; status: Status; path: string | null; link: string | null }[];
-  more_entities: number;
-  dependencies: FactChange[];
-  more_dependencies: number;
-}
-
 /**
  * Each drawn box and edge comes with what every overlay says about it, under the overlay's
  * name (nolli/formats/viewer.py). The ones the viewer draws are typed here; others (a

@@ -2,7 +2,7 @@
 with --compare, lists every field in which the two versions' answers differ.
 
     python dev/compare_release.py [--release 0.7.0 | --ref origin/main] [--work DIR] [--runs 5]
-                                  [--diff REPO BASE HEAD ...] [--compare [--nodes 20]]
+                                  [--diff REPO BASE HEAD ...] [--compare]
                                   [repo URL or path ...]
 
 Each version extracts the same repositories with its own ``nolli extract`` and serves them
@@ -16,9 +16,8 @@ changes, re-extracted every run), so a changed format is never read by the other
 
 ``--diff REPO BASE HEAD`` (repeatable) adds a change dataset, made by each version's own
 ``nolli diff``; the repository is cloned with its history. ``--compare`` asks both versions
-the presets, Mermaid, ``/api/node`` for the default projection's boxes, and for a change also
-``/api/changes`` and the brief, and prints each field that differs: how often, and one
-example. The viewer JSON of format 1 (overlays under their names) is read back into the
+the presets and Mermaid, and for a change also ``/api/changes`` and the brief, and prints each
+field that differs: how often, and one example. The viewer JSON of format 1 (overlays under their names) is read back into the
 older flat fields first (``projection.*``, ``label.text`` as ``label``, ``hover.text`` as
 ``info``, ``change`` as ``diff``, ``review.card`` as ``review``, ``review.items`` as ``items``,
 ``verdicts.verdicts`` and ``verdicts.verdict`` as themselves), so a field that only moved is not a difference.
@@ -306,7 +305,7 @@ def _report_text(name: str, a: str | dict, b: str | dict, labels: list[str]) -> 
     return lines
 
 
-def _compare(servers: dict[str, Server], ds: Dataset, nodes: int) -> list[str]:
+def _compare(servers: dict[str, Server], ds: Dataset) -> list[str]:
     """What both versions answer on one dataset, and how they differ."""
     labels = list(servers)
     a, b = servers.values()
@@ -320,12 +319,6 @@ def _compare(servers: dict[str, Server], ds: Dataset, nodes: int) -> list[str]:
     if ds.is_change:
         out += _report_json("`/api/changes`", a.ask("/api/changes", {}), b.ask("/api/changes", {}), labels)
         out += _report_text("`/api/brief`", a.ask("/api/brief", {}, as_json=False), b.ask("/api/brief", {}, as_json=False), labels)
-    drawn = _canonical_scene(a.ask("/api/scene", {"p": "default"})).get("nodes", {})
-    asked = [x for x in drawn if not x.endswith("#")][:nodes]
-    per_node = {x: (a.ask("/api/node", {"id": x}), b.ask("/api/node", {"id": x})) for x in asked}
-    out += _report_json(f"`/api/node` ({len(asked)} boxes of the default projection)",
-                        {"nodes": {x: v[0] for x, v in per_node.items()}},
-                        {"nodes": {x: v[1] for x, v in per_node.items()}}, labels)
     return out + [""]
 
 
@@ -341,7 +334,6 @@ def main() -> int:
     ap.add_argument("--diff", nargs=3, action="append", default=[], metavar=("REPO", "BASE", "HEAD"),
                     help="also a change dataset: REPO between the revisions BASE and HEAD (repeatable)")
     ap.add_argument("--compare", action="store_true", help="list how the answers differ instead of timing them")
-    ap.add_argument("--nodes", type=int, default=20, help="with --compare: boxes to ask /api/node about")
     args = ap.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
     if args.ref:
@@ -372,7 +364,7 @@ def main() -> int:
             servers[label] = Server(nolli, out)
         try:
             if args.compare:
-                print("\n".join(_compare(servers, ds, args.nodes)), flush=True)
+                print("\n".join(_compare(servers, ds)), flush=True)
                 continue
             first = next(iter(servers.values()))
             queries = _make_queries(first.fetch_scene({"p": "default"})[0], args.unfold)

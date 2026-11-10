@@ -9,9 +9,8 @@ view, the directories under --data; nolli/store/): ``/api/list`` lists them, new
 reads the viewer's location-hash keys; ``nolli/transformations/projection.py``), as JSON with every
 overlay (``nolli/formats/viewer.py``), ``/api/mermaid?d=<name>&...`` the same scene as Mermaid
 (``nolli/formats/mermaid.py``; ``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid,
-ids}``, ids mapping each Mermaid node id to its scene id); ``/api/node?d=<name>&id=<node>``
-returns the details of one box in a change (``nolli/transformations/merge.py``), ``/api/changes?d=``
-its numbered changes and the review's verdicts, ``/api/brief?d=`` what a review agent gets
+ids}``, ids mapping each Mermaid node id to its scene id), ``/api/changes?d=`` a change's
+numbered changes and the review's verdicts, ``/api/brief?d=`` what a review agent gets
 (Markdown), and ``POST /api/verdicts?d=`` stores a review's verdicts. ``/api/review?d=`` says
 where the verdicts came from and whether a review agent can run here; ``POST /api/review?d=``
 starts one (it needs ANTHROPIC_API_KEY and the change's commits, reviews.py),
@@ -198,12 +197,6 @@ class Handler(SimpleHTTPRequestHandler):
         elif path == "/api/changes":
             datasets = self.services.datasets
             self.send_json({"items": datasets.list_changes(sc), "verdicts": datasets.describe_verdicts(sc)})
-        elif path == "/api/node":
-            d = self.services.datasets.detail_box(sc, q.get("id", ""))
-            if d is None:
-                self.send_json({"error": f"no entity {q.get('id', '')!r}"}, 404)
-                return
-            self.send_json(d)
         elif path == "/api/brief":
             if not change:
                 self.send_json({"error": "not a change"}, 404)

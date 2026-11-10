@@ -297,13 +297,6 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
 
     items = datasets.list_changes(sc)
     assert items and any("repo:shop/helpers.py" in it["focus"] for it in items)
-    for x in sc.model.entities:
-        datasets.detail_box(sc, x)
-        datasets.detail_box(sc, str(x))  # as a request gives it
-        if x.is_repo:
-            datasets.detail_box(sc, x.own_code())
-    assert datasets.detail_box(sc, "repo:shop")["files"]
-    assert datasets.detail_box(sc, "") is None and datasets.detail_box(sc, "bogus") is None
 
     brief = datasets.make_review_brief(sc)
     assert "helpers" in brief
@@ -318,5 +311,3 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     described = again.describe_verdicts(sc2)
     assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
     assert again.draw_json(sc2, ProjectionSpec(preset="changes"))["nodes"]
-    for x in sc2.model.entities:
-        again.detail_box(sc2, x)
