@@ -18,7 +18,7 @@ def test_paths_from_datasets_to_store():
 
 def test_skips_past_datasets_build_scenes():
     out = subprocess.run([sys.executable, str(ROOT / "dev/examples/skips.py"), str(ROOT)], capture_output=True, text=True, check=True).stdout
-    assert "nolli/server/serve.py\n" in out and "-> nolli/transformations/projection.py: " in out
+    assert "nolli/server/serve.py\n" in out and "-> nolli/transformations/projection/__init__.py: " in out
     assert "-> nolli/datasets.py" not in out and "-> nolli/model/" not in out
 
 

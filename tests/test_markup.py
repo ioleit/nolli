@@ -12,8 +12,8 @@ import pytest
 from nolli.model.keys import StringKey
 from nolli.build import _extract_facts
 from nolli.scenes import open_built
-from nolli.transformations.reading import Reading as Graph
-from nolli.transformations.rollup import hidden_by_role
+from nolli.transformations.projection.reading import Reading as Graph
+from nolli.transformations.projection.rollup import hidden_by_role
 
 FILES = {
     "site/index.html": (

@@ -17,12 +17,12 @@ from helpers import draw, find_node, open_dir
 from nolli.model.keys import StringKey
 from nolli.build import _extract_facts
 
-from nolli.transformations.reading import Reading as Graph
+from nolli.transformations.projection.reading import Reading as Graph
 from nolli import transformations
 from nolli.transformations import projection
 from nolli.transformations.projection import ProjectionSpec
-from nolli.transformations.rollup import hidden_by_role, image_aliases, lift, rollup
-from nolli.transformations.unfold import find_default_cut
+from nolli.transformations.projection.rollup import hidden_by_role, image_aliases, lift, rollup
+from nolli.transformations.projection.unfold import find_default_cut
 
 FILES = {
     "backend/__init__.py": "",
@@ -134,7 +134,7 @@ def test_lift_ends_when_provide_lines_cannot_merge():
     leave it over the limit and return instead of picking it again forever (issue #49)."""
     from nolli.scenes import open_built
     from nolli.extractors.facts import EntityFact, Facts, Provenance
-    from nolli.transformations.rollup import RolledEdge
+    from nolli.transformations.projection.rollup import RolledEdge
 
     m = Facts()
     m.ensure_root("api", "test")
@@ -223,7 +223,7 @@ def test_utilities_by_incoming_edges(repo: Path):
     become badges on their sources. Boxes in groups never are."""
     from nolli.model.schema import RelationKind
     from nolli.transformations.projection import _cut
-    from nolli.transformations.rollup import utility_badges
+    from nolli.transformations.projection.rollup import utility_badges
 
     scene = open_dir(repo)
     g = Graph(scene)

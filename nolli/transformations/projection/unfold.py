@@ -7,8 +7,8 @@ from collections import defaultdict
 
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId
-from nolli.transformations import rollup
-from nolli.transformations.reading import Reading
+from nolli.transformations.projection import rollup
+from nolli.transformations.projection.reading import Reading
 
 
 def _unfold_cost(g: Reading, v: str, hidden: set[str], anchors: set[str] = frozenset()) -> int:

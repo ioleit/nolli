@@ -1,5 +1,8 @@
 """Applies a projection, which folds (collapses) some entities into aggregates according to a ``ProjectionSpec``.
-"""
+
+The package holds what only a projection needs: what it reads off a scene (``reading``), the
+roll-up of the dependency graph to the visible nodes (``rollup``) and the choice of which
+containers to unfold for a node budget (``unfold``)."""
 
 from __future__ import annotations
 
@@ -13,10 +16,10 @@ from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Scene
 from nolli.model.schema import EntityId, EntityKind, RelationKind, Scheme
-from nolli.transformations import rollup
-from nolli.transformations import unfold as unfold_lib
-from nolli.transformations.reading import Reading
-from nolli.transformations.rollup import RolledUp
+from nolli.transformations.projection import rollup
+from nolli.transformations.projection import unfold as unfold_lib
+from nolli.transformations.projection.reading import Reading
+from nolli.transformations.projection.rollup import RolledUp
 
 ALL_ROLES = ("source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other")
 DEFAULT_ROLES = tuple(r for r in ALL_ROLES if r not in rollup.HIDDEN_ROLES_DEFAULT)

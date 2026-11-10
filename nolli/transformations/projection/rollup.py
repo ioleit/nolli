@@ -12,8 +12,8 @@ from functools import cache
 
 from nolli.model import schema
 from nolli.model.schema import EntityId, RelationKind
-from nolli.transformations import reading
-from nolli.transformations.reading import Reading
+from nolli.transformations.projection import reading
+from nolli.transformations.projection.reading import Reading
 
 HIDDEN_ROLES_DEFAULT = ("test", "docs", "config", "data", "asset", "other")
 

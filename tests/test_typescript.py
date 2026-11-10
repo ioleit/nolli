@@ -15,8 +15,8 @@ from nolli.build import _extract_facts
 from nolli.scenes import open_built
 from nolli.formats.descriptions.hover import Source, Ctx, _edge_info
 from nolli.formats.descriptions.label import _module_stem
-from nolli.transformations.reading import Reading as Graph
-from nolli.transformations.rollup import RolledEdge, is_init
+from nolli.transformations.projection.reading import Reading as Graph
+from nolli.transformations.projection.rollup import RolledEdge, is_init
 
 FILES = {
     "tsconfig.base.json": '{ // shared\n "compilerOptions": { "baseUrl": "./app/src", "paths": { "@/*": ["./*"] } } }\n',
