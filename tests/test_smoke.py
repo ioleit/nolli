@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from helpers import draw, find_node, open_dir
+from nolli.model.keys import StringKey
 from nolli.build import _extract_facts
 
 from nolli.transformations.reading import Reading as Graph
@@ -282,7 +283,7 @@ def test_directory_with_source_inside_stays_shown():
         m.add_entity(EntityFact(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("fs")))
     for parent, child in [("repo:", "repo:evals"), ("repo:evals", "repo:evals/probe.py"), ("repo:evals", "repo:evals/runs.json"), ("repo:", "repo:docs"), ("repo:docs", "repo:docs/a.md")]:
         m.contain(parent, child, "fs")
-    assert hidden_by_role(Graph(open_built(*m.split("test@0")))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
+    assert hidden_by_role(Graph(open_built(*m.split(StringKey("test@0"))))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
 
 
 def test_box_names_are_icons_then_a_name(repo: Path):

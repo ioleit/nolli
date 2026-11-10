@@ -94,7 +94,7 @@ class Element:
 
     @property
     def model_key(self) -> str:
-        return self._scene.model.key
+        return self._scene.model.key.format_key()
 
     @property
     def kind(self) -> str:

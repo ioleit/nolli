@@ -184,10 +184,10 @@ class Verdicts(Overlay):
         self.stored = stored
 
     def load(self, scene: Scene) -> list[dict]:
-        return parse_verdicts(self.stored.load(scene.model.key))
+        return parse_verdicts(self.stored.load(scene.model.key.format_key()))
 
     def load_about(self, scene: Scene) -> dict | None:
-        return self.stored.load_about(scene.model.key)
+        return self.stored.load_about(scene.model.key.format_key())
 
     def group(self, scene: Scene) -> dict[str, list[dict]]:
         """A change's verdicts by the node their first end belongs to."""

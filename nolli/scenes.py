@@ -96,7 +96,7 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
     if base is None or head is None:
         return None
     meta = _describe_scene_meta(base.model, head.model, about, store.open_maps("content").load(change.format_key()))
-    scene = transformations.apply({"base": base, "head": head}, merge.union(change.format_key(), meta, store.load_model(change)))
+    scene = transformations.apply({"base": base, "head": head}, merge.union(change, meta, store.load_model(change)))
     return scene.with_overlays(*[store.caching_overlay(o) for o in [*_make_derived_overlays(), *_make_change_overlays(store)]])
 
 
@@ -114,18 +114,18 @@ def keep_change_scene(store: ModelStore, change: ChangeKey, by: dict | None = No
 
 def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
     """A model just extracted, not kept anywhere, as a scene."""
-    store = MemoryMaps({n: {model.key: v} for n, v in maps.items()})
+    store = MemoryMaps({n: {model.key.format_key(): v} for n, v in maps.items()})
     return _open_scene(model, store, overlays)
 
 
-def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: str, about: dict, content: Mapping[Key, dict],
+def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: ModelKey, about: dict, content: Mapping[Key, dict],
                 overlays: list[Overlay] | None = None) -> Scene:
     """A change of two models just extracted, not kept anywhere (``nolli diff``, tests)."""
     store = MemoryMaps()
     for m, maps in (base, head):
         for n, v in maps.items():
-            store.open_maps(n).save(m.key, v)
-    store.open_maps("content").save(key, content)
+            store.open_maps(n).save(m.key.format_key(), v)
+    store.open_maps("content").save(key.format_key(), content)
     bs, hs = (_open_scene(m, store, overlays) for m, _ in (base, head))
     return transformations.apply({"base": bs, "head": hs}, merge.union(key, _describe_scene_meta(bs.model, hs.model, about, content)))
 

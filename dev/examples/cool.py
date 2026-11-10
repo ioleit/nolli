@@ -10,12 +10,13 @@ import sys
 from pathlib import Path
 
 from nolli import build, scenes, transformations
+from nolli.model.keys import StringKey
 from nolli.model.scene import Element, Overlay, Scene
 from nolli.store.maps import MemoryMaps
 from nolli.transformations import projection
 
 repo = Path(sys.argv[1])
-scene = scenes.open_built(*build.extract(repo, key="nolli@worktree"))   # the files as they are, with nolli's overlays
+scene = scenes.open_built(*build.extract(repo, key=StringKey("nolli@worktree")))   # the files as they are, with nolli's overlays
 
 
 class Cool(Overlay):                                                # the custom overlay
@@ -57,7 +58,7 @@ one_dir = projection.ProjectionSpec.expanded_if(lambda el: el.key in ("repo:", "
 
 store.save_scene(live)                                              # the model, and what every overlay says about it
 store.precompute_overlay_values(transformations.apply(live, projection.fold(modules)), Cool())   # one more picture, this overlay only
-print("kept:", store.list_map_names(scene.model.key), "for the scene;", [k for k in store.maps["cool"]], "for cool")
+print("kept:", store.list_map_names(scene.model.key.format_key()), "for the scene;", [k for k in store.maps["cool"]], "for cool")
 
 cool = store.caching_overlay(Cool())                                # Cool, answered from its kept values where they exist
 

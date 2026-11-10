@@ -13,7 +13,7 @@ import pytest
 
 from nolli.build import extract_commit, fetch_change, run_here
 from nolli.scenes import open_built, open_change_scene
-from nolli.model.keys import Repo
+from nolli.model.keys import Repo, StringKey
 from nolli.model.model import Model
 from nolli.progress import Quiet
 from nolli.sources import CloneCache, FetchError, LocalRepository
@@ -67,7 +67,7 @@ def test_directory_store_keeps_models_changes_and_verdicts(tmp_path):
     change = c1.make_change_to(c2.sha)
     assert store.load_change(change) is None and store.load_model(c1) is None and store.find_key(change.format_name()) is None
     store.save_model(c1, model("one"), {"fs": {"repo:": {"name": "one"}}})
-    assert store.load_model(c1).meta["repo"] == "one" and store.load_model(c1).key == c1.format_key()
+    assert store.load_model(c1).meta["repo"] == "one" and store.load_model(c1).key == c1
     assert store.open_maps("fs").load(c1.format_key()) == {"repo:": {"name": "one"}}
     sides = {"base": (model("base"), {}), "head": (model("head"), {"fs": {"repo:": {"name": "head"}}})}
     store.save_change(change, {"title": "a change"}, sides, {"content": {"repo:a.py": {"status": "added"}}})
@@ -188,7 +188,7 @@ def test_extract_commit_names_the_root(src):
     m, maps = extract_commit(path, shas[0], "shop", progress=Quiet())
     assert m.meta["commit"] == shas[0][:7] and m.meta["repo"] == "shop" and not m.has("repo:shop/cache.py")
     assert m.has("repo:shop/store.py")
-    m.key = "shop@0"
+    m.key = StringKey("shop@0")
     assert open_built(m, maps).find_element("repo:").get("files")["name"] == "shop"
 
 

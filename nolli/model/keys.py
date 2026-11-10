@@ -47,8 +47,8 @@ class Repo:
 
 
 class ModelKey:
-    """What a model is the model of: a repository at one commit (``CommitKey``) or the change
-    between two of its commits (``ChangeKey``)."""
+    """What a model is the model of: a repository at one commit (``CommitKey``), the change
+    between two of its commits (``ChangeKey``), or anything else, by name (``StringKey``)."""
 
     repo: Repo
 
@@ -65,6 +65,8 @@ class ModelKey:
 
     @classmethod
     def from_dict(cls, d: dict) -> ModelKey:
+        if "key" in d:
+            return StringKey(d["key"])
         repo = Repo(d["repo"])
         return repo.make_change(d["base"], d["head"]) if d.get("base") else repo.make_commit(d["head"])
 
@@ -109,3 +111,20 @@ class ChangeKey(ModelKey):
 
     def to_dict(self) -> dict:
         return {"repo": self.repo.url, "head": self.head, "base": self.base}
+
+
+@dataclass(frozen=True)
+class StringKey(ModelKey):
+    """A model of no repository, by an arbitrary name: one a transformation made (a selection,
+    a projection), one read from ``model.json`` alone, one built in a test."""
+
+    text: str = ""
+
+    def format_name(self) -> str:
+        return self.text
+
+    def format_key(self) -> str:
+        return self.text
+
+    def to_dict(self) -> dict:
+        return {"key": self.text}

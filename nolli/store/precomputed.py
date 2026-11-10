@@ -49,7 +49,7 @@ def _precompute(stored: KeptMaps, scene: Scene, overlay: Overlay, by: dict | Non
     with itself attached (in place of one of the same name), so what it asks of other
     overlays, and of the scenes the model was made from, is answered as usual."""
     values = scene.with_overlays(overlay).read_all(overlay.name)
-    stored.save(scene.model.key, values, _describe_values(overlay, by))
+    stored.save(scene.model.key.format_key(), values, _describe_values(overlay, by))
     return values
 
 
@@ -117,7 +117,7 @@ class PrecomputedOverlay(Overlay):
         return None if self.fallback is None else self.fallback.compute(element)
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        kept = self.find_kept(scene.model.key)
+        kept = self.find_kept(scene.model.key.format_key())
         if kept is not None:
             return kept
         return {} if self.fallback is None else self.fallback.compute_all(scene)
@@ -165,7 +165,7 @@ class OverlayStore:
             return None
         own = [self.caching_overlay(o) for o in overlays]
         named = {o.name for o in own}
-        kept = [self.strictly_precomputed_overlay(n) for n in self.list_map_names(model.key) if n not in named]
+        kept = [self.strictly_precomputed_overlay(n) for n in self.list_map_names(model.key.format_key()) if n not in named]
         return Scene(model, [*kept, *own], sources)
 
     def save_scene(self, scene: Scene, by: dict | None = None) -> None:

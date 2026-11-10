@@ -170,7 +170,7 @@ class Datasets:
 
     def load_verdicts(self, scene: Scene) -> list[dict]:
         """A change's kept verdicts, in their order."""
-        return parse_verdicts(self.store.open_maps("verdicts").load(scene.model.key))
+        return parse_verdicts(self.store.open_maps("verdicts").load(scene.model.key.format_key()))
 
     def find_provenance(self, key: ModelKey) -> dict | None:
         """Who made a change's verdicts; None without verdicts."""
@@ -249,7 +249,7 @@ def extract_dataset(repo: Path, out: Path, budget: int | None = None) -> dict:
     """The model of the files under ``repo`` as they are, written to the directory ``out`` (a
     dataset directory, as ``DirectoryStore`` keeps one) with its extras; the report."""
     key = find_repo(repo).make_commit(find_head(repo) or "worktree")
-    m, maps = extract(repo, key=key.format_key())
+    m, maps = extract(repo, key=key)
     if budget:
         m.meta["budget"] = budget
     out.mkdir(parents=True, exist_ok=True)
@@ -266,14 +266,14 @@ def diff_dataset(repo: Path, base_rev: str, head_rev: str, out: Path, about: dic
     sides = {}
     for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
         m, maps = extract_commit(repo, commit.sha, repo.name, Quiet())
-        m.key = commit.format_key()
+        m.key = commit
         sides[side] = (m, maps)
     content = list_content(repo, base, head, Quiet())
     about = {k: v for k, v in about.items() if v}
     about.update({"base": base, "head": head, "remote": key.repo.format_remote(), "nolli": version()})
     out.mkdir(parents=True, exist_ok=True)
-    scene = merge_built(sides["base"], sides["head"], key.format_key(), about, content)
-    merged = merge_models(key.format_key(), sides["base"][0], sides["head"][0], describe_change_meta(sides["base"][0], sides["head"][0], about))
+    scene = merge_built(sides["base"], sides["head"], key, about, content)
+    merged = merge_models(key, sides["base"][0], sides["head"][0], describe_change_meta(sides["base"][0], sides["head"][0], about))
     write_change(out, key, about, sides, {"content": content}, merged)
     keep_change_scene(DirectoryStore(out.parent), key, {"nolli": version()})  # the directory as nolli serve reads it
     return about, write_extras(Datasets(MemoryMaps()), scene, out)

@@ -9,6 +9,7 @@ from nolli.build import extract, extract_commit, list_content
 from nolli.scenes import merge_built, open_built
 from nolli.formats.viewer import export_scene
 from nolli.progress import Quiet
+from nolli.model.keys import StringKey
 from nolli.model.scene import Scene
 from nolli import transformations
 from nolli.transformations import projection
@@ -17,7 +18,7 @@ from nolli.transformations.projection import ProjectionSpec
 
 def open_dir(path: Path, key: str = "test@0") -> Scene:
     """The scene of the files under ``path`` as they are."""
-    return open_built(*extract(path, key=key))
+    return open_built(*extract(path, key=StringKey(key)))
 
 
 def draw(scene: Scene, **state) -> dict:
@@ -35,9 +36,9 @@ def open_change(repo: Path, base: str, head: str, **about) -> Scene:
     sides = []
     for s in (b, h):
         m, maps = extract_commit(repo, s, repo.name, Quiet())
-        m.key = f"test@{s}"
+        m.key = StringKey(f"test@{s}")
         sides.append((m, maps))
-    return merge_built(sides[0], sides[1], f"test@{b}..{h}", {"base": b, "head": h, **about}, list_content(repo, b, h, Quiet()))
+    return merge_built(sides[0], sides[1], StringKey(f"test@{b}..{h}"), {"base": b, "head": h, **about}, list_content(repo, b, h, Quiet()))
 
 
 def find_node(sc: dict, x: str) -> dict:

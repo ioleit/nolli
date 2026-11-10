@@ -10,6 +10,7 @@ import hashlib
 from collections.abc import Mapping
 
 from nolli.model import schema, vocabulary
+from nolli.model.keys import ModelKey
 from nolli.model.model import Key, Model, Relation
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 from nolli.model.schema import EntityId, RelationKind
@@ -48,7 +49,7 @@ class Change(Overlay):
             return Overlay.compute_all(self, scene) if "change" in scene.model.meta else {}
         out: dict[Key, dict] = {}
         sides = {role: _Side(scene.sources[role]) for role in ("base", "head")}
-        content = self.content.load(scene.model.key)
+        content = self.content.load(scene.model.key.format_key())
         renames, by_old_path = _list_renames(content), _index_old_paths(content)
         for x in scene.model.entities.values():
             rec = _compare_node(x.id, x.kind, sides, content, renames, by_old_path)
@@ -289,7 +290,7 @@ class SidesSaid(Overlay):
         return out
 
 
-def merge_models(key: str, base: Model, head: Model, meta: dict | None = None) -> Model:
+def merge_models(key: ModelKey, base: Model, head: Model, meta: dict | None = None) -> Model:
     """The model holding every node and edge of either side, each referring to its namesake on
     each side (``refs``). Same address, same thing: a node or edge is the same on both sides
     when its address is; a node owned on both sides is owned as head has it."""
@@ -299,7 +300,7 @@ def merge_models(key: str, base: Model, head: Model, meta: dict | None = None) -
     return Model(key, entities.values(), edges, refs={"base": None, "head": None}, meta=dict(meta or {}), check=False)
 
 
-def union(key: str, meta: dict | None = None, kept: Model | None = None):
+def union(key: ModelKey, meta: dict | None = None, kept: Model | None = None):
     """Merge as a transformation: of two scenes by role (``base``, ``head``), the merged model
     (``merge_models``, or ``kept``: the same as it was kept at diff time, with ``meta`` on top),
     and what extraction said about it on the sides as the change's (``SidesSaid``, one per

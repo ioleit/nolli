@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from nolli.model.keys import StringKey
 from nolli.build import _extract_facts
 from nolli.scenes import open_built
 from nolli.formats.descriptions.hover import Source, Ctx, _edge_info
@@ -71,7 +72,7 @@ def model(tmp_path_factory):
 
 
 def open_graph(m) -> Graph:
-    return Graph(open_built(*m.split("test@0")))
+    return Graph(open_built(*m.split(StringKey("test@0"))))
 
 
 def uses(m, subkind=None):

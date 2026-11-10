@@ -7,6 +7,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
 from nolli.model import vocabulary
+from nolli.model.keys import ModelKey, StringKey
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.schema import EntityId, EntityKind, RelationKind, Scheme
 
@@ -193,7 +194,7 @@ class Facts:
 
     # -- what extraction made ------------------------------------------------
 
-    def split(self, key: str = "") -> tuple[Model, dict[str, dict[Key, dict]]]:
+    def split(self, key: ModelKey = StringKey()) -> tuple[Model, dict[str, dict[Key, dict]]]:
         """The structure, and what the extractors said, filed by shape (``vocabulary.SHAPES``,
         one map each, whichever extractor spoke): for a node its attributes (``name`` among
         them), for an edge its facts (one per relation: count, confidence, where it was

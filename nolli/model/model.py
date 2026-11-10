@@ -11,6 +11,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from nolli.model.keys import ModelKey, StringKey
 from nolli.model.schema import EntityId, EntityKind, RelationKind
 
 FORMAT = 3  # of model.json; a model of another format is built again, never read (3: its maps are by shape, meta names no overlays)
@@ -76,13 +77,13 @@ class Model:
     """Structure: ``entities`` (by address), ``edges`` (relations), and for a model made
     by a transformation (a change, a projection) ``refs`` (role -> element -> the elements of
     that source it stands for). ``contain`` edges form the ownership tree. ``key`` names the
-    model (what it is the model of: ``nolli/store/`` keys); its maps are kept by it.
+    model (what it is the model of, a ``ModelKey``); its maps are kept by its text (``format_key``).
 
     Everything else known about a node or an edge (its name, size, role, a docstring, which
     lines an import is on, a review's verdict) is in overlays, never in the model. Unless
     ``check`` is False, every edge's ends must be among its entities."""
 
-    def __init__(self, key: str = "", entities: Iterable[Entity] = (), edges: Iterable[Relation] = (),
+    def __init__(self, key: ModelKey = StringKey(), entities: Iterable[Entity] = (), edges: Iterable[Relation] = (),
                  refs: dict[str, dict[Key, tuple[Key, ...]]] | None = None, meta: dict | None = None,
                  check: bool = True) -> None:
         self.key = key
@@ -160,7 +161,7 @@ class Model:
         keep = set(keep)
         entities = [x for x in self.entities.values() if x.id in keep]
         edges = [e for e in self.edges if e.src in keep and e.dst in keep]
-        return Model(f"{self.key}|select", entities, edges, refs={"source": None}, check=False)
+        return Model(StringKey(f"{self.key.format_key()}|select"), entities, edges, refs={"source": None}, check=False)
 
     def count_nodes_by_kind(self) -> dict[str, int]:
         out: dict[str, int] = defaultdict(int)
@@ -177,7 +178,7 @@ class Model:
         written."""
         if any(v is not None for v in self.refs.values()):
             raise ValueError("a model that refers to its sources element by element is made again from them, not saved")
-        out = {"format": FORMAT, "key": self.key, "meta": self.meta,
+        out = {"format": FORMAT, "key": self.key.format_key(), "meta": self.meta,
                "nodes": {x: self.entities[x].kind for x in sorted(self.entities)},
                "edges": [[e.kind, e.src, e.dst, e.subkind] for e in self.edges]}
         if self.refs:
@@ -193,7 +194,7 @@ class Model:
         raises ``FormatError`` rather than be misread."""
         if d.get("format") != FORMAT:
             raise FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {FORMAT}")
-        return cls(d.get("key", ""), (Entity(x, k) for x, k in d["nodes"].items()), (Relation(*e) for e in d["edges"]), refs=d.get("refs"), meta=d.get("meta") or {})
+        return cls(StringKey(d.get("key", "")), (Entity(x, k) for x, k in d["nodes"].items()), (Relation(*e) for e in d["edges"]), refs=d.get("refs"), meta=d.get("meta") or {})
 
     @classmethod
     def load(cls, path: Path) -> Model:

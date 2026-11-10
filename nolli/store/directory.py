@@ -122,7 +122,7 @@ class DirectoryStore(OverlayStore):
             return None
         m = self.read_json(d / "model.json", Model.from_dict)
         if m is not None:
-            m.key = key.format_key()
+            m.key = key
         return m
 
     def load_change(self, key: ChangeKey) -> dict | None:
@@ -229,10 +229,10 @@ def _write_maps(d: Path, model_key: str, maps: Mapping[str, Mapping[Key, dict]])
 
 
 def write_commit(d: Path, key: CommitKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
-    model.key = key.format_key()
+    model.key = key
     (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
     model.save(d / "model.json")
-    _write_maps(d, model.key, maps)
+    _write_maps(d, key.format_key(), maps)
 
 
 def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]], model: Model | None = None) -> None:
@@ -241,7 +241,7 @@ def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str,
     (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
     (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": about}, indent=1))
     if model is not None:
-        model.key = key.format_key()
+        model.key = key
         model.save(d / "model.json")
     for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
         (d / side).mkdir(exist_ok=True)

@@ -69,7 +69,7 @@ def keep(sc, verdicts):
     """Verdicts kept as the change's review, as save_verdicts keeps them in a store."""
     from nolli.review.verdicts import _dump_verdicts
 
-    sc.overlays["verdicts"].stored.save(sc.model.key, _dump_verdicts(verdicts), {"by": "test"})
+    sc.overlays["verdicts"].stored.save(sc.model.key.format_key(), _dump_verdicts(verdicts), {"by": "test"})
 
 
 def test_structure_and_content(repo):

@@ -15,7 +15,7 @@ from typing import Any
 from nolli import extractors, scenes
 from nolli.extractors import Context, match
 from nolli.extractors.facts import Facts
-from nolli.model.keys import ChangeKey, CommitKey
+from nolli.model.keys import ChangeKey, CommitKey, ModelKey, StringKey
 from nolli.model.model import Key, Model
 from nolli.model.schema import EntityId
 from nolli.progress import Progress, Quiet
@@ -36,7 +36,7 @@ def run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
     return fn(*args, progress=progress)
 
 
-def extract(repo: Path, config: dict | None = None, progress: Progress | None = None, key: str = "") -> tuple[Model, Maps]:
+def extract(repo: Path, config: dict | None = None, progress: Progress | None = None, key: ModelKey = StringKey()) -> tuple[Model, Maps]:
     """The model of the files under ``repo`` as they are (a working tree, or a checkout), and
     what each extractor said about its nodes and edges."""
     return _extract_facts(repo, config, progress).split(key)
@@ -108,7 +108,7 @@ def is_fresh(m: Model | dict | None) -> bool:
 
 
 def _load_maps(store: MapStore, m: Model) -> Maps:
-    return {n: dict(store.open_maps(n).load(m.key)) for n in store.list_map_names(m.key)}
+    return {n: dict(store.open_maps(n).load(m.key.format_key())) for n in store.list_map_names(m.key.format_key())}
 
 
 def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = run_here,
@@ -120,7 +120,7 @@ def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, ru
     if m is not None and is_fresh(m):
         return m, _load_maps(store, m)
     m, maps = run(extract_commit, clone, commit.sha, commit.repo.format_name(), progress=progress)
-    m.key = commit.format_key()
+    m.key = commit
     return m, maps
 
 
@@ -156,6 +156,6 @@ def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, abou
     record.update({"base": change.base, "head": change.head, "remote": change.repo.format_remote(), "nolli": version()})
     with progress.step("keeping the change"):
         meta = scenes.describe_change_meta(sides["base"][0], sides["head"][0], record)
-        store.save_change(change, record, sides, {"content": content}, merge.merge_models(change.format_key(), sides["base"][0], sides["head"][0], meta))
+        store.save_change(change, record, sides, {"content": content}, merge.merge_models(change, sides["base"][0], sides["head"][0], meta))
         scenes.keep_change_scene(store, change, {"nolli": version()})
     return record

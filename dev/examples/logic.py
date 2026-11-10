@@ -10,6 +10,7 @@ from pathlib import Path
 
 from nolli import build, scenes, transformations
 from nolli.formats import mermaid
+from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId, RelationKind
@@ -34,7 +35,7 @@ def group_into_logic(scene: Scene) -> Model:                        # the custom
     edges = [e for e in m.edges if e not in moved]
     edges.append(Relation(RelationKind.CONTAIN, NOLLI, LOGIC))
     edges.extend(Relation(RelationKind.CONTAIN, LOGIC, x) for x in MEMBERS)
-    return Model(f"{m.key}|logic", entities, edges, refs={"source": None})   # each entity and relation checked
+    return Model(StringKey(f"{m.key.format_key()}|logic"), entities, edges, refs={"source": None})   # each entity and relation checked
 
 
 proposal = transformations.apply(scene, group_into_logic)

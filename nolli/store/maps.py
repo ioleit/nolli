@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
+from nolli.model.keys import ModelKey
 from nolli.model.model import FormatError, Key, Model, Relation
 from nolli.model.schema import EntityId
 from nolli.store.precomputed import KeptMaps, OverlayStore
@@ -33,7 +34,7 @@ class MemoryMaps(OverlayStore):
     def __init__(self, maps: dict[str, dict[str, dict[Key, dict]]] | None = None) -> None:
         self.maps = maps if maps is not None else {}  # name -> model key -> values
         self.about: dict[tuple[str, str], dict] = {}
-        self.models: dict[str, Model] = {}
+        self.models: dict[ModelKey, Model] = {}
 
     def open_maps(self, name: str) -> _MemoryHandle:
         return _MemoryHandle(self, name)
@@ -41,7 +42,7 @@ class MemoryMaps(OverlayStore):
     def list_map_names(self, model_key: str) -> list[str]:
         return sorted(n for n, by_model in self.maps.items() if model_key in by_model)
 
-    def load_model(self, key: str) -> Model | None:
+    def load_model(self, key: ModelKey) -> Model | None:
         return self.models.get(key)
 
     def save_model(self, model: Model) -> None:

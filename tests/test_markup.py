@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from nolli.model.keys import StringKey
 from nolli.build import _extract_facts
 from nolli.scenes import open_built
 from nolli.transformations.reading import Reading as Graph
@@ -102,5 +103,5 @@ def test_a_root_path_from_the_pages_directory(model):
 
 
 def test_pages_are_shown_by_default(model):
-    g = Graph(open_built(*model.split("test@0")))
+    g = Graph(open_built(*model.split(StringKey("test@0"))))
     assert "repo:site/index.html" not in hidden_by_role(g), "a page's edges would be dropped with it"

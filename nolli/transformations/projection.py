@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
 from nolli.model import vocabulary
+from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Scene
 from nolli.model.schema import EntityId, EntityKind, RelationKind, Scheme
@@ -292,6 +293,6 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, FixedOverlay]:
                            "hidden": len(hidden), "hidden_nodes": sorted(hidden), "stats": {"nodes": drawn_count, "edges": len(keys)},
                            "internal": dict(rolled.internal), "hidden_relations": rolled.hidden_relations,
                            "unresolved": dict(rolled.unresolved)}}
-    key = "project:" + hashlib.sha1(f"{scene.model.key}|{sorted(state.items())}".encode()).hexdigest()[:16]
+    key = StringKey("project:" + hashlib.sha1(f"{scene.model.key.format_key()}|{sorted(state.items())}".encode()).hexdigest()[:16])
     model = Model(key, entities, [*contain, *keys], refs={"source": {k: tuple(v) for k, v in refs.items()}}, meta=meta, check=False)
     return model, FixedOverlay("projection", values)

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from nolli import transformations
+from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Overlay
 from nolli.model.schema import RelationKind
@@ -54,14 +55,14 @@ def propose(scene):
     entities = [*m.entities.values(), Entity("repo:src", "directory")]
     edges = [e for e in m.edges if e != Relation(RelationKind.CONTAIN, "repo:", "repo:pkg")]
     edges += [Relation(RelationKind.CONTAIN, "repo:", "repo:src"), Relation(RelationKind.CONTAIN, "repo:src", "repo:pkg")]
-    return Model(f"{m.key}|src", entities, edges, refs={"source": None})
+    return Model(StringKey(f"{m.key.format_key()}|src"), entities, edges, refs={"source": None})
 
 
 def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):
     store = MemoryMaps()
     values = store.precompute_overlay_values(scene, Counting())
     assert values["repo:pkg/a.py"] == {"kind": "file", "inside": 0} and len(values) == len(scene.model.entities) + len(scene.model.edges)
-    about = store.open_maps("counting").load_about(scene.model.key)
+    about = store.open_maps("counting").load_about(scene.model.key.format_key())
     assert about["overlay"] == "counting" and about["cache_version"] == "1" and about["at"]
 
     kept = scene.with_overlays(store.strictly_precomputed_overlay("counting"))
@@ -119,18 +120,18 @@ def test_values_of_another_version_are_not_read(scene):
     assert kept.find_element("repo:pkg/a.py").get("counting") == {"kind": "file", "inside": 0}
     assert behind.asked == ["repo:pkg/a.py"]  # computed: what was kept is version 1's
     assert kept.read_all("counting") == store.precompute_overlay_values(scene, Counting2())  # kept again, this version's
-    assert store.open_maps("counting").load_about(scene.model.key)["cache_version"] == "2"
+    assert store.open_maps("counting").load_about(scene.model.key.format_key())["cache_version"] == "2"
 
 
 def test_an_overlay_without_a_version_reads_whatever_was_kept(scene):
     store = MemoryMaps()
-    store.open_maps("files").save(scene.model.key, {"repo:pkg/a.py": {"role": "kept"}}, {"cache_version": "fs-9"})
+    store.open_maps("files").save(scene.model.key.format_key(), {"repo:pkg/a.py": {"role": "kept"}}, {"cache_version": "fs-9"})
     assert store.precomputed_overlay("files").compute(scene.find_element("repo:pkg/a.py")) == {"role": "kept"}
 
 
 def test_values_kept_without_a_version_are_read(scene):
     store = MemoryMaps()
-    store.open_maps("counting").save(scene.model.key, {"repo:pkg/a.py": {"kind": "from outside"}})  # as an extractor's map is
+    store.open_maps("counting").save(scene.model.key.format_key(), {"repo:pkg/a.py": {"kind": "from outside"}})  # as an extractor's map is
     behind = Counting()
     kept = scene.with_overlays(store.caching_overlay(behind))
     assert kept.find_element("repo:pkg/a.py").get("counting") == {"kind": "from outside"}
@@ -161,7 +162,7 @@ def test_a_scene_is_saved_and_opened_whole(scene):
     live = scene.with_overlays(Counting())
     store.save_scene(live)
     assert store.load_model(scene.model.key) is scene.model
-    assert "counting" in store.list_map_names(scene.model.key) and "files" in store.list_map_names(scene.model.key)
+    assert "counting" in store.list_map_names(scene.model.key.format_key()) and "files" in store.list_map_names(scene.model.key.format_key())
 
     behind = Counting()
     opened = store.open_scene(scene.model.key, [behind])
