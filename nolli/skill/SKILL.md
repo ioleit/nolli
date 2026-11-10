@@ -70,7 +70,7 @@ Start the viewer in the background; it serves until stopped:
 nolli view <dataset> --no-open
 ```
 
-It prints `viewer: http://127.0.0.1:<port>/#d=<name>` (to stderr; redirect it to a file to
+It prints `viewer: http://127.0.0.1:<port>/?t=<dataset>` (to stderr; redirect it to a file to
 read it). Give the user that URL, and say how to stop the viewer (stop that process). On
 the user's own machine you can drop `--no-open` to open their browser; if they look from
 another machine, `--host <an address of this one they can reach>` (and `--port`). The

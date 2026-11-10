@@ -9,9 +9,10 @@
 
 build builds a target's dataset under --data (default: $NOLLI_DATA, else $XDG_DATA_HOME/nolli
 or ~/.local/share/nolli), reusing one built before, and prints its directory; with -o it
-builds it afresh into that directory instead, with what is made from it (below). view builds
-it the same way, then serves the viewer on the data directory (every dataset there, the one
-built first) and opens it in the browser. agent brief builds a change for a review agent.
+builds it afresh into that directory instead, with what is made from it (below). view starts
+the viewer's server on the data directory and the repository you are in, and opens the
+target's page in the browser: /?t=<target>, which builds it the same way if it is not built
+yet (nolli/server/serve.py). agent brief builds a change for a review agent.
 
 <target>: what to build, in the repository you are in (or --repo DIR). nolli prints what it
 resolved to before building.
@@ -61,8 +62,9 @@ prints where review.md (what to do) is and where verdicts.json goes (both in a d
 the agent's own, <data>/.agent/<name>); check validates the verdicts against the diagram they
 answer and, when they pass, makes them the dataset's review.
 
-serve is view as a service for GitHub repositories: /<owner>/<repo>/pull/<n> on its host shows
-that PR (nolli/server/hosted.py), for every repository its token can read.
+serve is the same server for GitHub repositories, for everyone who can reach it: a target on
+GitHub is its URL with this host (/<owner>/<repo>/pull/<n> shows that PR), for every
+repository its token can read (nolli/server/serve.py).
 
 Under --data, a dataset is a directory of the store (nolli/store/, DirectoryStore): a commit's
 key.json, model.json (its structure) and overlays/ (what each extractor said); a change's
@@ -84,6 +86,7 @@ from pathlib import Path
 
 from .model.keys import ChangeKey
 from .progress import Progress
+from .sources.git import ChangeError
 from .store import DirectoryStore
 
 
@@ -206,12 +209,46 @@ def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
 
 
 def cmd_view(args: argparse.Namespace) -> int:
+    """nolli view: a server on the data directory and the repository you are in, opened on the
+    target's page, which builds it if it is not built yet."""
+    import webbrowser
+    from urllib.parse import quote
+
+    from .datasets import parse_target
+    from .server.serve import make_local_server
+    from .sources.git import find_toplevel
+
     if args.build_only:  # before nolli build
         return cmd_build(argparse.Namespace(**{**vars(args), "out": None}))
-    b = build(args, "view")
-    if b is None:
+    if args.rebuild and build(args, "view") is None:
         return 2
-    return serve(b.store, b.name, args.host, args.port, not args.no_open, b.repo if b.asked.dataset is None else None)
+    data = find_data_dir(args.data)
+    try:
+        local = find_toplevel(Path(args.repo).resolve())
+    except ChangeError:
+        local = None
+    try:
+        target = parse_target(args.target, local)
+    except ChangeError as exc:
+        print(f"nolli view: {exc}", file=sys.stderr)
+        return 2
+    if target.kind == "dataset":  # served from the store it is in
+        data = target.path.parent
+    try:
+        srv = make_local_server(data, local, args.host, args.port, args.budget)
+    except OSError:  # the port is taken (another viewer, perhaps): any free one
+        srv = make_local_server(data, local, args.host, 0, args.budget)
+    url = f"http://{args.host}:{srv.server_address[1]}/?t={quote(args.target or '', safe='')}"
+    print(f"viewer: {url}  (Ctrl-C to stop)", file=sys.stderr, flush=True)
+    if not args.no_open:
+        webbrowser.open(url)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        srv.server_close()
+    return 0
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
@@ -261,7 +298,7 @@ class Gone(argparse.Action):
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    from .server.hosted import main as hosted
+    from .server.serve import main as serve
 
     argv = ["--host", args.host, "--budget", str(args.budget)]
     argv += ["--cache", args.cache] if args.cache else []
@@ -269,7 +306,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     argv += ["--keep", args.keep] if args.keep else []
     for flag, value in (("--builds", args.builds), ("--timeout", args.timeout), ("--max-repo", args.max_repo)):
         argv += [flag, str(value)] if value is not None else []
-    return hosted(argv)
+    return serve(argv)
 
 
 def find_agent_dir(store: DirectoryStore, name: str) -> Path:
@@ -314,7 +351,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     ds = target if (target / "key.json").is_file() else find_data_dir(args.data) / args.dataset
     store = DirectoryStore(ds.parent)
     datasets = Datasets(store)
-    key = datasets.find_key(ds.name)
+    key = store.find_key(ds.name)
     scene = datasets.open_scene(key) if isinstance(key, ChangeKey) else None
     if scene is None:
         print(f"nolli agent check: {args.dataset} is not a change's dataset", file=sys.stderr)
@@ -353,30 +390,6 @@ def cmd_skill(args: argparse.Namespace) -> int:
     return 0
 
 
-def serve(store: DirectoryStore, name: str, host: str, port: int, open_browser: bool, repo: Path | None = None) -> int:
-    import webbrowser
-    from urllib.parse import quote
-
-    from .server.serve import make_server, preload
-
-    try:
-        srv = make_server(store, host, port, {name: repo} if repo else None)
-    except OSError:  # the port is taken (another viewer, perhaps): any free one
-        srv = make_server(store, host, 0, {name: repo} if repo else None)
-    url = f"http://{host}:{srv.server_address[1]}/#d={quote(name)}"
-    preload(store, name)  # while the browser starts: a big model takes seconds to read
-    print(f"viewer: {url}  (Ctrl-C to stop)", file=sys.stderr, flush=True)
-    if open_browser:
-        webbrowser.open(url)
-    try:
-        srv.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        srv.server_close()
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="nolli", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -398,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
     bd.add_argument("--title", help="what the change is called, shown in the viewer's header")
     bd.add_argument("--description", help="a file with the change's description, for review.md")
     bd.set_defaults(fn=cmd_build)
-    vw = sub.add_parser("view", help="build a target's dataset (as nolli build) and show it in the viewer")
+    vw = sub.add_parser("view", help="show a target in the viewer, building it (as nolli build) if it is not built yet")
     add_target(vw)
     vw.add_argument("--build-only", action="store_true", help=argparse.SUPPRESS)  # before nolli build
     vw.add_argument("--host", default="127.0.0.1")

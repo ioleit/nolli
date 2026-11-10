@@ -119,3 +119,19 @@ class CloneCache:
             git.run_git(clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "origin", *shas, env=env)
         except GitError as exc:
             raise FetchError(f"could not fetch {', '.join(s[:7] for s in shas)} from {repo.url}: {exc}") from None
+
+
+class LocalFirst:
+    """A repository you have checked out (if any), and clones for the rest: the checkout when it
+    has the commits a build needs (yours, or ones fetched into it), else ``clones``."""
+
+    def __init__(self, path: Path | None, clones: CloneCache):
+        self.path, self.clones = (Path(path) if path else None), clones
+
+    @contextlib.contextmanager
+    def open_commits(self, repo: Repo, *shas: str) -> Iterator[Path]:
+        if self.path is not None and all(git.has_commit(self.path, s) for s in shas):
+            yield self.path
+            return
+        with self.clones.open_commits(repo, *shas) as clone:
+            yield clone

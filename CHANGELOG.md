@@ -16,6 +16,14 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   repository's, `/tree/<ref>`, `/commit/<sha>`, `/compare/<a>...<b>` or `/pull/<n>` URL, or
   `#<n>`. Outside a git repository, GitHub targets are fetched into clones under
   `<data>/.repos`.
+- **One server for `nolli view` and `nolli serve`** (`nolli/server/serve.py`; `hosted.py` is
+  gone). A page shows one target and builds it on demand: GitHub's paths with the server's host
+  (`/<owner>/<repo>`, `…/tree/<ref>`, `…/commit/<sha>`, `…/compare/<a>...<b>`, `…/pull/<n>`),
+  and on `nolli view`'s server any target, `/?t=<target>`. `nolli view [<target>]` starts the
+  server on the data directory and the repository you are in and opens the target's page,
+  which builds it there (in processes of their own, as `nolli serve` always did).
+- **The viewer's API names a model by its key**: `k=<ModelKey.format_key()>`, which the page
+  carries (`<meta name="nolli-key">`). `ModelKey.parse` reads a key's text back.
 - **`WORKTREE`: the files on disk**, uncommitted edits and untracked files that are not
   ignored included, as a snapshot or as an end of a change (`HEAD..WORKTREE`,
   `...WORKTREE`). nolli writes them to the repository as a commit object of its own (no
@@ -37,6 +45,15 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Removed
 
+- **The viewer's dataset dropdown and `/api/list`**: a page shows the one model its target
+  names. `d=<name>` in the API and `#d=<name>` in the viewer's links are gone with them.
+- **Names in the store's interface**: `ModelStore.find_key` and `list_names`, and
+  `ModelKey.format_name()`. A dataset directory's name is `DirectoryStore`'s own business
+  (`DirectoryStore.find_key` still finds a key by it).
+- **For services built on `nolli serve`**: `HostedHandler` and `HostedServices` are `Handler`
+  and `Services` of `nolli.server.serve`; `Site` takes a store, sources and a work directory,
+  `Site.plan` takes a target's text, and `make_server(store, sources, work, …)` replaces the
+  two servers' own.
 - **`nolli view --whole`**: name a snapshot instead (`HEAD`, a commit, `WORKTREE`, a
   repository's URL). The option says so when it is used.
 

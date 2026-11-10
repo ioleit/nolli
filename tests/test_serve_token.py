@@ -1,4 +1,4 @@
-"""The GitHub token of nolli serve without GitHub: one per repository, from the environment or
+"""The GitHub token of nolli serve (nolli/server/serve.py) without GitHub: one per repository, from the environment or
 from a service built on it, falling back to nobody, and the server showing whatever its token
 reads."""
 
@@ -7,22 +7,28 @@ from __future__ import annotations
 import pytest
 
 from nolli.sources import github
-from nolli.server import hosted
+from nolli.server import serve
+from nolli.sources import CloneCache
+from nolli.store import DirectoryStore
+
+
+def make_site(cache, **kw) -> serve.Site:
+    return serve.Site(DirectoryStore(cache / "data"), CloneCache(cache / "repos"), cache, **kw)
 
 
 def test_from_env():
-    assert hosted.token_from_env({}).token("o", "r") is None
-    assert hosted.token_from_env({"NOLLI_GITHUB_TOKEN": "t"}).token("o", "r") == "t"
+    assert serve.token_from_env({}).token("o", "r") is None
+    assert serve.token_from_env({"NOLLI_GITHUB_TOKEN": "t"}).token("o", "r") == "t"
 
 
 def test_each_repository_its_own_token(tmp_path, monkeypatch):
-    class PerOwner(hosted.Token):
+    class PerOwner(serve.Token):
         def token(self, owner, repo):
             return f"tok-{owner}"
 
-    monkeypatch.setattr(hosted.github, "api", lambda path, tok: {"path": path, "tok": tok})
-    site = hosted.Site(tmp_path, token=PerOwner())
-    assert site.ask("a", "r") == {"path": "repos/a/r", "tok": "tok-a"}
+    monkeypatch.setattr(serve.github, "api", lambda path, tok: {"path": path, "tok": tok})
+    site = make_site(tmp_path, token=PerOwner())
+    assert site.ask("repos/a/r") == {"path": "repos/a/r", "tok": "tok-a"}
     assert site.api("b", "r", "/pulls/1") == {"path": "repos/b/r/pulls/1", "tok": "tok-b"}
 
 
@@ -34,47 +40,45 @@ def test_serve_shows_what_its_token_reads_and_asks_again_as_nobody(tmp_path, mon
     def api(path, tok):
         asked.append((path, tok))
         if path.startswith("repos/me/secret"):
-            return {"full_name": "me/secret", "private": True, "default_branch": "main", "commit": {"sha": "a" * 40}}
+            return {"full_name": "me/secret", "private": True, "default_branch": "main", "sha": "a" * 40}
         if tok:
             raise github.NotFound(path)
         return {"full_name": "o/pub", "private": False}
 
-    monkeypatch.setattr(hosted.github, "api", api)
-    site = hosted.Site(tmp_path, token=hosted.Fixed("tok"))
-    assert site.plan("me", "secret").key == hosted.Repo("github.com/me/secret").make_commit("a" * 40)
-    assert site.ask("o", "pub")["full_name"] == "o/pub"
+    monkeypatch.setattr(serve.github, "api", api)
+    site = make_site(tmp_path, token=serve.Fixed("tok"))
+    assert site.plan("https://github.com/me/secret").key == serve.Repo("github.com/me/secret").make_commit("a" * 40)
+    assert site.ask("repos/o/pub")["full_name"] == "o/pub"
     assert asked[-2:] == [("repos/o/pub", "tok"), ("repos/o/pub", None)]  # the token does not see it
 
 
 def test_a_token_that_cannot_be_had_falls_back_to_nobody(tmp_path, monkeypatch, capsys):
-    class Broken(hosted.Token):
+    class Broken(serve.Token):
         def token(self, owner, repo):
             raise github.ChangeError("GitHub App: POST app/installations/1/access_tokens: 401 Unauthorized")
 
-    monkeypatch.setattr(hosted.github, "api", lambda path, tok: {"tok": tok})
-    site = hosted.Site(tmp_path, token=Broken())
-    assert site.ask("o", "x") == {"tok": None} and site.ask("o", "y") == {"tok": None}
+    monkeypatch.setattr(serve.github, "api", lambda path, tok: {"tok": tok})
+    site = make_site(tmp_path, token=Broken())
+    assert site.ask("repos/o/x") == {"tok": None} and site.ask("repos/o/y") == {"tok": None}
     assert capsys.readouterr().err.count("asking as nobody") == 1
 
 
 def test_a_service_brings_its_handler_parts_and_store(tmp_path):
-    """make_server() takes a service's handler, a subclass of HostedServices with its own fields,
-    and its own store; nothing is kept on classes, so two servers in one process stay apart."""
+    """make_server() takes a service's handler, a subclass of Services with its own fields, and
+    its own store; nothing is kept on classes, so two servers in one process stay apart."""
     from dataclasses import dataclass
 
-    from nolli.store import DirectoryStore
-
-    class Mine(hosted.HostedHandler):
+    class Mine(serve.Handler):
         pass
 
     @dataclass
-    class MyServices(hosted.HostedServices):
+    class MyServices(serve.Services):
         hooks: str = ""
 
     store = DirectoryStore(tmp_path / "elsewhere")
-    srv = hosted.make_server(tmp_path, port=0, token=hosted.Fixed("t"), handler=Mine, store=store,
+    srv = serve.make_server(store, CloneCache(tmp_path / "repos"), tmp_path, port=0, token=serve.Fixed("t"), handler=Mine,
                              services=MyServices, hooks="mine")
-    other = hosted.make_server(tmp_path / "other", port=0)
+    other = serve.make_server(DirectoryStore(tmp_path / "other"), CloneCache(tmp_path / "repos2"), tmp_path / "w", port=0)
     try:
         assert srv.services.site.github.token("o", "r") == "t" and srv.services.store is store and srv.services.hooks == "mine"
         assert srv.RequestHandlerClass.func is Mine  # type: ignore[attr-defined]

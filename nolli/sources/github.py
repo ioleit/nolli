@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
@@ -81,7 +82,7 @@ def _remotes(repo: Path) -> dict[str, tuple[str, str]]:
     return out
 
 
-AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (_token())
+AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN or gh (find_token())
 
 
 @dataclass
@@ -97,28 +98,28 @@ class Answer:
     pr: int | None = None
 
 
-def ask_target(t: Target, tok: str | None | object = AMBIENT) -> Answer:
-    """What ``t`` names, as GitHub's REST API says. ``tok`` as for api()."""
+def ask_target(t: Target, get: Callable[[str], dict] | None = None) -> Answer:
+    """What ``t`` names, as GitHub's REST API says. ``get``: how a path is asked (default:
+    api(), with the token of whoever runs nolli); a server passes its own (its token, its cache)."""
+    get = get or api
     path = f"repos/{t.owner}/{t.name}"
     if t.kind == "pull":
-        pr = api(f"{path}/pulls/{t.number}", tok)
+        pr = get(f"{path}/pulls/{t.number}")
         return Answer(pr["head"]["sha"], pr["base"]["sha"], merge=True, title=pr.get("title") or f"PR #{t.number}",
                       description=(pr.get("body") or "").replace("\r\n", "\n").strip(), pr=t.number)
     if t.kind == "commit":
-        c = api(f"{path}/commits/{quote(t.ref or '', safe='')}", tok)
+        c = get(f"{path}/commits/{quote(t.ref or '', safe='')}")
         parents = [p["sha"] for p in c.get("parents", [])]
         if not parents:
             raise ChangeError(f"{t.owner}/{t.name}@{c['sha'][:7]} has no parent; build it as a snapshot: "
                               f"https://github.com/{t.owner}/{t.name}/tree/{c['sha']}")
-        return Answer(c["sha"], parents[0])
+        subject, _, body = (c.get("commit", {}).get("message") or "").partition("\n")
+        return Answer(c["sha"], parents[0], title=subject, description=body.strip())
     if t.kind == "compare":
-        return Answer(_find_sha(path, t.head or "", tok), _find_sha(path, t.base or "", tok), merge=t.symmetric)
-    ref = t.ref or api(path, tok)["default_branch"]
-    return Answer(_find_sha(path, ref, tok), title=f"{t.owner}/{t.name} at {ref}")
-
-
-def _find_sha(path: str, ref: str, tok: str | None | object) -> str:
-    return api(f"{path}/commits/{quote(ref, safe='')}", tok)["sha"]
+        head, base = (get(f"{path}/commits/{quote(r or '', safe='')}")["sha"] for r in (t.head, t.base))
+        return Answer(head, base, merge=t.symmetric)
+    ref = t.ref or get(path)["default_branch"]
+    return Answer(get(f"{path}/commits/{quote(ref, safe='')}")["sha"], title=f"{t.owner}/{t.name} at {ref}")
 
 
 def fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
@@ -149,14 +150,14 @@ def finish_target(t: Target, a: Answer, clone: Path) -> ChangeSpec:
 
 def make_clone_cache(root: Path) -> CloneCache:
     """Bare clones under ``root``, fetched with the token of whoever runs nolli."""
-    return CloneCache(root, lambda owner, name: _token())
+    return CloneCache(root, lambda owner, name: find_token())
 
 
 class NotFound(ChangeError):
     """GitHub answered 404: no such thing, or one the token (or nobody) may not see."""
 
 
-def _token() -> str | None:
+def find_token() -> str | None:
     """A GitHub token, for when one is needed (a private repository, or more than 60 requests
     an hour): $GH_TOKEN or $GITHUB_TOKEN, else the gh CLI's if it is logged in; None if
     there is none."""
@@ -168,11 +169,11 @@ def _token() -> str | None:
 
 
 def api(path: str, tok: str | None | object = AMBIENT) -> dict:
-    """GET a GitHub REST path. ``tok``: AMBIENT (the default) uses _token(); a server passes the
+    """GET a GitHub REST path. ``tok``: AMBIENT (the default) uses find_token(); a server passes the
     viewer's own token, or None to ask as nobody (public repositories only)."""
     req = urllib.request.Request(f"https://api.github.com/{path}", headers={
         "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "nolli"})
-    t = _token() if tok is AMBIENT else tok
+    t = find_token() if tok is AMBIENT else tok
     if t:
         req.add_header("Authorization", f"Bearer {t}")
     try:

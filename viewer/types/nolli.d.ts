@@ -185,7 +185,7 @@ export interface Scene {
   roles: { id: string; files: number; dirs: number }[];  // files and directories per role, for the Show filter
   residue: string[];
   stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
-  dataset: { name: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
+  dataset: { key: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
   url?: string;  // added by the viewer: the request that produced it
   diff?: SceneDiff;  // a diff dataset: the review mode
 }

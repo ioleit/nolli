@@ -13,7 +13,7 @@ const ELK = readFileSync(createRequire(import.meta.url).resolve("elkjs/lib/elk.b
 async function open(page, hash) {
   await page.route("https://cdn.jsdelivr.net/npm/elkjs@*/lib/elk.bundled.js",
     r => r.fulfill({ body: ELK, contentType: "application/javascript" }));
-  await page.goto("/#d=tasks" + hash);
+  await page.goto("/?t=tasks#" + hash.replace(/^&/, ""));
   await expect(page.locator("#root g.node").first()).toBeVisible();
   await page.waitForLoadState("networkidle");
 }
@@ -84,7 +84,10 @@ test("the Mermaid tab draws the scene, and a click there unfolds as in the drawi
   await open(page, "&p=folded");
   await page.locator('#views [data-view="mermaid"]').click();
   await expect(page.locator("#mmdpane .mmd-svg svg")).toBeVisible();
-  const scene = await page.evaluate(async () => (await fetch("/api/scene?" + location.hash.slice(1).replace(/&v=mermaid/, ""))).json());
+  const scene = await page.evaluate(async () => {
+    const key = document.querySelector('meta[name="nolli-key"]')?.getAttribute("content") || "";
+    return (await fetch(`/api/scene?k=${encodeURIComponent(key)}&` + location.hash.slice(1).replace(/&?v=mermaid/, ""))).json();
+  });
   const nid = (/** @type {string} */ id) => "n_" + id.replace(/[^A-Za-z0-9]/g, "_");
   expect(await mermaidIds(page)).toEqual(scene.nodes.map((/** @type {{ id: string }} */ n) => nid(n.id)).sort());
   await expect(page.locator("#custom")).toHaveJSProperty("hidden", true);

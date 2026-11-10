@@ -24,7 +24,7 @@ export const ICON = `<svg class="ricon" viewBox="0 0 16 16" aria-hidden="true"><
 
 /** @type {ReviewStatus | null} */
 let status = null;
-let name = "";
+let key = "";  // the model followed
 /** @type {SceneDiff | null} */
 let diff = null;
 let ways = false;  // "Other ways to review" open
@@ -38,12 +38,12 @@ let onVerdicts = () => {};
 const running = () => !!status?.run && (status.run.state === "running" || status.run.state === "queued");
 
 /**
- * Follow the review of a dataset: fetch its status now and while a run is under way.
- * @param {string} dataset @param {() => void} verdictsChanged called when a run has stored new verdicts
+ * Follow the review of a model: fetch its status now and while a run is under way.
+ * @param {string} model its key @param {() => void} verdictsChanged called when a run has stored new verdicts
  */
-export async function follow(dataset, verdictsChanged) {
-  if (dataset !== name) { status = null; ways = false; }
-  name = dataset; onVerdicts = verdictsChanged;
+export async function follow(model, verdictsChanged) {
+  if (model !== key) { status = null; ways = false; }
+  key = model; onVerdicts = verdictsChanged;
   await poll();
 }
 
@@ -51,7 +51,7 @@ async function poll() {
   if (timer) { clearTimeout(timer); timer = null; }
   const was = status?.run?.state;
   try {
-    const res = await fetch("/api/review?d=" + encodeURIComponent(name));
+    const res = await fetch("/api/review?k=" + encodeURIComponent(key));
     if (!res.ok) return;
     status = await res.json();
   } catch { /* the server restarting: try again below */ }
@@ -65,7 +65,7 @@ async function act(what) {
   if (busy) return;
   busy = true; draw();
   try {
-    const res = await fetch(`/api/review${what === "cancel" ? "/cancel" : ""}?d=` + encodeURIComponent(name), { method: "POST" });
+    const res = await fetch(`/api/review${what === "cancel" ? "/cancel" : ""}?k=` + encodeURIComponent(key), { method: "POST" });
     const body = await res.json();
     if (body.verdicts !== undefined) status = body;
   } finally { busy = false; }
@@ -125,7 +125,7 @@ function waysHTML() {
       then ask, in a clone of the repository:${code(agentPrompt())}
       The agent builds this same picture on your machine and opens its verdicts in a viewer there.</li>`;
   const hand = st?.uploads
-    ? `<li><b>By hand:</b> give any agent <a href="/api/brief?d=${encodeURIComponent(name)}" target="_blank">review.md</a> (the diagram and how to answer),
+    ? `<li><b>By hand:</b> give any agent <a href="/api/brief?k=${encodeURIComponent(key)}" target="_blank">review.md</a> (the diagram and how to answer),
         save its answer as a .json file and <label class="file">load it here…<input type="file" id="rv-file" accept=".json,application/json"></label></li>`
     : "";
   return `<ol class="rr-ways">${keyStep}${own}${hand}</ol>`;
@@ -189,8 +189,8 @@ export function setDiff(d) { diff = d; }
 /** @param {HTMLInputElement} input */
 async function upload(input) {
   const f = input.files && input.files[0];
-  if (!f || !name) return;
-  const res = await fetch("/api/verdicts?d=" + encodeURIComponent(name), { method: "POST", body: await f.text() });
+  if (!f || !key) return;
+  const res = await fetch("/api/verdicts?k=" + encodeURIComponent(key), { method: "POST", body: await f.text() });
   const body = await res.json();
   if (!res.ok) { alert("verdicts not loaded: " + body.error); return; }
   ways = false;

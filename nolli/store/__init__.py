@@ -36,13 +36,6 @@ class ModelStore(MapStore, Protocol):
         or a map goes through it. A store that restricts access overrides ``check`` and nothing
         else."""
 
-    def find_key(self, name: str) -> ModelKey | None:
-        """The key of the stored model called ``name`` (``key.format_name()``, or a name it was
-        stored under), None if there is none. URLs carry names."""
-
-    def list_names(self) -> list[str]:
-        """The names of the stored models this request may read, newest first."""
-
     def load_model(self, key: ModelKey) -> Model | None:
         """A commit's model, or a change's merged model if it was kept with the change; None if
         there is none (or of another format). Raises NotAllowed if this request may not read

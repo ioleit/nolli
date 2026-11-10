@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 from nolli.model.keys import Repo
-from nolli.server.hosted import KINDS, Job, Plan, Site
+from nolli.server.serve import KINDS, Job, Plan, Site
+from nolli.sources import CloneCache
+from nolli.store import DirectoryStore
 
 from nolli.server import retention
 from nolli.server.retention import LeastRecentlyUsed, parse_size, scan, sweep
@@ -80,10 +82,10 @@ def test_site_keeps_what_a_build_uses(cache):
     """The model a build under way makes, and the clones held open, stay; what nolli before 0.7
     kept (extractions) is deleted when the site starts."""
     make(cache, "extractions/" + "a" * 40 + ".json", 10, time.time())
-    site = Site(cache, keep=0)
+    site = Site(DirectoryStore(cache / "data"), CloneCache(cache / "repos"), cache, keep=0)
     assert not (cache / "extractions").exists()
     repo = Repo("github.com/o/r")
-    plan = Plan("o_r_c", "o/r", repo, key=repo.make_commit("c" * 40))
+    plan = Plan("o_r_c", "o/r", key=repo.make_commit("c" * 40))
     site.jobs[plan.name] = Job(plan, state="building")
     site.sources.held[cache / "repos/o/r"] = 1  # type: ignore[attr-defined]  # a build's clone, open
     deleted = {str(e.path.relative_to(cache)) for e in site.tidy()}
@@ -92,5 +94,5 @@ def test_site_keeps_what_a_build_uses(cache):
 
 
 def test_site_without_keep_deletes_nothing(cache):
-    assert Site(cache).tidy() == []
+    assert Site(DirectoryStore(cache / "data"), CloneCache(cache / "repos"), cache).tidy() == []
     assert len(scan(cache, KINDS)) == 4

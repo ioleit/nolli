@@ -22,6 +22,17 @@ MODEL_FORMAT = 3  # of model.json; a model of another format is built again, nev
 # -- models in directories ------------------------------------------------------------
 
 
+def _format_dir_name(key: ModelKey) -> str:
+    """The directory a model is kept in: ``<owner>_<repo>-<sha7>`` for a commit,
+    ``<owner>_<repo>-<base7>-<head7>`` for a change (the directory's name for a repository
+    not on GitHub)."""
+    if isinstance(key, ChangeKey):
+        return f"{key.repo.format_slug()}-{key.base[:7]}-{key.head[:7]}"
+    if isinstance(key, CommitKey):
+        return f"{key.repo.format_slug()}-{key.sha[:7]}"
+    return key.format_key()
+
+
 class DirectoryStore(OverlayStore):
     """Models as directories under ``root``, one per key, named after it:
 
@@ -50,7 +61,7 @@ class DirectoryStore(OverlayStore):
     def locate(self, key: ModelKey) -> Path:
         """The model's directory (existing or not), for code that works with its files."""
         self.scan()
-        return self.index.get(key) or self.root / key.format_name()
+        return self.index.get(key) or self.root / _format_dir_name(key)
 
     def scan(self) -> None:
         try:
@@ -77,6 +88,7 @@ class DirectoryStore(OverlayStore):
             self.index, self.names, self.places = index, names, places
 
     def find_key(self, name: str) -> ModelKey | None:
+        """The key of the model in the directory ``name`` under the root, None if there is none."""
         if not name or "/" in name or name.startswith("."):
             return None
         self.scan()
@@ -84,17 +96,6 @@ class DirectoryStore(OverlayStore):
             self.scanned = 0  # written since: read again
             self.scan()
         return self.names.get(name)
-
-    def list_names(self) -> list[str]:
-        self.scan()
-
-        def mtime(name: str) -> float:
-            try:
-                return (self.root / name / "key.json").stat().st_mtime
-            except OSError:
-                return 0.0
-
-        return sorted(self.names, key=lambda n: -mtime(n))
 
     def read_json(self, f: Path, parse):
         """``parse(json)`` of a file, kept until the file changes; None if missing, unreadable

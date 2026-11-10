@@ -13,7 +13,7 @@ import pytest
 
 from nolli.build import extract_commit, fetch_change, run_here
 from nolli.scenes import open_built, open_change_scene
-from nolli.model.keys import Repo, StringKey
+from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.model.model import Model
 from nolli.progress import Quiet
 from nolli.sources import CloneCache, FetchError, LocalRepository
@@ -50,7 +50,10 @@ def test_keys():
     change = repo.make_commit("a" * 40).make_change_to("b" * 40)
     assert change == repo.make_change("a" * 40, "b" * 40)
     assert change.list_sides() == (repo.make_commit("a" * 40), repo.make_commit("b" * 40))
-    assert change.format_name() == "IOleit_nolli-aaaaaaa-bbbbbbb" and change.list_sides()[1].format_name() == "IOleit_nolli-bbbbbbb"
+    assert ModelKey.parse(change.format_key()) == change and ModelKey.parse(change.list_sides()[1].format_key()) == change.list_sides()[1]
+    assert ModelKey.parse("picked") == StringKey("picked")
+    assert directory._format_dir_name(change) == "IOleit_nolli-aaaaaaa-bbbbbbb"
+    assert directory._format_dir_name(change.list_sides()[1]) == "IOleit_nolli-bbbbbbb"
     assert repo.format_remote() == "https://github.com/IOleit/nolli"
     local = Repo("/home/me/src/shop")
     assert local.format_slug() == "shop" and local.format_remote() is None
@@ -65,7 +68,7 @@ def test_directory_store_keeps_models_changes_and_verdicts(tmp_path):
     repo = Repo("github.com/o/r")
     c1, c2 = repo.make_commit("1" * 40), repo.make_commit("2" * 40)
     change = c1.make_change_to(c2.sha)
-    assert store.load_change(change) is None and store.load_model(c1) is None and store.find_key(change.format_name()) is None
+    assert store.load_change(change) is None and store.load_model(c1) is None and store.find_key(store.locate(change).name) is None
     store.save_model(c1, model("one"), {"fs": {"repo:": {"name": "one"}}})
     assert store.load_model(c1).meta["repo"] == "one" and store.load_model(c1).key == c1
     assert store.open_maps("fs").load(c1.format_key()) == {"repo:": {"name": "one"}}
@@ -76,8 +79,7 @@ def test_directory_store_keeps_models_changes_and_verdicts(tmp_path):
     assert store.load_model(c1).meta["repo"] == "one"  # the commit's own directory before the change's side
     assert store.open_maps("fs").load(c2.format_key()) == {"repo:": {"name": "head"}}
     assert store.open_maps("content").load(change.format_key()) == {"repo:a.py": {"status": "added"}}
-    assert store.find_key(change.format_name()) == change and store.find_key(c1.format_name()) == c1
-    assert set(store.list_names()) == {change.format_name(), c1.format_name()}
+    assert store.find_key(store.locate(change).name) == change and store.find_key(store.locate(c1).name) == c1
     for bad in ("", "..", "../data", ".hidden", "a/b"):
         assert store.find_key(bad) is None
 
@@ -104,7 +106,7 @@ def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
     monkeypatch.setattr(directory, "_write_model", broken)
     with pytest.raises(RuntimeError):
         store.save_model(key, model("x"), {})
-    assert [p.name for p in store.root.iterdir()] == [key.format_name()]  # the model kept before, no work left over
+    assert [p for p in store.root.iterdir()] == [store.locate(key)]  # the model kept before, no work left over
     assert store.load_model(key).meta["repo"] == "before"
 
 

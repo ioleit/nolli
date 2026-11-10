@@ -84,12 +84,6 @@ class Datasets:
 
     # -- what is kept ------------------------------------------------------------
 
-    def find_key(self, name: str) -> ModelKey | None:
-        return self.store.find_key(name)
-
-    def list_names(self) -> list[str]:
-        return self.store.list_names()
-
     def open_scene(self, key: ModelKey) -> Scene | None:
         """The scene of a stored model: a change merged from its commits, or one commit. Raises
         NotAllowed as the store does."""
@@ -272,21 +266,27 @@ def resolve_target(text: str | None, path: Path, clones: Path, review: bool = Fa
     else:
         if local is None:
             raise ChangeError(f"{path} is not in a git repository")
-        if t.kind == "snapshot" and review and t.head != WORKTREE:
-            spec = resolve_adds(local, t.head)
-        elif t.kind == "snapshot":
-            spec = resolve_snapshot(local, t.head)
-        elif t.kind == "own":
-            spec = resolve_own(local, t.head)
-        else:
-            spec = _resolve_range(local, t, text)
-        r = find_repo(local)
-        key: ModelKey = r.make_change(spec.base, spec.head) if spec.is_diff else r.make_commit(spec.head)
-        asked = Asked(key, local, spec, {"title": spec.title, "description": spec.description}, LocalRepository(local))
+        asked = resolve_local(t, local, text, review)
     if review and not asked.spec.is_diff:
         raise ChangeError(f"{text or 'HEAD'} is a snapshot, not a change: a review needs a change "
                           f"(a branch, <base>...<head>, <commit>^! or a pull request)")
     return asked
+
+
+def resolve_local(t: Target, local: Path, text: str | None = None, review: bool = False) -> Asked:
+    """A target of the local repository ``local`` (not a dataset, not on GitHub), resolved;
+    ``review`` as for resolve_target. Raises ChangeError."""
+    if t.kind == "snapshot" and review and t.head != WORKTREE:
+        spec = resolve_adds(local, t.head)
+    elif t.kind == "snapshot":
+        spec = resolve_snapshot(local, t.head)
+    elif t.kind == "own":
+        spec = resolve_own(local, t.head)
+    else:
+        spec = _resolve_range(local, t, text)
+    r = find_repo(local)
+    key: ModelKey = r.make_change(spec.base, spec.head) if spec.is_diff else r.make_commit(spec.head)
+    return Asked(key, local, spec, {"title": spec.title, "description": spec.description}, LocalRepository(local))
 
 
 def _resolve_range(local: Path, t: Target, text: str | None) -> ChangeSpec:

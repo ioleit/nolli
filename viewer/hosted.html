@@ -40,7 +40,7 @@ pre .err { color: #c0392b; }
   };
   const poll = async () => {
     try {
-      const st = await (await fetch("/api/job?d=" + encodeURIComponent(job))).json();
+      const st = await (await fetch("/api/job?j=" + encodeURIComponent(job))).json();
       if (st.state === "done") { location.reload(); return; }
       show(st);
       if (st.state === "error") return;
