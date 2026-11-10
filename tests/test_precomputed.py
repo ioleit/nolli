@@ -16,7 +16,7 @@ from nolli.model.schema import RelationKind
 from nolli.store import MemoryMaps, PrecomputedOverlay, SourceElementOverlay
 from nolli.transformations import projection
 from nolli.transformations.projection import ProjectionSpec
-from tests.helpers import open_dir
+from helpers import open_dir
 
 
 class Counting(Overlay):

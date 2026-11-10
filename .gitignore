@@ -8,3 +8,4 @@ node_modules/
 build/
 viewer/test-results/
 viewer/playwright-report/
+uv.lock

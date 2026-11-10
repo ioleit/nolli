@@ -66,6 +66,15 @@ with its verdicts and reasoning on the structural changes.
 
 Other languages show up as files and directories only.
 
+## Development
+
+```bash
+uv run pytest                                   # with uv
+pip install -e . --group dev && pytest          # or in any venv (pip 25.1 or later)
+```
+
+The viewer has its own Node tooling in `viewer/`.
+
 ## License
 
 Apache 2.0, see [LICENSE](LICENSE).

@@ -25,6 +25,10 @@ api = ["anthropic>=2.3"]
 # nolli serve with its review agent (the same as [api] for now)
 serve = ["anthropic>=2.3"]
 
+[dependency-groups]
+# what running the tests needs: `uv run pytest`, or `pip install -e . --group dev` and `pytest`
+dev = ["pytest"]
+
 [project.urls]
 Source = "https://github.com/ioleit/nolli"
 Issues = "https://github.com/ioleit/nolli/issues"
