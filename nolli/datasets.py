@@ -236,13 +236,6 @@ class Asked:
 
 
 # CALLERS (temp, not to be merged):
-#   cli.py:122 resolve — nolli build [-o], nolli view --rebuild, nolli agent brief, nolli extract, nolli diff
-#   cli.py:154 build() — nolli build, nolli view --rebuild, nolli agent brief
-#   cli.py:206 build_into — nolli build -o, nolli extract (git repo), nolli diff
-BUILD_ERRORS = (nolli.logic.sources.git.ChangeError, nolli.logic.sources.FetchError, nolli.logic.sources.git.GitError)  # what building from a local repository may raise
-
-
-# CALLERS (temp, not to be merged):
 #   datasets.py only: resolve_local
 #   tests: test_diff.py
 def find_repo(repo: Path) -> nolli.model.keys.Repo:

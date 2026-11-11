@@ -84,7 +84,7 @@ import sys
 import time
 from pathlib import Path
 
-from .logic.sources.git import ChangeError
+from nolli.logic.sources.git import ChangeError, GitError
 from .model.keys import ChangeKey
 from .progress import Progress
 from .store import DirectoryStore
@@ -128,7 +128,7 @@ def find_dataset(text: str | None, cmd: str):
 def resolve(args: argparse.Namespace, cmd: str, review: bool = False):
     """args.target resolved in args.repo (``datasets.resolve_target``), or the dataset directory
     it names; None, after saying why, if it cannot be. Says what it resolved to on stderr."""
-    from nolli.datasets import BUILD_ERRORS, Asked, resolve_target
+    from nolli.datasets import Asked, resolve_target
 
     found = find_dataset(args.target, cmd)
     if found is False:
@@ -142,7 +142,7 @@ def resolve(args: argparse.Namespace, cmd: str, review: bool = False):
         return Asked(key, dataset=store.locate(key))
     try:
         asked = resolve_target(args.target, Path(args.repo), find_data_dir(args.data) / ".repos", review=review)
-    except BUILD_ERRORS as exc:
+    except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
     spec = asked.spec
@@ -157,8 +157,6 @@ def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | N
     there (or it is a dataset directory already). Progress goes to stderr; None (after saying
     why) if the target cannot be resolved or built."""
     from nolli import build
-
-    from .datasets import BUILD_ERRORS
 
     asked = resolve(args, cmd, review)
     if asked is None:
@@ -179,7 +177,7 @@ def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | N
             else:
                 build.fetch_whole_model(store, asked.sources, key, progress=Progress(), rebuild=args.rebuild)
             m = store.load_model(key.list_sides()[1] if isinstance(key, ChangeKey) else key)
-        except BUILD_ERRORS as exc:
+        except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
             print(f"nolli {cmd}: {exc}", file=sys.stderr)
             return None
         print(f"built in {time.time() - t0:.1f} s: {count_found(m)}", file=sys.stderr)
@@ -221,8 +219,6 @@ def cmd_build(args: argparse.Namespace) -> int:
 def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
     """The target built afresh into the directory -o with its extras (``datasets.write_extras``):
     what it says about itself and the report; None after saying why it could not be."""
-    from .datasets import BUILD_ERRORS
-
     asked = resolve(args, cmd)
     if asked is None:
         return None
@@ -231,7 +227,7 @@ def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
         return None
     try:
         return write_dataset(asked, Path(args.out), {**asked.about, **find_about(args), "budget": args.budget}, args.budget)
-    except BUILD_ERRORS as exc:
+    except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
 
