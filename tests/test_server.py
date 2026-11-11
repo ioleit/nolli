@@ -18,11 +18,11 @@ from urllib.parse import quote
 
 import pytest
 
+from nolli.logic.sources import LocalRepository
+from nolli.logic.sources.git import ChangeError
 from nolli.model.keys import Repo
 from nolli.progress import SHORT, Progress
 from nolli.server.serve import Board, Plan, Site, TooLarge, make_local_server, make_server, viewer_page
-from nolli.sources import LocalRepository
-from nolli.sources.git import ChangeError
 from nolli.store import DirectoryStore
 
 

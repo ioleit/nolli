@@ -1,5 +1,5 @@
 // The one place nolli's Markdown becomes something to look at: the hover cards and the
-// review panel. Descriptions (nolli/formats/descriptions/prose.py) and an agent's reasons use a small subset:
+// review panel. Descriptions (nolli/logic/formats/descriptions/prose.py) and an agent's reasons use a small subset:
 //
 //   paragraphs, one per sentence, between blank lines
 //   `code spans`             the data in a sentence (names, counts), set apart

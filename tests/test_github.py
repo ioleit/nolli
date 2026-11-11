@@ -1,5 +1,5 @@
 """Which targets name something on GitHub, and which remotes are on GitHub
-(nolli/sources/github.py). The API and the fetch are not tested here: they need the network."""
+(nolli/logic/sources/github.py). The API and the fetch are not tested here: they need the network."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from nolli.sources.git import ChangeError
-from nolli.sources.github import Target, _remotes, parse_target
+from nolli.logic.sources.git import ChangeError
+from nolli.logic.sources.github import Target, _remotes, parse_target
 
 
 def git(repo: Path, *args: str) -> None:

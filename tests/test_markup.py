@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from nolli.model.keys import StringKey
 from nolli.build import _extract_facts
+from nolli.logic.transformations.projection.reading import Reading as Graph
+from nolli.logic.transformations.projection.rollup import hidden_by_role
+from nolli.model.keys import StringKey
 from nolli.scenes import open_built
-from nolli.transformations.reading import Reading as Graph
-from nolli.transformations.rollup import hidden_by_role
 
 FILES = {
     "site/index.html": (

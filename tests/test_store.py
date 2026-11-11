@@ -1,5 +1,5 @@
 """Where models are kept (nolli/store/, nolli/model/keys.py) and where commits come from
-(nolli/sources/), and building through them (nolli/build.py): keys, the directory store, clones fetched from a remote, and a change's model
+(nolli/logic/sources/), and building through them (nolli/build.py): keys, the directory store, clones fetched from a remote, and a change's model
 built once, its commits' models reused."""
 
 from __future__ import annotations
@@ -12,11 +12,11 @@ from pathlib import Path
 import pytest
 
 from nolli.build import extract_commit, fetch_change, run_here
-from nolli.scenes import open_built, open_change_scene
+from nolli.logic.sources import CloneCache, FetchError, LocalRepository
 from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.model.model import Model
 from nolli.progress import Quiet
-from nolli.sources import CloneCache, FetchError, LocalRepository
+from nolli.scenes import open_built, open_change_scene
 from nolli.store import DirectoryStore, directory
 from nolli.store.directory import _read_key, write_change
 
@@ -201,9 +201,9 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     """What a change says about itself (change, review) and its merged model are kept at diff
     time and read back; a change kept without them (an older nolli) is computed on every read."""
     from nolli.datasets import Datasets
+    from nolli.logic.transformations.merge import Change
+    from nolli.logic.transformations.projection import ProjectionSpec
     from nolli.review.card import Review
-    from nolli.transformations.merge import Change
-    from nolli.transformations.projection import ProjectionSpec
 
     path, shas = src
     store, sources = DirectoryStore(tmp_path / "data"), LocalRepository(path)
@@ -275,8 +275,8 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     preset and side, list its changes, describe every box, brief the agent, and keep and
     describe verdicts. A rename is what git's per-file content says the most about."""
     from nolli.datasets import Datasets
+    from nolli.logic.transformations.projection import ProjectionSpec
     from nolli.model.schema import EntityId
-    from nolli.transformations.projection import ProjectionSpec
 
     path, base, head = renaming
     change = Repo(str(path)).make_change(base, head)
@@ -321,8 +321,8 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
     its kept values reads nothing and answers none; a change of the allowed repository projects
     in every preset, and a key of another repository is still refused."""
     from nolli.datasets import Datasets
+    from nolli.logic.transformations.projection import ProjectionSpec
     from nolli.model.keys import NotAllowed
-    from nolli.transformations.projection import ProjectionSpec
 
     path, shas = src
     change = Repo(str(path)).make_change(shas[0], shas[2])

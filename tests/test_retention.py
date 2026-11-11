@@ -7,13 +7,13 @@ import time
 from pathlib import Path
 
 import pytest
-from nolli.model.keys import Repo
-from nolli.server.serve import KINDS, Job, Plan, Site
-from nolli.sources import CloneCache
-from nolli.store import DirectoryStore
 
+from nolli.logic.sources import CloneCache
+from nolli.model.keys import Repo
 from nolli.server import retention
 from nolli.server.retention import LeastRecentlyUsed, parse_size, scan, sweep
+from nolli.server.serve import KINDS, Job, Plan, Site
+from nolli.store import DirectoryStore
 
 
 def make(cache: Path, rel: str, size: int, used: float) -> Path:

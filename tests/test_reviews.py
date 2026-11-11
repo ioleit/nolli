@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import threading
 import time
 import urllib.error
@@ -15,17 +16,14 @@ from urllib.parse import quote
 
 import pytest
 
-import subprocess
-
-from nolli.review import agent as reviewer
 from nolli.build import fetch_change
-from nolli.scenes import open_change_scene
+from nolli.logic.sources import CloneCache, LocalRepository
 from nolli.model.keys import Repo
+from nolli.review import agent as reviewer
 from nolli.review.verdicts import _keep_verdicts_file, parse_verdicts
-from nolli.sources import LocalRepository
-from nolli.store import DirectoryStore
+from nolli.scenes import open_change_scene
 from nolli.server import serve
-from nolli.sources import CloneCache
+from nolli.store import DirectoryStore
 
 GOOD = json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}])
 

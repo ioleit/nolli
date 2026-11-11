@@ -6,9 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-from nolli.sources import github
+from nolli.logic.sources import CloneCache, github
 from nolli.server import serve
-from nolli.sources import CloneCache
 from nolli.store import DirectoryStore
 
 

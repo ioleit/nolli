@@ -7,7 +7,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from helpers import draw, find_node, open_change
 
 BASE = {
@@ -108,7 +107,7 @@ def test_repository_untouched(repo):
 
 def test_scene_review(repo):
     from nolli.datasets import find_repo
-    from nolli.transformations.merge import Links
+    from nolli.logic.transformations.merge import Links
     from nolli.review.changes import list_changes
 
     path, base, head = repo
@@ -143,8 +142,7 @@ def test_items_verdicts_and_export(repo):
     import json
 
     from nolli.review.brief import make_brief
-    from nolli.review.changes import list_changes
-    from nolli.review.changes import find_review_cut
+    from nolli.review.changes import find_review_cut, list_changes
     from nolli.review.verdicts import find_diagram_ids, read_verdicts
 
     path, base, head = repo

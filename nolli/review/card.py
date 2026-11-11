@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 
-from nolli.formats.descriptions import prose
+from nolli.logic.formats.descriptions import prose
 from nolli.model.model import Key, Relation
 from nolli.model.scene import Element, Overlay, Scene
 from nolli.review import changes

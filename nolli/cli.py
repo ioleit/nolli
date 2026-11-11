@@ -71,7 +71,7 @@ key.json, model.json (its structure) and overlays/ (what each extractor said); a
 key.json, change.json, base/ and head/ (its commits) and its own overlays/ (git's hunks, a
 review's verdicts, which the viewer shows). build -o writes one to a directory of your
 choice, with what is made from it too: report.json (counts, unresolved references, extractor
-notes, nolli/formats/report.py); for a change also changes.json (the numbered changes),
+notes, nolli/logic/formats/report.py); for a change also changes.json (the numbered changes),
 review.mmd (Mermaid with every change in source code unfolded) and review.md (what a review
 agent gets: that diagram, how to answer, and the change's description, from --description).
 """
@@ -84,9 +84,9 @@ import sys
 import time
 from pathlib import Path
 
+from .logic.sources.git import ChangeError
 from .model.keys import ChangeKey
 from .progress import Progress
-from .sources.git import ChangeError
 from .store import DirectoryStore
 
 
@@ -215,8 +215,8 @@ def cmd_view(args: argparse.Namespace) -> int:
     from urllib.parse import quote
 
     from .datasets import parse_target
+    from .logic.sources.git import find_toplevel
     from .server.serve import make_local_server
-    from .sources.git import find_toplevel
 
     if args.build_only:  # before nolli build
         return cmd_build(argparse.Namespace(**{**vars(args), "out": None}))
@@ -255,7 +255,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
     """nolli extract <repo> -o <dir>: build WORKTREE in <repo> afresh into <dir> (a directory
     that is no git repository: its files); prints a summary of the report."""
     from .datasets import extract_directory
-    from .sources.git import WORKTREE, find_head
+    from .logic.sources.git import WORKTREE, find_head
 
     repo = Path(args.repo).resolve()
     if find_head(repo) is None and not (repo / ".git").exists():

@@ -23,8 +23,8 @@ what was used longest ago is deleted (nolli/server/retention.py).
 
 The viewer's page asks the API about the model it shows by its key (``k=<key>``,
 ``ModelKey.format_key()``): ``/api/scene?k=…&…`` the scene a scene state projects
-(``parse_spec`` reads the viewer's location-hash keys; nolli/transformations/projection.py),
-as JSON with every overlay (nolli/formats/viewer.py); ``/api/mermaid`` the same scene as
+(``parse_spec`` reads the viewer's location-hash keys; nolli/logic/transformations/projection/__init__.py),
+as JSON with every overlay (nolli/logic/formats/viewer.py); ``/api/mermaid`` the same scene as
 Mermaid (``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid, ids}``);
 ``/api/changes`` a change's numbered changes and the review's verdicts; ``/api/brief`` what a
 review agent gets (Markdown); ``POST /api/verdicts`` stores a review's verdicts (``nolli view``
@@ -75,15 +75,15 @@ import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 
 HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 
-from . import retention  # noqa: E402
 from ..datasets import Datasets, parse_target, read_dataset_key, resolve_local  # noqa: E402
+from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
+from ..logic.sources.git import ChangeError, GitError, merge_base  # noqa: E402
+from ..logic.transformations.projection import DEFAULT_UTILITY_IN, PRESETS, ProjectionSpec  # noqa: E402
 from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..progress import Progress  # noqa: E402
-from ..sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
-from ..sources.git import ChangeError, GitError, merge_base  # noqa: E402
 from ..store import DirectoryStore, ModelStore  # noqa: E402
-from ..transformations.projection import DEFAULT_UTILITY_IN, PRESETS, ProjectionSpec  # noqa: E402
+from . import retention  # noqa: E402
 from .reviews import Reviews  # noqa: E402
 
 LOOKUP_TTL = 60  # s: how long an answer from GitHub's API is reused

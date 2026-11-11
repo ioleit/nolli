@@ -7,16 +7,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from helpers import open_dir
 
-from nolli import transformations
+from nolli.logic import transformations
+from nolli.logic.transformations import projection
+from nolli.logic.transformations.projection import ProjectionSpec
 from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Overlay, Scene
 from nolli.model.schema import RelationKind
 from nolli.store import MemoryMaps, PrecomputedOverlay, SourceElementOverlay
-from nolli.transformations import projection
-from nolli.transformations.projection import ProjectionSpec
-from helpers import open_dir
 
 
 class Counting(Overlay):

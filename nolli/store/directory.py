@@ -275,7 +275,7 @@ def write_commit(d: Path, key: CommitKey, model: Model, maps: Mapping[str, Mappi
 
 def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]], model: Model | None = None) -> None:
     """A change's directory (``DirectoryStore``) at ``d``, which exists; ``model``: the change's
-    merged model (``nolli/transformations/merge.py``), kept so it is not merged again on every read."""
+    merged model (``nolli/logic/transformations/merge.py``), kept so it is not merged again on every read."""
     (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
     (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": about}, indent=1))
     if model is not None:
