@@ -97,7 +97,7 @@ class Resolver:
         return sorted(out, key=lambda c: -len(c[0]))
 
     def _packages(self, ctx: Context, rels: list[str]) -> dict[str, tuple[str, str | None]]:
-        """The repository's own packages: name -> (dir, entry file)."""
+        """Find the repository's own packages and return them as name -> (dir, entry file)."""
         out = {}
         for rel in rels:
             if "node_modules" in rel:
@@ -121,8 +121,8 @@ class Resolver:
         return out
 
     def find(self, base: str) -> str | None:
-        """The file a path names: as written, with a TS/JS extension (``x.js`` written for
-        ``x.ts``), or a folder's index."""
+        """Return the file a path names, or None: the path as written, with a TS/JS extension
+        (``x.js`` written for ``x.ts``), or a folder's index."""
         base = base if base != "." else ""
         if base in self.files:
             return base
@@ -226,7 +226,7 @@ def resolve_refs(ctx: Context) -> None:
     exports = ctx.notes.get("ts-exports", {})
 
     def symbol_in(file: str, name: str, depth: int = 0) -> str | None:
-        """The entity ``name`` stands for in ``file``: its symbol, the symbol or file a
+        """Return the entity ``name`` stands for in ``file``, or None: its symbol, the symbol or file a
         re-export leads to, or the file itself if it defines the name (a function)."""
         sid = EntityId.from_path(file).part(name)
         if m.has(sid):

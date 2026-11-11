@@ -18,8 +18,8 @@ _parsers: dict[str, object] = {}
 
 
 def parse(rel: str, source: bytes):
-    """A tree-sitter tree: the TSX grammar for .tsx, TypeScript's for the other TS
-    extensions, JavaScript's (which reads JSX) for the JS ones."""
+    """Parse a file into a tree-sitter tree with the TSX grammar for .tsx, TypeScript's for the
+    other TS extensions, and JavaScript's (which reads JSX) for the JS ones."""
     grammar = GRAMMAR["." + rel.rsplit(".", 1)[-1].lower()]
     if grammar not in _parsers:
         _parsers[grammar] = get_parser(grammar)
@@ -27,7 +27,7 @@ def parse(rel: str, source: bytes):
 
 
 def _string_value(node) -> str | None:
-    """The literal text of a string node, or None if it has substitutions."""
+    """Return the literal text of a string node, or None if it has substitutions."""
     if node is None:
         return None
     if node.type == "string":
@@ -70,13 +70,13 @@ class Import:
 
 
 def _has_type(node) -> bool:
-    """The ``type`` keyword on a statement or a specifier (``import type``, ``{ type X }``)."""
+    """Tell whether a statement or a specifier has the ``type`` keyword (``import type``, ``{ type X }``)."""
     return any(c.type == "type" for c in node.children)
 
 
 def _at_top(n, root) -> bool:
-    """A statement directly in the module. Compared with the root itself: a file the
-    parser cannot read whole has an ``ERROR`` root, not ``program``."""
+    """Tell whether a statement sits directly in the module. Compare with the root itself, since a
+    file the parser cannot read whole has an ``ERROR`` root, not ``program``."""
     return n is not None and n.parent is not None and n.parent.id == root.id
 
 

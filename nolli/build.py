@@ -35,8 +35,8 @@ def _run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
 
 
 def extract(repo: Path, config: dict | None = None, progress: Progress | None = None, key: ModelKey = StringKey()) -> tuple[Model, Maps]:
-    """The model of the files under ``repo`` as they are (a working tree, or a checkout), and
-    what each extractor said about its nodes and edges."""
+    """Extract the model of the files under ``repo`` as they are (a working tree, or a checkout),
+    and return it with what each extractor said about its nodes and edges."""
     found = facts.extract_facts(repo, git.list_tracked_files(repo), config, progress)
     head = git.find_head(repo)
     found.meta.update({"repo": str(repo), "commit": head[:7] if head else None, "nolli": version()})
@@ -44,8 +44,8 @@ def extract(repo: Path, config: dict | None = None, progress: Progress | None = 
 
 
 def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple[Model, Maps]:
-    """The model of commit ``sha`` of the git repository ``repo`` (its files, not a working
-    tree), its root named ``name``."""
+    """Extract the model of commit ``sha`` of the git repository ``repo`` from its files, not
+    from a working tree, and name its root ``name``."""
     with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
         with progress.step("checking out the commit"):
             git.export_commit(repo, sha, Path(tmp))
@@ -58,8 +58,8 @@ def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple
 
 
 def list_content(repo: Path, base: str, head: str, progress: Progress) -> dict[Key, dict]:
-    """The ``content`` map of a change: what git says changed in each file, by the file's
-    address (its head path; base path for a deletion)."""
+    """Return the ``content`` map of a change from ``base`` to ``head``. It gives what git says
+    changed in each file, keyed by the file's address (its head path; its base path for a deletion)."""
     with progress.step("comparing the commits"):
         return {EntityId.from_path(path): c.to_dict() for path, c in git.list_file_changes(repo, base, head).items()}
 
@@ -89,8 +89,8 @@ def _load_maps(store: MapStore, m: Model) -> Maps:
 
 def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = _run_here,
                        progress: Progress | None = None, rebuild: bool = False) -> tuple[Model, Maps]:
-    """The model of one commit and the maps kept for it: from the store, or extracted from
-    ``clone`` (which has the commit)."""
+    """Return the model of one commit and its maps, from the store if it holds a fresh one,
+    otherwise extracted from ``clone`` (which has the commit)."""
     progress = progress or Quiet()
     m = None if rebuild else store.load_model(commit)
     if m is not None and is_fresh(m):
@@ -102,7 +102,8 @@ def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, ru
 
 def _fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *, run: Run = _run_here,
                       progress: Progress | None = None, rebuild: bool = False) -> Model:
-    """A repository at one commit, as the viewer shows a repository as a whole: kept in the store."""
+    """Return a repository's model at one commit from the store, building and storing it if it is
+    not there yet."""
     progress = progress or Quiet()
     m = None if rebuild else store.load_model(commit)
     if m is not None and is_fresh(m):
@@ -117,9 +118,10 @@ def _fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *
 
 def _fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, about: dict | None = None,
                  run: Run = _run_here, progress: Progress | None = None, rebuild: bool = False) -> dict:
-    """A change: from the store, or built from its two commits (their models, from the store
-    if it has them) and git's hunks between them, and kept there. ``about``: what the change
-    says about itself (``pr``, ``title``, ``description``, ``budget``), kept with it."""
+    """Return a change's record from the store, or build it and keep it there. A change is built
+    from the models of its two commits (taken from the store if it has them) and git's hunks
+    between them. ``about`` is what the change says about itself (``pr``, ``title``,
+    ``description``, ``budget``) and is kept with it."""
     progress = progress or Quiet()
     kept = None if rebuild else store.load_change(change)
     if kept is not None and is_fresh(kept):
@@ -170,8 +172,9 @@ class Target:
 
     @classmethod
     def from_string(cls, text: str | None, local: Path | None = None) -> Target:
-        """The form of ``text`` (None: ``...HEAD``). ``local`` is the repository git's revisions
-        and ``#<n>`` refer to. Raises ChangeError for a github.com URL nolli cannot build."""
+        """Parse the form of the target ``text``; no text means ``...HEAD``. ``local`` is the repository
+        that git's revisions and ``#<n>`` refer to. Raise ChangeError for a github.com URL nolli
+        cannot build."""
         if not text:
             return cls("revs", revs=git.Revs("range", head="HEAD", symmetric=True), local=local)
         stable = _parse_stable(text)
@@ -188,7 +191,8 @@ class Target:
         return self.kind in ("key", "pinned")
 
     def format(self) -> str:
-        """A stable target as text, which ``from_string`` reads back."""
+        """Format a stable target as text, which ``from_string`` reads back. Raise ValueError for a
+        target that is not stable."""
         if self.kind == "key":
             return self.key.format_key()
         if self.kind == "pinned":
@@ -196,11 +200,12 @@ class Target:
         raise ValueError(f"a {self.kind} target is not stable: pin it")
 
     def pin(self, get: Callable[[str], dict] | None = None, review: bool = False) -> Target:
-        """What this target names now, as a stable target with what it says about itself: git's
-        revisions looked up in the local repository, a target on GitHub asked of GitHub's API
-        (``get``, as ``github.ask_target`` takes it); no commits are fetched. ``review`` (nolli
-        agent brief): a single revision R is what R adds (``...R``, or ``R^!`` if R is on the
-        default branch), and anything that is no change is refused. Raises ChangeError."""
+        """Pin this target: return a stable target for what it names now, with what it says about
+        itself in ``about``. Git's revisions are looked up in the local repository, and a target on
+        GitHub is asked of GitHub's API (``get``, as ``github.ask_target`` takes it); no commits are
+        fetched. With ``review`` (as for nolli agent brief), a single revision R means what R adds
+        (``...R``, or ``R^!`` if R is on the default branch), and anything that is not a change is
+        refused. Raise ChangeError."""
         if self.kind == "revs":
             pinned = self._pin_revs(review)
         elif self.kind == "github":
@@ -243,9 +248,9 @@ class Target:
 
 
 def _parse_stable(text: str) -> Target | None:
-    """The stable target ``text`` is: a key (``<repo>@<sha>``, ``<repo>@<base>..<head>``) or
-    pinned (``<repo>@<base>...<head>``), full shas; None for anything else: no git revision has
-    a repository before an ``@`` and 40 hex digits after."""
+    """Parse ``text`` as a stable target: a key (``<repo>@<sha>``, ``<repo>@<base>..<head>``) or
+    pinned (``<repo>@<base>...<head>``), with full shas. Return None for anything else; no git
+    revision has a repository before an ``@`` and 40 hex digits after it."""
     repo, at, rest = text.rpartition("@")
     if not (at and repo and rest):
         return None
@@ -258,8 +263,9 @@ def _parse_stable(text: str) -> Target | None:
 
 
 def resolve(target: Target, sources: Sources, progress: Progress | None = None) -> ModelKey:
-    """The key ``target`` names (pinned first if it is not stable). For a change from where its
-    head left its base, that is found in its commits, which ``sources`` has or fetches."""
+    """Return the key that ``target`` names, pinning it first if it is not stable. For a change
+    from where its head left its base, find where they diverged in its commits, which
+    ``sources`` has or fetches. Raise ChangeError if they did not diverge."""
     t = target if target.is_stable else target.pin()
     if t.kind == "key":
         return t.key
@@ -272,10 +278,10 @@ def resolve(target: Target, sources: Sources, progress: Progress | None = None) 
 
 def build(store: ModelStore, target: Target, sources: Sources, *, about: dict | None = None, run: Run = _run_here,
           progress: Progress | None = None, rebuild: bool = False) -> ModelKey:
-    """Build what ``target`` names (pinned first if it is not stable) into ``store``, its commits
-    from ``sources``, unless a fresh one is kept there; its key.
-    ``about``: more of what a change says about itself (``budget``; what the user said of it),
-    over what the target says. ``run``: where the steps that take time run."""
+    """Build what ``target`` names into ``store``, unless a fresh one is kept there, and return its
+    key. A target that is not stable is pinned first; its commits come from ``sources``. ``about``
+    adds to what a change says about itself (``budget``, what the user said of it), over what the
+    target says; ``run`` says where the steps that take time run."""
     target = target if target.is_stable else target.pin()
     key = resolve(target, sources, progress)
     kept = None if rebuild else store.load_change(key) if isinstance(key, ChangeKey) else store.load_model(key)

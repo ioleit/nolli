@@ -24,7 +24,7 @@ scene = scenes.open(files, build.build_files(files, repo))
 
 
 def find_file(x: str) -> str | None:
-    """The file a node of the repository is in (None for one outside it)."""
+    """Return the file a node of the repository is in, or None for a node outside the repository."""
     return x.file.path if x.is_repo else None
 
 

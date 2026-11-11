@@ -28,8 +28,8 @@ class Sources(Protocol):
     read what, and raise ``NotAllowed`` for the rest."""
 
     def open_commits(self, repo: Repo, *shas: str) -> AbstractContextManager[Path]:
-        """A local repository of ``repo`` that has ``shas`` (fetching what is missing), held
-        while the ``with`` block uses it. Raises NotAllowed if this request may not read
+        """Open a local repository of ``repo`` that has ``shas``, fetching what is missing, and
+        hold it while the ``with`` block uses it. Raise NotAllowed if this request may not read
         ``repo``, also when nothing needs fetching."""
 
 
@@ -40,7 +40,7 @@ class LocalRepository:
         self.path = Path(path)
 
     def find_repo(self) -> Repo:
-        """This repository's key: its GitHub remote if it has one (the same commits there are
+        """Return this repository's key: its GitHub remote if it has one (the same commits there give
         the same models), else its path."""
         remote = git.find_remote(self.path)
         found = Repo.from_remote(remote) if remote else None

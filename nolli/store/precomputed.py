@@ -40,16 +40,17 @@ class CachingStrategy(Enum):
 
 
 def _describe_values(overlay: Overlay, by: dict | None = None) -> dict:
-    """A map's ``about``: which overlay said it, in which version, when (and ``by``: who ran it)."""
+    """Return a map's ``about``: which overlay said it, in which version and when, plus ``by``
+    (who ran it) if given."""
     return {**(by or {}), "overlay": overlay.name, "cache_version": overlay.cache_version,
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
 def _precompute(stored: KeptMaps, scene: Scene, overlay: Overlay, by: dict | None = None) -> Mapping[Key, dict]:
-    """What ``overlay`` says about every element of ``scene``, kept in ``stored`` under the
-    scene's model key, replacing what was kept; the values. The overlay answers on the scene
-    with itself attached (in place of one of the same name), so what it asks of other
-    overlays, and of the scenes the model was made from, is answered as usual."""
+    """Compute what ``overlay`` says about every element of ``scene``, keep it in ``stored`` under
+    the scene's model key in place of what was kept, and return the values. The overlay answers
+    on the scene with itself attached (in place of one of the same name), so what it asks of
+    other overlays, and of the scenes the model was made from, is answered as usual."""
     values = scene.with_overlays(overlay).read_all(overlay.name)
     stored.save(scene.model.key.format_key(), values, _describe_values(overlay, by))
     return values
@@ -104,9 +105,10 @@ class PrecomputedOverlay(Overlay):
         return self.fallback.cache_version if self.fallback is not None else ""
 
     def find_kept(self, model_key: str) -> Mapping[Key, dict] | None:
-        """The values kept for a model, if they are acceptable: kept by this version of the
-        fallback, or without a version (as an extractor's are), or by anything at all for an
-        overlay without a version of its own."""
+        """Return the values kept for a model if they are acceptable, else None. They are acceptable
+        if this version of the fallback kept them, if they were kept without a version (as an
+        extractor's are), or, for an overlay without a version of its own, whoever kept them.
+        The answer is remembered per model."""
         if model_key not in self._kept:
             values = self.stored.load(model_key)
             about = self.stored.load_about(model_key) if values else None
@@ -135,7 +137,7 @@ class OverlayStore:
         raise NotImplementedError
 
     def list_map_names(self, model_key: str) -> list[str]:
-        """The names of the maps kept for a model."""
+        """Return the names of the maps kept for a model."""
         raise NotImplementedError
 
     def precompute_overlay_values(self, scene: Scene, overlay: Overlay, by: dict | None = None) -> Mapping[Key, dict]:
@@ -144,13 +146,15 @@ class OverlayStore:
         return _precompute(self.open_maps(overlay.name), scene, overlay, by)
 
     def strictly_precomputed_overlay(self, name: str) -> PrecomputedOverlay:
-        """The overlay that says what was kept under ``name`` for an element's model, and nothing else."""
+        """Return an overlay that answers with what was kept under ``name`` for an element's model,
+        and nothing else."""
         return PrecomputedOverlay(name, self.open_maps(name))
 
     def precomputed_overlay(self, name: str) -> PrecomputedOverlay:
-        """The overlay that says what was kept under ``name`` for an element's model, or for its
-        namesake in the one scene the model was made from (``SourceElementOverlay``): for
-        values that are facts about an address, what extraction said."""
+        """Return an overlay that answers with what was kept under ``name`` for an element's model,
+        or else with what its namesake has in the one scene the model was made from
+        (``SourceElementOverlay``). Use it for values that are facts about an address, such as
+        what extraction said."""
         return PrecomputedOverlay(name, self.open_maps(name), SourceElementOverlay(name))
 
     def caching_overlay(self, overlay: Overlay, strategy: CachingStrategy = CachingStrategy.USE_PRECOMPUTED_VALUES) -> PrecomputedOverlay:
@@ -162,8 +166,9 @@ class OverlayStore:
         raise NotImplementedError
 
     def open_scene(self, key, overlays: Iterable[Overlay] = ()) -> Scene | None:
-        """A kept model as a scene, None if the store does not have it: each of ``overlays`` as
-        a caching overlay, and every other map kept for the model as strictly precomputed."""
+        """Open a kept model as a scene, or return None if the store does not have it. Each of
+        ``overlays`` is attached as a caching overlay, and every other map kept for the model as
+        a strictly precomputed overlay."""
         model = self.load_model(key)
         if model is None:
             return None

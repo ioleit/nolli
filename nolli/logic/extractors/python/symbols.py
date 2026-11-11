@@ -18,9 +18,9 @@ NAMES_MAX = 60  # names kept per list (functions, constants, re-exports)
 
 
 def _own_code(tree: ast.Module, rel: str, pkg_parts: list[str], aliases: dict[str, tuple[str, str]], total_lines: int | None) -> dict:
-    """What a module holds outside its classes, for the hover text on its own-code dot:
-    top-level functions and constants (UPPER_CASE names) in source order, the lines not
-    inside a class, and for a package's __init__.py the names it re-exports from its own
+    """Collect what a module holds outside its classes; the hover text on its own-code dot shows it.
+    Return the top-level functions and constants (UPPER_CASE names) in source order, the number of
+    lines not inside a class, and for a package's __init__.py the names it re-exports from its own
     package (relative imports, or absolute ones into the package's dotted path)."""
     out: dict = {}
     functions = [n.name for n in tree.body if isinstance(n, FUNC_DEFS)]
@@ -47,8 +47,8 @@ def _own_code(tree: ast.Module, rel: str, pkg_parts: list[str], aliases: dict[st
 
 
 def _doc_summary(node) -> str | None:
-    """A module's or class's docstring, read from the syntax tree (nothing is imported or
-    run): its first paragraph on one line, cut at DOC_MAX characters."""
+    """Return the first paragraph of a module's or class's docstring on one line, cut at DOC_MAX
+    characters, or None if it has none. Read it from the syntax tree; nothing is imported or run."""
     text = ast.get_docstring(node, clean=True)
     if not text:
         return None
@@ -76,7 +76,8 @@ def _last_name(e: ast.expr) -> str | None:
 
 
 def _is_type_expr(e: ast.expr) -> bool:
-    """A union written with ``|`` or a subscripted generic (``dict[str, int]``, ``Optional[X]``)."""
+    """Tell whether an expression is a union written with ``|`` or a subscripted generic
+    (``dict[str, int]``, ``Optional[X]``)."""
     if isinstance(e, ast.BinOp) and isinstance(e.op, ast.BitOr):
         return _is_type_operand(e.left) and _is_type_operand(e.right)
     return isinstance(e, ast.Subscript) and _last_name(e.value) in TYPE_GENERICS

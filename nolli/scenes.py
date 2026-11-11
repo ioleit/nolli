@@ -19,17 +19,19 @@ from nolli.store.maps import MapStore
 
 
 def _make_derived_overlays() -> list[Overlay]:
-    """What nolli derives from any model's facts and keeps with it at build time
-    (``keep_commit_scene``, ``keep_change_scene``): how its nodes are called (``names``)."""
+    """Make the overlays nolli derives from any model's facts and keeps with it at build time
+    (in ``keep_commit_scene`` and ``keep_change_scene``): what its nodes are
+    called (``names``)."""
     from nolli.logic.formats.descriptions.names import Names
 
     return [Names()]
 
 
 def _make_change_overlays(maps: MapStore) -> list[Overlay]:
-    """What a change says about itself, computed from its sides: what changed (``change``) and
-    which numbered changes each node and edge is about (``review``). Kept with the change at
-    diff time (``keep_change_scene``) and read back from there (``_open_change_scene``)."""
+    """Make the overlays that compute what a change says about itself from its sides: what changed
+    (``change``) and which numbered changes each node and edge is about (``review``). Their values
+    are kept with the change at diff time (``keep_change_scene``) and read back from there
+    (``_open_change_scene``)."""
     from nolli.logic.transformations.merge import Change
     from nolli.review.card import Review
 
@@ -37,10 +39,10 @@ def _make_change_overlays(maps: MapStore) -> list[Overlay]:
 
 
 def describe_change_meta(base: Model, head: Model, about: dict) -> dict:
-    """A change's merged model's ``meta``, from its sides: the repository, the head commit, its
-    files and languages. What the change says about itself (``about``, kept as change.json) is
-    added when the scene is opened (``meta["change"]``, ``merge.describe_change``), so that
-    what it says is read from one place."""
+    """Build the ``meta`` of a change's merged model from its sides: the repository, the head
+    commit, its files and languages. What the change says about itself (``about``, kept as
+    change.json) is not included; it is added as ``meta["change"]`` by ``merge.describe_change``
+    when the scene is opened, so that it is read from one place."""
     return {"repo": head.meta.get("repo"), "commit": about.get("head", "")[:7], "files": head.meta.get("files"),
             "languages": {**base.meta.get("languages", {}), **head.meta.get("languages", {})}}
 
@@ -50,7 +52,7 @@ def _describe_scene_meta(base: Model, head: Model, about: dict, content: Mapping
 
 
 def _make_overlays(maps: MapStore) -> list[Overlay]:
-    """The overlays nolli shows on any scene, on top of what extraction said."""
+    """Make the overlays nolli shows on any scene, on top of what extraction said."""
     from nolli.logic.formats.descriptions.hover import Hover
     from nolli.logic.formats.descriptions.label import Label
     from nolli.logic.transformations.merge import Change
@@ -62,15 +64,16 @@ def _make_overlays(maps: MapStore) -> list[Overlay]:
 
 
 def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
-    """A model as a scene with nolli's default overlays: what extraction said, by shape, read
-    by address (a shape never extracted for this model says nothing; a model made from this
-    one answers for a namesake with the same), and nolli's own (or ``overlays``)."""
+    """Open a model as a scene with overlays for what extraction said, by shape and read by
+    address, followed by nolli's own overlays (or ``overlays`` if given). A shape never extracted
+    for this model says nothing; a model made from this one answers for a namesake with the
+    same values."""
     said = [maps.precomputed_overlay(n) for n in vocabulary.SHAPES]
     return Scene(model, [*said, *(_make_overlays(maps) if overlays is None else overlays)])
 
 
 def _open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:
-    """A commit's stored model as a scene, None if the store does not have it."""
+    """Open a commit's stored model as a scene; return None if the store does not have it."""
     m = store.load_model(commit)
     return None if m is None else _open_scene(m, store, overlays)
 
@@ -86,9 +89,10 @@ def keep_commit_scene(store: ModelStore, commit: CommitKey, by: dict | None = No
 
 
 def _open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
-    """The change of its two stored commits: its merged model as kept with it (merged here for a
-    change kept without one), what it says about itself in its model's ``meta["change"]``, and
-    its own overlays answered from what was kept at diff time where it was, computed otherwise."""
+    """Open the scene of a change between two stored commits, or return None if the change or either
+    commit is not stored. The scene uses the merged model kept with the change (or merges one here
+    if none was kept), puts what the change says about itself in ``meta["change"]``, and answers
+    its own overlays from what was kept at diff time, computing those that were not kept."""
     about = store.load_change(change)
     if about is None:
         return None
@@ -113,6 +117,6 @@ def keep_change_scene(store: ModelStore, change: ChangeKey, by: dict | None = No
 
 
 def open(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:  # noqa: A001
-    """The scene of a kept model: a change merged from its commits, or one commit; None if the
-    store does not have it. Raises NotAllowed as the store does."""
+    """Open the scene of a stored model, either a change merged from its commits or a single
+    commit. Return None if the store does not have it; raise NotAllowed as the store does."""
     return _open_change_scene(store, key, overlays) if isinstance(key, ChangeKey) else _open_commit_scene(store, key, overlays)

@@ -148,9 +148,9 @@ def resolve_refs(ctx: Context) -> None:
         return None
 
     def resolve(key: str, src_rel: str) -> tuple[str | None, str | None]:
-        """The entity ``key`` (``mod:name``, ``mod:name.attr`` or ``mod:``) refers to, and the name
-        the reference is recorded under: ``attr`` when ``name`` turned out to be a module and the
-        reference landed in it, else None for the name as recorded."""
+        """Find the entity ``key`` (``mod:name``, ``mod:name.attr`` or ``mod:``) refers to. Return it
+        with the name to record the reference under: ``attr`` when ``name`` turned out to be a module
+        and the reference landed in it, else None to keep the name as recorded."""
         mod, _, name = key.partition(":")
         if name:
             name, _, attr = name.partition(".")

@@ -84,7 +84,7 @@ class Reading:
         return self.model.entities
 
     def segment(self, x: str) -> str:
-        """The last step of a node's address: a file's or directory's name, a service's host."""
+        """Return the last step of a node's address: a file's or directory's name, or a service's host."""
         if x.is_repo:
             return x.path.rsplit("/", 1)[-1] if x.path != "." else ""
         return unquote(x.split(":", 1)[1].rsplit("/", 1)[-1])
@@ -106,7 +106,7 @@ class Reading:
         return self.scene.read_all("change") if self.is_change else {}
 
     def diff(self, x: str) -> dict:
-        """What the change did to a node; {} outside a change."""
+        """Return what the change did to a node, or {} outside a change."""
         return self.changes.get(x) or {}
 
     # -- edges -------------------------------------------------------------------
@@ -126,6 +126,6 @@ class Reading:
         return out
 
     def find_unresolved_language(self, x: str) -> str:
-        """The language an unresolved reference was written in, as its extractor says, else the
+        """Return the language an unresolved reference was written in, as its extractor says, else the
         sort of reference its address names (``http``)."""
         return vocabulary.read_external(self.scene.find_element(x)).get("language") or x.split(":")[1]

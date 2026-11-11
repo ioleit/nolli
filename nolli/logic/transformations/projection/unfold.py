@@ -27,7 +27,7 @@ def _unfold_cost(g: Reading, v: str, hidden: set[str], anchors: set[str] = froze
 
 
 def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_expand=(EntityId.REPO_ROOT,), hidden: set[str] | None = None) -> dict:
-    """The default cut: unfold the containment forest as far as a node budget allows.
+    """Find the default cut by unfolding the containment forest as far as a node budget allows.
 
     Start with the repository root unfolded (its top-level entries) plus the synthetic
     groups folded. Then repeatedly unfold the container that reveals the most edges per node

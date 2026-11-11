@@ -40,7 +40,7 @@ class Expansion:
         raise NotImplementedError
 
     def name_for(self, g: Reading) -> str | None:
-        """What the viewer calls what ``find`` did on ``g`` (a rule may fall back to another)."""
+        """Return what the viewer calls what ``find`` did on ``g``; a rule may fall back to another."""
         return self.name
 
 
@@ -134,8 +134,8 @@ def _is_root_group(g: Reading, x: str) -> bool:
 
 
 def _cut(g: Reading, st: ProjectionSpec) -> Cut:
-    """``expanded`` is normalised to the containers actually reached, so folding a box also
-    folds everything inside it."""
+    """Work out what ``st`` cuts out of the scene ``g`` reads. ``expanded`` is normalised to the
+    containers actually reached, so folding a box also folds everything inside it."""
     hidden = _hide_for(g, st.roles, st.side)
     shown_groups = set(st.groups)
     expanded = st.expand.find(g, hidden, st)
@@ -175,7 +175,7 @@ def _leaf_count(g: Reading, x: str) -> int:
 
 
 def fold(st: ProjectionSpec) -> Callable[[Scene], Scene]:
-    """The projection as a transformation: what ``st`` asks for, of the scene it is given.
+    """Return the projection as a transformation, which projects the scene it is given as ``st`` asks.
 
     The nodes are filtered by ``st``, contracted onto the cut through the containment tree
     that the unfolded containers make, and simplified by the roll-up rules (``rollup``).
@@ -198,9 +198,10 @@ def fold(st: ProjectionSpec) -> Callable[[Scene], Scene]:
 
 
 def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tuple[Key, ...]], FixedOverlay]:
-    """The folded model: its nodes the boxes drawn, each keeping its address and referring to
-    what it stands for, its edges the lines drawn, each referring to the edges it bundles; and
-    the projection's overlay, what it decided about them."""
+    """Build the folded model and the projection's overlay. The model's nodes are the boxes drawn,
+    each keeping its address and referring to what it stands for; its edges are the lines drawn,
+    each referring to the edges it bundles. The overlay holds what the projection decided about
+    them."""
     g = Reading(scene)
     c = _cut(g, st)
     expanded, hidden, visible, rolled, utilities = c.expanded, c.hidden, c.visible, c.rolled, c.utilities

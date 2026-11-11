@@ -19,7 +19,7 @@ from nolli.review.reading import Reader
 # ---------- the numbered changes a reviewer (person or agent) goes through ----------
 
 def _find_module(g: Reader, x: str) -> str:
-    """The module (file) a fact end belongs to; anything outside files stays itself."""
+    """Return the module (file) a fact end belongs to; anything outside files is returned as it is."""
     cur: str | None = x
     while cur is not None:
         if g.has(cur) and g.kind(cur) == "file":
@@ -29,7 +29,7 @@ def _find_module(g: Reader, x: str) -> str:
 
 
 def _find_area(g: Reader, x: str) -> str:
-    """The top-level box a node sits in: a top-level directory, or a group."""
+    """Return the top-level box a node sits in, which is a top-level directory or a group."""
     cur, last = x, x
     while cur is not None:
         p = g.parent(cur)
@@ -40,8 +40,8 @@ def _find_area(g: Reader, x: str) -> str:
 
 
 def format_name(g: Reader, x: str) -> str:
-    """A readable name: the path for files and directories, path#Name for classes (and
-    the other symbols)."""
+    """Return a readable name for a node. Files and directories are named by their path, classes
+    (and the other symbols) by path#Name."""
     if not g.has(x):
         return x
     kind, a = g.kind(x), g.attrs(x)
@@ -53,7 +53,7 @@ def format_name(g: Reader, x: str) -> str:
 
 
 def _find_role(g: Reader, x: str) -> str:
-    """The role of the file or directory a node belongs to (source, test, docs, …); nodes
+    """Return the role of the file or directory a node belongs to (source, test, docs, …). Nodes
     outside the file tree (services, endpoints, packages) count as source."""
     cur: str | None = x
     while cur is not None:
@@ -65,23 +65,24 @@ def _find_role(g: Reader, x: str) -> str:
 
 
 def list_ancestors_to_unfold(g: Reader, x: str) -> list[str]:
-    """The boxes to unfold so that x itself is drawn."""
+    """List the boxes to unfold so that x itself is drawn."""
     return list(g.ancestors(x))[::-1]
 
 
 def list_changes(scene: Scene) -> list[dict]:
-    """A change's numbered changes, as the ``review`` overlay keeps them (``number_changes``,
-    once per change)."""
+    """Return a change's numbered changes in their order, as the ``review`` overlay keeps them
+    (computed by ``number_changes`` once per change)."""
     listed = [it for v in scene.read_all("review").values() for it in v.get("listed", ())]
     return sorted(listed, key=lambda it: int(it["id"][1:]))
 
 
 def number_changes(scene: Scene) -> list[dict]:
-    """The changes as a numbered list, in a stable order: components added or removed (a new
-    module once, with its classes, not once per class), then dependencies between modules,
-    then edited files. Each item names the nodes and facts it is about, so a verdict on it can
-    be shown on whatever box or edge contains them. Computed by the ``review`` overlay, which
-    keeps the list; readers take it from there (``list_changes``)."""
+    """List a change's changes and number them C1, C2, … in a stable order. Changes to source code
+    come first, then those to tests, docs and the rest. Within each, components added or removed
+    come first (a new module once, with its classes, not once per class), then dependencies
+    between modules, then edited files. Each item names the nodes and facts it is about, so a
+    verdict on it can be shown on whatever box or edge contains them. The ``review`` overlay
+    computes the list and keeps it; readers take it from there (``list_changes``)."""
     g = Reader(scene)
     links = Links(scene.model.meta.get("change") or {})
     comps, deps, content = [], [], []
@@ -169,8 +170,9 @@ def number_changes(scene: Scene) -> list[dict]:
 
 
 def _find_review_cut(scene: Scene) -> list[str]:
-    """The boxes to unfold so that every change in source code is drawn: what going to each
-    of them unfolds, together. The review diagram and the viewer's "all changes" use it."""
+    """Find the boxes to unfold so that every change in source code is drawn, by joining what
+    going to each of them unfolds. The review diagram and the viewer's "all changes" unfold them
+    (``Changes``)."""
     out = {EntityId.REPO_ROOT}
     for it in list_changes(scene):
         if it["role"] == "source":

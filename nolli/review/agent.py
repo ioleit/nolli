@@ -83,7 +83,7 @@ class Reviewer:
         return _available()
 
     def model(self) -> str:
-        """What the review panel names as the reviewer."""
+        """Return the name of the model that reviews; the review panel shows it as the reviewer."""
         return MODEL
 
     def review(self, brief: str, head: str, check: Check, repo: Path, out: Path,
@@ -106,7 +106,8 @@ def _prompt(brief: str, head: str) -> str:
 
 
 def _doing(name: str, args: dict) -> str:
-    """What a tool call does, in a few words, for the page that follows the run."""
+    """Say in a few words what a tool call does, such as "reading the diff"; the page that follows
+    the run shows it."""
     if name == "git":
         a = [x for x in args.get("args") or [] if not x.startswith("-")]
         if a[:1] == ["show"] and len(a) > 1 and ":" in a[1]:

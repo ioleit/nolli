@@ -136,8 +136,8 @@ class Facts:
         return r
 
     def ensure_root(self, scheme: str, extractor: str) -> str:
-        """The group at the root of a scheme's addresses (``api:``), named for what it holds
-        (``ROOT_NAMES``), added if missing. The repository's root is its directory instead."""
+        """Return the group at the root of a scheme's addresses (``api:``), adding it if missing and
+        naming it for what it holds (``ROOT_NAMES``). The repository's root is its directory instead."""
         rid = EntityId.root(scheme)
         if rid not in self.entities:
             self.add_entity(EntityFact(rid, EntityKind.GROUP, ROOT_NAMES[scheme], {"synthetic": True}, Provenance(extractor)))
@@ -198,10 +198,10 @@ class Facts:
     # -- what extraction made ------------------------------------------------
 
     def split(self, key: ModelKey = StringKey()) -> tuple[Model, dict[str, dict[Key, dict]]]:
-        """The structure, and what the extractors said, filed by shape (``vocabulary.SHAPES``,
-        one map each, whichever extractor spoke): for a node its attributes (``name`` among
-        them), for an edge its facts (one per relation: count, confidence, where it was
-        found, the relation's attributes). Each map is what its overlay says."""
+        """Split the facts into the structure and what the extractors said about it, filed by shape
+        (``vocabulary.SHAPES``, one map each, whichever extractor spoke). For a node the map holds
+        its attributes (``name`` among them), for an edge its facts (one per relation: count,
+        confidence, where it was found, the relation's attributes). Each map is what its overlay says."""
         maps: dict[str, dict[Key, dict]] = defaultdict(dict)
         for e in self.entities.values():
             by = getattr(e.attrs, "by", {})
@@ -226,8 +226,8 @@ class Facts:
 
 
 def _check_reference(ref: dict, extractor: str, key: Relation) -> None:
-    """Raises unless ``ref`` is a ``Reference`` (``nolli/model/vocabulary.py``): every extractor says it
-    in the same words, so code that works with any language can count on them."""
+    """Raise ``ValueError`` unless ``ref`` is a ``Reference`` (``nolli/model/vocabulary.py``). Every
+    extractor says it in the same words, so code that works with any language can count on them."""
     for k in ("count", "confidence", "path"):
         if ref.get(k) is None:
             raise ValueError(f"{extractor}: a reference of {key.format()} without {k}")
@@ -239,10 +239,10 @@ WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extr
 
 
 def extract_facts(repo: Path, files: list[Path], config: dict | None = None, progress: Progress | None = None) -> Facts:
-    """What every extractor, then the matchers, found in ``files`` (relative to ``repo``), before
-    it is split into structure and maps. ``meta`` says how many files, the languages, the
-    timings and the extractors' notes; where the files came from (repository, commit) is the
-    caller's to add."""
+    """Run every extractor, then the matchers, over ``files`` (relative to ``repo``) and return what
+    they found, before it is split into structure and maps. ``meta`` says how many files, the
+    languages, the timings and the extractors' notes; the caller adds where the files came from
+    (repository, commit)."""
     from nolli.logic import extractors  # extractors/__init__ imports this module
     from nolli.logic.extractors import match
 

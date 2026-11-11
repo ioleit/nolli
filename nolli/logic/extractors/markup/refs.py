@@ -61,9 +61,9 @@ def _file_exists(ctx: Context, fid: str) -> bool:
 
 
 def link(ctx: Context, rel: str, ref: str, line: int, how: str, extractor: str) -> None:
-    """A ``use`` edge from the file ``rel`` to the file ``ref`` names, if it names one;
-    or to the npm package it uses (``package``); ``how`` (``script``, ``stylesheet``,
-    ``image``, ``import``, ``url``) is kept in attrs.
+    """Add a ``use`` edge from the file ``rel`` to the file ``ref`` names, if it names one,
+    or to the npm package it uses (``package``). Keep ``how`` (``script``, ``stylesheet``,
+    ``image``, ``import``, ``url``) in attrs.
 
     A relative reference (``js/main.js``, ``../fonts/a.woff2``) is resolved against the
     referring file's directory. A reference from the server root (``/src/main.tsx``)

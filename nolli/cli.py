@@ -110,7 +110,7 @@ class Built:
 
 
 def find_local(repo: str) -> Path | None:
-    """The git repository around ``repo``, None if it is in none."""
+    """Return the git repository around ``repo``, or None if it is in none."""
     try:
         return find_toplevel(Path(repo).resolve())
     except ChangeError:
@@ -118,16 +118,17 @@ def find_local(repo: str) -> Path | None:
 
 
 def make_sources(args: argparse.Namespace):
-    """Where a build gets commits: the repository you are in, and clones under the data directory."""
+    """Return where a build gets commits: the repository you are in, and clones under the data
+    directory."""
     from nolli.logic.sources import github
 
     return github.Checkout(find_local(args.repo), find_data_dir(args.data) / ".repos")
 
 
 def find_dataset(text: str | None, cmd: str):
-    """The store and key of the dataset directory ``text`` names (``DirectoryStore.find_dataset``):
-    a dataset already built, used as it is; None if it names none; False, after saying why, for
-    a dataset this nolli cannot read."""
+    """Find the dataset directory that ``text`` names (``DirectoryStore.find_dataset``) and return
+    its store and key, to use as it is. Return None if it names none, and False, after printing
+    why, for a dataset this nolli cannot read."""
     if not text:
         return None
     try:
@@ -138,9 +139,9 @@ def find_dataset(text: str | None, cmd: str):
 
 
 def pin(args: argparse.Namespace, cmd: str, review: bool = False):
-    """What args.target names now in args.repo: a pinned ``build.Target``, or for a dataset
-    directory the (store, key) it is; None, after saying why, if it names nothing. ``review`` as
-    ``Target.pin`` takes it. Says what it names on stderr."""
+    """Pin args.target in args.repo and return the pinned ``build.Target``, or the (store, key) of
+    the dataset directory it names. ``review`` is as ``Target.pin`` takes it. Print what it names
+    on stderr; print why and return None if it names nothing."""
     from nolli import build
 
     found = find_dataset(args.target, cmd)
@@ -172,9 +173,9 @@ def pin(args: argparse.Namespace, cmd: str, review: bool = False):
 
 
 def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | None:
-    """args.target built into the data directory unless a fresh one is stored there (or it is a
-    dataset directory already). Progress goes to stderr; None (after saying why) if the target
-    names nothing or cannot be built."""
+    """Build args.target into the data directory unless a fresh one is stored there (or it is a
+    dataset directory already), and return it. Progress goes to stderr; print why and return None
+    if the target names nothing or cannot be built."""
     from nolli import build
 
     target = pin(args, cmd, review)
@@ -195,15 +196,15 @@ def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | N
 
 
 def find_about(args: argparse.Namespace) -> dict:
-    """What --pr, --title and --description say about a change (build, diff), over what its
-    target says."""
+    """Collect what --pr, --title and --description say about a change (for build and diff) into
+    a dict, leaving out the ones not given; these take precedence over what the target says."""
     desc = getattr(args, "description", None)
     return {k: v for k, v in {"pr": getattr(args, "pr", None), "title": getattr(args, "title", None),
                               "description": Path(desc).read_text() if desc else None}.items() if v}
 
 
 def count_found(m) -> str:
-    """What a build found, in a few words."""
+    """Summarise what a build found in a few words, e.g. "12 files, 3 classes, 40 dependencies"."""
     kinds = m.count_nodes_by_kind()
     parts = [f"{m.meta.get('files') or kinds.get('file', 0)} files"]
     parts += [f"{kinds[k]} {k}{'es' if k == 'class' else 's'}" for k in ("class", "interface", "type", "enum", "service") if kinds.get(k)]
@@ -227,8 +228,9 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 
 def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
-    """The target built afresh into the directory -o with its extras (``write_extras``):
-    what it says about itself and the report; None after saying why it could not be."""
+    """Build the target afresh into the directory given by -o, with its extras (see
+    ``write_extras``), and return what it says about itself and its report. Print why and return
+    None if it cannot be built."""
     from nolli import build
 
     target = pin(args, cmd)
@@ -247,9 +249,9 @@ def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
 
 
 def write_dataset(key, sources, out: Path, about: dict, budget: int | None = None) -> tuple[dict, dict]:
-    """The model of ``key`` built here, from scratch (its commits from ``sources``), and written to the directory ``out`` (a dataset
-    directory, as ``DirectoryStore`` keeps one) with its extras; what it says about itself, and
-    the report. ``nolli build -o``."""
+    """Build the model of ``key`` here, from scratch, with its commits from ``sources``, and write it
+    to the directory ``out`` (a dataset directory, as ``DirectoryStore`` keeps one) with its
+    extras. Return what it says about itself, and the report. This is ``nolli build -o``."""
     from nolli import build, scenes
     from nolli.logic.transformations import merge
     from nolli.model.keys import CommitKey
@@ -282,8 +284,8 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
 
 
 def write_extras(scene, out: Path) -> dict:
-    """What a dataset directory written on its own gets beside the model: report.json, and for a
-    change what a review agent reads (changes.json, review.mmd, review.md). Returns the report."""
+    """Write the files a standalone dataset directory gets beside the model: report.json, and for a
+    change what a review agent reads (changes.json, review.mmd, review.md). Return the report."""
     from nolli.logic import transformations
     from nolli.logic.formats import report as report_format
     from nolli.logic.transformations import merge, projection

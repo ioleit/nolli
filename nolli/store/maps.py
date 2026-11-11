@@ -25,8 +25,8 @@ class MapStore(Protocol):
     an overlay says about it, with ``about`` (who made it, when)."""
 
     def open_maps(self, name: str) -> KeptMaps:
-        """A handle restricted to the maps kept under ``name``, so an overlay never sees the
-        store itself."""
+        """Open a handle on the maps kept under ``name`` and nothing else, so an overlay never sees
+        the store itself."""
         ...
 
 
@@ -78,8 +78,9 @@ def dump_map(model_key: str, values: Mapping[Key, dict], about: dict | None) -> 
 
 
 def parse_map(d: dict) -> tuple[dict[Key, dict], dict | None]:
-    """A map as ``dump_map`` wrote it, keyed as it was given: a node by its ``EntityId``, an edge
-    by its ``Relation``; a node key that is no address raises ``ValueError``."""
+    """Parse a map as ``dump_map`` wrote it, returning its values and its ``about``. The values are
+    keyed as they were given, a node by its ``EntityId`` and an edge by its ``Relation``. Raise
+    ``FormatError`` for another format and ``ValueError`` for a node key that is no address."""
     if d.get("format") != FORMAT:
         raise FormatError(f"a map of format {d.get('format')!r}, this nolli reads {FORMAT}")
     values: dict[Key, dict] = {EntityId(k): v for k, v in (d.get("nodes") or {}).items()}

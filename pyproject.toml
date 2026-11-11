@@ -59,10 +59,20 @@ packages = ["nolli", "nolli.logic", "nolli.model", "nolli.logic.formats", "nolli
 line-length = 110
 
 [tool.ruff.lint]
-# ruff's own rules, and no relative imports: every module names the package it imports from
-extend-select = ["TID252"]
-# nested ifs that each say one thing; a bad file is a ValueError, whatever is wrong in it
-ignore = ["SIM102", "TRY004"]
+# ruff's default rules, and:
+extend-select = [
+    "TID252",  # relative-imports, https://docs.astral.sh/ruff/rules/relative-imports/ (every module names the package it imports from)
+    "D401",  # non-imperative-mood, https://docs.astral.sh/ruff/rules/non-imperative-mood/ (a docstring says what a function does, as PEP 257 asks)
+]
+ignore = [
+    "SIM102",  # collapsible-if, https://docs.astral.sh/ruff/rules/collapsible-if/ (nested ifs that each say one thing)
+    "TRY004",  # type-check-without-type-error, https://docs.astral.sh/ruff/rules/type-check-without-type-error/ (a bad file is a ValueError, whatever is wrong in it)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "D401",  # non-imperative-mood, https://docs.astral.sh/ruff/rules/non-imperative-mood/ (a test's docstring states what is expected, not a command)
+]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

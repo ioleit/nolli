@@ -79,8 +79,9 @@ def _index_old_paths(content: Mapping[Key, dict]) -> dict[str, dict]:
 
 def _compare_node(x: str, kind: str, sides: Mapping[str, _Side], content: Mapping[Key, dict], renames: Mapping[str, str],
                   by_old_path: Mapping[str, dict]) -> dict | None:
-    """What the change did to a node: added or removed when one side has no such node, and
-    what git says changed inside a file, or inside a class's lines."""
+    """Record what the change did to a node, or return None if it did nothing. The node is added
+    or removed when one side has no such node, and the record holds what git says changed inside
+    a file, or inside a class's lines."""
     b, h = sides["base"].model.has(x), sides["head"].model.has(x)
     rec: dict = {}
     if not b:
@@ -152,20 +153,21 @@ class Links:
         return "diff-" + hashlib.sha256(path.encode()).hexdigest()
 
     def change(self) -> str | None:
-        """The PR, or the compare view of the two commits."""
+        """Return the URL of the PR, or of the compare view of the two commits."""
         if not self.remote:
             return None
         return f"{self.remote}/pull/{self.pr}" if self.pr else f"{self.remote}/compare/{self.base}...{self.head}"
 
     def diff(self, path: str, line: int | None = None, side: str = "head") -> str | None:
-        """A file (and a line on one side) in the PR's files view or the compare view."""
+        """Return the URL of a file, and optionally a line on one side, in the PR's files view or
+        the compare view."""
         if not self.remote:
             return None
         page = f"{self.remote}/pull/{self.pr}/files" if self.pr else f"{self.remote}/compare/{self.base}...{self.head}"
         return f"{page}#{self.anchor(path)}" + (f"{'R' if side == 'head' else 'L'}{line}" if line else "")
 
     def blob(self, path: str, side: str = "head", start: int | None = None, end: int | None = None) -> str | None:
-        """A file at one commit, optionally a line range."""
+        """Return the URL of a file at one commit, optionally pointing at a line range."""
         if not self.remote:
             return None
         sha = self.head if side == "head" else self.base
@@ -176,7 +178,7 @@ class Links:
 # ---------- the change in numbers ----------
 
 def describe_change(about: dict, content: Mapping[Key, dict]) -> dict:
-    """The ``meta["change"]`` of a change's model, which scenes drawn from it carry along.
+    """Build the ``meta["change"]`` of a change's model, which scenes drawn from it carry along.
     It holds what the change says about itself (title, pr, description, base, head, remote,
     …), git's totals of files changed and lines added and removed, and a link to it."""
     d = dict(about)
@@ -190,9 +192,9 @@ TOTALS = ("added", "removed", "files", "new", "gone")
 
 
 def _sum_box(el: Element) -> dict | None:
-    """A drawn box: its own status, and the totals of what changed in what it stands for and in
-    the boxes drawn inside it; ``internal``, the changed dependencies the projection found
-    between what it holds."""
+    """Sum up what changed in a drawn box, or return None if nothing did. Give its own status, the
+    totals of what changed in what it stands for and in the boxes drawn inside it, and in
+    ``internal`` the number of changed dependencies the projection found between what it holds."""
     if el.kind == "anchor":
         return None
     totals = dict.fromkeys(TOTALS, 0)
@@ -225,9 +227,10 @@ def _sum_box(el: Element) -> dict | None:
 
 
 def _compare_edge(key: Relation, meta: dict, refs: Mapping[str, list | bool]) -> dict | None:
-    """What the change did to an edge, from the references on each side (``refs``: by side, the
-    references there, False where that side has no such edge): added, removed, or changed when
-    the number of references differs; None when the same."""
+    """Record what the change did to an edge, judged from the references on each side. ``refs``
+    maps each side to its references, or to False where that side has no such edge. The edge is
+    added, removed, or changed when the number of references differs; return None when it is the
+    same."""
     b, h = refs["base"], refs["head"]
     nb = sum(r["count"] for r in b) if b is not False else 0
     nh = sum(r["count"] for r in h) if h is not False else 0
@@ -243,7 +246,7 @@ def _compare_edge(key: Relation, meta: dict, refs: Mapping[str, list | bool]) ->
 
 
 def _describe_fact(key: Relation, meta: dict, rec: dict, refs: list | bool) -> dict:
-    """A changed edge of a change for a tooltip or details panel, with a link to where it changed."""
+    """Describe a changed edge of a change for a tooltip or details panel, with a link to where it changed."""
     first = refs[0] if refs else {}
     path = first.get("path")
     line = first.get("line")
@@ -254,8 +257,8 @@ def _describe_fact(key: Relation, meta: dict, rec: dict, refs: list | bool) -> d
 
 
 def _sum_edge(el: Element) -> dict | None:
-    """A drawn edge: how its references changed (the projection counted them), and the changed
-    edges it bundles."""
+    """Sum up how the references of a drawn edge changed (the projection counted them) and list the
+    changed edges it bundles; return None if it did not change."""
     p = el.get("projection") or {}
     if not p.get("status"):
         return None
@@ -292,8 +295,8 @@ class SidesSaid(Overlay):
 
 
 def merge_models(key: ModelKey, base: Model, head: Model, meta: dict | None = None) -> Model:
-    """The model holding every node and edge of either side, each standing for its namesake on
-    each side (``union`` says so). Same address, same thing: a node or edge is the same on both sides
+    """Build the model holding every node and edge of either side, each standing for its namesake
+    on each side (``union`` says so). Same address, same thing: a node or edge is the same on both sides
     when its address is; a node owned on both sides is owned as head has it."""
     entities = {**base.entities, **head.entities}
     owned = {e.dst for e in head.edges if e.kind == RelationKind.CONTAIN}

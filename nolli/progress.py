@@ -31,7 +31,8 @@ class Progress:
         self.last = 0.0
 
     def under(self, prefix: str) -> Progress:
-        """The same progress, its steps labelled ``prefix`` (the side of a change: base, head)."""
+        """Return a progress on the same stream and clock whose steps are labelled with ``prefix``,
+        such as the side of a change (base, head)."""
         p = Progress(self.stream, f"{self.prefix}{prefix}: ", self.t0)
         p.live = self.live
         return p

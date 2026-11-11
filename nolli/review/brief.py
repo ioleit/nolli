@@ -13,19 +13,21 @@ from nolli.review import changes
 
 
 def make_review_diagram(scene: Scene) -> str:
-    """The review diagram (``review.mmd``): the change with every area that changed in source
-    code unfolded (``changes.Changes``), the rest of the projection as it is by default. The
-    same for the same change and version of nolli, so verdicts on its ids stay valid."""
+    """Render the review diagram (``review.mmd``) as Mermaid: the change with every area that
+    changed in source code unfolded (``changes.Changes``), the rest of the projection as it is by
+    default. It is the same for the same change and version of nolli, so verdicts on its ids stay
+    valid."""
     return mermaid_format.render(transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=changes.Changes()))))
 
 
 def make_brief(scene: Scene, mermaid: str | None = None, description: str | None = None) -> str:
-    """What a review agent gets: the change's title, the diagram of everything that changed
-    (the reviewer looks at the same picture), how to answer, and the PR's description.
-    Verdicts come back as JSON on the diagram's nodes and edges and are shown in the viewer.
+    """Write the brief a review agent gets for a change. It holds the change's title, the diagram
+    of everything that changed (the reviewer looks at the same picture), how to answer, and the
+    PR's description. Verdicts come back as JSON on the diagram's nodes and edges and are shown
+    in the viewer.
 
-    ``mermaid``: the review diagram (default: ``make_review_diagram``); ``description``: the
-    change's (default: what it says about itself)."""
+    ``mermaid`` is the review diagram (made with ``make_review_diagram`` if it is not given);
+    ``description`` is the change's (what it says about itself if it is not given)."""
     d = scene.model.meta["change"]
     mermaid = make_review_diagram(scene) if mermaid is None else mermaid
     description = d.get("description") if description is None else description

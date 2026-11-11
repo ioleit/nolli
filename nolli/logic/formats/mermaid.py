@@ -31,7 +31,7 @@ make_node_id = EntityId.as_identifier
 
 
 def _text(s: str) -> str:
-    """A label as Mermaid reads it between double quotes."""
+    """Escape a label so that Mermaid reads it between double quotes."""
     return s.replace('"', "'").replace("<", "#lt;").replace(">", "#gt;")
 
 
@@ -48,8 +48,9 @@ def _label(n: dict) -> str:
 
 
 def list_drawing_order(scene: Scene) -> list[str]:
-    """The nodes in the order they are drawn: a projection's (each container before what it
-    holds), else down the containment tree; nodes the model no longer has are left out."""
+    """List the nodes in the order they are drawn. Those in the projection's order come first, in
+    that order (each container before what it holds), and the rest follow down the containment
+    tree. Nodes the model no longer has are left out."""
     m = scene.model
     order = [x for x in m.meta.get("projection", {}).get("order") or [] if x in m.entities]
     if len(order) == len(m.entities):
@@ -66,7 +67,8 @@ def list_drawing_order(scene: Scene) -> list[str]:
 
 
 def _read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
-    """A projected scene's boxes (drawing order) and edges, as the drawing needs them."""
+    """Read a projected scene's boxes (in drawing order) and edges into the dicts the drawing needs,
+    and tell whether the scene is drawn from a change."""
     order = list_drawing_order(scene)
     nodes = []
     for x in order:
@@ -86,14 +88,14 @@ def _read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
 
 
 def list_ids(scene: Scene) -> dict[str, str]:
-    """The Mermaid id of each box ``render`` draws (an unfolded one is a subgraph, ``<id>_g``),
-    to the scene id it stands for: how a client maps a click on the drawing back to the scene."""
+    """Map the Mermaid id of each box ``render`` draws (an unfolded one is a subgraph, ``<id>_g``)
+    to the scene id it stands for, so that a client can map a click on the drawing back to the scene."""
     nodes, _, _ = _read_scene(scene)
     return {make_node_id(n["id"]) + ("_g" if n.get("container") else ""): n["id"] for n in nodes}
 
 
 def render(scene: Scene, fade: bool = True) -> str:
-    """The scene as a Mermaid flowchart, top to bottom in Mermaid's own layout.
+    """Draw the scene as a Mermaid flowchart, top to bottom in Mermaid's own layout.
 
     It draws a projected scene's boxes, containers (as subgraphs) and edges, named by the
     ``label`` overlay and marked by ``change``. The output uses only plain Mermaid, so that it

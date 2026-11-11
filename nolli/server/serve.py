@@ -144,7 +144,7 @@ def token_from_env(env: dict | None = None) -> Token:
 
 
 def describe(t: build.Target) -> str:
-    """A pinned target's title, for its pages: the repository, the pull request or commits, and
+    """Describe a pinned target for its pages: the repository, the pull request or commits, and
     what the change calls itself."""
     if t.kind == "pinned":
         repo, what = t.repo, f"{t.base[:7]}...{t.head[:7]}"
@@ -219,8 +219,9 @@ class Pipe:
 
 
 def child(fn: Callable[..., Any], args: tuple, prefix: str, tmp: Path, conn) -> None:
-    """A build step's process: ``fn(*args, progress=…)``, then its result or why it failed.
-    Temporary files go under ``tmp``, which the server deletes, also when it stops the step."""
+    """Run a build step in its own process: call ``fn(*args, progress=…)`` and send its result, or
+    why it failed, back over ``conn``. Temporary files go under ``tmp``, which the server deletes,
+    also when it stops the step."""
     tempfile.tempdir = str(tmp)
     try:
         out = fn(*args, progress=Progress(Pipe(conn), prefix))  # type: ignore[arg-type]
@@ -265,7 +266,8 @@ class Site:
         self.answers: dict[str, tuple[float, dict]] = {}
 
     def find_token(self, owner: str, repo: str) -> str | None:
-        """The token for ``owner/repo``, or None to go as nobody (a token that cannot be had is said once)."""
+        """Return the GitHub token for ``owner/repo``, or None to ask as nobody. If no token can be had,
+        say why once, not on every call."""
         try:
             return self.github.token(owner, repo)
         except (ChangeError, ValueError, ImportError) as exc:
@@ -301,9 +303,9 @@ class Site:
             return github.api(path, None)
 
     def plan(self, text: str | None) -> build.Target:
-        """What the target ``text`` names now, pinned (``build.Target.pin``). Raises
-        github.NotFound for a repository the token cannot read, TooLarge, and ChangeError for a
-        target this server cannot show or GitHub cannot be asked about."""
+        """Work out what the target ``text`` names now and return it pinned (``build.Target.pin``).
+        Raise github.NotFound for a repository the token cannot read, TooLarge, and ChangeError for
+        a target this server cannot show or GitHub cannot be asked about."""
         t = build.Target.from_string(text, self.local)
         if t.kind == "github":
             return self.plan_github(t.github)
@@ -321,8 +323,8 @@ class Site:
         return build.Target("github", github=dataclasses.replace(t, owner=owner, name=name)).pin(self.get)
 
     def find_built(self, target: build.Target) -> tuple[ModelKey, Scene] | None:
-        """The scene the pinned ``target`` names if it is built, else None. Raises NotAllowed as
-        the store does."""
+        """Return the key and scene that the pinned ``target`` names if it is built, else None. Raise
+        NotAllowed as the store does."""
         key = target.key or self.built.get(target.format())
         if key is None:
             return None
@@ -331,8 +333,9 @@ class Site:
         return (key, sc) if sc is not None else None
 
     def start(self, target: build.Target) -> Job:
-        """The build of the pinned ``target``: the one under way, or a new one (also after a failed
-        one). It runs in the context of the request that started it."""
+        """Return the build of the pinned ``target``, reusing the existing one unless it failed, and
+        otherwise starting a new one in a thread. The build runs in the context of the request that
+        started it."""
         with self.lock:
             job = self.jobs.get(target.format())
             if job and job.state != "error":
@@ -427,15 +430,15 @@ def page(title: str, body: str, *, status: str = "", job: str = "") -> bytes:
 
 
 def viewer_page(key: ModelKey, title: str) -> bytes:
-    """The viewer's page for one model (its key, which the page's API calls name); <base> makes
-    its relative links work under any path."""
+    """Make the viewer's page for one model, carrying the model's key for the page's API calls to
+    name. A <base> tag makes its relative links work under any path."""
     t = (HERE / "index.html").read_text()
     head = f'<head>\n<base href="/">\n<meta name="nolli-key" content="{html.escape(key.format_key(), quote=True)}">'
     return t.replace("<head>", head, 1).replace("<title>nolli</title>", f"<title>{html.escape(title)} · nolli</title>", 1).encode()
 
 
 def parse_spec(q: dict[str, str]) -> ProjectionSpec:
-    """The viewer's URL parameters (the same keys as its location hash) as a scene state."""
+    """Parse the viewer's URL parameters (the same keys as its location hash) into a scene state."""
     st = ProjectionSpec()
     if q.get("x"):
         st.expand = projection.Ids(tuple(x for x in q["x"].split(",") if x))
@@ -518,12 +521,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_page(page("Not a nolli page", NOT_A_PAGE), 404)
 
     def static(self, path: str) -> bool:
-        """A file of the viewer itself (its scripts and styles), not a repository's path."""
+        """Tell whether ``path`` is a file of the viewer itself (its scripts and styles) rather than a
+        repository's path."""
         f = (HERE / path.lstrip("/")).resolve()
         return f.is_file() and f.is_relative_to(HERE) and f.suffix in (".js", ".css", ".html", ".svg", ".png")
 
     def show(self, text: str | None, what: str) -> None:
-        """The page of the target ``text``: the viewer if it is built, else a page following its build."""
+        """Send the page for the target ``text``: the viewer if it is built, else a page that follows
+        its build, or an error page saying why it cannot be shown."""
         github_path = text is not None and text.startswith("https://github.com/")
         try:
             target = self.site.plan(text)
@@ -557,8 +562,8 @@ class Handler(SimpleHTTPRequestHandler):
     # -- the API -------------------------------------------------------------------
 
     def open_model(self, text: str | None) -> tuple[ModelKey, Scene] | None:
-        """The scene of the model whose key is ``text``, through the store; None if there is
-        none, or the store refuses it."""
+        """Open the scene of the model whose key is ``text`` through the store and return it with
+        the key; return None if there is no such model or the store refuses it."""
         key = ModelKey.parse(text or "")
         if not isinstance(key, (CommitKey, ChangeKey)):
             return None
@@ -575,8 +580,8 @@ class Handler(SimpleHTTPRequestHandler):
         return self.services.sources if key.repo.format_remote() or (local and key.repo == Repo(str(local.resolve()))) else None
 
     def review_status(self, key: ModelKey, m: Scene) -> dict:
-        """What the review panel shows: the verdicts' origin, the run under way or the last one,
-        and whether (and why not) a run can be started here."""
+        """Collect what the review panel shows: where the verdicts came from, the run under way or the
+        last one, and whether a run can be started here, and if not, why not."""
         reviews = self.services.reviews
         why = reviews.reviewer.available()
         if why is None and not isinstance(key, ChangeKey):
@@ -725,11 +730,11 @@ def make_server(store: ModelStore, sources: Sources, work: Path, host: str = "12
                 timeout: float | None = TIMEOUT, max_repo: int | None = MAX_REPO, token: Token | None = None,
                 uploads: bool = False, handler: type[Handler] | None = None, reviewer=None,
                 services: type[Services] = Services, **more: Any) -> Server:
-    """A server for the models of ``store``, built from ``sources`` (temporary files and review
-    runs under ``work``), not yet serving. Port 0 picks a free one. ``here`` and ``local`` as
-    Site takes them (nolli view); ``handler``: a subclass of Handler, for a service's own
-    routes; ``reviewer``: what runs a review (default: nolli.review.agent.Reviewer);
-    ``services``: a subclass of Services, given ``more`` of its fields."""
+    """Make a server for the models of ``store``, built from ``sources``, but do not start serving.
+    Temporary files and review runs go under ``work``. Port 0 picks a free port. ``here`` and
+    ``local`` mean the same as for Site. ``handler`` is a subclass of Handler that adds a service's
+    own routes; ``reviewer`` runs reviews (default: nolli.review.agent.Reviewer); ``services`` is a
+    subclass of Services, given ``more`` of its fields."""
     site = Site(store, sources, work, here=here, local=local, budget=budget, keep=keep, builds=builds, timeout=timeout,
                 max_repo=max_repo, token=token)
     threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now

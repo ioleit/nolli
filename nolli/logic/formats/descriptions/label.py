@@ -11,13 +11,13 @@ from nolli.model.scene import Element, Overlay, Scene
 
 
 def _module_stem(file_name: str) -> str:
-    """The file name without its extension, so ``a.py`` and ``a.d.ts`` both give ``a``."""
+    """Return the file name without its extension, so ``a.py`` and ``a.d.ts`` both give ``a``."""
     stem = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
     return stem[:-2] if stem.endswith(".d") and file_name.endswith(("ts", "mts", "cts")) else stem
 
 
 def _format_path(el: Element, drawn: Element) -> str:
-    """The directory's path relative to the directory box it is drawn in. A chain of
+    """Return the directory's path relative to the directory box it is drawn in. A chain of
     directories folded into one box shows the whole chain."""
     path = el.key.path
     parent = drawn.parent
@@ -29,7 +29,7 @@ def _format_path(el: Element, drawn: Element) -> str:
 
 
 def _format_label(el: Element, named: dict, drawn: Element | None = None) -> str:
-    """The name shown after the icons. ``named`` is the node's entry in the ``names``
+    """Return the name shown after the icons. ``named`` is the node's entry in the ``names``
     overlay, ``drawn`` the box the node is drawn as, if any."""
     if el.key.is_own_code:
         return ""
@@ -46,7 +46,7 @@ def _format_label(el: Element, named: dict, drawn: Element | None = None) -> str
 
 
 def format_prose(el: Element, named: dict, drawn: Element | None = None) -> str:
-    """The name as used in a sentence. Icons that read as words stay in front of it, as in
+    """Return the name as used in a sentence. Icons that read as words stay in front of it, as in
     "svc api" or "GET health"."""
     if el.kind == "endpoint":
         return named["name"]
@@ -56,7 +56,7 @@ def format_prose(el: Element, named: dict, drawn: Element | None = None) -> str:
 
 
 def _describe(s: Element, drawn: Element, named: dict) -> dict:
-    """The label of the box ``drawn``, which stands for the node ``s``."""
+    """Build the label of the box ``drawn``, which stands for the node ``s``."""
     return {"text": _format_label(s, named, drawn), "icons": named["icons"], "prose": format_prose(s, named, drawn)}
 
 
@@ -75,7 +75,7 @@ class Label(Overlay):
         return el.scene.read_all(self.name).get(el.key)  # computed for the whole scene in compute_all
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """The labels of all boxes, built from the ``names`` overlay of the scene this one was
+        """Build the labels of all boxes from the ``names`` overlay of the scene this one was
         drawn from. A scene not drawn from another has none."""
         if "source" not in scene.sources:
             return {}
