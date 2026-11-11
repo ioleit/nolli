@@ -9,7 +9,7 @@ Each version extracts the same repositories with its own ``nolli extract`` and s
 with its own ``nolli view``; the same requests go to both: the presets, and unfolding
 containers one at a time from the default projection, as the viewer asks when you click. The
 table gives the median time of each request and whether both versions drew the same boxes.
-The release (or the ref, checked out with ``git worktree``) is installed into a virtual
+The release (or the ref, exported with ``git archive``) is installed into a virtual
 environment under the work directory. Extracted datasets are kept per version (the release
 number, or the commit of the ref or of this checkout, with ``-dirty`` for uncommitted
 changes, re-extracted every run), so a changed format is never read by the other version.
@@ -71,8 +71,13 @@ def _install_ref(work: Path, ref: str) -> tuple[str, Path]:
     commit = subprocess.run(["git", "rev-parse", "--short", f"{ref}^{{commit}}"], cwd=root, check=True,
                             capture_output=True, text=True).stdout.strip()
     tree, venv = work / f"tree-{commit}", work / f"ref-{commit}"
-    if not tree.exists():
-        _run("git", "worktree", "add", "-q", "--detach", tree, commit, cwd=root)
+    if not tree.exists():  # an export, not a worktree, so it never shows up in this repository
+        part = work / f"tree-{commit}.part"
+        shutil.rmtree(part, ignore_errors=True)
+        part.mkdir(parents=True)
+        archive = subprocess.run(["git", "archive", commit], cwd=root, check=True, capture_output=True).stdout
+        subprocess.run(["tar", "-x", "-C", part], input=archive, check=True)
+        part.rename(tree)
     if not (venv / "bin" / "nolli").exists():
         _run(sys.executable, "-m", "venv", venv)
         _run(venv / "bin" / "pip", "install", "-q", tree)
