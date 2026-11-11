@@ -21,7 +21,7 @@ from nolli.logic.sources import CloneCache, LocalRepository
 from nolli.model.keys import Repo
 from nolli.review import agent as reviewer
 from nolli.review.verdicts import _keep_verdicts_file, parse_verdicts
-from nolli.scenes import open_change_scene
+from nolli.scenes import _open_change_scene
 from nolli.server import serve
 from nolli.store import DirectoryStore
 
@@ -60,7 +60,7 @@ def open_dataset(ds: Path):
     """The dataset's store, key and scene."""
     store = DirectoryStore(ds.parent)
     key = store.find_key(ds.name)
-    return store, key, open_change_scene(store, key)
+    return store, key, _open_change_scene(store, key)
 
 
 def k(ds: Path) -> str:

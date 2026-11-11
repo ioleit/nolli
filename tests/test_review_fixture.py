@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from helpers import draw, find_node
-from nolli.scenes import open_change_scene
+from nolli.scenes import _open_change_scene
 from nolli.cli import main
 from nolli.review.verdicts import describe_verdicts
 from nolli.store import DirectoryStore
@@ -32,7 +32,7 @@ def test_verdict_on_a_bundled_edge(tmp_path):
     box: the verdict goes on that edge, not on client.ts."""
     ds = review_repo.build(tmp_path)
     store = DirectoryStore(ds.parent)
-    sc = open_change_scene(store, store.find_key(ds.name))
+    sc = _open_change_scene(store, store.find_key(ds.name))
     verdicts = sc.overlays["verdicts"].load(sc)  # the review kept with the dataset
     v = next(r for r in describe_verdicts(sc, verdicts) if r["target"].startswith("n_repo_web_src_client_ts ==>"))
     s = draw(sc, expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"], max_lines=2)

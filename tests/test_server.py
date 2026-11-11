@@ -168,7 +168,7 @@ def test_a_build_that_fails_leaves_no_model(site, src, monkeypatch):
     from nolli.server import serve
 
     _r, _tip, base, head = src
-    monkeypatch.setattr(serve.Datasets, "build", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
+    monkeypatch.setattr(serve.build, "fetch_change", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
     job = run(site, Plan("o_r_broken", "o/r", key=Repo("github.com/o/r").make_change(base, head)))
     assert job.state == "error" and job.error == "half way"
     assert site.find_built(job.plan) is None

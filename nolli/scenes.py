@@ -29,7 +29,7 @@ def _make_derived_overlays() -> list[Overlay]:
 def _make_change_overlays(maps: MapStore) -> list[Overlay]:
     """What a change says about itself, computed from its sides: what changed (``change``) and
     which numbered changes each node and edge is about (``review``). Kept with the change at
-    diff time (``keep_change_scene``) and read back from there (``open_change_scene``)."""
+    diff time (``keep_change_scene``) and read back from there (``_open_change_scene``)."""
     from nolli.logic.transformations.merge import Change
     from nolli.review.card import Review
 
@@ -69,7 +69,7 @@ def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = N
     return Scene(model, [*said, *(_make_overlays(maps) if overlays is None else overlays)])
 
 
-def open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:
+def _open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:
     """A commit's stored model as a scene, None if the store does not have it."""
     m = store.load_model(commit)
     return None if m is None else _open_scene(m, store, overlays)
@@ -78,21 +78,21 @@ def open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overl
 def keep_commit_scene(store: ModelStore, commit: CommitKey, by: dict | None = None) -> None:
     """Keep what nolli derives from a stored commit's facts (``_make_derived_overlays``) under
     its key, so that opening it reads that instead of computing it."""
-    scene = open_commit_scene(store, commit)
+    scene = _open_commit_scene(store, commit)
     if scene is None:
         raise KeyError(f"no commit {commit.format_key()} to keep")
     for o in _make_derived_overlays():
         store.precompute_overlay_values(scene, o, by)
 
 
-def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
+def _open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
     """The change of its two stored commits: its merged model as kept with it (merged here for a
     change kept without one), what it says about itself in its model's ``meta["change"]``, and
     its own overlays answered from what was kept at diff time where it was, computed otherwise."""
     about = store.load_change(change)
     if about is None:
         return None
-    base, head = (open_commit_scene(store, c, overlays) for c in change.list_sides())
+    base, head = (_open_commit_scene(store, c, overlays) for c in change.list_sides())
     if base is None or head is None:
         return None
     meta = _describe_scene_meta(base.model, head.model, about, store.open_maps("content").load(change.format_key()))
@@ -102,10 +102,10 @@ def open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overl
 
 def keep_change_scene(store: ModelStore, change: ChangeKey, by: dict | None = None) -> None:
     """Keep what a stored change says about itself (``_make_change_overlays``) under its key, so
-    that ``open_change_scene`` reads it instead of computing it on every read."""
+    that ``_open_change_scene`` reads it instead of computing it on every read."""
     for c in change.list_sides():
         keep_commit_scene(store, c, by)
-    scene = open_change_scene(store, change)
+    scene = _open_change_scene(store, change)
     if scene is None:
         raise KeyError(f"no change {change.format_key()} to keep")
     for o in [*_make_derived_overlays(), *_make_change_overlays(store)]:
@@ -130,6 +130,7 @@ def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: ModelKe
     return transformations.apply({"base": bs, "head": hs}, merge.union(key, _describe_scene_meta(bs.model, hs.model, about, content)))
 
 
-def _open_stored(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:
-    """The scene of a kept model: a change merged from its commits, or one commit."""
-    return open_change_scene(store, key, overlays) if isinstance(key, ChangeKey) else open_commit_scene(store, key, overlays)
+def open_stored(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:
+    """The scene of a kept model: a change merged from its commits, or one commit; None if the
+    store does not have it. Raises NotAllowed as the store does."""
+    return _open_change_scene(store, key, overlays) if isinstance(key, ChangeKey) else _open_commit_scene(store, key, overlays)

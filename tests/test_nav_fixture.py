@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from helpers import draw
-from nolli.scenes import open_change_scene
+from nolli.scenes import _open_change_scene
 from nolli.cli import main
 from nolli.store import DirectoryStore
 
@@ -35,6 +35,6 @@ def test_verdicts_pass_the_check(dataset, capsys):
 ])
 def test_a_verdict_follows_its_edge_when_rolled_up(dataset, unfolded, edge):
     store = DirectoryStore(dataset.parent)
-    sc = draw(open_change_scene(store, store.find_key(dataset.name)), expanded=["repo:", "repo:tasks", *unfolded])
+    sc = draw(_open_change_scene(store, store.find_key(dataset.name)), expanded=["repo:", "repo:tasks", *unfolded])
     assert [(e["src"], e["dst"]) for e in sc["edges"] if "V1" in e["verdicts"]["verdicts"]] == [edge]
     assert not [n["id"] for n in sc["nodes"] if n["verdicts"]["verdicts"]]

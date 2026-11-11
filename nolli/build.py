@@ -33,7 +33,7 @@ WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extr
 Run = Callable[..., Any]
 
 
-def run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
+def _run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
     return fn(*args, progress=progress)
 
 
@@ -112,7 +112,7 @@ def _load_maps(store: MapStore, m: Model) -> Maps:
     return {n: dict(store.open_maps(n).load(m.key.format_key())) for n in store.list_map_names(m.key.format_key())}
 
 
-def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = run_here,
+def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = _run_here,
                        progress: Progress | None = None, rebuild: bool = False) -> tuple[Model, Maps]:
     """The model of one commit and the maps kept for it: from the store, or extracted from
     ``clone`` (which has the commit)."""
@@ -125,7 +125,7 @@ def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, ru
     return m, maps
 
 
-def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *, run: Run = run_here,
+def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *, run: Run = _run_here,
                       progress: Progress | None = None, rebuild: bool = False) -> Model:
     """A repository at one commit, as the viewer shows a repository as a whole: kept in the store."""
     progress = progress or Quiet()
@@ -141,7 +141,7 @@ def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *,
 
 
 def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, about: dict | None = None,
-                 run: Run = run_here, progress: Progress | None = None, rebuild: bool = False) -> dict:
+                 run: Run = _run_here, progress: Progress | None = None, rebuild: bool = False) -> dict:
     """A change: from the store, or built from its two commits (their models, from the store
     if it has them) and git's hunks between them, and kept there. ``about``: what the change
     says about itself (``pr``, ``title``, ``description``, ``budget``), kept with it."""

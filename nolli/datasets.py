@@ -16,79 +16,67 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from nolli import build, scenes
-from nolli.build import Run
 from nolli.logic import transformations
-from nolli.logic.formats import mermaid, report, viewer
+from nolli.logic.formats import mermaid, report
 from nolli.logic.sources import FetchError, LocalRepository, Sources, git, github
 from nolli.logic.sources.git import ChangeError, ChangeSpec, GitError
 from nolli.logic.transformations import merge, projection
 from nolli.logic.transformations.projection import ProjectionSpec
-from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo
+from nolli.model.keys import ModelKey, Repo
 from nolli.model.scene import Scene
-from nolli.progress import Progress, Quiet
 from nolli.review import brief, changes, verdicts
+# CALLERS (temp, not to be merged):
+#   cli.py:369 cmd_check — nolli agent check
 from nolli.review.verdicts import VERDICTS  # noqa: F401 (for callers)
-from nolli.store import ModelStore, directory
+from nolli.store import ModelStore
 from nolli.store.directory import DirectoryStore
-from nolli.store.maps import MemoryMaps
 
 
+# CALLERS (temp, not to be merged):
+#   cli.py:110 Built — nolli build, nolli view --rebuild, nolli agent brief
+#   cli.py:144 build() — nolli build, nolli view --rebuild, nolli agent brief
+#   cli.py:353 cmd_check — nolli agent check
+#   serve.py:336 Site.find_built — GET /?t=, GET /<owner>/<repo>/…
+#   serve.py:364 Site.run_job — build job (page routes, GET /api/job)
+#   serve.py:486 Services.datasets — every GET /api/*, POST /api/review[/cancel], POST /api/verdicts
+#   reviews.py:98 Reviews._run — review job (POST /api/review)
+#   datasets.py: write_dataset, extract_directory (Datasets(MemoryMaps()) for write_extras)
+#   tests: test_store.py, test_server.py (monkeypatches build)
 class Datasets:
-    def __init__(self, store: ModelStore, sources: Sources | None = None) -> None:
-        self.store, self.sources = store, sources
-
-    # -- what is kept ------------------------------------------------------------
-
-    def open_scene(self, key: ModelKey) -> Scene | None:
-        """The scene of a stored model: a change merged from its commits, or one commit. Raises
-        NotAllowed as the store does."""
-        return scenes.open_change_scene(self.store, key) if isinstance(key, ChangeKey) else scenes.open_commit_scene(self.store, key)
-
-    def is_built(self, key: ModelKey) -> bool:
-        """Kept, and built by this version of nolli."""
-        return build.is_fresh(self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key))
-
-    def build(self, key: ModelKey, *, about: dict | None = None, run: Run = build.run_here, progress: Progress | None = None,
-              rebuild: bool = False) -> None:
-        """Build what ``key`` names from ``sources`` unless a fresh one is kept. ``about``: what a
-        change says about itself (``pr``, ``title``, ``description``, ``budget``)."""
-        if self.sources is None:
-            raise ValueError("no sources to build from")
-        if isinstance(key, ChangeKey):
-            build.fetch_change(self.store, self.sources, key, about=about, run=run, progress=progress, rebuild=rebuild)
-        else:
-            build.fetch_whole_model(self.store, self.sources, key, run=run, progress=progress, rebuild=rebuild)
+    def __init__(self, store: ModelStore) -> None:
+        self.store = store
 
     # -- Projections ------------------------------------------------------------------
 
+    # CALLERS (temp, not to be merged):
+    #   datasets.py only: draw_json, draw_mermaid, make_report
     def draw(self, scene: Scene, state: ProjectionSpec) -> Scene:
         """The projection ``state`` asks for; a change's "changes" preset unfolds what it changed."""
         if state.preset == "changes" and state.focus is None and merge.is_change(scene):
             state.focus = changes.find_review_cut(scene)
         return transformations.apply(scene, projection.fold(state))
 
-    def draw_json(self, scene: Scene, state: ProjectionSpec) -> dict:
-        """The projection as JSON."""
-        return viewer.export_scene(self.draw(scene, state))
-
-    def draw_mermaid(self, scene: Scene, state: ProjectionSpec, fade: bool = True) -> tuple[str, dict[str, str]]:
-        """The projection as Mermaid, and each Mermaid node id to the box it is."""
-        drawn = self.draw(scene, state)
-        return mermaid.render(drawn, fade=fade), mermaid.list_ids(drawn)
-
+    # CALLERS (temp, not to be merged):
+    #   serve.py:639 answer_api — GET /api/changes
+    #   tests: test_store.py
     def list_changes(self, scene: Scene) -> list[dict]:
         """A change's numbered changes ([] for a commit)."""
         return changes.list_changes(scene) if merge.is_change(scene) else []
 
+    # CALLERS (temp, not to be merged):
+    #   serve.py:639 answer_api — GET /api/changes
     def describe_verdicts(self, scene: Scene) -> list[dict]:
         """A change's kept verdicts with what the viewer says about each."""
         return verdicts.describe_verdicts(scene, self.load_verdicts(scene)) if merge.is_change(scene) else []
 
+    # CALLERS (temp, not to be merged):
+    #   serve.py:677 do_POST — POST /api/verdicts (view only)
     def read_verdicts(self, scene: Scene, text: str) -> list[dict]:
         """A verdicts.json on the change's review diagram ids, read (ValueError if it is bad)."""
         return verdicts.read_verdicts(text, verdicts.find_diagram_ids(scene))
 
+    # CALLERS (temp, not to be merged):
+    #   datasets.py only: make_review_diagram
     def draw_review(self, scene: Scene) -> Scene:
         """The change as its review diagram draws it: every area that changed in source code
         unfolded. The same for the same change and version of nolli, so verdicts on its ids
@@ -97,15 +85,27 @@ class Datasets:
         spec = ProjectionSpec(budget=budget, preset="changes", focus=changes.find_review_cut(scene))
         return transformations.apply(scene, projection.fold(spec))
 
+    # CALLERS (temp, not to be merged):
+    #   reviews.py:120 Reviews._run — review job (POST /api/review)
+    #   datasets.py: make_review_brief, check_verdicts, write_extras (nolli build -o, nolli diff, nolli extract)
+    #   tests: test_store.py
     def make_review_diagram(self, scene: Scene) -> str:
         """The review diagram (``review.mmd``)."""
         return mermaid.render(self.draw_review(scene))
 
+    # CALLERS (temp, not to be merged):
+    #   cli.py:328 cmd_brief — nolli agent brief
+    #   serve.py:644 answer_api — GET /api/brief
+    #   reviews.py:121 Reviews._run — review job (POST /api/review)
+    #   datasets.py: write_extras (nolli build -o, nolli diff, nolli extract)
+    #   tests: test_store.py
     def make_review_brief(self, scene: Scene, diagram: str | None = None) -> str:
         """What a review agent gets (``review.md``): the diagram, how to answer, the change's description."""
         return brief.make_brief(scene, diagram if diagram is not None else self.make_review_diagram(scene),
                           (scene.model.meta.get("change") or {}).get("description"))
 
+    # CALLERS (temp, not to be merged):
+    #   datasets.py only: write_extras (nolli build -o, nolli diff, nolli extract)
     def make_report(self, scene: Scene) -> dict:
         """The ``report.json`` of a model, its counts and the size of its default projection."""
         meta = scene.model.meta
@@ -114,22 +114,39 @@ class Datasets:
 
     # -- a review's verdicts ---------------------------------------------------------
 
+    # CALLERS (temp, not to be merged):
+    #   datasets.py only: describe_verdicts, recheck_verdicts
     def load_verdicts(self, scene: Scene) -> list[dict]:
         """A change's kept verdicts, in their order."""
         return verdicts.parse_verdicts(self.store.open_maps("verdicts").load(scene.model.key.format_key()))
 
+    # CALLERS (temp, not to be merged):
+    #   cli.py:333 cmd_brief — nolli agent brief
+    #   serve.py:603 Handler.review_status — GET /api/review, POST /api/review, POST /api/review/cancel
     def find_provenance(self, key: ModelKey) -> dict | None:
         """Who made a change's verdicts; None without verdicts."""
         return verdicts.find_provenance(self.store, key)
 
+    # CALLERS (temp, not to be merged):
+    #   cli.py:366 cmd_check — nolli agent check
+    #   reviews.py:125 Reviews._run.check — review job (POST /api/review)
+    #   datasets.py: recheck_verdicts
+    #   tests: test_store.py
     def check_verdicts(self, scene: Scene, text: str) -> tuple[list[dict], list[str]]:
         """verdicts.json checked against the change's review diagram: (verdicts read, problems)."""
         return verdicts.check_verdicts(scene, self.make_review_diagram(scene), text)
 
+    # CALLERS (temp, not to be merged):
+    #   cli.py:373 cmd_check — nolli agent check
+    #   serve.py:681 do_POST — POST /api/verdicts (view only)
+    #   reviews.py:131 Reviews._run — review job (POST /api/review)
+    #   tests: test_store.py
     def keep_verdicts(self, key: ModelKey, kept: list[dict], by: dict) -> None:
         """Make ``kept`` (verdicts read, with their ``ends``) the change's, with where they came from."""
         verdicts.save_verdicts(self.store, key, kept, by)
 
+    # CALLERS (temp, not to be merged):
+    #   none: no caller anywhere (dead code)
     def recheck_verdicts(self, scene: Scene) -> tuple[list[dict] | None, list[str]]:
         """The kept verdicts checked again against the review diagram (None without verdicts)."""
         kept = self.load_verdicts(scene)
@@ -143,6 +160,10 @@ class Datasets:
 # change. ``parse_target`` reads its form and ``resolve_target`` finds its commits and key.
 
 
+# CALLERS (temp, not to be merged):
+#   returned by parse_target; read by cli.py:235 cmd_view (nolli view) and serve.py:294-306 Site.plan (GET /?t=, GET /<owner>/<repo>/…)
+#   datasets.py: resolve_target, resolve_local
+#   tests: test_targets.py
 @dataclass(frozen=True)
 class Target:
     """A target's form, read but not resolved: ``kind`` is ``dataset`` (``path``), ``snapshot``
@@ -156,6 +177,11 @@ class Target:
     github: github.Target | None = None
 
 
+# CALLERS (temp, not to be merged):
+#   cli.py:231 cmd_view — nolli view
+#   serve.py:294 Site.plan — GET /?t=, GET /<owner>/<repo>/…
+#   datasets.py: resolve_target
+#   tests: test_targets.py
 def parse_target(text: str | None, local: Path | None = None) -> Target:
     """The form of ``text`` (None: ``...HEAD``). ``local`` is the repository ``#<n>`` refers
     to. Raises ChangeError for a github.com URL nolli cannot build."""
@@ -177,6 +203,10 @@ def parse_target(text: str | None, local: Path | None = None) -> Target:
     return Target("snapshot", head=text)
 
 
+# CALLERS (temp, not to be merged):
+#   returned by resolve_target / resolve_local; read by cli.py resolve/build/build_into/Built (nolli build [-o], nolli view --rebuild, nolli agent brief, nolli extract, nolli diff)
+#   and serve.py:306-307 Site.plan — GET /?t=<local revision> (view only)
+#   datasets.py: write_dataset
 @dataclass
 class Asked:
     """A target, resolved: the model's key, the local repository that has its commits
@@ -191,9 +221,16 @@ class Asked:
     dataset: Path | None = None
 
 
+# CALLERS (temp, not to be merged):
+#   cli.py:122 resolve — nolli build [-o], nolli view --rebuild, nolli agent brief, nolli extract, nolli diff
+#   cli.py:154 build() — nolli build, nolli view --rebuild, nolli agent brief
+#   cli.py:206 build_into — nolli build -o, nolli extract (git repo), nolli diff
 BUILD_ERRORS = (ChangeError, FetchError, GitError)  # what building from a local repository may raise
 
 
+# CALLERS (temp, not to be merged):
+#   datasets.py only: resolve_local
+#   tests: test_diff.py
 def find_repo(repo: Path) -> Repo:
     """A local repository's key: its GitHub remote if it has one (the same commits there are
     the same models), else its path."""
@@ -202,6 +239,9 @@ def find_repo(repo: Path) -> Repo:
     return found if found and found.format_remote() else Repo(str(repo.resolve()))
 
 
+# CALLERS (temp, not to be merged):
+#   cli.py:121 resolve — nolli build [-o], nolli view --rebuild, nolli agent brief, nolli extract, nolli diff
+#   tests: test_targets.py
 def resolve_target(text: str | None, path: Path, clones: Path, review: bool = False) -> Asked:
     """What the target ``text`` names, for the git repository around ``path`` (a target on
     GitHub is fetched into it, objects only, or into a clone under ``clones`` when ``path`` is
@@ -216,7 +256,10 @@ def resolve_target(text: str | None, path: Path, clones: Path, review: bool = Fa
     if t.kind == "dataset":
         if review:
             raise ChangeError(f"{text} is a dataset built already; name the change to review, or check verdicts: nolli agent check {text}")
-        return Asked(read_dataset_key(t.path), dataset=t.path)
+        key = DirectoryStore(t.path.parent).find_key(t.path.name)
+        if key is None:
+            raise ChangeError(f"{t.path} is a dataset of another nolli version; build it again")
+        return Asked(key, dataset=t.path)
     if t.kind == "github":
         asked = _resolve_github(t.github, local, clones)
     else:
@@ -229,6 +272,9 @@ def resolve_target(text: str | None, path: Path, clones: Path, review: bool = Fa
     return asked
 
 
+# CALLERS (temp, not to be merged):
+#   serve.py:306 Site.plan — GET /?t=<local revision> (view only)
+#   datasets.py: resolve_target
 def resolve_local(t: Target, local: Path, text: str | None = None, review: bool = False) -> Asked:
     """A target of the local repository ``local`` (not a dataset, not on GitHub), resolved;
     ``review`` as for resolve_target. Raises ChangeError."""
@@ -275,15 +321,8 @@ def _resolve_github(t: github.Target, local: Path | None, clones: Path) -> Asked
     return Asked(key, where, spec, {"pr": answer.pr, "title": spec.title, "description": spec.description}, sources)
 
 
-def read_dataset_key(path: Path) -> ModelKey:
-    """The key of the dataset directory ``path``. Raises ChangeError if it has none this nolli reads."""
-    store = DirectoryStore(path.parent)
-    key = store.find_key(path.name)
-    if key is None:
-        raise ChangeError(f"{path} is a dataset of another nolli version; build it again")
-    return key
-
-
+# CALLERS (temp, not to be merged):
+#   cli.py build_into, cmd_extract — nolli build -o, nolli extract, nolli diff
 def write_extras(datasets: "Datasets", scene: Scene, out: Path) -> dict:
     """What a dataset directory written on its own gets beside the model: report.json, and for a
     change what a review agent reads (changes.json, review.mmd, review.md). Returns the report."""
@@ -295,48 +334,3 @@ def write_extras(datasets: "Datasets", scene: Scene, out: Path) -> dict:
         (out / "review.mmd").write_text(mmd)
         (out / "review.md").write_text(datasets.make_review_brief(scene, mmd))
     return report
-
-
-def write_dataset(asked: Asked, out: Path, about: dict, budget: int | None = None) -> tuple[dict, dict]:
-    """``asked`` built here, from scratch, and written to the directory ``out`` (a dataset
-    directory, as ``DirectoryStore`` keeps one) with its extras; what it says about itself, and
-    the report. ``nolli build -o``."""
-    key = asked.key
-    about = {k: v for k, v in about.items() if v}
-    out.mkdir(parents=True, exist_ok=True)
-    if isinstance(key, CommitKey):
-        with asked.sources.open_commits(key.repo, key.sha) as clone:
-            m, maps = build.extract_commit(clone, key.sha, key.repo.format_name(), Quiet())
-        m.key = key
-        if budget:
-            m.meta["budget"] = budget
-        directory.write_commit(out, key, m, maps)
-        scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
-        return about, write_extras(Datasets(MemoryMaps()), scenes.open_built(m, maps), out)
-    sides = {}
-    with asked.sources.open_commits(key.repo, key.base, key.head) as clone:
-        for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
-            m, maps = build.extract_commit(clone, commit.sha, key.repo.format_name(), Quiet())
-            m.key = commit
-            sides[side] = (m, maps)
-        content = build.list_content(clone, key.base, key.head, Quiet())
-    about.update({"base": key.base, "head": key.head, "remote": key.repo.format_remote(), "nolli": build.version()})
-    scene = scenes.merge_built(sides["base"], sides["head"], key, about, content)
-    merged = merge.merge_models(key, sides["base"][0], sides["head"][0], scenes.describe_change_meta(sides["base"][0], sides["head"][0], about))
-    directory.write_change(out, key, about, sides, {"content": content}, merged)
-    scenes.keep_change_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
-    return about, write_extras(Datasets(MemoryMaps()), scene, out)
-
-
-def extract_directory(repo: Path, out: Path, budget: int | None = None) -> dict:
-    """The model of the files under ``repo``, a directory that is no git repository, written
-    to ``out`` with its extras; the report. (A git repository's files on disk are the target
-    ``WORKTREE``.)"""
-    key = Repo(str(repo.resolve())).make_commit("worktree")
-    m, maps = build.extract(repo, key=key)
-    if budget:
-        m.meta["budget"] = budget
-    out.mkdir(parents=True, exist_ok=True)
-    directory.write_commit(out, key, m, maps)
-    scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})
-    return write_extras(Datasets(MemoryMaps()), scenes.open_built(m, maps), out)

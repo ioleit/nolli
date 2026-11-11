@@ -133,7 +133,9 @@ def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | N
     """Resolve args.target and build it into the data directory unless a fresh one is stored
     there (or it is a dataset directory already). Progress goes to stderr; None (after saying
     why) if the target cannot be resolved or built."""
-    from .datasets import BUILD_ERRORS, Datasets
+    from nolli import build
+
+    from .datasets import BUILD_ERRORS
 
     asked = resolve(args, cmd, review)
     if asked is None:
@@ -141,15 +143,18 @@ def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | N
     if asked.dataset is not None:
         return Built(asked, DirectoryStore(asked.dataset.parent))
     store = DirectoryStore(find_data_dir(args.data))
-    datasets = Datasets(store, asked.sources)
     b = Built(asked, store)
-    if args.rebuild or not datasets.is_built(asked.key):
+    key = asked.key
+    kept = store.load_change(key) if isinstance(key, ChangeKey) else store.load_model(key)
+    if args.rebuild or not build.is_fresh(kept):
         print(f"building {b.out}", file=sys.stderr, flush=True)
         t0 = time.time()
         about = {**asked.about, **find_about(args), "budget": args.budget}
         try:
-            datasets.build(asked.key, rebuild=args.rebuild, progress=Progress(), about=about)
-            key = asked.key
+            if isinstance(key, ChangeKey):
+                build.fetch_change(store, asked.sources, key, about=about, progress=Progress(), rebuild=args.rebuild)
+            else:
+                build.fetch_whole_model(store, asked.sources, key, progress=Progress(), rebuild=args.rebuild)
             m = store.load_model(key.list_sides()[1] if isinstance(key, ChangeKey) else key)
         except BUILD_ERRORS as exc:
             print(f"nolli {cmd}: {exc}", file=sys.stderr)
@@ -191,9 +196,9 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 
 def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
-    """The target built afresh into the directory -o with its extras (``datasets.write_dataset``):
+    """The target built afresh into the directory -o with its extras (``datasets.write_extras``):
     what it says about itself and the report; None after saying why it could not be."""
-    from .datasets import BUILD_ERRORS, write_dataset
+    from .datasets import BUILD_ERRORS
 
     asked = resolve(args, cmd)
     if asked is None:
@@ -206,6 +211,46 @@ def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
     except BUILD_ERRORS as exc:
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
+
+
+def write_dataset(asked, out: Path, about: dict, budget: int | None = None) -> tuple[dict, dict]:
+    """``asked`` built here, from scratch, and written to the directory ``out`` (a dataset
+    directory, as ``DirectoryStore`` keeps one) with its extras; what it says about itself, and
+    the report. ``nolli build -o``."""
+    from nolli import build, scenes
+    from nolli.logic.transformations import merge
+    from nolli.model.keys import CommitKey
+    from nolli.progress import Quiet
+    from nolli.store import directory
+    from nolli.store.maps import MemoryMaps
+
+    from .datasets import Datasets, write_extras
+
+    key = asked.key
+    about = {k: v for k, v in about.items() if v}
+    out.mkdir(parents=True, exist_ok=True)
+    if isinstance(key, CommitKey):
+        with asked.sources.open_commits(key.repo, key.sha) as clone:
+            m, maps = build.extract_commit(clone, key.sha, key.repo.format_name(), Quiet())
+        m.key = key
+        if budget:
+            m.meta["budget"] = budget
+        directory.write_commit(out, key, m, maps)
+        scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
+        return about, write_extras(Datasets(MemoryMaps()), scenes.open_built(m, maps), out)
+    sides = {}
+    with asked.sources.open_commits(key.repo, key.base, key.head) as clone:
+        for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
+            m, maps = build.extract_commit(clone, commit.sha, key.repo.format_name(), Quiet())
+            m.key = commit
+            sides[side] = (m, maps)
+        content = build.list_content(clone, key.base, key.head, Quiet())
+    about.update({"base": key.base, "head": key.head, "remote": key.repo.format_remote(), "nolli": build.version()})
+    scene = scenes.merge_built(sides["base"], sides["head"], key, about, content)
+    merged = merge.merge_models(key, sides["base"][0], sides["head"][0], scenes.describe_change_meta(sides["base"][0], sides["head"][0], about))
+    directory.write_change(out, key, about, sides, {"content": content}, merged)
+    scenes.keep_change_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
+    return about, write_extras(Datasets(MemoryMaps()), scene, out)
 
 
 def cmd_view(args: argparse.Namespace) -> int:
@@ -254,12 +299,25 @@ def cmd_view(args: argparse.Namespace) -> int:
 def cmd_extract(args: argparse.Namespace) -> int:
     """nolli extract <repo> -o <dir>: build WORKTREE in <repo> afresh into <dir> (a directory
     that is no git repository: its files); prints a summary of the report."""
-    from .datasets import extract_directory
+    from nolli import build, scenes
+    from nolli.model.keys import Repo
+    from nolli.store import directory
+    from nolli.store.maps import MemoryMaps
+
+    from .datasets import Datasets, write_extras
     from .logic.sources.git import WORKTREE, find_head
 
     repo = Path(args.repo).resolve()
-    if find_head(repo) is None and not (repo / ".git").exists():
-        report = extract_directory(repo, Path(args.out), args.budget)
+    if find_head(repo) is None and not (repo / ".git").exists():  # no git repository: its files as they are
+        out = Path(args.out)
+        key = Repo(str(repo)).make_commit("worktree")
+        m, maps = build.extract(repo, key=key)
+        if args.budget:
+            m.meta["budget"] = args.budget
+        out.mkdir(parents=True, exist_ok=True)
+        directory.write_commit(out, key, m, maps)
+        scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})
+        report = write_extras(Datasets(MemoryMaps()), scenes.open_built(m, maps), out)
     else:
         written = build_into(argparse.Namespace(target=WORKTREE, repo=str(repo), data=None, out=args.out, budget=args.budget), "extract")
         if written is None:
@@ -319,13 +377,15 @@ def cmd_brief(args: argparse.Namespace) -> int:
     """nolli agent brief: build the change and say, as JSON on stdout, where the brief is, where
     the verdicts go and how to check them."""
 
+    from nolli import scenes
+
     b = build(args, "agent brief", review=True)
     if b is None:
         return 2
     spec = b.spec
     work = find_agent_dir(b.store, b.name)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "review.md").write_text(b.datasets.make_review_brief(b.datasets.open_scene(b.key)))
+    (work / "review.md").write_text(b.datasets.make_review_brief(scenes.open_stored(b.store, b.key)))
     verdicts = work / "verdicts.json"
     print(json.dumps({
         "repository": str(b.repo), "base": spec.base, "head": spec.head, "title": spec.title, "dataset": str(b.out),
@@ -341,6 +401,8 @@ def cmd_brief(args: argparse.Namespace) -> int:
 def cmd_check(args: argparse.Namespace) -> int:
     """nolli agent check: the verdicts against the diagram they answer; problems on stderr. Verdicts
     that pass become the change's review."""
+    from nolli import scenes
+
     from .datasets import VERDICTS, Datasets
 
     target = Path(args.dataset).expanduser().resolve()
@@ -352,7 +414,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     store = DirectoryStore(ds.parent)
     datasets = Datasets(store)
     key = store.find_key(ds.name)
-    scene = datasets.open_scene(key) if isinstance(key, ChangeKey) else None
+    scene = scenes.open_stored(store, key) if isinstance(key, ChangeKey) else None
     if scene is None:
         print(f"nolli agent check: {args.dataset} is not a change's dataset", file=sys.stderr)
         return 2

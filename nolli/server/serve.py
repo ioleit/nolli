@@ -75,7 +75,10 @@ import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 
 HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 
-from ..datasets import Datasets, parse_target, read_dataset_key, resolve_local  # noqa: E402
+from nolli import build, scenes  # noqa: E402
+from nolli.logic.formats import mermaid, viewer  # noqa: E402
+
+from ..datasets import Datasets, parse_target, resolve_local  # noqa: E402
 from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
 from ..logic.sources.git import ChangeError, GitError, merge_base  # noqa: E402
 from ..logic.transformations.projection import DEFAULT_UTILITY_IN, PRESETS, ProjectionSpec  # noqa: E402
@@ -299,7 +302,9 @@ class Site:
         if t.kind == "dataset":
             if not isinstance(self.store, DirectoryStore) or t.path.parent != self.store.root:
                 raise ChangeError(f"{t.path} is not in this server's data directory {getattr(self.store, 'root', '')}")
-            key = read_dataset_key(t.path)
+            key = self.store.find_key(t.path.name)
+            if key is None:
+                raise ChangeError(f"{t.path} is a dataset of another nolli version; build it again")
             return Plan(key.format_key(), t.path.name, key)
         if self.local is None:
             raise ChangeError("this viewer was started outside a git repository: name a GitHub URL or a dataset directory")
@@ -333,8 +338,8 @@ class Site:
         key = plan.key or self.built.get(plan.name)
         if key is None:
             return None
-        datasets = Datasets(self.store, self.sources)
-        sc = datasets.open_scene(key) if datasets.is_built(key) else None
+        kept = self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key)
+        sc = scenes.open_stored(self.store, key) if build.is_fresh(kept) else None
         return (key, sc) if sc is not None else None
 
     def start(self, plan: Plan) -> Job:
@@ -361,8 +366,11 @@ class Site:
                         key = plan.find()  # type: ignore[misc]
                 job.key = key
                 about = {k: v for k, v in plan.about.items() if v}
-                Datasets(self.store, self.sources).build(key, about={**about, "budget": self.budget},
-                                                         run=self.run_step, progress=progress)
+                if isinstance(key, ChangeKey):
+                    build.fetch_change(self.store, self.sources, key, about={**about, "budget": self.budget},
+                                       run=self.run_step, progress=progress)
+                else:
+                    build.fetch_whole_model(self.store, self.sources, key, run=self.run_step, progress=progress)
                 self.built[plan.name] = key
                 job.state = "done"
             except Exception as exc:  # noqa: BLE001  # shown on the page; the server goes on
@@ -483,7 +491,7 @@ class Services:
 
     @property
     def datasets(self) -> Datasets:
-        return Datasets(self.store, self.sources)
+        return Datasets(self.store)
 
 
 class Server(ThreadingHTTPServer):
@@ -579,7 +587,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not isinstance(key, (CommitKey, ChangeKey)):
             return None
         try:
-            sc = self.services.datasets.open_scene(key)
+            sc = scenes.open_stored(self.services.store, key)
         except NotAllowed:
             return None
         return (key, sc) if sc is not None else None
@@ -616,7 +624,7 @@ class Handler(SimpleHTTPRequestHandler):
         datasets = self.services.datasets
         if path == "/api/scene":
             try:
-                out = datasets.draw_json(sc, parse_spec(q))
+                out = viewer.export_scene(datasets.draw(sc, parse_spec(q)))
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
@@ -627,7 +635,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(out)
         elif path == "/api/mermaid":
             try:
-                text, ids = datasets.draw_mermaid(sc, parse_spec(q), fade=q.get("nodim") != "1")
+                drawn = datasets.draw(sc, parse_spec(q))
+                text, ids = mermaid.render(drawn, fade=q.get("nodim") != "1"), mermaid.list_ids(drawn)
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
