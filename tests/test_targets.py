@@ -51,17 +51,17 @@ def repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     return r, c
 
 
-def pin(r: Path, text: str | None, review: bool = False) -> Target:
+def pin(r: Path, text: str | None, adds: bool = False) -> Target:
     """``text`` pinned in the repository around ``r``, as the command line does."""
     try:
         local = find_toplevel(r)
     except ChangeError:
         local = None
-    return Target.from_string(text, local).pin(review=review)
+    return Target.from_string(text, local).pin(adds=adds)
 
 
-def ends(r: Path, text: str | None, review: bool = False) -> tuple[str | None, str]:
-    key = pin(r, text, review).key
+def ends(r: Path, text: str | None, adds: bool = False) -> tuple[str | None, str]:
+    key = pin(r, text, adds).key
     return (key.base, key.head) if hasattr(key, "base") else (None, key.sha)
 
 
@@ -147,19 +147,17 @@ def test_the_skills_forms_keep_their_meaning_in_a_review(repo):
     """SKILL.md §1, as nolli agent brief has read them since 0.2: nothing, a branch or commit
     (what it adds to the default branch), <base>..<head>, <base>...<head>."""
     r, c = repo
-    assert ends(r, "main", review=True) == (c["c2"], c["m"])  # on the default branch: its own change
-    assert ends(r, c["f1"], review=True) == (c["c2"], c["f1"])  # merged already: against its parent
-    assert ends(r, f"{c['c1']}..{c['f2']}", review=True) == (c["c1"], c["f2"])
-    assert ends(r, f"{c['f2']}...main", review=True) == (c["f2"], c["m"])
-    with pytest.raises(ChangeError, match="no change to review.*name one: a branch"):
-        ends(r, None, review=True)  # on the default branch: as before, an error
+    assert ends(r, "main", adds=True) == (c["c2"], c["m"])  # on the default branch: its own change
+    assert ends(r, c["f1"], adds=True) == (c["c2"], c["f1"])  # merged already: against its parent
+    assert ends(r, f"{c['c1']}..{c['f2']}", adds=True) == (c["c1"], c["f2"])
+    assert ends(r, f"{c['f2']}...main", adds=True) == (c["f2"], c["m"])
+    with pytest.raises(ChangeError, match="no change by default.*name one: a branch"):
+        ends(r, None, adds=True)  # on the default branch: as before, an error
     unmerge(r, c)
-    assert ends(r, None, review=True) == (c["c2"], c["f2"])
-    assert ends(r, "feature", review=True) == (c["c2"], c["f2"])  # what it adds to the default branch
-    with pytest.raises(ChangeError, match="a review needs a change"):
-        ends(r, c["c1"], review=True)  # a root commit is a snapshot
-    with pytest.raises(ChangeError, match="a review needs a change"):
-        ends(r, WORKTREE, review=True)
+    assert ends(r, None, adds=True) == (c["c2"], c["f2"])
+    assert ends(r, "feature", adds=True) == (c["c2"], c["f2"])  # what it adds to the default branch
+    assert not pin(r, c["c1"], adds=True).is_change  # a root commit is a snapshot: nolli agent brief refuses it
+    assert not pin(r, WORKTREE, adds=True).is_change
 
 
 def test_worktree(repo):
@@ -205,7 +203,7 @@ def test_errors(repo, tmp_path):
     with pytest.raises(ChangeError, match="name both ends"):
         ends(r, "...feature")
     with pytest.raises(ChangeError, match="name both ends"):
-        ends(r, "feature", review=True)
+        ends(r, "feature", adds=True)
 
 
 def test_build_and_the_older_shorthands(repo, tmp_path, capsys):

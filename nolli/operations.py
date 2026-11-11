@@ -5,14 +5,15 @@ A target (what a user names: a key, a branch, a pull request, …) is built into
 (``build_target``): taken from the store when it holds one built by this version, else extracted
 from the repository's commits and kept there. A stored model is opened as a scene
 (``open_scene``), with what extraction said and nolli's overlays; the values of the overlays
-that cost the most are computed when the model is built and kept with it.
+that cost the most are computed when the model is built and kept with it. Nothing here knows
+about reviews: a caller that shows one adds its overlays when it opens a scene.
 """
 
 from __future__ import annotations
 
 import re
 import tempfile
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -118,34 +119,33 @@ class Target:
             return f"{self.repo.url}@{self.base}...{self.head}"
         raise ValueError(f"a {self.kind} target is not stable: pin it")
 
-    def pin(self, get: Callable[[str], dict] | None = None, review: bool = False) -> Target:
+    @property
+    def is_change(self) -> bool:
+        """It names a change, not a snapshot: pinned, or a change's key. Ask it of a stable target."""
+        return self.kind == "pinned" or isinstance(self.key, ChangeKey)
+
+    def pin(self, get: Callable[[str], dict] | None = None, adds: bool = False) -> Target:
         """Pin this target: return a stable target for what it names now, with what it says about
         itself in ``about``. Git's revisions are looked up in the local repository, and a target on
         GitHub is asked of GitHub's API (``get``, as ``github.ask_target`` takes it); no commits are
-        fetched. With ``review`` (as for nolli agent brief), a single revision R means what R adds
-        (``...R``, or ``R^!`` if R is on the default branch), and anything that is not a change is
-        refused. Raise ChangeError."""
+        fetched. With ``adds``, a single revision R means what R adds (``...R``, or ``R^!`` if R is
+        on the default branch) rather than a snapshot of R. Raise ChangeError."""
         if self.kind == "revs":
-            pinned = self._pin_revs(review)
-        elif self.kind == "github":
-            pinned = self._pin_github(get)
-        else:
-            pinned = self
-        if review and not (pinned.kind == "pinned" or isinstance(pinned.key, ChangeKey)):
-            raise git.ChangeError(f"{self.text or 'HEAD'} is a snapshot, not a change: a review needs a change "
-                                  f"(a branch, <base>...<head>, <commit>^! or a pull request)")
-        return pinned
+            return self._pin_revs(adds)
+        if self.kind == "github":
+            return self._pin_github(get)
+        return self
 
-    def _pin_revs(self, review: bool) -> Target:
+    def _pin_revs(self, adds: bool) -> Target:
         if self.local is None:
             raise git.ChangeError(f"{self.text or 'HEAD'}: not in a git repository")
         try:
-            spec = git.resolve_revs(self.local, self.revs, adds=review)
+            spec = git.resolve_revs(self.local, self.revs, adds=adds)
         except git.ChangeError as exc:
             if self.text:
                 raise
-            if review:
-                raise git.ChangeError(f"no change to review ({exc}); name one: a branch, <base>..<head>, <commit>^! or a pull request") from None
+            if adds:
+                raise git.ChangeError(f"no change by default ({exc}); name one: a branch, <base>..<head>, <commit>^! or a pull request") from None
             raise git.ChangeError(f"nothing to build by default ({exc}); name a target: a branch or commit as a snapshot, "
                                   f"...<branch> for what it adds, <base>..<head>, <commit>^!, WORKTREE, or a pull request") from None
         repo = LocalRepository(self.local).find_repo()
@@ -242,13 +242,12 @@ def _make_kept_overlays(maps: MapStore, key: ModelKey) -> list[Overlay]:
 
 def _make_change_overlays(maps: MapStore) -> list[Overlay]:
     """Make the overlays that compute what a change says about itself from its sides: what changed
-    (``change``) and which numbered changes each node and edge is about (``review``). Their values
-    are kept with the change at diff time (``precompute_scene``) and read back from there
-    (``_open_change_scene``)."""
-    from nolli.logic.transformations.merge import Change
-    from nolli.review.card import Review
+    (``change``) and its numbered changes, with which of them each node and edge is about
+    (``items``). Their values are kept with the change at diff time (``precompute_scene``) and
+    read back from there (``_open_change_scene``)."""
+    from nolli.logic.transformations.merge.items import ChangeItems
 
-    return [Change(maps.open_maps("content")), Review()]
+    return [merge.Change(maps.open_maps("content")), ChangeItems()]
 
 
 def _describe_scene_meta(base: Model, head: Model, about: dict, content: Mapping[Key, dict]) -> dict:
@@ -259,30 +258,26 @@ def _make_overlays(maps: MapStore) -> list[Overlay]:
     """Make the overlays nolli shows on any scene, on top of what extraction said."""
     from nolli.logic.formats.descriptions.hover import Hover
     from nolli.logic.formats.descriptions.label import Label
-    from nolli.logic.transformations.merge import Change
-    from nolli.review.card import Review
-    from nolli.review.verdicts import Verdicts
 
     derived = [maps.caching_overlay(o) for o in _make_derived_overlays()]
-    return [*derived, Change(maps.open_maps("content")), Verdicts(maps.open_maps("verdicts")), Label(), Hover(), Review()]
+    return [*derived, merge.Change(maps.open_maps("content")), Label(), Hover()]
 
 
-def _open_scene(model: Model, maps: MapStore, overlays: list[Overlay] | None = None) -> Scene:
+def _open_scene(model: Model, maps: MapStore) -> Scene:
     """Open a model as a scene with overlays for what extraction said, by shape and read by
-    address, followed by nolli's own overlays (or ``overlays`` if given). A shape never extracted
-    for this model says nothing; a model made from this one answers for a namesake with the
-    same values."""
+    address, followed by nolli's own overlays. A shape never extracted for this model says
+    nothing; a model made from this one answers for a namesake with the same values."""
     said = [maps.precomputed_overlay(n) for n in vocabulary.SHAPES]
-    return Scene(model, [*said, *(_make_overlays(maps) if overlays is None else overlays)])
+    return Scene(model, [*said, *_make_overlays(maps)])
 
 
-def _open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Overlay] | None = None) -> Scene | None:
+def _open_commit_scene(store: ModelStore, commit: CommitKey) -> Scene | None:
     """Open a commit's stored model as a scene; return None if the store does not have it."""
     m = store.load_model(commit)
-    return None if m is None else _open_scene(m, store, overlays)
+    return None if m is None else _open_scene(m, store)
 
 
-def _open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
+def _open_change_scene(store: ModelStore, change: ChangeKey) -> Scene | None:
     """Open the scene of a change between two stored commits, or return None if the change or either
     commit is not stored. The scene uses the merged model kept with the change (or merges one here
     if none was kept), puts what the change says about itself in ``meta["change"]``, and answers
@@ -290,7 +285,7 @@ def _open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Over
     about = store.load_change(change)
     if about is None:
         return None
-    base, head = (_open_commit_scene(store, c, overlays) for c in change.list_sides())
+    base, head = (_open_commit_scene(store, c) for c in change.list_sides())
     if base is None or head is None:
         return None
     meta = _describe_scene_meta(base.model, head.model, about, store.open_maps("content").load(change.format_key()))
@@ -298,10 +293,14 @@ def _open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Over
     return scene.with_overlays(*[store.caching_overlay(o) for o in _make_kept_overlays(store, change)])
 
 
-def open_scene(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:
+def open_scene(store: ModelStore, key: ModelKey, overlays: Sequence[Overlay] = ()) -> Scene | None:
     """Open the scene of a stored model, either a change merged from its commits or a single
-    commit. Return None if the store does not have it; raise NotAllowed as the store does."""
-    return _open_change_scene(store, key, overlays) if isinstance(key, ChangeKey) else _open_commit_scene(store, key, overlays)
+    commit, with what extraction said and nolli's own overlays, and ``overlays`` on top (one of the
+    same name replaces nolli's): what a caller adds that nolli's logic does not know, such as a
+    review's verdicts and cards (``nolli.review.card.make_overlays``). Return None if the store
+    does not have it; raise NotAllowed as the store does."""
+    scene = _open_change_scene(store, key) if isinstance(key, ChangeKey) else _open_commit_scene(store, key)
+    return scene.with_overlays(*overlays) if scene is not None and overlays else scene
 
 
 # -- from the store, or built --------------------------------------------------------------

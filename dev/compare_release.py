@@ -19,7 +19,8 @@ changes, re-extracted every run), so a changed format is never read by the other
 the presets and Mermaid, and for a change also ``/api/changes`` and the brief, and prints each
 field that differs: how often, and one example. The viewer JSON of format 1 (overlays under their names) is read back into the
 older flat fields first (``projection.*``, ``label.text`` as ``label``, ``hover.text`` as
-``info``, ``change`` as ``diff``, ``review.card`` as ``review``, ``review.items`` as ``items``,
+``info``, ``change`` as ``diff``, ``review.card`` as ``review``, ``items.items`` (``review.items``
+until 0.9) as ``items``,
 ``verdicts.verdicts`` and ``verdicts.verdict`` as themselves), so a field that only moved is not a difference.
 
 Prerequisites: git, network access for the release and the repositories, and this
@@ -226,7 +227,8 @@ def _time(server: Server, query: dict, runs: int) -> tuple[float | None, dict | 
 
 _IGNORED = {("stats", "ms"), ("dataset", "repo")}  # timings; the dataset's path differs per version
 _RENAMED = {"label": {"text": "label", "icons": "icons"}, "hover": {"text": "info"},  # format 1 -> the flat fields
-            "review": {"card": "review", "items": "items"}, "verdicts": {"verdicts": "verdicts", "verdict": "verdict"}}
+            "review": {"card": "review", "items": "items"}, "items": {"items": "items"},
+            "verdicts": {"verdicts": "verdicts", "verdict": "verdict"}}
 
 
 def _flatten_element(x: dict) -> dict:

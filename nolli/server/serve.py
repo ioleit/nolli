@@ -83,7 +83,8 @@ from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github 
 from ..logic.sources.git import ChangeError, GitError  # noqa: E402
 from nolli.logic import transformations  # noqa: E402
 from nolli.logic.transformations import merge, projection  # noqa: E402
-from nolli.review import brief, changes, verdicts  # noqa: E402
+from nolli.logic.transformations.merge import items  # noqa: E402
+from nolli.review import brief, card, verdicts  # noqa: E402
 
 from ..logic.transformations.projection import DEFAULT_UTILITY_IN, ProjectionSpec  # noqa: E402
 from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
@@ -332,7 +333,7 @@ class Site:
         if key is None:
             return None
         kept = self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key)
-        sc = operations.open_scene(self.store, key) if operations.is_fresh(kept) else None
+        sc = operations.open_scene(self.store, key, card.make_overlays(self.store)) if operations.is_fresh(kept) else None
         return (key, sc) if sc is not None else None
 
     def start(self, target: operations.Target) -> Job:
@@ -445,8 +446,8 @@ def parse_spec(q: dict[str, str]) -> ProjectionSpec:
     st = ProjectionSpec()
     if q.get("x"):
         st.expand = projection.Ids(tuple(x for x in q["x"].split(",") if x))
-    elif q.get("p") in changes.PRESETS:
-        st.expand = changes.PRESETS[q["p"]]()
+    elif q.get("p") in items.PRESETS:
+        st.expand = items.PRESETS[q["p"]]()
     if q.get("b") and isinstance(st.expand, projection.AtMost):  # the default cut's budget
         st.expand = projection.AtMost(int(q["b"]))
     if q.get("r") is not None:
@@ -571,7 +572,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not isinstance(key, (CommitKey, ChangeKey)):
             return None
         try:
-            sc = operations.open_scene(self.services.store, key)
+            sc = operations.open_scene(self.services.store, key, card.make_overlays(self.services.store))
         except NotAllowed:
             return None
         return (key, sc) if sc is not None else None
@@ -629,7 +630,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_text(text)
         elif path == "/api/changes":
             is_change = merge.is_change(sc)
-            self.send_json({"items": changes.list_changes(sc) if is_change else [],
+            self.send_json({"items": items.list_changes(sc) if is_change else [],
                             "verdicts": verdicts.describe_verdicts(sc, verdicts.load_verdicts(self.services.store, key)) if is_change else []})
         elif path == "/api/brief":
             if not isinstance(key, ChangeKey):

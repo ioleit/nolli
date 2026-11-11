@@ -20,7 +20,8 @@ from nolli.logic.transformations import projection
 from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.model.model import Model
 from nolli.progress import Quiet
-from nolli.review import brief, changes
+from nolli.logic.transformations.merge import items as changes
+from nolli.review import brief
 from nolli.review import verdicts as review_verdicts
 from nolli.operations import _open_change_scene, open_scene
 from nolli.store import DirectoryStore, directory
@@ -181,7 +182,7 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     assert sc.model.meta["change"]["title"] == "a cache" and sc.model.meta["change"]["base"] == shas[0]
     assert sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
     assert sorted(f.name for f in store.locate(first).iterdir()) == ["base", "change.json", "head", "key.json", "model.json", "overlays"]
-    assert sorted(f.name for f in (store.locate(first) / "overlays").iterdir()) == ["change.json", "content.json", "names.json", "review.json"]
+    assert sorted(f.name for f in (store.locate(first) / "overlays").iterdir()) == ["change.json", "content.json", "items.json", "names.json"]
     assert "refs" not in json.loads((store.locate(first) / "model.json").read_text())  # union says what it refers to
     added = sc.find_element("repo:shop/cache.py")
     assert added.find_same("head") is not None and added.find_same("base") is None  # each node its namesake on each side
@@ -210,12 +211,12 @@ def _draw(scene, spec):
 
 
 def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, tmp_path):
-    """What a change says about itself (change, review) and its merged model are kept at diff
+    """What a change says about itself (change, items) and its merged model are kept at diff
     time and read back; a change kept without them (an older nolli) is computed on every read."""
     from helpers import spec
 
     from nolli.logic.transformations.merge import Change
-    from nolli.review.card import Review
+    from nolli.logic.transformations.merge.items import ChangeItems
 
     path, shas = src
     store, sources = DirectoryStore(tmp_path / "data"), LocalRepository(path)
@@ -223,14 +224,14 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     _fetch_change(store, sources, change, about={"title": "kept"})
     kept = _open_change_scene(store, change)
     assert type(kept.overlays["change"]).__name__ == "PrecomputedOverlay" and kept.overlays["change"].find_kept(change.format_key())
-    assert store.open_maps("review").load_about(change.format_key())["overlay"] == "review"
-    computed = kept.with_overlays(Change(store.open_maps("content")), Review())  # the same scene, its own overlays computing
+    assert store.open_maps("items").load_about(change.format_key())["overlay"] == "items"
+    computed = kept.with_overlays(Change(store.open_maps("content")), ChangeItems())  # the same scene, its own overlays computing
     for preset in ("folded", "changes", "unfolded"):
         assert viewer.export_scene(_draw(kept, spec(preset=preset))) == viewer.export_scene(_draw(computed, spec(preset=preset)))
-    assert kept.read_all("change") == computed.read_all("change") and kept.read_all("review") == computed.read_all("review")
+    assert kept.read_all("change") == computed.read_all("change") and kept.read_all("items") == computed.read_all("items")
     assert changes.list_changes(kept) == changes.list_changes(computed) and changes.list_changes(kept)
 
-    for f in ("model.json", "overlays/change.json", "overlays/review.json"):  # a change kept by an older nolli
+    for f in ("model.json", "overlays/change.json", "overlays/items.json"):  # a change kept by an older nolli
         (store.locate(change) / f).unlink()
     older = DirectoryStore(tmp_path / "data")
     assert older.load_model(change) is None and older.open_maps("change").load(change.format_key()) == {}

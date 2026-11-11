@@ -9,7 +9,7 @@ export interface Chip { id: string; name: string; color: number }
  */
 export type Info = string;
 
-// ---------- review mode (a change: nolli/logic/transformations/merge.py, verdicts.py, review.py) ----------
+// ---------- review mode (a change: nolli/logic/transformations/merge/, nolli/review/verdicts.py, card.py) ----------
 
 export type Status = "added" | "removed" | "changed";
 export type Verdict = "blunder" | "problem" | "question" | "fine" | "good" | "brilliant";
@@ -108,9 +108,13 @@ export interface Label {
 /** The review's verdicts that land on a box or edge (nolli/review/verdicts.py). */
 export interface Verdicts { verdicts: string[]; verdict: Verdict | null }
 
+/** The numbered changes a box or edge shows (nolli/logic/transformations/merge/items.py). */
+export interface Items {
+  items: string[];  // ids of the numbered changes shown on it (C1, C2, …)
+}
+
 /** What a review shows on a box or edge (nolli/review/card.py). */
 export interface Review {
-  items: string[];  // review items shown on it
   card: Info;  // the card's second part, under a line: what the change did to it, and the verdicts on it
 }
 
@@ -118,6 +122,7 @@ interface Overlays {
   label: Label;
   hover: { text: Info };
   change?: NodeDiff | null;  // review mode only
+  items?: Items;
   verdicts?: Verdicts;
   review?: Review;
 }
@@ -162,6 +167,7 @@ export interface SceneEdge {
   projection: EdgeProjection;
   hover?: { text: Info };
   change?: EdgeDiff | null;  // review mode only
+  items?: Items;
   verdicts?: Verdicts;
   review?: Review;
 }

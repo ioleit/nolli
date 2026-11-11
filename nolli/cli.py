@@ -140,8 +140,9 @@ def find_dataset(text: str | None, cmd: str):
 
 def pin(args: argparse.Namespace, cmd: str, review: bool = False):
     """Pin args.target in args.repo and return the pinned ``operations.Target``, or the (store, key) of
-    the dataset directory it names. ``review`` is as ``Target.pin`` takes it. Print what it names
-    on stderr; print why and return None if it names nothing."""
+    the dataset directory it names. With ``review`` (the agent commands), a single revision means
+    what it adds (``Target.pin``'s ``adds``), and a snapshot or a dataset is refused. Print what it
+    names on stderr; print why and return None if it names nothing."""
     from nolli import operations
 
     found = find_dataset(args.target, cmd)
@@ -158,7 +159,10 @@ def pin(args: argparse.Namespace, cmd: str, review: bool = False):
         target = operations.Target.from_string(args.target, local)
         if target.kind == "revs" and local is None:
             raise ChangeError(f"{Path(args.repo)} is not in a git repository")
-        target = target.pin(review=review)
+        target = target.pin(adds=review)
+        if review and not target.is_change:
+            raise ChangeError(f"{args.target or 'HEAD'} is a snapshot, not a change: a review needs a change "
+                              f"(a branch, <base>...<head>, <commit>^! or a pull request)")
     except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
@@ -289,7 +293,8 @@ def write_extras(scene, out: Path) -> dict:
     from nolli.logic import transformations
     from nolli.logic.formats import report as report_format
     from nolli.logic.transformations import merge, projection
-    from nolli.review import brief, changes
+    from nolli.logic.transformations.merge import items
+    from nolli.review import brief
 
     meta = scene.model.meta
     budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or projection.DEFAULT_BUDGET
@@ -297,7 +302,7 @@ def write_extras(scene, out: Path) -> dict:
     report = report_format.make_report(scene, default)
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
     if merge.is_change(scene):
-        (out / "changes.json").write_text(json.dumps(changes.list_changes(scene), indent=1))
+        (out / "changes.json").write_text(json.dumps(items.list_changes(scene), indent=1))
         mmd = brief.make_review_diagram(scene)
         (out / "review.mmd").write_text(mmd)
         (out / "review.md").write_text(brief.make_brief(scene, mmd))

@@ -49,6 +49,22 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   URL is unchanged; the state it gets back has a `budget` only for the default cut.
 - **A GitHub comparison built from the command line has no title** unless GitHub gives one:
   the title used to be read from the commits.
+- **What describes a change moved from `nolli.review` to `nolli.logic.transformations.merge`**,
+  now a package, so that `nolli/operations.py` and `nolli/logic/` import nothing from
+  `nolli.review` (`tests/test_imports.py` checks it):
+  - `merge.reading.Reader` (was `review.reading`);
+  - `merge.items`: the numbered changes (`list_changes`, `format_name`, `find_box`), the viewer's
+    "all changes" rule `Changes` and the presets `PRESETS` (was `review.changes`);
+  - the `items` overlay, `merge.items.ChangeItems`: the first half of the `review` overlay, which
+    says which numbered changes each node and edge is about. It is kept with every change instead
+    of `review`; a change kept before has no `items` map and computes it when opened. The viewer
+    reads `items.items` (was `review.items`); `review` now holds only the card.
+- **A review's overlays are the caller's**: `operations.open_scene(store, key, overlays)` adds
+  `overlays` to nolli's own (it used to replace them). The server passes
+  `review.card.make_overlays(store)`, the verdicts and the cards; nothing else opens a scene with
+  them.
+- **`Target.pin(adds=True)`** (was `review=True`): a single revision R means what R adds. It no
+  longer refuses a snapshot; `nolli agent brief` does, and `Target.is_change` says which it is.
 
 ## 0.9.0
 
