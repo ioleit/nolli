@@ -144,9 +144,11 @@ class Server:
                 time.sleep(0.2)
 
     def find_name(self, dataset: Path) -> dict:
-        """How this version's API names the dataset: by its key (``k``, the page of
-        ``/?t=<dataset>`` says it) or, before 0.9, by its directory's name (``d``)."""
-        page = self.get("/?t=" + urllib.parse.quote(str(dataset), safe="")).decode() if self.answers("/") else ""
+        """Find how this version's API names the dataset: by its key (``k``, which the page of
+        ``/?t=<dataset's name>`` says; the server runs in the dataset's parent directory, so 0.9
+        reads the name as a path and later versions find it in their store) or, before 0.9, by its
+        directory's name (``d``)."""
+        page = self.get("/?t=" + urllib.parse.quote(dataset.name, safe="")).decode() if self.answers("/") else ""
         m = re.search(r'name="nolli-key" content="([^"]*)"', page)
         if m:
             return {"k": html.unescape(m.group(1))}
