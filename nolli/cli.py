@@ -267,7 +267,7 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
         if budget:
             m.meta["budget"] = budget
         directory.write_commit(out, key, m, maps)
-        scenes.keep_commit_scene(stored, key, {"nolli": build.version()})
+        scenes.precompute(stored, key)
         return about, write_extras(scenes.open(stored, key), out)
     sides = {}
     with sources.open_commits(key.repo, key.base, key.head) as clone:
@@ -279,7 +279,7 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
     about.update({"base": key.base, "head": key.head, "remote": key.repo.format_remote(), "nolli": build.version()})
     merged = merge.merge_models(key, sides["base"][0], sides["head"][0], scenes.describe_change_meta(sides["base"][0], sides["head"][0], about))
     directory.write_change(out, key, about, sides, {"content": content}, merged)
-    scenes.keep_change_scene(stored, key, {"nolli": build.version()})
+    scenes.precompute(stored, key)
     return about, write_extras(scenes.open(stored, key), out)
 
 
@@ -366,7 +366,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
         out.mkdir(parents=True, exist_ok=True)
         directory.write_commit(out, key, m, maps)
         stored = DirectoryStore(out.parent)
-        scenes.keep_commit_scene(stored, key, {"nolli": build.version()})
+        scenes.precompute(stored, key)
         report = write_extras(scenes.open(stored, key), out)
     else:
         written = build_into(argparse.Namespace(target=WORKTREE, repo=str(repo), data=None, out=args.out, budget=args.budget), "extract")

@@ -20,17 +20,23 @@ from nolli.store.maps import MapStore
 
 def _make_derived_overlays() -> list[Overlay]:
     """Make the overlays nolli derives from any model's facts and keeps with it at build time
-    (in ``keep_commit_scene`` and ``keep_change_scene``): what its nodes are
-    called (``names``)."""
+    (``precompute``): what its nodes are called (``names``)."""
     from nolli.logic.formats.descriptions.names import Names
 
     return [Names()]
 
 
+def _make_kept_overlays(maps: MapStore, key: ModelKey) -> list[Overlay]:
+    """Make the overlays a stored model keeps the values of (``precompute``) and answers from
+    when it is opened: what nolli derives from any model's facts, and for a change what it says
+    about itself."""
+    return [*_make_derived_overlays(), *(_make_change_overlays(maps) if isinstance(key, ChangeKey) else [])]
+
+
 def _make_change_overlays(maps: MapStore) -> list[Overlay]:
     """Make the overlays that compute what a change says about itself from its sides: what changed
     (``change``) and which numbered changes each node and edge is about (``review``). Their values
-    are kept with the change at diff time (``keep_change_scene``) and read back from there
+    are kept with the change at diff time (``precompute``) and read back from there
     (``_open_change_scene``)."""
     from nolli.logic.transformations.merge import Change
     from nolli.review.card import Review
@@ -78,16 +84,6 @@ def _open_commit_scene(store: ModelStore, commit: CommitKey, overlays: list[Over
     return None if m is None else _open_scene(m, store, overlays)
 
 
-def keep_commit_scene(store: ModelStore, commit: CommitKey, by: dict | None = None) -> None:
-    """Keep what nolli derives from a stored commit's facts (``_make_derived_overlays``) under
-    its key, so that opening it reads that instead of computing it."""
-    scene = _open_commit_scene(store, commit)
-    if scene is None:
-        raise KeyError(f"no commit {commit.format_key()} to keep")
-    for o in _make_derived_overlays():
-        store.precompute_overlay_values(scene, o, by)
-
-
 def _open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Overlay] | None = None) -> Scene | None:
     """Open the scene of a change between two stored commits, or return None if the change or either
     commit is not stored. The scene uses the merged model kept with the change (or merges one here
@@ -101,22 +97,23 @@ def _open_change_scene(store: ModelStore, change: ChangeKey, overlays: list[Over
         return None
     meta = _describe_scene_meta(base.model, head.model, about, store.open_maps("content").load(change.format_key()))
     scene = transformations.apply({"base": base, "head": head}, merge.union(change, meta, store.load_model(change)))
-    return scene.with_overlays(*[store.caching_overlay(o) for o in [*_make_derived_overlays(), *_make_change_overlays(store)]])
-
-
-def keep_change_scene(store: ModelStore, change: ChangeKey, by: dict | None = None) -> None:
-    """Keep what a stored change says about itself (``_make_change_overlays``) under its key, so
-    that ``_open_change_scene`` reads it instead of computing it on every read."""
-    for c in change.list_sides():
-        keep_commit_scene(store, c, by)
-    scene = _open_change_scene(store, change)
-    if scene is None:
-        raise KeyError(f"no change {change.format_key()} to keep")
-    for o in [*_make_derived_overlays(), *_make_change_overlays(store)]:
-        store.precompute_overlay_values(scene, o, by)
+    return scene.with_overlays(*[store.caching_overlay(o) for o in _make_kept_overlays(store, change)])
 
 
 def open(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:  # noqa: A001
     """Open the scene of a stored model, either a change merged from its commits or a single
     commit. Return None if the store does not have it; raise NotAllowed as the store does."""
     return _open_change_scene(store, key, overlays) if isinstance(key, ChangeKey) else _open_commit_scene(store, key, overlays)
+
+
+def precompute(store: ModelStore, key: ModelKey) -> None:
+    """Compute the overlays a stored model keeps (``_make_kept_overlays``; for a change, its two
+    commits' first) and save their values in the store, so that opening it reads them instead of
+    computing them. Raise KeyError if the store does not have the model."""
+    for side in key.list_sides() if isinstance(key, ChangeKey) else ():
+        precompute(store, side)
+    scene = open(store, key)
+    if scene is None:
+        raise KeyError(f"no model {key.format_key()} to precompute")
+    for o in _make_kept_overlays(store, key):
+        store.precompute_overlay_values(scene, o)

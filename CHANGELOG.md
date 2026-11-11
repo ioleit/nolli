@@ -23,10 +23,16 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   built to be looked at once goes into a `nolli.store.MemoryStore` first: `build.build` into it,
   or `build.build_files(store, path, key)` for the files under a directory as they are.
   `scenes.open_built` and `merge_built` are gone, and `build.build` returns the key only.
+- **`scenes.precompute(store, key)`** computes the overlays a stored model keeps and saves their
+  values (for a change, its two commits' first). It replaces `keep_commit_scene` and
+  `keep_change_scene` and their `by`, which nothing read.
+- **`ModelStore.find_key(name)`**: `nolli view` shows a dataset of its store by its name
+  (`/?t=ledger-review`), asking the store, not the filesystem.
 - **A model's key is a target**: `<repo>@<sha>` or `<repo>@<base>..<head>`, full shas. A pinned
   pull request, `<repo>@<base>...<head>`, is one too.
 - **A dataset directory is the command line's**: `nolli view <dir>` serves the store the
-  directory is in and opens the viewer on its key. The viewer's `?t=` no longer takes a path.
+  directory is in and opens the viewer on its key. The viewer's `?t=` no longer takes a path;
+  under `nolli view` it takes a dataset's name in the store.
 - **`nolli/datasets.py` is gone**: the command line and the server call build, scenes, the
   store, the formats and `nolli.review` directly. The review diagram is
   `review.brief.make_review_diagram`; `review.brief.make_brief(scene)` makes the diagram and reads

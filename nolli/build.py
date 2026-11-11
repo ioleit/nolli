@@ -112,7 +112,7 @@ def _fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *
         m, maps = _fetch_commit_model(store, clone, commit, run=run, progress=progress, rebuild=True)
     with progress.step("keeping the model"):
         store.save_model(commit, m, maps)
-        scenes.keep_commit_scene(store, commit, {"nolli": version()})
+        scenes.precompute(store, commit)
     return m
 
 
@@ -135,7 +135,7 @@ def _fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, abo
     with progress.step("keeping the change"):
         meta = scenes.describe_change_meta(sides["base"][0], sides["head"][0], record)
         store.save_change(change, record, sides, {"content": content}, merge.merge_models(change, sides["base"][0], sides["head"][0], meta))
-        scenes.keep_change_scene(store, change, {"nolli": version()})
+        scenes.precompute(store, change)
     return record
 
 
