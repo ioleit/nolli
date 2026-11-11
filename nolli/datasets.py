@@ -13,69 +13,25 @@ commits come from (``nolli/logic/sources/``), extraction (``nolli/logic/extracto
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .build import (
-    Run,
-    extract,
-    extract_commit,
-    fetch_change,
-    fetch_whole_model,
-    is_fresh,
-    list_content,
-    run_here,
-    version,
-)
-from .logic import transformations
-from .logic.formats.mermaid import list_ids, render
-from .logic.formats.report import make_report
-from .logic.formats.viewer import export_scene
-from .logic.sources import FetchError, LocalRepository, Sources, github
-from .logic.sources.git import (
-    WORKTREE,
-    ChangeError,
-    ChangeSpec,
-    GitError,
-    find_remote,
-    find_toplevel,
-    resolve_adds,
-    resolve_own,
-    resolve_range,
-    resolve_snapshot,
-)
-from .logic.transformations import projection
-from .logic.transformations.merge import is_change, merge_models
-from .logic.transformations.projection import DEFAULT_BUDGET, ProjectionSpec
-from .model.keys import ChangeKey, CommitKey, ModelKey, Repo
-from .model.model import Key, Model
-from .model.scene import Overlay, Scene
-from .progress import Progress, Quiet
-from .review.brief import make_brief
-from .review.changes import find_review_cut, list_changes
-from .review.verdicts import (  # noqa: F401 (VERDICTS: for callers)
-    VERDICTS,
-    check_verdicts,
-    describe_verdicts,
-    find_diagram_ids,
-    find_provenance,
-    parse_verdicts,
-    read_verdicts,
-    save_verdicts,
-)
-from .scenes import (
-    describe_change_meta,
-    keep_change_scene,
-    keep_commit_scene,
-    merge_built,
-    open_built,
-    open_change_scene,
-    open_commit_scene,
-)
-from .store import ModelStore
-from .store.directory import DirectoryStore, write_change, write_commit
-from .store.maps import MapStore, MemoryMaps
+from nolli import build, scenes
+from nolli.build import Run
+from nolli.logic import transformations
+from nolli.logic.formats import mermaid, report, viewer
+from nolli.logic.sources import FetchError, LocalRepository, Sources, git, github
+from nolli.logic.sources.git import ChangeError, ChangeSpec, GitError
+from nolli.logic.transformations import merge, projection
+from nolli.logic.transformations.projection import ProjectionSpec
+from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo
+from nolli.model.scene import Scene
+from nolli.progress import Progress, Quiet
+from nolli.review import brief, changes, verdicts
+from nolli.review.verdicts import VERDICTS  # noqa: F401 (for callers)
+from nolli.store import ModelStore, directory
+from nolli.store.directory import DirectoryStore
+from nolli.store.maps import MemoryMaps
 
 
 class Datasets:
@@ -87,92 +43,92 @@ class Datasets:
     def open_scene(self, key: ModelKey) -> Scene | None:
         """The scene of a stored model: a change merged from its commits, or one commit. Raises
         NotAllowed as the store does."""
-        return open_change_scene(self.store, key) if isinstance(key, ChangeKey) else open_commit_scene(self.store, key)
+        return scenes.open_change_scene(self.store, key) if isinstance(key, ChangeKey) else scenes.open_commit_scene(self.store, key)
 
     def is_built(self, key: ModelKey) -> bool:
         """Kept, and built by this version of nolli."""
-        return is_fresh(self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key))
+        return build.is_fresh(self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key))
 
-    def build(self, key: ModelKey, *, about: dict | None = None, run: Run = run_here, progress: Progress | None = None,
+    def build(self, key: ModelKey, *, about: dict | None = None, run: Run = build.run_here, progress: Progress | None = None,
               rebuild: bool = False) -> None:
         """Build what ``key`` names from ``sources`` unless a fresh one is kept. ``about``: what a
         change says about itself (``pr``, ``title``, ``description``, ``budget``)."""
         if self.sources is None:
             raise ValueError("no sources to build from")
         if isinstance(key, ChangeKey):
-            fetch_change(self.store, self.sources, key, about=about, run=run, progress=progress, rebuild=rebuild)
+            build.fetch_change(self.store, self.sources, key, about=about, run=run, progress=progress, rebuild=rebuild)
         else:
-            fetch_whole_model(self.store, self.sources, key, run=run, progress=progress, rebuild=rebuild)
+            build.fetch_whole_model(self.store, self.sources, key, run=run, progress=progress, rebuild=rebuild)
 
     # -- Projections ------------------------------------------------------------------
 
     def draw(self, scene: Scene, state: ProjectionSpec) -> Scene:
         """The projection ``state`` asks for; a change's "changes" preset unfolds what it changed."""
-        if state.preset == "changes" and state.focus is None and is_change(scene):
-            state.focus = find_review_cut(scene)
+        if state.preset == "changes" and state.focus is None and merge.is_change(scene):
+            state.focus = changes.find_review_cut(scene)
         return transformations.apply(scene, projection.fold(state))
 
     def draw_json(self, scene: Scene, state: ProjectionSpec) -> dict:
         """The projection as JSON."""
-        return export_scene(self.draw(scene, state))
+        return viewer.export_scene(self.draw(scene, state))
 
     def draw_mermaid(self, scene: Scene, state: ProjectionSpec, fade: bool = True) -> tuple[str, dict[str, str]]:
         """The projection as Mermaid, and each Mermaid node id to the box it is."""
         drawn = self.draw(scene, state)
-        return render(drawn, fade=fade), list_ids(drawn)
+        return mermaid.render(drawn, fade=fade), mermaid.list_ids(drawn)
 
     def list_changes(self, scene: Scene) -> list[dict]:
         """A change's numbered changes ([] for a commit)."""
-        return list_changes(scene) if is_change(scene) else []
+        return changes.list_changes(scene) if merge.is_change(scene) else []
 
     def describe_verdicts(self, scene: Scene) -> list[dict]:
         """A change's kept verdicts with what the viewer says about each."""
-        return describe_verdicts(scene, self.load_verdicts(scene)) if is_change(scene) else []
+        return verdicts.describe_verdicts(scene, self.load_verdicts(scene)) if merge.is_change(scene) else []
 
     def read_verdicts(self, scene: Scene, text: str) -> list[dict]:
         """A verdicts.json on the change's review diagram ids, read (ValueError if it is bad)."""
-        return read_verdicts(text, find_diagram_ids(scene))
+        return verdicts.read_verdicts(text, verdicts.find_diagram_ids(scene))
 
     def draw_review(self, scene: Scene) -> Scene:
         """The change as its review diagram draws it: every area that changed in source code
         unfolded. The same for the same change and version of nolli, so verdicts on its ids
         stay valid."""
-        budget = (scene.model.meta.get("change") or {}).get("budget") or DEFAULT_BUDGET
-        spec = ProjectionSpec(budget=budget, preset="changes", focus=find_review_cut(scene))
+        budget = (scene.model.meta.get("change") or {}).get("budget") or projection.DEFAULT_BUDGET
+        spec = ProjectionSpec(budget=budget, preset="changes", focus=changes.find_review_cut(scene))
         return transformations.apply(scene, projection.fold(spec))
 
     def make_review_diagram(self, scene: Scene) -> str:
         """The review diagram (``review.mmd``)."""
-        return render(self.draw_review(scene))
+        return mermaid.render(self.draw_review(scene))
 
     def make_review_brief(self, scene: Scene, diagram: str | None = None) -> str:
         """What a review agent gets (``review.md``): the diagram, how to answer, the change's description."""
-        return make_brief(scene, diagram if diagram is not None else self.make_review_diagram(scene),
+        return brief.make_brief(scene, diagram if diagram is not None else self.make_review_diagram(scene),
                           (scene.model.meta.get("change") or {}).get("description"))
 
     def make_report(self, scene: Scene) -> dict:
         """The ``report.json`` of a model, its counts and the size of its default projection."""
         meta = scene.model.meta
-        budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or DEFAULT_BUDGET
-        return make_report(scene, self.draw(scene, ProjectionSpec(budget=budget)))
+        budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or projection.DEFAULT_BUDGET
+        return report.make_report(scene, self.draw(scene, ProjectionSpec(budget=budget)))
 
     # -- a review's verdicts ---------------------------------------------------------
 
     def load_verdicts(self, scene: Scene) -> list[dict]:
         """A change's kept verdicts, in their order."""
-        return parse_verdicts(self.store.open_maps("verdicts").load(scene.model.key.format_key()))
+        return verdicts.parse_verdicts(self.store.open_maps("verdicts").load(scene.model.key.format_key()))
 
     def find_provenance(self, key: ModelKey) -> dict | None:
         """Who made a change's verdicts; None without verdicts."""
-        return find_provenance(self.store, key)
+        return verdicts.find_provenance(self.store, key)
 
     def check_verdicts(self, scene: Scene, text: str) -> tuple[list[dict], list[str]]:
         """verdicts.json checked against the change's review diagram: (verdicts read, problems)."""
-        return check_verdicts(scene, self.make_review_diagram(scene), text)
+        return verdicts.check_verdicts(scene, self.make_review_diagram(scene), text)
 
-    def keep_verdicts(self, key: ModelKey, verdicts: list[dict], by: dict) -> None:
-        """Make ``verdicts`` (read, with their ``ends``) the change's, with where they came from."""
-        save_verdicts(self.store, key, verdicts, by)
+    def keep_verdicts(self, key: ModelKey, kept: list[dict], by: dict) -> None:
+        """Make ``kept`` (verdicts read, with their ``ends``) the change's, with where they came from."""
+        verdicts.save_verdicts(self.store, key, kept, by)
 
     def recheck_verdicts(self, scene: Scene) -> tuple[list[dict] | None, list[str]]:
         """The kept verdicts checked again against the review diagram (None without verdicts)."""
@@ -241,7 +197,7 @@ BUILD_ERRORS = (ChangeError, FetchError, GitError)  # what building from a local
 def find_repo(repo: Path) -> Repo:
     """A local repository's key: its GitHub remote if it has one (the same commits there are
     the same models), else its path."""
-    remote = find_remote(repo)
+    remote = git.find_remote(repo)
     found = Repo.from_remote(remote) if remote else None
     return found if found and found.format_remote() else Repo(str(repo.resolve()))
 
@@ -253,7 +209,7 @@ def resolve_target(text: str | None, path: Path, clones: Path, review: bool = Fa
     ``R^!`` if R is on the default branch), and anything that is no change is refused. Raises
     ChangeError."""
     try:
-        local: Path | None = find_toplevel(path.resolve())
+        local: Path | None = git.find_toplevel(path.resolve())
     except ChangeError:
         local = None
     t = parse_target(text, local)
@@ -276,12 +232,12 @@ def resolve_target(text: str | None, path: Path, clones: Path, review: bool = Fa
 def resolve_local(t: Target, local: Path, text: str | None = None, review: bool = False) -> Asked:
     """A target of the local repository ``local`` (not a dataset, not on GitHub), resolved;
     ``review`` as for resolve_target. Raises ChangeError."""
-    if t.kind == "snapshot" and review and t.head != WORKTREE:
-        spec = resolve_adds(local, t.head)
+    if t.kind == "snapshot" and review and t.head != git.WORKTREE:
+        spec = git.resolve_adds(local, t.head)
     elif t.kind == "snapshot":
-        spec = resolve_snapshot(local, t.head)
+        spec = git.resolve_snapshot(local, t.head)
     elif t.kind == "own":
-        spec = resolve_own(local, t.head)
+        spec = git.resolve_own(local, t.head)
     else:
         spec = _resolve_range(local, t, text, review)
     r = find_repo(local)
@@ -291,7 +247,7 @@ def resolve_local(t: Target, local: Path, text: str | None = None, review: bool 
 
 def _resolve_range(local: Path, t: Target, text: str | None, review: bool = False) -> ChangeSpec:
     try:
-        return resolve_range(local, t.base, t.head, t.symmetric)
+        return git.resolve_range(local, t.base, t.head, t.symmetric)
     except ChangeError as exc:
         if text:
             raise
@@ -333,8 +289,8 @@ def write_extras(datasets: "Datasets", scene: Scene, out: Path) -> dict:
     change what a review agent reads (changes.json, review.mmd, review.md). Returns the report."""
     report = datasets.make_report(scene)
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
-    if is_change(scene):
-        (out / "changes.json").write_text(json.dumps(list_changes(scene), indent=1))
+    if merge.is_change(scene):
+        (out / "changes.json").write_text(json.dumps(changes.list_changes(scene), indent=1))
         mmd = datasets.make_review_diagram(scene)
         (out / "review.mmd").write_text(mmd)
         (out / "review.md").write_text(datasets.make_review_brief(scene, mmd))
@@ -350,25 +306,25 @@ def write_dataset(asked: Asked, out: Path, about: dict, budget: int | None = Non
     out.mkdir(parents=True, exist_ok=True)
     if isinstance(key, CommitKey):
         with asked.sources.open_commits(key.repo, key.sha) as clone:
-            m, maps = extract_commit(clone, key.sha, key.repo.format_name(), Quiet())
+            m, maps = build.extract_commit(clone, key.sha, key.repo.format_name(), Quiet())
         m.key = key
         if budget:
             m.meta["budget"] = budget
-        write_commit(out, key, m, maps)
-        keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": version()})  # the directory as nolli serve reads it
-        return about, write_extras(Datasets(MemoryMaps()), open_built(m, maps), out)
+        directory.write_commit(out, key, m, maps)
+        scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
+        return about, write_extras(Datasets(MemoryMaps()), scenes.open_built(m, maps), out)
     sides = {}
     with asked.sources.open_commits(key.repo, key.base, key.head) as clone:
         for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
-            m, maps = extract_commit(clone, commit.sha, key.repo.format_name(), Quiet())
+            m, maps = build.extract_commit(clone, commit.sha, key.repo.format_name(), Quiet())
             m.key = commit
             sides[side] = (m, maps)
-        content = list_content(clone, key.base, key.head, Quiet())
-    about.update({"base": key.base, "head": key.head, "remote": key.repo.format_remote(), "nolli": version()})
-    scene = merge_built(sides["base"], sides["head"], key, about, content)
-    merged = merge_models(key, sides["base"][0], sides["head"][0], describe_change_meta(sides["base"][0], sides["head"][0], about))
-    write_change(out, key, about, sides, {"content": content}, merged)
-    keep_change_scene(DirectoryStore(out.parent), key, {"nolli": version()})  # the directory as nolli serve reads it
+        content = build.list_content(clone, key.base, key.head, Quiet())
+    about.update({"base": key.base, "head": key.head, "remote": key.repo.format_remote(), "nolli": build.version()})
+    scene = scenes.merge_built(sides["base"], sides["head"], key, about, content)
+    merged = merge.merge_models(key, sides["base"][0], sides["head"][0], scenes.describe_change_meta(sides["base"][0], sides["head"][0], about))
+    directory.write_change(out, key, about, sides, {"content": content}, merged)
+    scenes.keep_change_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
     return about, write_extras(Datasets(MemoryMaps()), scene, out)
 
 
@@ -377,10 +333,10 @@ def extract_directory(repo: Path, out: Path, budget: int | None = None) -> dict:
     to ``out`` with its extras; the report. (A git repository's files on disk are the target
     ``WORKTREE``.)"""
     key = Repo(str(repo.resolve())).make_commit("worktree")
-    m, maps = extract(repo, key=key)
+    m, maps = build.extract(repo, key=key)
     if budget:
         m.meta["budget"] = budget
     out.mkdir(parents=True, exist_ok=True)
-    write_commit(out, key, m, maps)
-    keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": version()})
-    return write_extras(Datasets(MemoryMaps()), open_built(m, maps), out)
+    directory.write_commit(out, key, m, maps)
+    scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})
+    return write_extras(Datasets(MemoryMaps()), scenes.open_built(m, maps), out)
