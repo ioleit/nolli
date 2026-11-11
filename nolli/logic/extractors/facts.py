@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from nolli.model import vocabulary
 from nolli.model.keys import ModelKey, StringKey
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.schema import EntityId, EntityKind, RelationKind, Scheme
+from nolli.progress import Progress, Quiet
 
 ROOT_NAMES = {Scheme.API: "APIs", Scheme.PKG: "Artifacts", Scheme.RUNTIME: "Runtime",  # what each root group is called
               Scheme.CONFIG: "Configuration", Scheme.UNRESOLVED: "Unresolved references"}
@@ -231,3 +234,34 @@ def _check_reference(ref: dict, extractor: str, key: Relation) -> None:
     if not isinstance(ref["count"], int) or ("line" in ref and not isinstance(ref["line"], int)):
         raise ValueError(f"{extractor}: a reference of {key.format()} with a count or line that is no number")
 
+
+WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
+
+
+def extract_facts(repo: Path, files: list[Path], config: dict | None = None, progress: Progress | None = None) -> Facts:
+    """What every extractor, then the matchers, found in ``files`` (relative to ``repo``), before
+    it is split into structure and maps. ``meta`` says how many files, the languages, the
+    timings and the extractors' notes; where the files came from (repository, commit) is the
+    caller's to add."""
+    from nolli.logic import extractors  # extractors/__init__ imports this module
+    from nolli.logic.extractors import match
+
+    facts = Facts()
+    progress = progress or Quiet()
+    ctx = extractors.Context(repo=repo, model=facts, files=files, config=config or {}, progress=progress)
+    timings = {}
+    for name, fn in extractors.all_extractors():
+        t0 = time.time()
+        facts.current = name
+        with progress.step("file tree" if name == "fs" else name.replace("-", " ")):
+            fn(ctx)
+        timings[name] = round(time.time() - t0, 3)
+    t0 = time.time()
+    facts.current = "match"
+    with progress.step("matching references"):
+        match.run_all(ctx)
+    timings["match"] = round(time.time() - t0, 3)
+    facts.meta = {"files": len(ctx.files), "languages": extractors.language_names(), "timings": timings,
+                  "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                  "notes": {k: v for k, v in ctx.notes.items() if k not in WORKING_NOTES}}
+    return facts

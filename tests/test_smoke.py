@@ -14,8 +14,9 @@ from pathlib import Path
 import pytest
 from helpers import draw, find_node, open_dir
 
-from nolli.build import _extract_facts
 from nolli.logic import transformations
+from nolli.logic.extractors.facts import extract_facts
+from nolli.logic.sources import git
 from nolli.logic.transformations import projection
 from nolli.logic.transformations.projection import ProjectionSpec
 from nolli.logic.transformations.projection.reading import Reading as Graph
@@ -73,7 +74,7 @@ def rel_set(m, kind, subkind=None):
 
 
 def test_model_binds_the_seams(repo: Path):
-    m = _extract_facts(repo)
+    m = extract_facts(repo, git.list_tracked_files(repo))
     uses = rel_set(m, "use")
     # imports resolve inside the repo, relative and absolute; Python references bind at
     # symbol level (module-level code -> a module variable stays at file level)
@@ -265,7 +266,7 @@ def test_docstrings(tmp_path: Path):
     (tmp_path / "pkg/__init__.py").write_text('"""Tools for frobbing.\n\nLong details nobody reads."""\n')
     (tmp_path / "pkg/core.py").write_text('"""The core frobber."""\nimport sys\nsys.exit("must not run")\n\n'
                                           'class Frob:\n    """Frobs one thing at a time."""\n')
-    m = _extract_facts(tmp_path)
+    m = extract_facts(tmp_path, git.list_tracked_files(tmp_path))
     assert m.entities["repo:pkg/core.py"].attrs["doc"] == "The core frobber."
     assert m.entities["repo:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
     sc = draw(open_dir(tmp_path), expanded=["repo:", "repo:pkg", "repo:pkg/core.py"])
@@ -282,7 +283,7 @@ def test_own_code_dot(tmp_path: Path):
     (tmp_path / "pkg/core.py").write_text("LIMIT = 3\n\ndef helper():\n    pass\n\ndef frob():\n    return Frob()\n\n"
                                           "class Frob:\n    def go(self):\n        return frob()\n")
     (tmp_path / "pkg/use.py").write_text("from .core import frob\nfrob(); frob()\n")
-    m = _extract_facts(tmp_path)
+    m = extract_facts(tmp_path, git.list_tracked_files(tmp_path))
     core = m.entities["repo:pkg/core.py"].attrs
     assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
     assert m.entities["repo:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
@@ -400,7 +401,7 @@ def test_type_definitions_and_module_attributes(tmp_path: Path):
         "from pkg.keys import Key, Sha, Commit\nfrom pkg import keys\nfrom . import keys as k\n"
         "def f(a: Key, b: Sha) -> Commit:\n    keys.parse({}); keys.LIMIT; k.parse({}); Commit.__name__\n"
     )
-    m = _extract_facts(tmp_path)
+    m = extract_facts(tmp_path, git.list_tracked_files(tmp_path))
     kinds = {e.name: e.kind for e in m.entities.values() if e.id.startswith("repo:pkg/keys.py#")}
     assert kinds == {"Commit": "class", "Change": "class", "Key": "type", "Sha": "type", "Names": "type"}
     uses = {(r.dst, r.attrs.get("name")): r.count for r in m.relations

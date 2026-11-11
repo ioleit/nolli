@@ -7,15 +7,12 @@ extracted from the repository's commits and kept there.
 from __future__ import annotations
 
 import tempfile
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from nolli import scenes
-from nolli.logic import extractors
-from nolli.logic.extractors import Context, match
-from nolli.logic.extractors.facts import Facts
+from nolli.logic.extractors import facts
 from nolli.logic.sources import Sources, git
 from nolli.logic.transformations import merge
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey, StringKey
@@ -24,8 +21,6 @@ from nolli.model.schema import EntityId
 from nolli.progress import Progress, Quiet
 from nolli.store import ModelStore
 from nolli.store.maps import Maps, MapStore
-
-WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept
 
 # run(fn, *args, progress=…) calls fn(*args, progress=…), here or elsewhere (in a process of
 # its own). The steps that take time (extract_commit, list_content) take paths and return
@@ -40,32 +35,10 @@ def _run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
 def extract(repo: Path, config: dict | None = None, progress: Progress | None = None, key: ModelKey = StringKey()) -> tuple[Model, Maps]:
     """The model of the files under ``repo`` as they are (a working tree, or a checkout), and
     what each extractor said about its nodes and edges."""
-    return _extract_facts(repo, config, progress).split(key)
-
-
-def _extract_facts(repo: Path, config: dict | None = None, progress: Progress | None = None) -> Facts:
-    """What the extractors found under ``repo``, before it is split into structure and maps
-    (``Facts``: entities and relations with their attributes, as the extractors wrote them)."""
-    facts = Facts()
-    progress = progress or Quiet()
-    ctx = Context(repo=repo, model=facts, files=git.list_tracked_files(repo), config=config or {}, progress=progress)
-    timings = {}
-    for name, fn in extractors.all_extractors():
-        t0 = time.time()
-        facts.current = name
-        with progress.step("file tree" if name == "fs" else name.replace("-", " ")):
-            fn(ctx)
-        timings[name] = round(time.time() - t0, 3)
-    t0 = time.time()
-    facts.current = "match"
-    with progress.step("matching references"):
-        match.run_all(ctx)
-    timings["match"] = round(time.time() - t0, 3)
+    found = facts.extract_facts(repo, git.list_tracked_files(repo), config, progress)
     head = git.find_head(repo)
-    facts.meta = {"repo": str(repo), "commit": head[:7] if head else None, "files": len(ctx.files), "languages": extractors.language_names(),
-                  "timings": timings, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                  "notes": {k: v for k, v in ctx.notes.items() if k not in WORKING_NOTES}, "nolli": version()}
-    return facts
+    found.meta.update({"repo": str(repo), "commit": head[:7] if head else None, "nolli": version()})
+    return found.split(key)
 
 
 def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple[Model, Maps]:
