@@ -13,6 +13,19 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **`projection` is a package**: `reading`, `rollup` and `unfold`, used by the projection
   only, moved into `nolli/logic/transformations/projection/`. `projection.fold` and
   `ProjectionSpec` are imported as before.
+- **Building is `build.build(store, target, sources)`**:
+  - `build.Target.from_string` reads a target. `Target.pin()` says what a moving target (a
+    branch, `WORKTREE`, a pull request) names now, as a stable one. The command line and the
+    server build through the same function; the server runs it as a job on the pinned target.
+  - `datasets.parse_target`, `resolve_target`, `Asked`, the server's `Plan` and the thin
+    `Datasets` wrappers (`open_scene`, `build`, `draw_json`, …) are gone.
+  - The extractor run is `extractors.facts.extract_facts`.
+- **A model's key is a target**: `<repo>@<sha>` or `<repo>@<base>..<head>`, full shas. A pinned
+  pull request, `<repo>@<base>...<head>`, is one too.
+- **A dataset directory is the command line's**: `nolli view <dir>` serves the store the
+  directory is in and opens the viewer on its key. The viewer's `?t=` no longer takes a path.
+- **A GitHub comparison built from the command line has no title** unless GitHub gives one:
+  the title used to be read from the commits.
 
 ## 0.9.0
 

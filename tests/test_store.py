@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from nolli.build import extract_commit, fetch_change, _run_here
+from nolli.build import extract_commit, _fetch_change, _run_here
 from nolli.logic.sources import CloneCache, FetchError, LocalRepository
 from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.model.model import Model
@@ -169,7 +169,7 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     repo = Repo(str(path))
     calls: list[str] = []
     first = repo.make_change(shas[0], shas[1])
-    about = fetch_change(store, sources, first, run=counting(calls), about={"title": "a cache", "budget": 12})
+    about = _fetch_change(store, sources, first, run=counting(calls), about={"title": "a cache", "budget": 12})
     assert calls == ["extract_commit", "extract_commit", "list_content"]
     assert about["title"] == "a cache" and about["budget"] == 12 and about["base"] == shas[0] and about["head"] == shas[1]
     sc = _open_change_scene(store, first)
@@ -183,9 +183,9 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     assert any(el.find_same("base") and el.find_same("head") for el in sc.list_nodes())
 
     calls.clear()
-    assert fetch_change(store, sources, first, run=counting(calls))["title"] == "a cache"
+    assert _fetch_change(store, sources, first, run=counting(calls))["title"] == "a cache"
     assert calls == []  # stored: nothing built
-    fetch_change(store, sources, repo.make_change(shas[1], shas[2]), run=counting(calls))
+    _fetch_change(store, sources, repo.make_change(shas[1], shas[2]), run=counting(calls))
     assert calls == ["extract_commit", "list_content"]  # its base is the first change's head
 
 
@@ -209,7 +209,7 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     path, shas = src
     store, sources = DirectoryStore(tmp_path / "data"), LocalRepository(path)
     change = Repo(str(path)).make_change(shas[0], shas[2])
-    fetch_change(store, sources, change, about={"title": "kept"})
+    _fetch_change(store, sources, change, about={"title": "kept"})
     datasets = Datasets(store)
     kept = _open_change_scene(store, change)
     assert type(kept.overlays["change"]).__name__ == "PrecomputedOverlay" and kept.overlays["change"].find_kept(change.format_key())
@@ -281,7 +281,7 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
 
     path, base, head = renaming
     change = Repo(str(path)).make_change(base, head)
-    fetch_change(DirectoryStore(tmp_path / "data"), LocalRepository(path), change, about={"title": "rename"})
+    _fetch_change(DirectoryStore(tmp_path / "data"), LocalRepository(path), change, about={"title": "rename"})
 
     store = DirectoryStore(tmp_path / "data")
     datasets = Datasets(store)
@@ -335,7 +335,7 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
                 raise NotAllowed(f"may not read {repo.url!r}")
 
     store = Checked(tmp_path / "data")
-    fetch_change(store, LocalRepository(path), change, about={"title": "checked"})
+    _fetch_change(store, LocalRepository(path), change, about={"title": "checked"})
     datasets = Datasets(store)
     sc = open_stored(store, change)
     for preset in ("folded", "changes", "unfolded"):

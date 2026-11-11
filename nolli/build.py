@@ -100,7 +100,7 @@ def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, ru
     return m, maps
 
 
-def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *, run: Run = _run_here,
+def _fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *, run: Run = _run_here,
                       progress: Progress | None = None, rebuild: bool = False) -> Model:
     """A repository at one commit, as the viewer shows a repository as a whole: kept in the store."""
     progress = progress or Quiet()
@@ -115,7 +115,7 @@ def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *,
     return m
 
 
-def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, about: dict | None = None,
+def _fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, about: dict | None = None,
                  run: Run = _run_here, progress: Progress | None = None, rebuild: bool = False) -> dict:
     """A change: from the store, or built from its two commits (their models, from the store
     if it has them) and git's hunks between them, and kept there. ``about``: what the change
@@ -137,117 +137,152 @@ def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, abou
     return record
 
 
-# -- targets: what a user names, resolved to a model's key --------------------------------
+# -- targets: what a user names, and building it -------------------------------------------
 #
 # A target (``nolli build [<target>]``, view, agent brief, the server's ``?t=``; nolli/cli.py
-# documents the forms) names a model: its key, resolved already; something on GitHub; or
-# git's revisions of the local repository (a snapshot, a range, a commit's own change).
+# documents the forms) names a model. Some forms move (a branch, WORKTREE, a pull request):
+# ``Target.pin`` says what one names now, cheaply, as a stable target. ``build`` builds any
+# target (pinning it if it is not stable); what it resolves to is found on the way.
 
 
 @dataclass(frozen=True)
 class Target:
-    """A target's form, read but not looked up: ``kind`` is ``key`` (``key``), ``github``
-    (``github``) or ``revs`` (``revs``)."""
+    """What a user names, read but not looked up. ``kind``:
+
+    - ``key``: a model's key (``key``), resolved already;
+    - ``pinned``: the change of ``repo`` from where ``head`` left ``base`` (full shas; as text
+      ``<repo>@<base>...<head>``): stable, but where they diverged is found in their commits;
+    - ``github``: something on GitHub (``github``), which moves;
+    - ``revs``: git's revisions (``revs``) of the local repository ``local``, which move.
+
+    ``text`` is what the user wrote; ``about`` what a pinned target says about itself
+    (``title``, ``description``, ``pr``), kept with the model. Neither is part of what it is."""
     kind: str
     key: ModelKey | None = None
+    repo: Repo | None = None
+    base: str | None = None
+    head: str | None = None
     github: github.Target | None = None
     revs: git.Revs | None = None
+    local: Path | None = None
+    text: str | None = field(default=None, compare=False)
+    about: dict = field(default_factory=dict, compare=False)
 
     @classmethod
     def from_string(cls, text: str | None, local: Path | None = None) -> Target:
-        """The form of ``text`` (None: ``...HEAD``). ``local`` is the repository ``#<n>`` refers
-        to. Raises ChangeError for a github.com URL nolli cannot build."""
+        """The form of ``text`` (None: ``...HEAD``). ``local`` is the repository git's revisions
+        and ``#<n>`` refer to. Raises ChangeError for a github.com URL nolli cannot build."""
         if not text:
-            return cls("revs", revs=git.Revs("range", head="HEAD", symmetric=True))
-        key = _parse_key(text)
-        if key is not None:
-            return cls("key", key=key)
+            return cls("revs", revs=git.Revs("range", head="HEAD", symmetric=True), local=local)
+        stable = _parse_stable(text)
+        if stable is not None:
+            return stable
         gh = github.parse_target(text, local)
         if gh is not None:
-            return cls("github", github=gh)
-        return cls("revs", revs=git.parse_revs(text))
+            return cls("github", github=gh, text=text)
+        return cls("revs", revs=git.parse_revs(text), local=local, text=text)
+
+    @property
+    def is_stable(self) -> bool:
+        """It names the same model whenever it is asked: a key, or pinned."""
+        return self.kind in ("key", "pinned")
+
+    def format(self) -> str:
+        """A stable target as text, which ``from_string`` reads back."""
+        if self.kind == "key":
+            return self.key.format_key()
+        if self.kind == "pinned":
+            return f"{self.repo.url}@{self.base}...{self.head}"
+        raise ValueError(f"a {self.kind} target is not stable: pin it")
+
+    def pin(self, get: Callable[[str], dict] | None = None, review: bool = False) -> Target:
+        """What this target names now, as a stable target with what it says about itself: git's
+        revisions looked up in the local repository, a target on GitHub asked of GitHub's API
+        (``get``, as ``github.ask_target`` takes it); no commits are fetched. ``review`` (nolli
+        agent brief): a single revision R is what R adds (``...R``, or ``R^!`` if R is on the
+        default branch), and anything that is no change is refused. Raises ChangeError."""
+        if self.kind == "revs":
+            pinned = self._pin_revs(review)
+        elif self.kind == "github":
+            pinned = self._pin_github(get)
+        else:
+            pinned = self
+        if review and not (pinned.kind == "pinned" or isinstance(pinned.key, ChangeKey)):
+            raise git.ChangeError(f"{self.text or 'HEAD'} is a snapshot, not a change: a review needs a change "
+                                  f"(a branch, <base>...<head>, <commit>^! or a pull request)")
+        return pinned
+
+    def _pin_revs(self, review: bool) -> Target:
+        if self.local is None:
+            raise git.ChangeError(f"{self.text or 'HEAD'}: not in a git repository")
+        try:
+            spec = git.resolve_revs(self.local, self.revs, adds=review)
+        except git.ChangeError as exc:
+            if self.text:
+                raise
+            if review:
+                raise git.ChangeError(f"no change to review ({exc}); name one: a branch, <base>..<head>, <commit>^! or a pull request") from None
+            raise git.ChangeError(f"nothing to build by default ({exc}); name a target: a branch or commit as a snapshot, "
+                                  f"...<branch> for what it adds, <base>..<head>, <commit>^!, WORKTREE, or a pull request") from None
+        repo = LocalRepository(self.local).find_repo()
+        key = repo.make_change(spec.base, spec.head) if spec.is_diff else repo.make_commit(spec.head)
+        return Target("key", key=key, text=self.text, about={"title": spec.title, "description": spec.description})
+
+    def _pin_github(self, get: Callable[[str], dict] | None) -> Target:
+        t = self.github
+        a = github.ask_target(t, get)
+        repo = Repo(f"github.com/{t.owner}/{t.name}")
+        about = {"pr": a.pr, "title": a.title, "description": a.description}
+        if a.base is None:
+            return Target("key", key=repo.make_commit(a.head), text=self.text, about=about)
+        if a.base == a.head:
+            raise git.ChangeError(f"{t.owner}/{t.name}: no change ({a.head[:7]} is {a.base[:7]})")
+        if a.merge:
+            return Target("pinned", repo=repo, base=a.base, head=a.head, text=self.text, about=about)
+        return Target("key", key=repo.make_change(a.base, a.head), text=self.text, about=about)
 
 
-def _parse_key(text: str) -> ModelKey | None:
-    """The key ``text`` is (``<repo>@<sha>`` or ``<repo>@<base>..<head>``, full shas), None for
-    anything else: no git revision has a repository before an ``@`` and 40 hex digits after."""
-    key = ModelKey.parse(text)
-    shas = (key.base, key.head) if isinstance(key, ChangeKey) else (getattr(key, "sha", ""),)
-    return key if all(re.fullmatch(r"[0-9a-f]{40}", s) for s in shas) else None
+def _parse_stable(text: str) -> Target | None:
+    """The stable target ``text`` is: a key (``<repo>@<sha>``, ``<repo>@<base>..<head>``) or
+    pinned (``<repo>@<base>...<head>``), full shas; None for anything else: no git revision has
+    a repository before an ``@`` and 40 hex digits after."""
+    repo, at, rest = text.rpartition("@")
+    if not (at and repo and rest):
+        return None
+    shas = rest.split("...") if "..." in rest else rest.split("..")
+    if not 1 <= len(shas) <= 2 or not all(re.fullmatch(r"[0-9a-f]{40}", s) for s in shas):
+        return None
+    if "..." in rest:
+        return Target("pinned", repo=Repo(repo), base=shas[0], head=shas[1], text=text)
+    return Target("key", key=ModelKey.parse(text), text=text)
 
 
-@dataclass
-class ResolvedTarget:
-    """A target, resolved: the model's key, the local repository that has its commits
-    (``repo``: yours, or a clone under the data directory), where a build gets them
-    (``sources``), what it says about itself (``spec``: base, head, title, description;
-    ``about``: also the PR), and for a dataset already built, its directory (``dataset``)."""
-    key: ModelKey
-    repo: Path | None = None
-    spec: git.ChangeSpec | None = None
-    about: dict = field(default_factory=dict)
-    sources: Sources | None = None
-    dataset: Path | None = None
-
-
-def resolve_target(text: str | None, path: Path, clones: Path, review: bool = False) -> ResolvedTarget:
-    """What the target ``text`` names, for the git repository around ``path`` (a target on
-    GitHub is fetched into it, objects only, or into a clone under ``clones`` when ``path`` is
-    in none). ``review`` (nolli agent brief): a single revision R is what R adds (``...R``, or
-    ``R^!`` if R is on the default branch), and anything that is no change is refused. Raises
-    ChangeError."""
-    try:
-        local: Path | None = git.find_toplevel(path.resolve())
-    except git.ChangeError:
-        local = None
-    t = Target.from_string(text, local)
+def resolve(target: Target, sources: Sources, progress: Progress | None = None) -> ModelKey:
+    """The key ``target`` names (pinned first if it is not stable). For a change from where its
+    head left its base, that is found in its commits, which ``sources`` has or fetches."""
+    t = target if target.is_stable else target.pin()
     if t.kind == "key":
-        resolved = _resolve_key(t.key, local, clones)
-    elif t.kind == "github":
-        answer, spec, where, sources = github.resolve(t.github, local, clones)
-        resolved = ResolvedTarget(_make_key(Repo(f"github.com/{t.github.owner}/{t.github.name}"), spec), where, spec,
-                                  {"pr": answer.pr, "title": spec.title, "description": spec.description}, sources)
+        return t.key
+    with (progress or Quiet()).step("fetching the commits"), sources.open_commits(t.repo, t.base, t.head) as clone:
+        base = git.merge_base(clone, t.base, t.head)
+    if base == t.head:
+        raise git.ChangeError(f"{t.repo.format_name()}: no change ({t.head[:7]} is on {t.base[:7]})")
+    return t.repo.make_change(base, t.head)
+
+
+def build(store: ModelStore, target: Target, sources: Sources, *, about: dict | None = None, run: Run = _run_here,
+          progress: Progress | None = None, rebuild: bool = False) -> tuple[ModelKey, bool]:
+    """Build what ``target`` names (pinned first if it is not stable) into ``store``, its commits
+    from ``sources``, unless a fresh one is kept there: its key, and whether it was built.
+    ``about``: more of what a change says about itself (``budget``; what the user said of it),
+    over what the target says. ``run``: where the steps that take time run."""
+    target = target if target.is_stable else target.pin()
+    key = resolve(target, sources, progress)
+    kept = None if rebuild else store.load_change(key) if isinstance(key, ChangeKey) else store.load_model(key)
+    if is_fresh(kept):
+        return key, False
+    if isinstance(key, ChangeKey):
+        _fetch_change(store, sources, key, about={**target.about, **(about or {})}, run=run, progress=progress, rebuild=rebuild)
     else:
-        if local is None:
-            raise git.ChangeError(f"{path} is not in a git repository")
-        resolved = resolve_local(t, local, text, review)
-    if review and not resolved.spec.is_diff:
-        raise git.ChangeError(f"{text or 'HEAD'} is a snapshot, not a change: a review needs a change "
-                              f"(a branch, <base>...<head>, <commit>^! or a pull request)")
-    return resolved
-
-
-def resolve_local(t: Target, local: Path, text: str | None = None, review: bool = False) -> ResolvedTarget:
-    """Git's revisions of the local repository ``local``, resolved; ``review`` as for
-    resolve_target. Raises ChangeError, saying what to name if ``text`` named nothing."""
-    try:
-        spec = git.resolve_revs(local, t.revs, adds=review)
-    except git.ChangeError as exc:
-        if text:
-            raise
-        if review:
-            raise git.ChangeError(f"no change to review ({exc}); name one: a branch, <base>..<head>, <commit>^! or a pull request") from None
-        raise git.ChangeError(f"nothing to build by default ({exc}); name a target: a branch or commit as a snapshot, "
-                              f"...<branch> for what it adds, <base>..<head>, <commit>^!, WORKTREE, or a pull request") from None
-    repo = LocalRepository(local)
-    return ResolvedTarget(_make_key(repo.find_repo(), spec), local, spec, {"title": spec.title, "description": spec.description}, repo)
-
-
-def _resolve_key(key: ModelKey, local: Path | None, clones: Path) -> ResolvedTarget:
-    """A key, resolved already: where its commits are, should it need building (``local`` if
-    it is that repository's, else a clone of its GitHub remote, else the repository at its path)."""
-    sources: Sources
-    if local is not None and LocalRepository(local).find_repo() == key.repo:
-        where, sources = local, LocalRepository(local)
-    elif key.repo.format_remote():
-        where, sources = None, github.make_clone_cache(clones)
-    else:
-        where = Path(key.repo.url)
-        sources = LocalRepository(where)
-    change = isinstance(key, ChangeKey)
-    spec = git.ChangeSpec(head=key.head if change else key.sha, base=key.base if change else None)
-    return ResolvedTarget(key, where, spec, {}, sources)
-
-
-def _make_key(repo: Repo, spec: git.ChangeSpec) -> ModelKey:
-    return repo.make_change(spec.base, spec.head) if spec.is_diff else repo.make_commit(spec.head)
+        _fetch_whole_model(store, sources, key, run=run, progress=progress, rebuild=rebuild)
+    return key, True

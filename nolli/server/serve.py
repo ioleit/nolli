@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import contextvars
+import dataclasses
 import html
 import json
 import multiprocessing
@@ -80,7 +81,7 @@ from nolli.logic.formats import mermaid, viewer  # noqa: E402
 
 from ..datasets import Datasets  # noqa: E402
 from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
-from ..logic.sources.git import ChangeError, GitError, merge_base  # noqa: E402
+from ..logic.sources.git import ChangeError, GitError  # noqa: E402
 from ..logic.transformations.projection import DEFAULT_UTILITY_IN, PRESETS, ProjectionSpec  # noqa: E402
 from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
@@ -139,16 +140,18 @@ def token_from_env(env: dict | None = None) -> Token:
     return Fixed(value) if value else Token()
 
 
-@dataclass
-class Plan:
-    """What a target names now: a build's name (what its page follows: the key, or for a target
-    on GitHub the commits GitHub named), a title, and the key, or how to find it in the job (a
-    pull request's starts where it left its base, which needs its commits)."""
-    name: str
-    title: str
-    key: ModelKey | None = None
-    find: Callable[[], ModelKey] | None = None
-    about: dict = field(default_factory=dict)  # what the model says about itself: pr, title, description
+def describe(t: build.Target) -> str:
+    """A pinned target's title, for its pages: the repository, the pull request or commits, and
+    what the change calls itself."""
+    if t.kind == "pinned":
+        repo, what = t.repo, f"{t.base[:7]}...{t.head[:7]}"
+    else:
+        k = t.key
+        repo, what = k.repo, f"{k.base[:7]}..{k.head[:7]}" if isinstance(k, ChangeKey) else f"@{k.sha[:7]}"
+    if t.about.get("pr"):
+        what = f"#{t.about['pr']}"
+    title = t.about.get("title")
+    return f"{repo.format_name() if repo.format_remote() is None else repo.url.removeprefix('github.com/')} {what}" + (f": {title}" if title else "")
 
 
 class TooLarge(Exception):
@@ -178,13 +181,17 @@ class Board:
 
 @dataclass
 class Job:
-    plan: Plan
+    target: build.Target  # pinned
     board: Board = field(default_factory=Board)
     state: str = "waiting"  # waiting, building, done, error
     error: str = ""
     key: ModelKey | None = None  # what it found or built
     t0: float = field(default_factory=time.time)
     ended: float = 0.0
+
+    @property
+    def name(self) -> str:
+        return self.target.format()
 
     def status(self) -> dict:
         return {"state": self.state, "lines": self.board.lines, "current": self.board.current, "error": self.error,
@@ -290,85 +297,57 @@ class Site:
                 raise
             return github.api(path, None)
 
-    def plan(self, text: str | None) -> Plan:
-        """What the target ``text`` names now. Raises github.NotFound for a repository the token
-        cannot read, NotAllowed as the store does, TooLarge, and ChangeError for a target this
-        server cannot show or GitHub cannot be asked about."""
+    def plan(self, text: str | None) -> build.Target:
+        """What the target ``text`` names now, pinned (``build.Target.pin``). Raises
+        github.NotFound for a repository the token cannot read, TooLarge, and ChangeError for a
+        target this server cannot show or GitHub cannot be asked about."""
         t = build.Target.from_string(text, self.local)
         if t.kind == "github":
             return self.plan_github(t.github)
         if not self.here:
             raise ChangeError("this host shows GitHub's paths: /<owner>/<repo>, …/pull/<n>, …/commit/<sha>")
-        if t.kind == "key":  # resolved already (nolli view <dataset> names it so)
-            k = t.key
-            what = f"{k.base[:7]}..{k.head[:7]}" if isinstance(k, ChangeKey) else f"@{k.sha[:7]}"
-            return Plan(k.format_key(), f"{k.repo.format_name()} {what}", k)
-        if self.local is None:
+        if t.kind == "revs" and self.local is None:
             raise ChangeError("this viewer was started outside a git repository: name a GitHub URL or a dataset directory")
-        asked = build.resolve_local(t, self.local, text)
-        return Plan(asked.key.format_key(), asked.spec.title or text or "", asked.key, about=asked.about)
+        return t.pin()
 
-    def plan_github(self, t: github.Target) -> Plan:
+    def plan_github(self, t: github.Target) -> build.Target:
         info = self.api(t.owner, t.name)
         owner, name = info["full_name"].split("/")  # GitHub's spelling (paths are case-insensitive)
         if self.max_repo is not None and info.get("size", 0) * 1024 > self.max_repo:
             raise TooLarge(f"{owner}/{name} is {info['size'] >> 10} MB on GitHub; this host builds repositories up to {self.max_repo >> 20} MB")
-        answer = github.ask_target(t, self.get)
-        repo = Repo(f"github.com/{owner}/{name}")
-        what = f"#{t.number}" if t.kind == "pull" else f"@{answer.head[:7]}"
-        title = f"{owner}/{name} {what}" + (f": {answer.title}" if answer.title else "")
-        about = {"pr": answer.pr, "title": answer.title, "description": answer.description}
-        if answer.base is None:
-            return Plan(repo.make_commit(answer.head).format_key(), title, repo.make_commit(answer.head), about=about)
-        if not answer.merge:
-            key = repo.make_change(answer.base, answer.head)
-            return Plan(key.format_key(), title, key, about=about)
+        return build.Target("github", github=dataclasses.replace(t, owner=owner, name=name)).pin(self.get)
 
-        def find() -> ModelKey:  # from where the head left the base: needs the commits
-            with self.sources.open_commits(repo, answer.base, answer.head) as clone:
-                return repo.make_change(merge_base(clone, answer.base, answer.head), answer.head)
-
-        return Plan(f"{repo.url}@{answer.base}...{answer.head}", title, find=find, about=about)
-
-    def find_built(self, plan: Plan) -> tuple[ModelKey, Scene] | None:
-        """The scene ``plan`` shows if it is built, else None. Raises NotAllowed as the store does."""
-        key = plan.key or self.built.get(plan.name)
+    def find_built(self, target: build.Target) -> tuple[ModelKey, Scene] | None:
+        """The scene the pinned ``target`` names if it is built, else None. Raises NotAllowed as
+        the store does."""
+        key = target.key or self.built.get(target.format())
         if key is None:
             return None
         kept = self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key)
         sc = scenes.open_stored(self.store, key) if build.is_fresh(kept) else None
         return (key, sc) if sc is not None else None
 
-    def start(self, plan: Plan) -> Job:
-        """The build of ``plan``: the one under way, or a new one (also after a failed one). It
-        runs in the context of the request that started it."""
+    def start(self, target: build.Target) -> Job:
+        """The build of the pinned ``target``: the one under way, or a new one (also after a failed
+        one). It runs in the context of the request that started it."""
         with self.lock:
-            job = self.jobs.get(plan.name)
+            job = self.jobs.get(target.format())
             if job and job.state != "error":
                 return job
-            job = self.jobs[plan.name] = Job(plan)
+            job = self.jobs[target.format()] = Job(target)
         ctx = contextvars.copy_context()
         threading.Thread(target=ctx.run, args=(self.run_job, job), daemon=True).start()
         return job
 
     def run_job(self, job: Job) -> None:
-        plan, progress = job.plan, Progress(job.board)  # type: ignore[arg-type]
+        target, progress = job.target, Progress(job.board)  # type: ignore[arg-type]
         with self.builds:
             job.state, job.t0 = "building", time.time()
             try:
-                if plan.key is not None:
-                    key = plan.key
-                else:
-                    with progress.step("fetching the commits"):
-                        key = plan.find()  # type: ignore[misc]
-                job.key = key
-                about = {k: v for k, v in plan.about.items() if v}
-                if isinstance(key, ChangeKey):
-                    build.fetch_change(self.store, self.sources, key, about={**about, "budget": self.budget},
-                                       run=self.run_step, progress=progress)
-                else:
-                    build.fetch_whole_model(self.store, self.sources, key, run=self.run_step, progress=progress)
-                self.built[plan.name] = key
+                job.key = build.resolve(target, self.sources, progress)  # known before it is built: tidy() leaves it
+                build.build(self.store, dataclasses.replace(target, kind="key", key=job.key), self.sources,
+                            about={"budget": self.budget}, run=self.run_step, progress=progress)
+                self.built[job.name] = job.key
                 job.state = "done"
             except Exception as exc:  # noqa: BLE001  # shown on the page; the server goes on
                 job.state, job.error = "error", str(exc) if isinstance(exc, (GitError, FetchError)) else f"{type(exc).__name__}: {exc}"
@@ -424,7 +403,7 @@ class Site:
             chosen = self.policy(retention.scan(self.work, KINDS))
             with self.lock:  # no build starts while what it uses may be going
                 active = [j for j in self.jobs.values() if j.state in ("waiting", "building")]
-                busy = {self.store.locate(k) for j in active if (k := j.plan.key or j.key)} if isinstance(self.store, DirectoryStore) else set()
+                busy = {self.store.locate(k) for j in active if (k := j.target.key or j.key)} if isinstance(self.store, DirectoryStore) else set()
                 held = self.sources.clones if isinstance(self.sources, LocalFirst) else self.sources
                 if isinstance(held, CloneCache):
                     busy |= held.list_held()
@@ -547,8 +526,8 @@ class Handler(SimpleHTTPRequestHandler):
         """The page of the target ``text``: the viewer if it is built, else a page following its build."""
         github_path = text is not None and text.startswith("https://github.com/")
         try:
-            plan = self.site.plan(text)
-            found = self.site.find_built(plan)
+            target = self.site.plan(text)
+            found = self.site.find_built(target)
         except (github.NotFound, NotAllowed):
             self.send_page(page("Not found, or private", PRIVATE.format(what=html.escape(what))), 404)
             return
@@ -562,10 +541,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_page(page("Nothing to show", NOTHING.format(what=html.escape(what), why=html.escape(str(exc)))), 404)
             return
         if found is not None:
-            self.send_page(viewer_page(found[0], plan.title))
+            self.send_page(viewer_page(found[0], describe(target)))
             return
-        job = self.site.start(plan)
-        self.send_page(page(plan.title, BUILDING.format(title=html.escape(plan.title)), job=plan.name,
+        job = self.site.start(target)
+        self.send_page(page(describe(target), BUILDING.format(title=html.escape(describe(target))), job=job.name,
                             status=html.escape(json.dumps(job.status()), quote=True)))
 
     def send_page(self, body: bytes, status: int = 200) -> None:

@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import pytest
 
-from nolli.build import fetch_change
+from nolli.build import _fetch_change
 from nolli.logic.sources import CloneCache, LocalRepository
 from nolli.model.keys import Repo
 from nolli.review import agent as reviewer
@@ -52,7 +52,7 @@ def dataset(tmp_path: Path) -> Path:
     git(r, "commit", "-q", "-m", "Add a cache")
     key = Repo("github.com/me/shop").make_change(base, git(r, "rev-parse", "HEAD"))  # as if built from '#7' on GitHub
     store = DirectoryStore(tmp_path / "data")
-    fetch_change(store, LocalRepository(r), key, about={"pr": 7, "title": "Add a cache"})
+    _fetch_change(store, LocalRepository(r), key, about={"pr": 7, "title": "Add a cache"})
     return store.locate(key)
 
 

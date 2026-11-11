@@ -238,7 +238,7 @@ UNCOMMITTED = "Uncommitted edits"  # the subject of a working tree's snapshot
 
 def _resolve_snapshot(repo: Path, rev: str) -> ChangeSpec:
     """One commit (or the working tree) as a whole: the target ``R`` or ``WORKTREE``."""
-    return describe(repo, ChangeSpec(head=_find_point(repo, rev)), rev)
+    return _describe(repo, ChangeSpec(head=_find_point(repo, rev)), rev)
 
 
 def _resolve_range(repo: Path, a: str | None, b: str | None, symmetric: bool) -> ChangeSpec:
@@ -258,7 +258,7 @@ def _resolve_range(repo: Path, a: str | None, b: str | None, symmetric: bool) ->
         what = f"{a or ''}{'...' if symmetric else '..'}{b or ''}"
         hint = f"; {b or 'HEAD'} is on {left}: {b or 'HEAD'}^! is its own change" if symmetric and not a else ""
         raise ChangeError(f"{what} is no change (both ends are {head[:7]}){hint}")
-    return describe(repo, ChangeSpec(head=head, base=base), b or "HEAD")
+    return _describe(repo, ChangeSpec(head=head, base=base), b or "HEAD")
 
 
 def _resolve_own(repo: Path, rev: str) -> ChangeSpec:
@@ -267,7 +267,7 @@ def _resolve_own(repo: Path, rev: str) -> ChangeSpec:
     parent = _first_parent(repo, head)
     if parent is None:
         raise ChangeError(f"{rev} has no parent; build it as a snapshot: {rev}")
-    return describe(repo, ChangeSpec(head=head, base=parent), rev)
+    return _describe(repo, ChangeSpec(head=head, base=parent), rev)
 
 
 def _resolve_adds(repo: Path, rev: str) -> ChangeSpec:
@@ -280,12 +280,12 @@ def _resolve_adds(repo: Path, rev: str) -> ChangeSpec:
         raise ChangeError(f"no default branch (origin/HEAD, main or master) to compare {rev!r} with; name both ends: <base>...{rev}")
     base = merge_base(repo, _find_commit(repo, main), head)
     if base != head:
-        return describe(repo, ChangeSpec(head=head, base=base), rev)
+        return _describe(repo, ChangeSpec(head=head, base=base), rev)
     parent = _first_parent(repo, head)
-    return describe(repo, ChangeSpec(head=head, base=parent), rev)
+    return _describe(repo, ChangeSpec(head=head, base=parent), rev)
 
 
-def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
+def _describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
     """``ch`` with its title and description from its commits (``rev``: what the user called its
     head): one commit gives its subject and body; several give the branch's name (or the
     range) and the list of their subjects."""

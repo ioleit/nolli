@@ -1,4 +1,4 @@
-"""What a target names (nolli/build.py: Target, resolve_target; nolli/logic/sources/git.py),
+"""What a target names (nolli/build.py: Target.from_string, Target.pin; nolli/logic/sources/git.py),
 on a small git history:
 
     main:    c1 - c2 ------- m (merge of feature, --no-ff)
@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 
 from nolli.cli import main
-from nolli.build import Target, resolve_target
-from nolli.logic.sources.git import WORKTREE, ChangeError, Revs, _default_branch
+from nolli.build import Target
+from nolli.logic.sources.git import WORKTREE, ChangeError, Revs, _default_branch, find_toplevel
 from nolli.model.keys import Repo
 from nolli.store import DirectoryStore
 
@@ -51,9 +51,18 @@ def repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     return r, c
 
 
+def pin(r: Path, text: str | None, review: bool = False) -> Target:
+    """``text`` pinned in the repository around ``r``, as the command line does."""
+    try:
+        local = find_toplevel(r)
+    except ChangeError:
+        local = None
+    return Target.from_string(text, local).pin(review=review)
+
+
 def ends(r: Path, text: str | None, review: bool = False) -> tuple[str | None, str]:
-    spec = resolve_target(text, r, r.parent / "clones", review=review).spec
-    return spec.base, spec.head
+    key = pin(r, text, review).key
+    return (key.base, key.head) if hasattr(key, "base") else (None, key.sha)
 
 
 def unmerge(r: Path, c: dict[str, str]) -> None:
@@ -90,10 +99,10 @@ def test_default_branch(repo):
 def test_nothing_is_the_branchs_committed_change(repo):
     r, c = repo
     unmerge(r, c)
-    spec = resolve_target(None, r, r.parent).spec
-    assert (spec.base, spec.head) == (c["c2"], c["f2"])
-    assert spec.title == "feature"
-    assert spec.description == f"2 commits:\n\n- Add f1 ({c['f1'][:7]})\n- Add f2 ({c['f2'][:7]})"
+    target = pin(r, None)
+    assert (target.key.base, target.key.head) == (c["c2"], c["f2"])
+    assert target.about["title"] == "feature"
+    assert target.about["description"] == f"2 commits:\n\n- Add f1 ({c['f1'][:7]})\n- Add f2 ({c['f2'][:7]})"
 
 
 def test_nothing_on_the_default_branch_is_an_error(repo):
@@ -106,7 +115,7 @@ def test_a_revision_is_a_snapshot(repo):
     r, c = repo
     assert ends(r, "main") == (None, c["m"])
     assert ends(r, c["f1"][:7]) == (None, c["f1"])
-    assert resolve_target("main", r, r.parent).key == resolve_target("main", r, r.parent).key.repo.make_commit(c["m"])
+    assert pin(r, "main").key == pin(r, "main").key.repo.make_commit(c["m"])
 
 
 def test_what_a_branch_adds(repo):
@@ -120,8 +129,8 @@ def test_what_a_branch_adds(repo):
 def test_own_change(repo):
     r, c = repo
     assert ends(r, f"{c['m'][:7]}^!") == (c["c2"], c["m"])  # the merge commit: against its first parent
-    spec = resolve_target(f"{c['f1']}^!", r, r.parent).spec
-    assert (spec.base, spec.head, spec.title, spec.description) == (c["c2"], c["f1"], "Add f1", "Why f1 exists.")
+    target = pin(r, f"{c['f1']}^!")
+    assert (target.key.base, target.key.head, target.about["title"], target.about["description"]) == (c["c2"], c["f1"], "Add f1", "Why f1 exists.")
     with pytest.raises(ChangeError, match="no parent"):
         ends(r, f"{c['c1']}^!")
 
@@ -170,7 +179,7 @@ def test_worktree(repo):
     assert git(r, "show", f"{wt}:c1.py") == "X = 'edited'"
     assert git(r, "status", "--porcelain") == status and git(r, "for-each-ref") == refs  # the index and refs untouched
     assert ends(r, f"HEAD..{WORKTREE}") == (c["m"], wt)
-    assert resolve_target(f"HEAD..{WORKTREE}", r, r.parent).spec.title == "Uncommitted edits"
+    assert pin(r, f"HEAD..{WORKTREE}").about["title"] == "Uncommitted edits"
     (r / "new.py").write_text("Y = 2\n")
     assert ends(r, WORKTREE)[1] != wt
 
@@ -207,7 +216,7 @@ def test_build_and_the_older_shorthands(repo, tmp_path, capsys):
     assert built.parent == data and json.loads((built / "key.json").read_text())["head"] == c["m"]
     store, key = DirectoryStore.find_dataset(built)
     assert store.root == data.resolve() and key.sha == c["m"]
-    assert resolve_target(key.format_key(), r, data).key == key  # a key: nothing to resolve
+    assert Target.from_string(key.format_key()).pin().key == key  # a key: stable already
     assert main(["build", str(built), "--data", str(tmp_path / "other")]) == 0  # a dataset directory: nothing to build
     assert Path(capsys.readouterr().out.strip()) == built.resolve()
 
