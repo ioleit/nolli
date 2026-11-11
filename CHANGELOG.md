@@ -8,7 +8,7 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 - **`nolli/logic/` holds what nolli computes between a repository and what it shows**:
   `extractors`, `sources`, `transformations` and `formats` moved under it from `nolli/`
-  (`dev/examples/logic.py` had proposed the directory; `app.py` now proposes the next one
+  (`dev/examples/logic.py` had proposed the directory; `propose_package.py` now proposes the next one
   the same way). Imports change accordingly: `nolli.logic.transformations`, and so on.
 - **`projection` is a package**: `reading`, `rollup` and `unfold`, used by the projection
   only, moved into `nolli/logic/transformations/projection/`. `projection.fold` and
@@ -84,7 +84,7 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   edge comes from an overlay: what extraction said, by shape (`files`, `symbols`,
   `references`, `externals`), plus `change`, `verdicts`, `label`, `hover` and `review`.
   An overlay's values can be kept in the store and read back instead of computed
-  (`precompute_overlay_values`, `caching_overlay`; `dev/examples/cool.py`). Merge and projection take a scene and return one, whose elements
+  (`precompute_overlay_values`, `caching_overlay`; `dev/examples/custom_overlay.py`). Merge and projection take a scene and return one, whose elements
   refer to what they stand for. The packages:
   - `nolli/model` (with `scene.py`), `nolli/keys.py`;
   - `nolli/extractors` (with `facts.py`, the builder extraction writes into);

@@ -1,5 +1,5 @@
 """A custom overlay on every node and edge of a checkout, kept so it is not computed twice:
-python dev/examples/cool.py <nolli checkout>
+python dev/examples/custom_overlay.py <nolli checkout>
 
 An example of nolli as a library. It opens a scene of the files as they are and defines an
 overlay of its own, which says something about each element and handles folded boxes. The

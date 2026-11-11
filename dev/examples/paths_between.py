@@ -1,4 +1,4 @@
-"""Every path from nolli/datasets.py to nolli/store/, as Mermaid: python dev/examples/paths.py <nolli checkout>
+"""Every path from nolli/datasets.py to nolli/store/, as Mermaid: python dev/examples/paths_between.py <nolli checkout>
 
 An example of nolli as a library: a scene of the files as they are, folded to module level by a
 predicate, a custom transformation that keeps the boxes on a path, and the result as Mermaid."""

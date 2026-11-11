@@ -1,5 +1,5 @@
 """nolli with the layers above its logic under one proposed parent, app/, as Mermaid:
-python dev/examples/app.py <nolli checkout>
+python dev/examples/propose_package.py <nolli checkout>
 
 An example of nolli as a library: a scene of the files as they are, a custom transformation
 that proposes a directory that is not there and moves the command line, the datasets and the

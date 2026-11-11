@@ -1,5 +1,5 @@
 """Every dependency of the command line and the server that skips datasets, build and scenes:
-python dev/examples/skips.py <nolli checkout>
+python dev/examples/layer_skips.py <nolli checkout>
 
 An example of nolli as a library that draws nothing. It opens a scene of the files as they
 are and reads its edges directly, each with the references the extractors found behind it. nolli/model/ is
