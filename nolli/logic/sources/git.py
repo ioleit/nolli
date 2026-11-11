@@ -36,7 +36,7 @@ def has_commit(repo: Path, sha: str) -> bool:
 
 
 def find_toplevel(path: Path) -> Path:
-    """The root of the git working tree that ``path`` is in."""
+    """Return the root of the git working tree that ``path`` is in; raise ChangeError if it is in none."""
     try:
         return Path(run_git(path, "rev-parse", "--show-toplevel").strip())
     except GitError:
@@ -44,7 +44,7 @@ def find_toplevel(path: Path) -> Path:
 
 
 def _find_commit(repo: Path, rev: str) -> str:
-    """The full sha of a revision that names a commit."""
+    """Return the full sha of the commit a revision names; raise ChangeError if it names none."""
     try:
         return run_git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
     except GitError:
@@ -66,7 +66,7 @@ def find_remote(repo: Path, name: str = "origin") -> str | None:
 
 
 def list_tracked_files(repo: Path) -> list[Path]:
-    """The files git tracks under ``repo`` (all files, for a directory that is no repository)."""
+    """List the files git tracks under ``repo``, or all files if the directory is no repository."""
     try:
         out = subprocess.run(["git", "-C", str(repo), "ls-files", "-z"], check=True, capture_output=True).stdout
         files = [Path(p.decode("utf-8", "surrogateescape")) for p in out.split(b"\0") if p]
@@ -76,7 +76,7 @@ def list_tracked_files(repo: Path) -> list[Path]:
 
 
 def export_commit(repo: Path, sha: str, dest: Path) -> None:
-    """The tracked files of commit ``sha`` under ``dest`` (``git archive``), without touching
+    """Write the tracked files of commit ``sha`` under ``dest`` with ``git archive``, without touching
     the repository."""
     data = subprocess.run(["git", "-C", str(repo), "archive", "--format=tar", sha], check=True, capture_output=True).stdout
     with tarfile.open(fileobj=io.BytesIO(data)) as tar:
@@ -109,9 +109,9 @@ class FileChange:
 
 
 def list_file_changes(repo: Path, base: str, head: str) -> dict[str, FileChange]:
-    """What ``git diff -M -U0`` says changed between two commits, by head path (base path for
-    a deletion): git's status (A/M/D/R), the old path of a rename, and the hunks with the line
-    numbers of every changed line."""
+    """Return what ``git diff -M -U0`` says changed between two commits, keyed by head path (base
+    path for a deletion). Each entry has git's status (A/M/D/R), the old path of a rename, and the
+    hunks with the line numbers of every changed line."""
     out = run_git(repo, "diff", "-M", "-U0", "--no-color", "--no-ext-diff", base, head)
     changes: dict[str, FileChange] = {}
     cur: FileChange | None = None
@@ -171,7 +171,7 @@ class ChangeSpec:
 
 
 def _default_branch(repo: Path) -> str | None:
-    """The default branch as a revision (``origin/main``, ``main``, …), or None."""
+    """Return the default branch as a revision (``origin/main``, ``main``, …), or None if there is none."""
     try:
         ref = run_git(repo, "symbolic-ref", "-q", "refs/remotes/origin/HEAD").strip()
         if ref:
@@ -206,16 +206,16 @@ WORKTREE = "WORKTREE"  # the revision that names the files on disk (_snapshot_wo
 
 
 def _find_point(repo: Path, rev: str) -> str:
-    """The full sha of a revision, or of the working tree's snapshot for ``WORKTREE``."""
+    """Return the full sha of a revision, or of the working tree's snapshot for ``WORKTREE``."""
     return _snapshot_worktree(repo) if rev == WORKTREE else _find_commit(repo, rev)
 
 
 def _snapshot_worktree(repo: Path) -> str:
-    """The files on disk as a commit: HEAD plus uncommitted edits, staged or not, and untracked
-    files that are not ignored. The commit is written to the repository's objects only (no
-    branch, ref or index changes; git prunes it as any unreferenced object), with fixed author,
-    date and message, so the same files on the same HEAD give the same sha. Without edits it is
-    HEAD itself."""
+    """Commit the files on disk and return the commit's sha. The files are HEAD plus uncommitted
+    edits, staged or not, and untracked files that are not ignored. The commit is written to the
+    repository's objects only (no branch, ref or index changes; git prunes it as any unreferenced
+    object), with fixed author, date and message, so the same files on the same HEAD give the
+    same sha. Without edits it is HEAD itself."""
     if subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "-q", WORKTREE], capture_output=True, check=False).returncode == 0:
         raise ChangeError(f"{repo} has a branch or tag called {WORKTREE}, which nolli reads as the files on disk; "
                           f"rename it, or name it as refs/heads/{WORKTREE}")
@@ -271,9 +271,10 @@ def resolve_own(repo: Path, rev: str) -> ChangeSpec:
 
 
 def resolve_adds(repo: Path, rev: str) -> ChangeSpec:
-    """What R adds, as ``nolli agent brief R`` has always read a single revision: from where R
-    left the default branch to R; if R is on the default branch already (a commit, or a merged
-    pull request's merge commit), R against its first parent; a root commit as a whole."""
+    """Return the change that revision R adds, running from where R left the default branch to R.
+    If R is on the default branch already (a commit, or a merged pull request's merge commit),
+    compare R with its first parent; take a root commit as a whole. Raise ChangeError if there
+    is no default branch."""
     head = _find_point(repo, rev)
     main = _default_branch(repo)
     if main is None:

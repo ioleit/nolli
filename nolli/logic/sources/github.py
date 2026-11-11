@@ -37,9 +37,9 @@ class Target:
 
 
 def parse_target(text: str | None, local: Path | None = None) -> Target | None:
-    """The GitHub target ``text`` names, None if it names none: a URL of github.com, or
-    ``#<n>`` (also ``pr:<n>``, ``pr/<n>``) for a pull request of ``local``'s GitHub remote
-    (``upstream``, else ``origin``, else any). Raises ChangeError for a github.com URL nolli
+    """Parse ``text`` as a GitHub target and return it, or None if it names none. A target is a
+    github.com URL, or ``#<n>`` (also ``pr:<n>``, ``pr/<n>``) for a pull request of ``local``'s
+    GitHub remote (``upstream``, else ``origin``, else any). Raise ChangeError for a github.com URL nolli
     cannot build, or ``#<n>`` without a GitHub remote."""
     if not text:
         return None
@@ -72,7 +72,7 @@ def parse_target(text: str | None, local: Path | None = None) -> Target | None:
 
 
 def _remotes(repo: Path) -> dict[str, tuple[str, str]]:
-    """The repository's GitHub remotes: name -> (owner, repo)."""
+    """Return the repository's GitHub remotes as a map from remote name to (owner, repo)."""
     out = {}
     for line in git.run_git(repo, "remote", "-v").splitlines():
         name, url, *_ = line.split()
@@ -99,8 +99,9 @@ class Answer:
 
 
 def ask_target(t: Target, get: Callable[[str], dict] | None = None) -> Answer:
-    """What ``t`` names, as GitHub's REST API says. ``get``: how a path is asked (default:
-    api(), with the token of whoever runs nolli); a server passes its own (its token, its cache)."""
+    """Ask GitHub's REST API what ``t`` names and return its answer. ``get`` fetches a path; it
+    defaults to api() with the token of whoever runs nolli, and a server passes its own (with
+    its token and its cache)."""
     get = get or api
     path = f"repos/{t.owner}/{t.name}"
     if t.kind == "pull":
@@ -138,7 +139,8 @@ def fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
 
 
 def finish_target(t: Target, a: Answer, clone: Path) -> ChangeSpec:
-    """The change (or snapshot) ``a`` names, in ``clone``, which has its commits."""
+    """Return the change (or snapshot) that ``a`` names, reading what it needs from ``clone``,
+    which has its commits. Raise ChangeError if head and base give no change."""
     if a.base is None:
         return ChangeSpec(head=a.head, title=a.title) if a.title else git.describe(clone, ChangeSpec(head=a.head), a.head)
     base = git.merge_base(clone, a.base, a.head) if a.merge else a.base
@@ -158,9 +160,8 @@ class NotFound(ChangeError):
 
 
 def find_token() -> str | None:
-    """A GitHub token, for when one is needed (a private repository, or more than 60 requests
-    an hour): $GH_TOKEN or $GITHUB_TOKEN, else the gh CLI's if it is logged in; None if
-    there is none."""
+    """Find a GitHub token, which is needed for a private repository or more than 60 requests an
+    hour. Return $GH_TOKEN or $GITHUB_TOKEN, else the gh CLI's token if it is logged in, else None."""
     t = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if t or not shutil.which("gh"):
         return t

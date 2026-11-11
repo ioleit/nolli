@@ -65,11 +65,13 @@ class Source:
         return self.kind(x) == "file" and bool(self.attrs(x).get("module"))
 
     def is_init(self, x: str) -> bool:
-        """A package body: the folder's own code (``__init__.py``, ``index.ts``)."""
+        """Tell whether ``x`` is a package body, the file with a folder's own code
+        (``__init__.py``, ``index.ts``)."""
         return self.has(x) and self.kind(x) == "file" and bool(self.attrs(x).get("body"))
 
     def chain_end(self, x: str, hidden: set[str]) -> str:
-        """A run of folders each holding one folder, drawn as one box: its last folder."""
+        """Follow ``x`` down a run of folders that each hold one folder, which is drawn as one box, and
+        return the run's last folder. Hidden children and package bodies are not counted."""
         while self.kind(x) == "directory":
             kids = [c for c in self.children(x) if c not in hidden and not self.is_init(c)]
             if len(kids) == 1 and self.kind(kids[0]) == "directory":
@@ -116,8 +118,8 @@ class Ctx:
         return (self.scene.find_element(x).get("projection") or {}).get("utilities_used") or []
 
     def name(self, x: str) -> str:
-        """The name of a box in hover text. A directory's name ends in "/", and a module's own
-        code is "<module> (own code)". ``x`` may be a plain string, since overlay values such
+        """Return the name of a box as hover text writes it. A directory's name ends in "/", and a
+        module's own code is "<module> (own code)". ``x`` may be a plain string, since overlay values such
         as ``utilities_used`` hold addresses as strings."""
         x = EntityId(x)
         if x.is_own_code:
@@ -131,8 +133,8 @@ class Ctx:
         return text + "/" if e.kind == "directory" and not text.endswith("/") else text
 
     def shown_children(self, x: str) -> list[str]:
-        """What unfolding x draws: children not hidden, a package's __init__ replaced by its
-        classes, single-child folder chains collapsed (rollup.visible_from_expanded)."""
+        """List what unfolding x draws: the children that are not hidden, with a package's __init__
+        replaced by its classes and single-child folder chains collapsed (rollup.visible_from_expanded)."""
         g, out = self.g, []
         kind = g.kind(x)
         for c in g.children(x):
@@ -185,12 +187,14 @@ NOUN_ORDER = ["subpackage", "folder module", "subfolder", "module", "class", "in
 
 
 def _language(ctx: Ctx, x: str) -> str | None:
-    """The name in text of an entity's language ("TypeScript"), if it was extracted."""
+    """Return the name of an entity's language as text writes it ("TypeScript"), or None if it was
+    not extracted."""
     return (ctx.languages or {}).get(ctx.g.attrs(x).get("language") or "")
 
 
 def _body_of(ctx: Ctx, x: str) -> str | None:
-    """A folder's package body (``__init__.py``, ``index.ts``)."""
+    """Return a folder's package body (``__init__.py``, ``index.ts``), or None if ``x`` is not a
+    folder or has none."""
     m = ctx.g
     return next((c for c in m.children(x) if m.is_init(c)), None) if m.kind(x) == "directory" else None
 
@@ -200,7 +204,7 @@ def _is_symbol(ctx: Ctx, x: str) -> bool:
 
 
 def _noun(ctx: Ctx, x: str) -> str:
-    """What a box counts as inside its folder."""
+    """Return what a box counts as inside its folder, such as "subpackage", "module" or "class"."""
     e = ctx.node(x)
     body = _body_of(ctx, x)
     if body:
@@ -212,13 +216,14 @@ def _noun(ctx: Ctx, x: str) -> str:
 
 
 def _kind(ctx: Ctx, x: str) -> str | None:
-    """What a folder is, for "<name> is <kind> with …": "a Python package"."""
+    """Say what a folder is, such as "a Python package", for the sentence "<name> is <kind> with …".
+    Return None if it has no package body in an extracted language."""
     body = _body_of(ctx, x)
     return f"a {_language(ctx, body)} {ctx.g.attrs(body)['body']}" if body and _language(ctx, body) else None
 
 
 def _describe(ctx: Ctx, x: str) -> list[str] | None:
-    """The first sentence for a module or a class or type."""
+    """Write the first sentence for a module or a class or type; return None for anything else."""
     e = ctx.node(x)
     lang = _language(ctx, x)
     if ctx.g.is_module(x) and lang:
@@ -240,7 +245,7 @@ def _describe(ctx: Ctx, x: str) -> list[str] | None:
 
 
 def _doc(ctx: Ctx, x: str) -> str | None:
-    """The doc comment's summary: a package's from its package body."""
+    """Return the summary of a box's doc comment, taking a package's from its package body."""
     body = _body_of(ctx, x)
     if body or ctx.g.is_module(x) or _is_symbol(ctx, x):
         return ctx.node(body or x).attrs.get("doc")
@@ -248,8 +253,9 @@ def _doc(ctx: Ctx, x: str) -> str | None:
 
 
 def _own_code(ctx: Ctx, owner: str) -> list[str] | None:
-    """The own-code dot of a module (what it holds outside its classes and types) or of a
-    package (what its package body defines and re-exports)."""
+    """Describe the own-code dot of a module (what it holds outside its classes and types) or of a
+    package (what its package body defines and re-exports), one sentence per line. Return None
+    for anything else."""
     body = _body_of(ctx, owner)
     if not body and not ctx.g.is_module(owner):
         return None
@@ -322,7 +328,8 @@ class Dependencies:
         self.deployed: dict[str, set[str]] = defaultdict(set)
 
         def boxes(code: str):
-            """The drawn boxes holding code (itself included), unless it is hidden."""
+            """Return the drawn boxes holding ``code`` (itself included), or none if it or a box
+            around it is hidden."""
             chain, cur = [], code
             while cur is not None:
                 if cur in ctx.hidden:
@@ -375,7 +382,7 @@ class Dependencies:
 
 
 def _node_info(ctx: Ctx, deps: Dependencies, x: str, used_by: int = 0) -> str:
-    """What a box's hover card says, as Markdown."""
+    """Write the text of a box's hover card as Markdown."""
     return prose.paragraphs(_node_lines(ctx, deps, x, used_by))
 
 
@@ -435,7 +442,7 @@ PLAIN = {
 
 
 def _edge_info(ctx: Ctx, e) -> str:
-    """What an edge's hover card says, as Markdown."""
+    """Write the text of an edge's hover card as Markdown."""
     lines = _edge_lines(ctx, e)
     types = getattr(e, "types", 0)
     if e.subkind == "import" and types and types == e.count:
@@ -474,7 +481,8 @@ class EdgeFacts:
 
 
 def _make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
-    """What every description of one projected scene shares."""
+    """Build the context and the dependencies of the drawn boxes, which every description of one
+    projected scene shares."""
     src = scene.sources["source"]
     meta = scene.model.meta.get("projection", {})
     ctx = Ctx(Source(src), scene, set(meta.get("expanded", [])), set(meta.get("hidden_nodes", [])),

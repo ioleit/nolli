@@ -33,7 +33,7 @@ def _instructions(text: str) -> list[tuple[str, str]]:
 
 
 def run(ctx: Context) -> None:
-    """Adds an image per Dockerfile (unless one exists already) and:
+    """Add an image per Dockerfile (unless one exists already) and:
 
     - ``COPY``/``ADD`` sources that exist in the repository are ``allocate``
       directory/file -> image (subkind copies). Sources are relative to the image's

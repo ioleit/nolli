@@ -19,7 +19,7 @@ def _summarize(scene: Scene) -> dict:
 
 
 def make_report(scene: Scene, drawn: Scene) -> dict:
-    """The ``report.json`` of a model. It holds the model's meta, the number of nodes and
+    """Build the ``report.json`` of a model. It holds the model's meta, the number of nodes and
     edges of each kind, the size of ``drawn``, the scene's default projection, the unresolved
     references, and for a change how much changed."""
     meta = scene.model.meta

@@ -33,7 +33,8 @@ class Repo:
         return ChangeKey(self, base, head)
 
     def format_slug(self) -> str:
-        """A short name: ``owner_repo`` on GitHub, else the directory's name."""
+        """Return a short name for the repository, ``owner_repo`` for one on GitHub and the
+        directory's name otherwise."""
         parts = self.url.rstrip("/").split("/")
         return f"{parts[1]}_{parts[2]}" if parts[0] == "github.com" and len(parts) == 3 else parts[-1]
 
@@ -42,7 +43,7 @@ class Repo:
         return f"https://{self.url}" if self.url.startswith("github.com/") else None
 
     def format_name(self) -> str:
-        """The repository's own name, ``repo`` of ``github.com/owner/repo``."""
+        """Return the repository's own name, the last part of its URL: ``repo`` for ``github.com/o/repo``."""
         return self.url.rstrip("/").split("/")[-1]
 
 
@@ -53,14 +54,14 @@ class ModelKey:
     repo: Repo
 
     def format_key(self) -> str:
-        """The key as text: ``Model.key``, which a model's maps are kept by, and what the viewer's
-        API names a model by (``parse`` reads it back)."""
+        """Return the key as text. A model's maps are kept by the text of its ``Model.key``, the
+        viewer's API names a model by it, and ``parse`` reads it back."""
         raise NotImplementedError
 
     @classmethod
     def parse(cls, text: str) -> ModelKey:
-        """The key whose ``format_key()`` is ``text``: ``<repo>@<sha>``, ``<repo>@<base>..<head>``,
-        anything else a StringKey."""
+        """Parse ``text`` as ``format_key()`` writes it: ``<repo>@<sha>`` gives a CommitKey,
+        ``<repo>@<base>..<head>`` a ChangeKey, and anything else a StringKey."""
         repo, at, rest = text.rpartition("@")
         if not at or not repo or not rest:
             return StringKey(text)
@@ -68,7 +69,7 @@ class ModelKey:
         return Repo(repo).make_change(base, head) if dots else Repo(repo).make_commit(rest)
 
     def to_dict(self) -> dict:
-        """The key as JSON (``key.json``)."""
+        """Return the key as a JSON-ready dict, as it is written to ``key.json``."""
         raise NotImplementedError
 
     @classmethod
@@ -87,7 +88,7 @@ class CommitKey(ModelKey):
     sha: str  # full
 
     def make_change_to(self, head: str) -> ChangeKey:
-        """The change from this commit to ``head``, in the same repository."""
+        """Return the key of the change from this commit to ``head`` in the same repository."""
         return ChangeKey(self.repo, self.sha, head)
 
     def format_key(self) -> str:

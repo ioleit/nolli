@@ -19,7 +19,7 @@ NAMES_MAX = 60  # names kept per list (functions, constants, re-exports)
 
 
 def _declaration(stmt):
-    """The declaration a top-level statement makes (unwrapping ``export``, ``export
+    """Return the declaration a top-level statement makes (unwrapping ``export``, ``export
     default`` and ``declare``), or the statement itself."""
     if stmt.type == "export_statement":
         d = stmt.child_by_field_name("declaration") or next((c for c in stmt.named_children if c.type in DECLS), None)
@@ -39,14 +39,14 @@ def _is_doc(n) -> bool:
 
 
 def _doc_comment(stmt) -> str | None:
-    """The ``/** ... */`` comment right before a statement."""
+    """Return the text of the ``/** ... */`` comment right before a statement, or None."""
     prev = stmt.prev_sibling
     return _doc_text(prev) if _is_doc(prev) and stmt.start_point[0] - prev.end_point[0] <= 1 else None
 
 
 def _file_doc(root) -> str | None:
-    """A file's leading ``/** ... */`` comment, unless it belongs to the declaration right
-    below it."""
+    """Return the text of a file's leading ``/** ... */`` comment, unless it belongs to the
+    declaration right below it."""
     first = root.named_children[0] if root.named_children else None
     if not _is_doc(first):
         return None
@@ -57,7 +57,7 @@ def _file_doc(root) -> str | None:
 
 
 def _doc_text(comment) -> str | None:
-    """A doc comment's first paragraph on one line, without the ``@tags``, cut at DOC_MAX
+    """Return a doc comment's first paragraph on one line, without the ``@tags``, cut at DOC_MAX
     characters."""
     lines = [ln.strip().lstrip("*").strip() for ln in comment.text.decode("utf-8", "replace")[3:-2].splitlines()]
     para: list[str] = []
@@ -122,9 +122,9 @@ def _references(node, bindings: dict[str, tuple]) -> dict[tuple, list[int]]:
 
 
 def _own_code(root, is_body: bool, symbol_lines: int, total_lines: int | None, reexports: list[str]) -> dict:
-    """What a module holds outside its classes and types, for the hover text on its
-    own-code dot: top-level functions (declarations and ``const f = () => ...``) and
-    constants (UPPER_CASE) in source order, the lines outside its symbols, and for a
+    """Collect what a module holds outside its classes and types; the hover text on its own-code
+    dot shows it. Return the top-level functions (declarations and ``const f = () => ...``) and
+    constants (UPPER_CASE) in source order, the number of lines outside its symbols, and for a
     package body (``index.ts``) the names it re-exports."""
     functions: list[str] = []
     constants: list[str] = []

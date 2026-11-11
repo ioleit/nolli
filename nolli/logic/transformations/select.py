@@ -10,8 +10,8 @@ from nolli.model.scene import Scene
 
 
 def select(scene: Scene, keep: Iterable[Key]) -> Scene:
-    """The part of ``scene`` with the nodes ``keep`` names and the edges between them (an
-    edge in ``keep`` too), each standing for itself there (its ``source``)."""
+    """Return the part of ``scene`` with the nodes ``keep`` names and the edges between them (an
+    edge in ``keep`` too). Each element stands for itself in ``scene``, its ``source``."""
     model, keep = scene.model, set(keep)
     entities = [x for x in model.entities.values() if x.id in keep]
     edges = [e for e in model.edges if e.src in keep and e.dst in keep]

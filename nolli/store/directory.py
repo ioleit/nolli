@@ -23,9 +23,9 @@ MODEL_FORMAT = 3  # of model.json; a model of another format is built again, nev
 
 
 def _format_dir_name(key: ModelKey) -> str:
-    """The directory a model is kept in: ``<owner>_<repo>-<sha7>`` for a commit,
-    ``<owner>_<repo>-<base7>-<head7>`` for a change (the directory's name for a repository
-    not on GitHub)."""
+    """Return the name of the directory a model is kept in: ``<owner>_<repo>-<sha7>`` for a
+    commit, ``<owner>_<repo>-<base7>-<head7>`` for a change (with the directory's name in place
+    of ``<owner>_<repo>`` for a repository not on GitHub), and the key's text for any other key."""
     if isinstance(key, ChangeKey):
         return f"{key.repo.format_slug()}-{key.base[:7]}-{key.head[:7]}"
     if isinstance(key, CommitKey):
@@ -56,10 +56,10 @@ class DirectoryStore(OverlayStore):
         self.cache: dict[Path, tuple[tuple[int, int], object]] = {}  # file -> (inode, mtime), what it parsed to
 
     def check(self, repo: Repo) -> None:
-        """Raises NotAllowed unless the current request may read ``repo``: everyone may, here."""
+        """Raise NotAllowed unless the current request may read ``repo``; this store lets everyone read."""
 
     def locate(self, key: ModelKey) -> Path:
-        """The model's directory (existing or not), for code that works with its files."""
+        """Return the directory of the model with ``key``, whether it exists yet or not."""
         self.scan()
         return self.index.get(key) or self.root / _format_dir_name(key)
 
@@ -88,7 +88,8 @@ class DirectoryStore(OverlayStore):
             self.index, self.names, self.places = index, names, places
 
     def find_key(self, name: str) -> ModelKey | None:
-        """The key of the model in the directory ``name`` under the root, None if there is none."""
+        """Return the key of the model in the directory ``name`` under the root, or None if there is
+        none. Rescan the root if the directory was written since the last scan."""
         if not name or "/" in name or name.startswith("."):
             return None
         self.scan()
@@ -116,7 +117,7 @@ class DirectoryStore(OverlayStore):
         return value
 
     def load_model(self, key: ModelKey) -> Model | None:
-        """A commit's model; a change's merged model, if it was kept with the change."""
+        """Return a commit's model, or a change's merged model if it was kept with the change."""
         self.check(key.repo)
         self.scan()
         d = self.places.get(key.format_key())
@@ -178,7 +179,7 @@ class DirectoryStore(OverlayStore):
         return DirectoryMaps(self, name)
 
     def list_map_names(self, model_key: str) -> list[str]:
-        """The maps kept for a model: the files under its ``overlays/``."""
+        """Return the names of the maps kept for a model, one per file under its ``overlays/``."""
         if not _is_kept_here(model_key):
             return []
         self.check(Repo(model_key.rpartition("@")[0]))
@@ -239,17 +240,18 @@ class DirectoryMaps:
 
 
 def _dump_model(model: Model) -> dict:
-    """A model's ``model.json`` form: its structure. What a model made from others stands for
-    there is its scene's, said again when the scene is made (``merge.union`` for a kept change)."""
+    """Return a model's structure as written to ``model.json``. What a model made from others
+    stands for in them is not written; it belongs to its scene and is worked out again when the
+    scene is made (``merge.union`` for a kept change)."""
     return {"format": MODEL_FORMAT, "key": model.key.format_key(), "meta": model.meta,
             "nodes": {x: model.entities[x].kind for x in sorted(model.entities)},
             "edges": [[e.kind, e.src, e.dst, e.subkind] for e in model.edges]}
 
 
 def _parse_model(d: dict) -> Model:
-    """A model from its ``model.json`` form, which carries its ``format``; another format
-    raises ``FormatError`` rather than be misread. Its key is a ``StringKey`` of the text kept:
-    the store sets the key it read the model by."""
+    """Parse a model from its ``model.json`` form, raising ``FormatError`` for another format
+    rather than misread it. The model's key is a ``StringKey`` of the text kept; the store sets
+    the key it read the model by."""
     if d.get("format") != MODEL_FORMAT:
         raise maps_lib.FormatError(f"model.json of format {d.get('format')!r}, this nolli reads {MODEL_FORMAT}")
     return Model(StringKey(d.get("key", "")), (Entity(x, k) for x, k in d["nodes"].items()), (Relation(*e) for e in d["edges"]),
@@ -274,8 +276,9 @@ def write_commit(d: Path, key: CommitKey, model: Model, maps: Mapping[str, Mappi
 
 
 def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str, Mapping[Key, dict]], model: Model | None = None) -> None:
-    """A change's directory (``DirectoryStore``) at ``d``, which exists; ``model``: the change's
-    merged model (``nolli/logic/transformations/merge.py``), kept so it is not merged again on every read."""
+    """Write a change's directory (as ``DirectoryStore`` lays it out) into ``d``, which must exist.
+    ``model`` is the change's merged model (``nolli/logic/transformations/merge.py``); it is kept
+    so that it is not merged again on every read."""
     (d / "key.json").write_text(json.dumps({"format": FORMAT, **key.to_dict()}))
     (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": about}, indent=1))
     if model is not None:
@@ -288,8 +291,8 @@ def write_change(d: Path, key: ChangeKey, about: dict, sides, maps: Mapping[str,
 
 
 def _read_key(d: Path) -> ModelKey | None:
-    """The key of a model directory (its key.json), None for anything else (another format
-    included)."""
+    """Read the key of a model directory from its key.json; return None for anything else,
+    including a key.json of another format."""
     try:
         j = json.loads((d / "key.json").read_text())
         return keys.ModelKey.from_dict(j) if j.get("format") == FORMAT else None

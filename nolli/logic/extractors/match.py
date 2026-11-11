@@ -25,8 +25,8 @@ def _prune_unresolved(ctx: Context) -> None:
 
 
 def run_all(ctx: Context) -> None:
-    """Runs each language's resolvers first (``Language.resolvers``: imports to files or
-    external packages, references to symbols), then binds API calls to endpoints
+    """Run each language's resolvers first (``Language.resolvers``: imports to files or
+    external packages, references to symbols), then bind API calls to endpoints
     (heuristic, per protocol; ``api.resolve``). Placeholders that cannot be bound stay
     in the model as ``unresolved`` entities; placeholders bound everywhere are removed."""
     for _, fn in extractors.all_resolvers():

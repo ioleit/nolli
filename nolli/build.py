@@ -38,14 +38,15 @@ def run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
 
 
 def extract(repo: Path, config: dict | None = None, progress: Progress | None = None, key: ModelKey = StringKey()) -> tuple[Model, Maps]:
-    """The model of the files under ``repo`` as they are (a working tree, or a checkout), and
-    what each extractor said about its nodes and edges."""
+    """Extract the model of the files under ``repo`` as they are (a working tree, or a checkout),
+    and return it with what each extractor said about its nodes and edges."""
     return _extract_facts(repo, config, progress).split(key)
 
 
 def _extract_facts(repo: Path, config: dict | None = None, progress: Progress | None = None) -> Facts:
-    """What the extractors found under ``repo``, before it is split into structure and maps
-    (``Facts``: entities and relations with their attributes, as the extractors wrote them)."""
+    """Run every extractor and the reference matching over ``repo`` and return what they found,
+    before it is split into structure and maps. The ``Facts`` hold entities and relations with
+    their attributes, as the extractors wrote them."""
     facts = Facts()
     progress = progress or Quiet()
     ctx = Context(repo=repo, model=facts, files=git.list_tracked_files(repo), config=config or {}, progress=progress)
@@ -69,8 +70,8 @@ def _extract_facts(repo: Path, config: dict | None = None, progress: Progress | 
 
 
 def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple[Model, Maps]:
-    """The model of commit ``sha`` of the git repository ``repo`` (its files, not a working
-    tree), its root named ``name``."""
+    """Extract the model of commit ``sha`` of the git repository ``repo`` from its files, not
+    from a working tree, and name its root ``name``."""
     with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
         with progress.step("checking out the commit"):
             git.export_commit(repo, sha, Path(tmp))
@@ -83,8 +84,8 @@ def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple
 
 
 def list_content(repo: Path, base: str, head: str, progress: Progress) -> dict[Key, dict]:
-    """The ``content`` map of a change: what git says changed in each file, by the file's
-    address (its head path; base path for a deletion)."""
+    """Return the ``content`` map of a change from ``base`` to ``head``. It gives what git says
+    changed in each file, keyed by the file's address (its head path; its base path for a deletion)."""
     with progress.step("comparing the commits"):
         return {EntityId.from_path(path): c.to_dict() for path, c in git.list_file_changes(repo, base, head).items()}
 
@@ -114,8 +115,8 @@ def _load_maps(store: MapStore, m: Model) -> Maps:
 
 def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, run: Run = run_here,
                        progress: Progress | None = None, rebuild: bool = False) -> tuple[Model, Maps]:
-    """The model of one commit and the maps kept for it: from the store, or extracted from
-    ``clone`` (which has the commit)."""
+    """Return the model of one commit and its maps, from the store if it holds a fresh one,
+    otherwise extracted from ``clone`` (which has the commit)."""
     progress = progress or Quiet()
     m = None if rebuild else store.load_model(commit)
     if m is not None and is_fresh(m):
@@ -127,7 +128,8 @@ def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, ru
 
 def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *, run: Run = run_here,
                       progress: Progress | None = None, rebuild: bool = False) -> Model:
-    """A repository at one commit, as the viewer shows a repository as a whole: kept in the store."""
+    """Return a repository's model at one commit from the store, building and storing it if it is
+    not there yet."""
     progress = progress or Quiet()
     m = None if rebuild else store.load_model(commit)
     if m is not None and is_fresh(m):
@@ -142,9 +144,10 @@ def fetch_whole_model(store: ModelStore, sources: Sources, commit: CommitKey, *,
 
 def fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, about: dict | None = None,
                  run: Run = run_here, progress: Progress | None = None, rebuild: bool = False) -> dict:
-    """A change: from the store, or built from its two commits (their models, from the store
-    if it has them) and git's hunks between them, and kept there. ``about``: what the change
-    says about itself (``pr``, ``title``, ``description``, ``budget``), kept with it."""
+    """Return a change's record from the store, or build it and keep it there. A change is built
+    from the models of its two commits (taken from the store if it has them) and git's hunks
+    between them. ``about`` is what the change says about itself (``pr``, ``title``,
+    ``description``, ``budget``) and is kept with it."""
     progress = progress or Quiet()
     kept = None if rebuild else store.load_change(change)
     if kept is not None and is_fresh(kept):

@@ -17,7 +17,7 @@ PERMISSION_KEY = re.compile(r"CORS|ORIGIN|ALLOWED|WHITELIST|TRUSTED", re.IGNOREC
 
 
 def run(ctx: Context) -> None:
-    """Adds what each docker-compose file says about its services:
+    """Add what each docker-compose file says about its services:
 
     - each service is a ``service`` in ``runtime:``, by the host name the other
       services reach it at (``runtime:db``);

@@ -159,15 +159,15 @@ def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | N
 
 
 def find_about(args: argparse.Namespace) -> dict:
-    """What --pr, --title and --description say about a change (build, diff), over what its
-    target says."""
+    """Collect what --pr, --title and --description say about a change (for build and diff) into
+    a dict, leaving out the ones not given; these take precedence over what the target says."""
     desc = getattr(args, "description", None)
     return {k: v for k, v in {"pr": getattr(args, "pr", None), "title": getattr(args, "title", None),
                               "description": Path(desc).read_text() if desc else None}.items() if v}
 
 
 def count_found(m) -> str:
-    """What a build found, in a few words."""
+    """Summarise what a build found in a few words, e.g. "12 files, 3 classes, 40 dependencies"."""
     kinds = m.count_nodes_by_kind()
     parts = [f"{m.meta.get('files') or kinds.get('file', 0)} files"]
     parts += [f"{kinds[k]} {k}{'es' if k == 'class' else 's'}" for k in ("class", "interface", "type", "enum", "service") if kinds.get(k)]
@@ -191,8 +191,9 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 
 def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
-    """The target built afresh into the directory -o with its extras (``datasets.write_dataset``):
-    what it says about itself and the report; None after saying why it could not be."""
+    """Build the target afresh into the directory given by -o, with its extras (see
+    ``datasets.write_dataset``), and return what it says about itself and its report. Print why
+    and return None if it cannot be built."""
     from .datasets import BUILD_ERRORS, write_dataset
 
     asked = resolve(args, cmd)

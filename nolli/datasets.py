@@ -85,8 +85,8 @@ class Datasets:
     # -- what is kept ------------------------------------------------------------
 
     def open_scene(self, key: ModelKey) -> Scene | None:
-        """The scene of a stored model: a change merged from its commits, or one commit. Raises
-        NotAllowed as the store does."""
+        """Open the scene of a stored model, either a change merged from its commits or a single
+        commit. Raise NotAllowed as the store does."""
         return open_change_scene(self.store, key) if isinstance(key, ChangeKey) else open_commit_scene(self.store, key)
 
     def is_built(self, key: ModelKey) -> bool:
@@ -107,51 +107,54 @@ class Datasets:
     # -- Projections ------------------------------------------------------------------
 
     def draw(self, scene: Scene, state: ProjectionSpec) -> Scene:
-        """The projection ``state`` asks for; a change's "changes" preset unfolds what it changed."""
+        """Project ``scene`` as ``state`` asks; for a change, the "changes" preset unfolds what it changed."""
         if state.preset == "changes" and state.focus is None and is_change(scene):
             state.focus = find_review_cut(scene)
         return transformations.apply(scene, projection.fold(state))
 
     def draw_json(self, scene: Scene, state: ProjectionSpec) -> dict:
-        """The projection as JSON."""
+        """Project ``scene`` as ``state`` asks and return the result as JSON."""
         return export_scene(self.draw(scene, state))
 
     def draw_mermaid(self, scene: Scene, state: ProjectionSpec, fade: bool = True) -> tuple[str, dict[str, str]]:
-        """The projection as Mermaid, and each Mermaid node id to the box it is."""
+        """Project ``scene`` as ``state`` asks and render it as Mermaid; also return a map from each
+        Mermaid node id to the box it draws."""
         drawn = self.draw(scene, state)
         return render(drawn, fade=fade), list_ids(drawn)
 
     def list_changes(self, scene: Scene) -> list[dict]:
-        """A change's numbered changes ([] for a commit)."""
+        """Return a change's numbered changes, or [] for a commit."""
         return list_changes(scene) if is_change(scene) else []
 
     def describe_verdicts(self, scene: Scene) -> list[dict]:
-        """A change's kept verdicts with what the viewer says about each."""
+        """Return a change's kept verdicts with what the viewer says about each, or [] for a commit."""
         return describe_verdicts(scene, self.load_verdicts(scene)) if is_change(scene) else []
 
     def read_verdicts(self, scene: Scene, text: str) -> list[dict]:
-        """A verdicts.json on the change's review diagram ids, read (ValueError if it is bad)."""
+        """Read a verdicts.json against the ids of the change's review diagram. Raise ValueError if it
+        is bad."""
         return read_verdicts(text, find_diagram_ids(scene))
 
     def draw_review(self, scene: Scene) -> Scene:
-        """The change as its review diagram draws it: every area that changed in source code
-        unfolded. The same for the same change and version of nolli, so verdicts on its ids
-        stay valid."""
+        """Project the change as its review diagram draws it, with every area that changed in source
+        code unfolded. The result is the same for the same change and version of nolli, so verdicts
+        on its ids stay valid."""
         budget = (scene.model.meta.get("change") or {}).get("budget") or DEFAULT_BUDGET
         spec = ProjectionSpec(budget=budget, preset="changes", focus=find_review_cut(scene))
         return transformations.apply(scene, projection.fold(spec))
 
     def make_review_diagram(self, scene: Scene) -> str:
-        """The review diagram (``review.mmd``)."""
+        """Render the change's review diagram as Mermaid (``review.mmd``)."""
         return render(self.draw_review(scene))
 
     def make_review_brief(self, scene: Scene, diagram: str | None = None) -> str:
-        """What a review agent gets (``review.md``): the diagram, how to answer, the change's description."""
+        """Write the brief a review agent gets (``review.md``), with the diagram, how to answer and the
+        change's description. ``diagram`` is rendered here if it is not given."""
         return make_brief(scene, diagram if diagram is not None else self.make_review_diagram(scene),
                           (scene.model.meta.get("change") or {}).get("description"))
 
     def make_report(self, scene: Scene) -> dict:
-        """The ``report.json`` of a model, its counts and the size of its default projection."""
+        """Make the ``report.json`` of a model, with its counts and the size of its default projection."""
         meta = scene.model.meta
         budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or DEFAULT_BUDGET
         return make_report(scene, self.draw(scene, ProjectionSpec(budget=budget)))
@@ -159,7 +162,7 @@ class Datasets:
     # -- a review's verdicts ---------------------------------------------------------
 
     def load_verdicts(self, scene: Scene) -> list[dict]:
-        """A change's kept verdicts, in their order."""
+        """Load a change's kept verdicts, in their order."""
         return parse_verdicts(self.store.open_maps("verdicts").load(scene.model.key.format_key()))
 
     def find_provenance(self, key: ModelKey) -> dict | None:
@@ -175,7 +178,8 @@ class Datasets:
         save_verdicts(self.store, key, verdicts, by)
 
     def recheck_verdicts(self, scene: Scene) -> tuple[list[dict] | None, list[str]]:
-        """The kept verdicts checked again against the review diagram (None without verdicts)."""
+        """Check the kept verdicts again against the review diagram and return (verdicts, problems);
+        the verdicts are None if none are kept."""
         kept = self.load_verdicts(scene)
         return self.check_verdicts(scene, json.dumps(kept)) if kept else (None, [])
 
@@ -201,8 +205,8 @@ class Target:
 
 
 def parse_target(text: str | None, local: Path | None = None) -> Target:
-    """The form of ``text`` (None: ``...HEAD``). ``local`` is the repository ``#<n>`` refers
-    to. Raises ChangeError for a github.com URL nolli cannot build."""
+    """Parse the form of the target ``text``; no text means ``...HEAD``. ``local`` is the repository
+    that ``#<n>`` refers to. Raise ChangeError for a github.com URL nolli cannot build."""
     if not text:
         return Target("range", head="HEAD", symmetric=True)
     if (Path(text).expanduser() / "key.json").is_file():
@@ -239,19 +243,19 @@ BUILD_ERRORS = (ChangeError, FetchError, GitError)  # what building from a local
 
 
 def find_repo(repo: Path) -> Repo:
-    """A local repository's key: its GitHub remote if it has one (the same commits there are
-    the same models), else its path."""
+    """Return a local repository's key: its GitHub remote if it has one (the same commits there
+    give the same models), else its path."""
     remote = find_remote(repo)
     found = Repo.from_remote(remote) if remote else None
     return found if found and found.format_remote() else Repo(str(repo.resolve()))
 
 
 def resolve_target(text: str | None, path: Path, clones: Path, review: bool = False) -> Asked:
-    """What the target ``text`` names, for the git repository around ``path`` (a target on
-    GitHub is fetched into it, objects only, or into a clone under ``clones`` when ``path`` is
-    in none). ``review`` (nolli agent brief): a single revision R is what R adds (``...R``, or
-    ``R^!`` if R is on the default branch), and anything that is no change is refused. Raises
-    ChangeError."""
+    """Resolve the target ``text`` against the git repository around ``path``. A target on GitHub
+    is fetched into that repository (objects only), or into a clone under ``clones`` when ``path``
+    is in no repository. With ``review`` (as for nolli agent brief), a single revision R means what
+    R adds (``...R``, or ``R^!`` if R is on the default branch), and anything that is not a change
+    is refused. Raise ChangeError."""
     try:
         local: Path | None = find_toplevel(path.resolve())
     except ChangeError:
@@ -274,8 +278,8 @@ def resolve_target(text: str | None, path: Path, clones: Path, review: bool = Fa
 
 
 def resolve_local(t: Target, local: Path, text: str | None = None, review: bool = False) -> Asked:
-    """A target of the local repository ``local`` (not a dataset, not on GitHub), resolved;
-    ``review`` as for resolve_target. Raises ChangeError."""
+    """Resolve a target of the local repository ``local`` (not a dataset, not on GitHub);
+    ``review`` means the same as for resolve_target. Raise ChangeError."""
     if t.kind == "snapshot" and review and t.head != WORKTREE:
         spec = resolve_adds(local, t.head)
     elif t.kind == "snapshot":
@@ -302,8 +306,8 @@ def _resolve_range(local: Path, t: Target, text: str | None, review: bool = Fals
 
 
 def _resolve_github(t: github.Target, local: Path | None, clones: Path) -> Asked:
-    """A target on GitHub: asked of GitHub's API, its commits fetched into ``local`` (objects
-    only) or into a clone under ``clones``."""
+    """Resolve a target on GitHub by asking GitHub's API, and fetch its commits into ``local``
+    (objects only), or into a clone under ``clones`` if there is no local repository."""
     answer = github.ask_target(t)
     repo = Repo(f"github.com/{t.owner}/{t.name}")
     shas = [s for s in (answer.base, answer.head) if s]
@@ -320,7 +324,7 @@ def _resolve_github(t: github.Target, local: Path | None, clones: Path) -> Asked
 
 
 def read_dataset_key(path: Path) -> ModelKey:
-    """The key of the dataset directory ``path``. Raises ChangeError if it has none this nolli reads."""
+    """Read the key of the dataset directory ``path``. Raise ChangeError if it has none this nolli reads."""
     store = DirectoryStore(path.parent)
     key = store.find_key(path.name)
     if key is None:
@@ -329,8 +333,8 @@ def read_dataset_key(path: Path) -> ModelKey:
 
 
 def write_extras(datasets: "Datasets", scene: Scene, out: Path) -> dict:
-    """What a dataset directory written on its own gets beside the model: report.json, and for a
-    change what a review agent reads (changes.json, review.mmd, review.md). Returns the report."""
+    """Write the files a standalone dataset directory gets beside the model: report.json, and for a
+    change what a review agent reads (changes.json, review.mmd, review.md). Return the report."""
     report = datasets.make_report(scene)
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
     if is_change(scene):
@@ -373,9 +377,9 @@ def write_dataset(asked: Asked, out: Path, about: dict, budget: int | None = Non
 
 
 def extract_directory(repo: Path, out: Path, budget: int | None = None) -> dict:
-    """The model of the files under ``repo``, a directory that is no git repository, written
-    to ``out`` with its extras; the report. (A git repository's files on disk are the target
-    ``WORKTREE``.)"""
+    """Extract the model of the files under ``repo``, a directory that is not a git repository,
+    write it to ``out`` with its extras and return the report. (For a git repository's files on
+    disk, use the target ``WORKTREE``.)"""
     key = Repo(str(repo.resolve())).make_commit("worktree")
     m, maps = extract(repo, key=key)
     if budget:

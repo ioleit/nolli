@@ -17,9 +17,9 @@ def _describe(key: Key, said: dict[str, Mapping[Key, dict]]) -> dict:
 
 
 def export_scene(scene: Scene) -> dict:
-    """A projected scene as JSON: every drawn box and edge with the properties the overlays
-    the viewer draws give it (``SHOWN``), under the overlay's name. What extraction said is
-    read by those, not shown as it is.
+    """Export a projected scene as JSON for the viewer. Each drawn box and edge carries the
+    properties given to it by the overlays the viewer draws (``SHOWN``), under each overlay's
+    name. What extraction said is read by those overlays, not shown as it is.
 
     Boxes come in drawing order, each naming its drawn parent. Ids are stable across states
     (addresses, ``<id>#`` for a module's own code, ``kind|src|dst|subkind`` for edges), so a

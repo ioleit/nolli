@@ -62,8 +62,8 @@ class Overlay:
         raise NotImplementedError
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """What it says about every node and edge of the scene's model, by key; those it says
-        nothing about are left out."""
+        """Compute this overlay's properties for every node and edge of the scene's model and
+        return them by key, leaving out those it says nothing about."""
         out: dict[Key, dict] = {}
         for key in [*scene.model.entities, *scene.model.edges]:
             v = scene.find_element(key).get(self.name)
@@ -121,8 +121,8 @@ class Element:
         return self._scene.model.meta
 
     def find_holder(self, key: Key, role: str = "source") -> Element | None:
-        """The element of this scene that stands for ``key`` of its ``role`` source (each node
-        of a source is held by one element), None if none does."""
+        """Return the element of this scene that stands for ``key`` of its ``role`` source, or
+        None if none does. Each node of a source is held by one element."""
         k = self._scene.find_holder(key, role)
         return None if k is None else self._scene.find_element(k)
 
@@ -141,9 +141,9 @@ class Element:
                 for role, src in self._scene.sources.items()}
 
     def find_same(self, *roles: str) -> Element | None:
-        """The element with this key in the first of ``roles`` (default: head, base, source)
-        that has one: a projection's box that is a node of its source, a change's node as one
-        side has it."""
+        """Return the source element with this element's key from the first of ``roles`` (by default
+        head, base, source) that has one, or None. For a projection's box this finds the node
+        of its source; for a change's node, the node as one side has it."""
         for role in roles or ("head", "base", "source"):
             for s in self.sources.get(role, ()):
                 if s.key == self.key:
@@ -186,8 +186,8 @@ class Element:
     # -- what is known about it --------------------------------------------------
 
     def get(self, overlay: str) -> dict | None:
-        """The properties ``overlay`` gives this element, None if it gives none or the scene
-        has no such overlay."""
+        """Return the properties ``overlay`` gives this element, or None if it gives none or the
+        scene has no such overlay."""
         return self._scene._compute(self, overlay)
 
     def __repr__(self) -> str:
@@ -232,14 +232,17 @@ class Scene:
         self._busy: set[tuple[str, Key]] = set()  # (overlay, key) being computed, to catch a cycle
 
     def with_overlays(self, *more: Overlay) -> Scene:
-        """The same model, sources and refs with more overlays (one of the same name replaces it)."""
+        """Return a scene with the same model, sources and refs and ``more`` overlays added; an added
+        overlay replaces an existing one of the same name."""
         return Scene(self.model, [*self.overlays.values(), *more], self.sources, self.refs)
 
     def has(self, key: Key) -> bool:
         return self.model.has(key)
 
     def find_element(self, key: Key | str) -> Element:
-        """The element of ``key``; a node's address may be given as text (read back from JSON)."""
+        """Return the element for ``key``, made once and then reused; raise ``KeyError`` if the
+        model has no such node or edge. A node's address may be given as text (read back from
+        JSON)."""
         if type(key) is str:
             key = EntityId(key)
         el = self._elements.get(key)
@@ -265,8 +268,8 @@ class Scene:
         return (key,) if refs is None else refs.get(key, ())  # None: its namesake (a change's sides)
 
     def find_holder(self, key: Key, role: str = "source") -> Key | None:
-        """The key of the element that refers to ``key`` of its ``role`` source (the innermost,
-        when several do)."""
+        """Return the key of the element that refers to ``key`` of its ``role`` source (the
+        innermost, when several do), or None if none does."""
         held = self._holders.get(role)
         if held is None:
             held = self._holders[role] = {}

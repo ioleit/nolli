@@ -45,13 +45,13 @@ class Call:
 
 
 def provide(ctx: Context, op: Operation) -> None:
-    """Reports a served operation; ``build`` adds it as ``provide(handler file, endpoint)``."""
+    """Record a served operation; ``build`` later adds it as ``provide(handler file, endpoint)``."""
     ctx.notes.setdefault("api-operations", []).append(op)
 
 
 def call(ctx: Context, c: Call) -> None:
-    """Reports a call site as ``use(caller file, unresolved:<protocol>:...)``, a
-    placeholder ``resolve`` binds to endpoints."""
+    """Add a call site as ``use(caller file, unresolved:<protocol>:...)``, with a
+    placeholder target that ``resolve`` later binds to endpoints."""
     m = ctx.model
     uid = EntityId.from_unresolved(c.protocol, f"{c.verb} {c.pattern}")
     if not m.has(uid):
@@ -105,8 +105,8 @@ def _api_names(files: dict[tuple[str, str], str]) -> dict[tuple[str, str], str]:
 
 
 def build(ctx: Context) -> None:
-    """Turns the reported operations into one structure, the same for every protocol.
-    Runs after every adapter has reported.
+    """Turn the reported operations into one structure, the same for every protocol.
+    Run this after every adapter has reported.
 
     The structure (entity kind, id; ``EntityId`` in ``nolli/model/schema.py`` makes the ids)::
 

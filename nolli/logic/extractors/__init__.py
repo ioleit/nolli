@@ -35,7 +35,7 @@ class Context:
         return (self.repo / rel).read_bytes()
 
     def sources(self, language: str, tests: bool = True) -> Iterator[str]:
-        """The files of a language (by its extensions) that the file tree holds, counted
+        """Yield the files of a language (by its extensions) in the file tree, counting them
         on ``progress``; ``tests=False`` leaves out files whose role is ``test``."""
         exts = _language_named(language).extensions
         for f in self.progress.each(self.files):
@@ -47,9 +47,9 @@ class Context:
                 yield rel
 
     def tree(self, rel: str):
-        """The file's syntax tree from its language's parser; None (and a note under
-        ``parse-errors``, once) if it does not parse. Kept for the next extractor if the
-        language says so (``Language.keep_trees``)."""
+        """Parse the file with its language's parser and return the syntax tree, or None (and a note
+        under ``parse-errors``, once) if it does not parse. Keep the tree for the next extractor if
+        the language says so (``Language.keep_trees``)."""
         if rel in self.trees:
             return self.trees[rel]
         lang = _language_of(rel)
