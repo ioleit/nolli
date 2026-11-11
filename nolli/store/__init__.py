@@ -36,6 +36,10 @@ class ModelStore(MapStore, Protocol):
         or a map goes through it. A store that restricts access overrides ``check`` and nothing
         else."""
 
+    def find_key(self, name: str) -> ModelKey | None:
+        """Return the key of the model the store calls ``name`` (for a ``DirectoryStore``, a dataset
+        directory's name), or None if no model has that name."""
+
     def load_model(self, key: ModelKey) -> Model | None:
         """Return a commit's model, or a change's merged model if it was kept with the change.
         Return None if there is none or it is of another format. Raise NotAllowed if this
@@ -59,3 +63,4 @@ class ModelStore(MapStore, Protocol):
 
 
 from nolli.store.directory import DirectoryMaps, DirectoryStore  # noqa: F401 (nolli's own store, as callers import it)
+from nolli.store.memory import MemoryStore  # noqa: E402, F401 (a ModelStore kept nowhere else)

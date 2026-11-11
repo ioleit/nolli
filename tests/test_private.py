@@ -2,7 +2,7 @@
 count: they may reach into a module). nolli's own model has no functions, so this reads the
 syntax tree: a use is ``module.name`` on an imported module, or ``from module import name``.
 
-The layers above ``datasets.py`` (it, the command line and the server) are not held to it yet."""
+The command line and the server are not held to it yet."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-NOT_YET = ("nolli/datasets.py", "nolli/cli.py", "nolli/server")
+NOT_YET = ("nolli/cli.py", "nolli/server")
 
 
 def _name_module(p: Path) -> str:

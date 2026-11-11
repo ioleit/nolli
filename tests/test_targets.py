@@ -1,4 +1,4 @@
-"""What a target names (nolli/datasets.py: parse_target, resolve_target; nolli/logic/sources/git.py),
+"""What a target names (nolli/operations.py: Target.from_string, Target.pin; nolli/logic/sources/git.py),
 on a small git history:
 
     main:    c1 - c2 ------- m (merge of feature, --no-ff)
@@ -17,8 +17,10 @@ from pathlib import Path
 import pytest
 
 from nolli.cli import main
-from nolli.datasets import Target, parse_target, resolve_target
-from nolli.logic.sources.git import WORKTREE, ChangeError, _default_branch
+from nolli.operations import Target
+from nolli.logic.sources.git import WORKTREE, ChangeError, Revs, _default_branch, find_toplevel
+from nolli.model.keys import Repo
+from nolli.store import DirectoryStore
 
 
 def git(repo: Path, *args: str) -> str:
@@ -49,9 +51,18 @@ def repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     return r, c
 
 
+def pin(r: Path, text: str | None, review: bool = False) -> Target:
+    """``text`` pinned in the repository around ``r``, as the command line does."""
+    try:
+        local = find_toplevel(r)
+    except ChangeError:
+        local = None
+    return Target.from_string(text, local).pin(review=review)
+
+
 def ends(r: Path, text: str | None, review: bool = False) -> tuple[str | None, str]:
-    spec = resolve_target(text, r, r.parent / "clones", review=review).spec
-    return spec.base, spec.head
+    key = pin(r, text, review).key
+    return (key.base, key.head) if hasattr(key, "base") else (None, key.sha)
 
 
 def unmerge(r: Path, c: dict[str, str]) -> None:
@@ -61,15 +72,23 @@ def unmerge(r: Path, c: dict[str, str]) -> None:
 
 
 def test_forms():
-    assert parse_target(None) == Target("range", head="HEAD", symmetric=True)
-    assert parse_target("main") == Target("snapshot", head="main")
-    assert parse_target(WORKTREE) == Target("snapshot", head=WORKTREE)
-    assert parse_target("a..b") == Target("range", base="a", head="b")
-    assert parse_target("a...b") == Target("range", base="a", head="b", symmetric=True)
-    assert parse_target("...b") == Target("range", head="b", symmetric=True)
-    assert parse_target("HEAD..WORKTREE") == Target("range", base="HEAD", head=WORKTREE)
-    assert parse_target("v1^!") == Target("own", head="v1")
-    assert parse_target("https://github.com/o/r").kind == "github"
+    def revs(text):
+        t = Target.from_string(text)
+        assert t.kind == "revs"
+        return t.revs
+
+    assert revs(None) == Revs("range", head="HEAD", symmetric=True)
+    assert revs("main") == Revs("snapshot", head="main")
+    assert revs(WORKTREE) == Revs("snapshot", head=WORKTREE)
+    assert revs("a..b") == Revs("range", base="a", head="b")
+    assert revs("a...b") == Revs("range", base="a", head="b", symmetric=True)
+    assert revs("...b") == Revs("range", head="b", symmetric=True)
+    assert revs("HEAD..WORKTREE") == Revs("range", base="HEAD", head=WORKTREE)
+    assert revs("v1^!") == Revs("own", head="v1")
+    assert Target.from_string("https://github.com/o/r").kind == "github"
+    key = Repo("github.com/o/r").make_change("a" * 40, "b" * 40)
+    assert Target.from_string(key.format_key()) == Target("key", key=key)
+    assert revs("o/r@abc..def").kind == "range" and revs("main@{u}").kind == "snapshot"  # no key: short shas, a reflog
 
 
 def test_default_branch(repo):
@@ -80,10 +99,10 @@ def test_default_branch(repo):
 def test_nothing_is_the_branchs_committed_change(repo):
     r, c = repo
     unmerge(r, c)
-    spec = resolve_target(None, r, r.parent).spec
-    assert (spec.base, spec.head) == (c["c2"], c["f2"])
-    assert spec.title == "feature"
-    assert spec.description == f"2 commits:\n\n- Add f1 ({c['f1'][:7]})\n- Add f2 ({c['f2'][:7]})"
+    target = pin(r, None)
+    assert (target.key.base, target.key.head) == (c["c2"], c["f2"])
+    assert target.about["title"] == "feature"
+    assert target.about["description"] == f"2 commits:\n\n- Add f1 ({c['f1'][:7]})\n- Add f2 ({c['f2'][:7]})"
 
 
 def test_nothing_on_the_default_branch_is_an_error(repo):
@@ -96,7 +115,7 @@ def test_a_revision_is_a_snapshot(repo):
     r, c = repo
     assert ends(r, "main") == (None, c["m"])
     assert ends(r, c["f1"][:7]) == (None, c["f1"])
-    assert resolve_target("main", r, r.parent).key == resolve_target("main", r, r.parent).key.repo.make_commit(c["m"])
+    assert pin(r, "main").key == pin(r, "main").key.repo.make_commit(c["m"])
 
 
 def test_what_a_branch_adds(repo):
@@ -110,8 +129,8 @@ def test_what_a_branch_adds(repo):
 def test_own_change(repo):
     r, c = repo
     assert ends(r, f"{c['m'][:7]}^!") == (c["c2"], c["m"])  # the merge commit: against its first parent
-    spec = resolve_target(f"{c['f1']}^!", r, r.parent).spec
-    assert (spec.base, spec.head, spec.title, spec.description) == (c["c2"], c["f1"], "Add f1", "Why f1 exists.")
+    target = pin(r, f"{c['f1']}^!")
+    assert (target.key.base, target.key.head, target.about["title"], target.about["description"]) == (c["c2"], c["f1"], "Add f1", "Why f1 exists.")
     with pytest.raises(ChangeError, match="no parent"):
         ends(r, f"{c['c1']}^!")
 
@@ -160,7 +179,7 @@ def test_worktree(repo):
     assert git(r, "show", f"{wt}:c1.py") == "X = 'edited'"
     assert git(r, "status", "--porcelain") == status and git(r, "for-each-ref") == refs  # the index and refs untouched
     assert ends(r, f"HEAD..{WORKTREE}") == (c["m"], wt)
-    assert resolve_target(f"HEAD..{WORKTREE}", r, r.parent).spec.title == "Uncommitted edits"
+    assert pin(r, f"HEAD..{WORKTREE}").about["title"] == "Uncommitted edits"
     (r / "new.py").write_text("Y = 2\n")
     assert ends(r, WORKTREE)[1] != wt
 
@@ -195,7 +214,11 @@ def test_build_and_the_older_shorthands(repo, tmp_path, capsys):
     assert main(["build", "main", "--repo", str(r), "--data", str(data)]) == 0
     built = Path(capsys.readouterr().out.strip())
     assert built.parent == data and json.loads((built / "key.json").read_text())["head"] == c["m"]
-    assert resolve_target(str(built), r, data).dataset == built  # a dataset directory: nothing to build
+    store, key = DirectoryStore.find_dataset(built)
+    assert store.root == data.resolve() and key.sha == c["m"]
+    assert Target.from_string(key.format_key()).pin().key == key  # a key: stable already
+    assert main(["build", str(built), "--data", str(tmp_path / "other")]) == 0  # a dataset directory: nothing to build
+    assert Path(capsys.readouterr().out.strip()) == built.resolve()
 
     (r / "new.py").write_text("Y = 1\n")
     assert main(["extract", str(r), "-o", str(tmp_path / "x")]) == 0  # nolli build WORKTREE -o

@@ -236,15 +236,15 @@ def _snapshot_worktree(repo: Path) -> str:
 UNCOMMITTED = "Uncommitted edits"  # the subject of a working tree's snapshot
 
 
-def resolve_snapshot(repo: Path, rev: str) -> ChangeSpec:
-    """One commit (or the working tree) as a whole: the target ``R`` or ``WORKTREE``."""
-    return describe(repo, ChangeSpec(head=_find_point(repo, rev)), rev)
+def _resolve_snapshot(repo: Path, rev: str) -> ChangeSpec:
+    """Resolve one commit (or the working tree) as a whole: the target ``R`` or ``WORKTREE``."""
+    return _describe(repo, ChangeSpec(head=_find_point(repo, rev)), rev)
 
 
-def resolve_range(repo: Path, a: str | None, b: str | None, symmetric: bool) -> ChangeSpec:
-    """``A..B`` (exactly from A to B) or, ``symmetric``, ``A...B`` (from where they diverged
-    to B). An end left out is HEAD, except a left-out A of ``...B``: the default branch.
-    Raises ChangeError for a change with nothing in it."""
+def _resolve_range(repo: Path, a: str | None, b: str | None, symmetric: bool) -> ChangeSpec:
+    """Resolve ``A..B`` (exactly from A to B) or, with ``symmetric``, ``A...B`` (from where they
+    diverged to B). An end left out is HEAD, except a left-out A of ``...B``, which is the default
+    branch. Raise ChangeError for a change with nothing in it."""
     head = _find_point(repo, b or "HEAD")
     if symmetric:
         left = a or _default_branch(repo)
@@ -258,19 +258,19 @@ def resolve_range(repo: Path, a: str | None, b: str | None, symmetric: bool) -> 
         what = f"{a or ''}{'...' if symmetric else '..'}{b or ''}"
         hint = f"; {b or 'HEAD'} is on {left}: {b or 'HEAD'}^! is its own change" if symmetric and not a else ""
         raise ChangeError(f"{what} is no change (both ends are {head[:7]}){hint}")
-    return describe(repo, ChangeSpec(head=head, base=base), b or "HEAD")
+    return _describe(repo, ChangeSpec(head=head, base=base), b or "HEAD")
 
 
-def resolve_own(repo: Path, rev: str) -> ChangeSpec:
-    """``R^!``: commit R against its first parent."""
+def _resolve_own(repo: Path, rev: str) -> ChangeSpec:
+    """Resolve ``R^!``: commit R against its first parent."""
     head = _find_point(repo, rev)
     parent = _first_parent(repo, head)
     if parent is None:
         raise ChangeError(f"{rev} has no parent; build it as a snapshot: {rev}")
-    return describe(repo, ChangeSpec(head=head, base=parent), rev)
+    return _describe(repo, ChangeSpec(head=head, base=parent), rev)
 
 
-def resolve_adds(repo: Path, rev: str) -> ChangeSpec:
+def _resolve_adds(repo: Path, rev: str) -> ChangeSpec:
     """Return the change that revision R adds, running from where R left the default branch to R.
     If R is on the default branch already (a commit, or a merged pull request's merge commit),
     compare R with its first parent; take a root commit as a whole. Raise ChangeError if there
@@ -281,15 +281,15 @@ def resolve_adds(repo: Path, rev: str) -> ChangeSpec:
         raise ChangeError(f"no default branch (origin/HEAD, main or master) to compare {rev!r} with; name both ends: <base>...{rev}")
     base = merge_base(repo, _find_commit(repo, main), head)
     if base != head:
-        return describe(repo, ChangeSpec(head=head, base=base), rev)
+        return _describe(repo, ChangeSpec(head=head, base=base), rev)
     parent = _first_parent(repo, head)
-    return describe(repo, ChangeSpec(head=head, base=parent), rev)
+    return _describe(repo, ChangeSpec(head=head, base=parent), rev)
 
 
-def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
-    """``ch`` with its title and description from its commits (``rev``: what the user called its
-    head): one commit gives its subject and body; several give the branch's name (or the
-    range) and the list of their subjects."""
+def _describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
+    """Return ``ch`` with its title and description taken from its commits (``rev`` is what the user
+    called its head): one commit gives its subject and body; several give the branch's name (or
+    the range) and the list of their subjects."""
     if not ch.is_diff:
         ch.title = run_git(repo, "log", "-1", "--format=%s", ch.head).strip()
         return ch
@@ -314,3 +314,39 @@ def describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
 
 def _looks_like_sha(rev: str) -> bool:
     return 4 <= len(rev) <= 40 and all(c in "0123456789abcdef" for c in rev.lower())
+
+
+@dataclass(frozen=True)
+class Revs:
+    """Commits named as git names them, not looked up: ``snapshot`` (``R``: one commit, or
+    ``WORKTREE``), ``range`` (``A..B``; ``A...B``, ``symmetric``, from where B left A; either
+    end left out) or ``own`` (``R^!``: what R itself changed)."""
+    kind: str
+    head: str | None = None
+    base: str | None = None
+    symmetric: bool = False
+
+
+def parse_revs(text: str) -> Revs:
+    """Parse ``text`` as git's revisions, without looking them up."""
+    if "..." in text:
+        base, _, head = text.partition("...")
+        return Revs("range", head=head or None, base=base or None, symmetric=True)
+    if ".." in text:
+        base, _, head = text.partition("..")
+        return Revs("range", head=head or None, base=base or None)
+    if text.endswith("^!"):
+        return Revs("own", head=text[:-2])
+    return Revs("snapshot", head=text)
+
+
+def resolve_revs(repo: Path, revs: Revs, adds: bool = False) -> ChangeSpec:
+    """Resolve ``revs`` in ``repo`` and return the change or snapshot they name. With ``adds``, a
+    single revision R means what R adds (``_resolve_adds``), not R as a whole. Raise ChangeError."""
+    if revs.kind == "snapshot" and adds and revs.head != WORKTREE:
+        return _resolve_adds(repo, revs.head)
+    if revs.kind == "snapshot":
+        return _resolve_snapshot(repo, revs.head)
+    if revs.kind == "own":
+        return _resolve_own(repo, revs.head)
+    return _resolve_range(repo, revs.base, revs.head, revs.symmetric)

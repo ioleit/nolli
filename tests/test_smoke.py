@@ -12,10 +12,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import draw, find_node, open_dir
+from helpers import draw, find_node, open_dir, spec
 
-from nolli.build import _extract_facts
 from nolli.logic import transformations
+from nolli.logic.extractors.facts import extract_facts
+from nolli.logic.sources import git
 from nolli.logic.transformations import projection
 from nolli.logic.transformations.projection import ProjectionSpec
 from nolli.logic.transformations.projection.reading import Reading as Graph
@@ -73,7 +74,7 @@ def rel_set(m, kind, subkind=None):
 
 
 def test_model_binds_the_seams(repo: Path):
-    m = _extract_facts(repo)
+    m = extract_facts(repo, git.list_tracked_files(repo))
     uses = rel_set(m, "use")
     # imports resolve inside the repo, relative and absolute; Python references bind at
     # symbol level (module-level code -> a module variable stays at file level)
@@ -131,9 +132,10 @@ def test_lift_ends_when_provide_lines_cannot_merge():
     """Five modules implementing one shown API under max_lines 4: the provide lines keep
     their module end by design, so the pair cannot get under the limit. Lifting must
     leave it over the limit and return instead of picking it again forever (issue #49)."""
+    from helpers import open_extracted
+
     from nolli.logic.extractors.facts import EntityFact, Facts, Provenance
     from nolli.logic.transformations.projection.rollup import RolledEdge
-    from nolli.scenes import open_built
 
     m = Facts()
     m.ensure_root("api", "test")
@@ -144,7 +146,7 @@ def test_lift_ends_when_provide_lines_cannot_merge():
     for mod in modules:
         m.add_entity(EntityFact(mod, "file", mod.rsplit("/", 1)[-1], {}, Provenance("fs")))
         m.contain("repo:app", mod, "fs")
-    g = Graph(open_built(*m.split(StringKey("test@0"))))
+    g = Graph(open_extracted(*m.split(StringKey("test@0"))))
     edges = [RolledEdge("provide", "api:", mod, "route", count=1) for mod in modules]
     lines = lift(g, edges, {"repo:", "repo:app"}, max_lines=4)
     assert sorted((e.src, e.dst) for e in lines) == [("api:", mod) for mod in modules]
@@ -265,7 +267,7 @@ def test_docstrings(tmp_path: Path):
     (tmp_path / "pkg/__init__.py").write_text('"""Tools for frobbing.\n\nLong details nobody reads."""\n')
     (tmp_path / "pkg/core.py").write_text('"""The core frobber."""\nimport sys\nsys.exit("must not run")\n\n'
                                           'class Frob:\n    """Frobs one thing at a time."""\n')
-    m = _extract_facts(tmp_path)
+    m = extract_facts(tmp_path, git.list_tracked_files(tmp_path))
     assert m.entities["repo:pkg/core.py"].attrs["doc"] == "The core frobber."
     assert m.entities["repo:pkg/core.py#Frob"].attrs["doc"] == "Frobs one thing at a time."
     sc = draw(open_dir(tmp_path), expanded=["repo:", "repo:pkg", "repo:pkg/core.py"])
@@ -282,7 +284,7 @@ def test_own_code_dot(tmp_path: Path):
     (tmp_path / "pkg/core.py").write_text("LIMIT = 3\n\ndef helper():\n    pass\n\ndef frob():\n    return Frob()\n\n"
                                           "class Frob:\n    def go(self):\n        return frob()\n")
     (tmp_path / "pkg/use.py").write_text("from .core import frob\nfrob(); frob()\n")
-    m = _extract_facts(tmp_path)
+    m = extract_facts(tmp_path, git.list_tracked_files(tmp_path))
     core = m.entities["repo:pkg/core.py"].attrs
     assert core["functions"] == ["helper", "frob"] and core["constants"] == ["LIMIT"] and core["own_lines"] == 8
     assert m.entities["repo:pkg/__init__.py"].attrs["reexports"] == ["Frob", "frob"]
@@ -296,8 +298,9 @@ def test_own_code_dot(tmp_path: Path):
 
 def test_directory_with_source_inside_stays_shown():
     """A directory whose bytes are mostly config is still drawn when it holds source files."""
+    from helpers import open_extracted
+
     from nolli.logic.extractors.facts import EntityFact, Facts, Provenance
-    from nolli.scenes import open_built
 
     m = Facts()
     for eid, kind, role in [("repo:", "directory", "mixed"), ("repo:evals", "directory", "config"), ("repo:evals/probe.py", "file", "source"),
@@ -305,7 +308,7 @@ def test_directory_with_source_inside_stays_shown():
         m.add_entity(EntityFact(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("fs")))
     for parent, child in [("repo:", "repo:evals"), ("repo:evals", "repo:evals/probe.py"), ("repo:evals", "repo:evals/runs.json"), ("repo:", "repo:docs"), ("repo:docs", "repo:docs/a.md")]:
         m.contain(parent, child, "fs")
-    assert hidden_by_role(Graph(open_built(*m.split(StringKey("test@0"))))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
+    assert hidden_by_role(Graph(open_extracted(*m.split(StringKey("test@0"))))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
 
 
 def test_box_names_are_icons_then_a_name(repo: Path):
@@ -344,8 +347,7 @@ def test_mermaid_draws_the_scene(repo: Path):
     from nolli.logic.formats.viewer import export_scene
 
     scene = open_dir(repo)
-    for st in (ProjectionSpec(budget=12), ProjectionSpec(preset="folded"), ProjectionSpec(preset="unfolded"),
-               ProjectionSpec(expanded=["repo:", "repo:backend"])):
+    for st in (spec(budget=12), spec(preset="folded"), spec(preset="unfolded"), spec(expanded=["repo:", "repo:backend"])):
         projected = transformations.apply(scene, projection.fold(st))
         sc = export_scene(projected)
         text = render(projected)
@@ -377,7 +379,7 @@ def test_mermaid_ids(repo: Path):
     from nolli.logic.formats.mermaid import list_ids, render
     from nolli.logic.formats.viewer import export_scene
 
-    projected = transformations.apply(open_dir(repo), projection.fold(ProjectionSpec(expanded=["repo:", "repo:backend"])))
+    projected = transformations.apply(open_dir(repo), projection.fold(spec(expanded=["repo:", "repo:backend"])))
     sc = export_scene(projected)
     text = render(projected)
     drawn = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+)\s*[\[(]", line))}
@@ -400,7 +402,7 @@ def test_type_definitions_and_module_attributes(tmp_path: Path):
         "from pkg.keys import Key, Sha, Commit\nfrom pkg import keys\nfrom . import keys as k\n"
         "def f(a: Key, b: Sha) -> Commit:\n    keys.parse({}); keys.LIMIT; k.parse({}); Commit.__name__\n"
     )
-    m = _extract_facts(tmp_path)
+    m = extract_facts(tmp_path, git.list_tracked_files(tmp_path))
     kinds = {e.name: e.kind for e in m.entities.values() if e.id.startswith("repo:pkg/keys.py#")}
     assert kinds == {"Commit": "class", "Change": "class", "Key": "type", "Sha": "type", "Names": "type"}
     uses = {(r.dst, r.attrs.get("name")): r.count for r in m.relations

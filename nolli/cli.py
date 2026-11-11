@@ -81,10 +81,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
 
-from .logic.sources.git import ChangeError
+from nolli.logic.sources.git import ChangeError, GitError, find_toplevel
 from .model.keys import ChangeKey
 from .progress import Progress
 from .store import DirectoryStore
@@ -100,62 +99,100 @@ def find_data_dir(arg: str | None) -> Path:
 
 
 class Built:
-    """A target, built or found in the store: what build, view and the agent commands work on."""
+    """A model built, or found built, in a store: what build, view and the agent commands work
+    on. ``target`` (pinned) and ``sources`` are what it was built from, None for a dataset
+    directory named as it is."""
 
-    def __init__(self, asked, store: DirectoryStore):
-        from .datasets import Datasets
-
-        self.asked, self.store, self.key = asked, store, asked.key
-        self.repo, self.spec = asked.repo, asked.spec
-        self.datasets = Datasets(store)
-        self.out = asked.dataset or store.locate(asked.key)
+    def __init__(self, store: DirectoryStore, key, target=None, sources=None):
+        self.store, self.key, self.target, self.sources = store, key, target, sources
+        self.out = store.locate(key)
         self.name = self.out.name
 
 
-def resolve(args: argparse.Namespace, cmd: str, review: bool = False):
-    """args.target resolved in args.repo (``datasets.resolve_target``); None, after saying why,
-    if it cannot be. Says what it resolved to on stderr."""
-    from .datasets import BUILD_ERRORS, resolve_target
-
+def find_local(repo: str) -> Path | None:
+    """Return the git repository around ``repo``, or None if it is in none."""
     try:
-        asked = resolve_target(args.target, Path(args.repo), find_data_dir(args.data) / ".repos", review=review)
-    except BUILD_ERRORS as exc:
+        return find_toplevel(Path(repo).resolve())
+    except ChangeError:
+        return None
+
+
+def make_sources(args: argparse.Namespace):
+    """Return where a build gets commits: the repository you are in, and clones under the data
+    directory."""
+    from nolli.logic.sources import github
+
+    return github.Checkout(find_local(args.repo), find_data_dir(args.data) / ".repos")
+
+
+def find_dataset(text: str | None, cmd: str):
+    """Find the dataset directory that ``text`` names (``DirectoryStore.find_dataset``) and return
+    its store and key, to use as it is. Return None if it names none, and False, after printing
+    why, for a dataset this nolli cannot read."""
+    if not text:
+        return None
+    try:
+        return DirectoryStore.find_dataset(Path(text))
+    except ValueError as exc:
+        print(f"nolli {cmd}: {exc}", file=sys.stderr)
+        return False
+
+
+def pin(args: argparse.Namespace, cmd: str, review: bool = False):
+    """Pin args.target in args.repo and return the pinned ``operations.Target``, or the (store, key) of
+    the dataset directory it names. ``review`` is as ``Target.pin`` takes it. Print what it names
+    on stderr; print why and return None if it names nothing."""
+    from nolli import operations
+
+    found = find_dataset(args.target, cmd)
+    if found is False:
+        return None
+    if found:
+        if review:
+            print(f"nolli {cmd}: {args.target} is a dataset built already; name the change to review, "
+                  f"or check verdicts: nolli agent check {args.target}", file=sys.stderr)
+            return None
+        return found
+    local = find_local(args.repo)
+    try:
+        target = operations.Target.from_string(args.target, local)
+        if target.kind == "revs" and local is None:
+            raise ChangeError(f"{Path(args.repo)} is not in a git repository")
+        target = target.pin(review=review)
+    except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
-    spec = asked.spec
-    if spec is not None:
-        what = f"{spec.base[:7]}..{spec.head[:7]} (a change)" if spec.is_diff else f"{spec.head[:7]} (a snapshot)"
-        print(f"{asked.key.repo.format_name()}: {what}  {spec.title}", file=sys.stderr)
-    return asked
+    if target.kind == "pinned":
+        repo, what = target.repo, f"{target.base[:7]}...{target.head[:7]} (a change)"
+    else:
+        k = target.key
+        repo = k.repo
+        what = f"{k.base[:7]}..{k.head[:7]} (a change)" if isinstance(k, ChangeKey) else f"{k.sha[:7]} (a snapshot)"
+    print(f"{repo.format_name()}: {what}  {target.about.get('title') or ''}", file=sys.stderr)
+    return target
 
 
 def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | None:
-    """Resolve args.target and build it into the data directory unless a fresh one is stored
-    there (or it is a dataset directory already). Progress goes to stderr; None (after saying
-    why) if the target cannot be resolved or built."""
-    from .datasets import BUILD_ERRORS, Datasets
+    """Build args.target into the data directory unless a fresh one is stored there (or it is a
+    dataset directory already), and return it as ``Built``. Progress goes to stderr; print why and
+    return None if the target names nothing or cannot be built."""
+    from nolli import operations
 
-    asked = resolve(args, cmd, review)
-    if asked is None:
+    target = pin(args, cmd, review)
+    if target is None:
         return None
-    if asked.dataset is not None:
-        return Built(asked, DirectoryStore(asked.dataset.parent))
-    store = DirectoryStore(find_data_dir(args.data))
-    datasets = Datasets(store, asked.sources)
-    b = Built(asked, store)
-    if args.rebuild or not datasets.is_built(asked.key):
-        print(f"building {b.out}", file=sys.stderr, flush=True)
-        t0 = time.time()
-        about = {**asked.about, **find_about(args), "budget": args.budget}
-        try:
-            datasets.build(asked.key, rebuild=args.rebuild, progress=Progress(), about=about)
-            key = asked.key
-            m = store.load_model(key.list_sides()[1] if isinstance(key, ChangeKey) else key)
-        except BUILD_ERRORS as exc:
-            print(f"nolli {cmd}: {exc}", file=sys.stderr)
-            return None
-        print(f"built in {time.time() - t0:.1f} s: {count_found(m)}", file=sys.stderr)
-    return b
+    if isinstance(target, tuple):  # a dataset directory
+        return Built(*target)
+    store, sources = DirectoryStore(find_data_dir(args.data)), make_sources(args)
+    try:
+        key = operations.build_target(store, target, sources, about={**find_about(args), "budget": args.budget},
+                          progress=Progress(), rebuild=args.rebuild)
+    except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
+        print(f"nolli {cmd}: {exc}", file=sys.stderr)
+        return None
+    m = store.load_model(key.list_sides()[1] if isinstance(key, ChangeKey) else key)
+    print(f"{store.locate(key)}: {count_found(m)}", file=sys.stderr)
+    return Built(store, key, target, sources)
 
 
 def find_about(args: argparse.Namespace) -> dict:
@@ -192,21 +229,79 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
     """Build the target afresh into the directory given by -o, with its extras (see
-    ``datasets.write_dataset``), and return what it says about itself and its report. Print why
-    and return None if it cannot be built."""
-    from .datasets import BUILD_ERRORS, write_dataset
+    ``write_extras``), and return what it says about itself and its report. Print why and return
+    None if it cannot be built."""
+    from nolli import operations
 
-    asked = resolve(args, cmd)
-    if asked is None:
+    target = pin(args, cmd)
+    if target is None:
         return None
-    if asked.dataset is not None:
+    if isinstance(target, tuple):
         print(f"nolli {cmd}: {args.target} is built already; -o builds from commits", file=sys.stderr)
         return None
+    sources = make_sources(args)
     try:
-        return write_dataset(asked, Path(args.out), {**asked.about, **find_about(args), "budget": args.budget}, args.budget)
-    except BUILD_ERRORS as exc:
+        key = operations.resolve_target(target, sources)
+        return write_dataset(key, sources, Path(args.out), {**target.about, **find_about(args), "budget": args.budget}, args.budget)
+    except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
+
+
+def write_dataset(key, sources, out: Path, about: dict, budget: int | None = None) -> tuple[dict, dict]:
+    """Build the model of ``key`` here, from scratch, with its commits from ``sources``, and write it
+    to the directory ``out`` (a dataset directory, as ``DirectoryStore`` keeps one) with its
+    extras. Return what it says about itself, and the report. This is ``nolli build -o``."""
+    from nolli import operations
+    from nolli.logic.transformations import merge
+    from nolli.model.keys import CommitKey
+    from nolli.progress import Quiet
+    from nolli.store import directory
+    about = {k: v for k, v in about.items() if v}
+    out.mkdir(parents=True, exist_ok=True)
+    stored = DirectoryStore(out.parent)  # the directory as nolli serve and view read it
+    if isinstance(key, CommitKey):
+        with sources.open_commits(key.repo, key.sha) as clone:
+            m, maps = operations.extract_commit(clone, key.sha, key.repo.format_name(), Quiet())
+        m.key = key
+        if budget:
+            m.meta["budget"] = budget
+        directory.write_commit(out, key, m, maps)
+        operations.precompute_scene(stored, key)
+        return about, write_extras(operations.open_scene(stored, key), out)
+    sides = {}
+    with sources.open_commits(key.repo, key.base, key.head) as clone:
+        for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
+            m, maps = operations.extract_commit(clone, commit.sha, key.repo.format_name(), Quiet())
+            m.key = commit
+            sides[side] = (m, maps)
+        content = operations.list_content(clone, key.base, key.head, Quiet())
+    about.update({"base": key.base, "head": key.head, "remote": key.repo.format_remote(), "nolli": operations.version()})
+    merged = merge.merge_models(key, sides["base"][0], sides["head"][0], operations.describe_change_meta(sides["base"][0], sides["head"][0], about))
+    directory.write_change(out, key, about, sides, {"content": content}, merged)
+    operations.precompute_scene(stored, key)
+    return about, write_extras(operations.open_scene(stored, key), out)
+
+
+def write_extras(scene, out: Path) -> dict:
+    """Write the files a standalone dataset directory gets beside the model: report.json, and for a
+    change what a review agent reads (changes.json, review.mmd, review.md). Return the report."""
+    from nolli.logic import transformations
+    from nolli.logic.formats import report as report_format
+    from nolli.logic.transformations import merge, projection
+    from nolli.review import brief, changes
+
+    meta = scene.model.meta
+    budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or projection.DEFAULT_BUDGET
+    default = transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=projection.AtMost(budget))))
+    report = report_format.make_report(scene, default)
+    (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
+    if merge.is_change(scene):
+        (out / "changes.json").write_text(json.dumps(changes.list_changes(scene), indent=1))
+        mmd = brief.make_review_diagram(scene)
+        (out / "review.mmd").write_text(mmd)
+        (out / "review.md").write_text(brief.make_brief(scene, mmd))
+    return report
 
 
 def cmd_view(args: argparse.Namespace) -> int:
@@ -215,8 +310,7 @@ def cmd_view(args: argparse.Namespace) -> int:
     import webbrowser
     from urllib.parse import quote
 
-    from .datasets import parse_target
-    from .logic.sources.git import find_toplevel
+    from nolli.operations import Target
     from .server.serve import make_local_server
 
     if args.build_only:  # before nolli build
@@ -224,22 +318,24 @@ def cmd_view(args: argparse.Namespace) -> int:
     if args.rebuild and build(args, "view") is None:
         return 2
     data = find_data_dir(args.data)
-    try:
-        local = find_toplevel(Path(args.repo).resolve())
-    except ChangeError:
-        local = None
-    try:
-        target = parse_target(args.target, local)
-    except ChangeError as exc:
-        print(f"nolli view: {exc}", file=sys.stderr)
+    local = find_local(args.repo)
+    text = args.target
+    found = find_dataset(text, "view")
+    if found is False:
         return 2
-    if target.kind == "dataset":  # served from the store it is in
-        data = target.path.parent
+    if found:  # a dataset directory: served from the store it is in, its key the target
+        data, text = found[0].root, found[1].format_key()
+    else:
+        try:
+            Target.from_string(text, local)
+        except ChangeError as exc:
+            print(f"nolli view: {exc}", file=sys.stderr)
+            return 2
     try:
         srv = make_local_server(data, local, args.host, args.port, args.budget)
     except OSError:  # the port is taken (another viewer, perhaps): any free one
         srv = make_local_server(data, local, args.host, 0, args.budget)
-    url = f"http://{args.host}:{srv.server_address[1]}/?t={quote(args.target or '', safe='')}"
+    url = f"http://{args.host}:{srv.server_address[1]}/?t={quote(text or '', safe='')}"
     print(f"viewer: {url}  (Ctrl-C to stop)", file=sys.stderr, flush=True)
     if not args.no_open:
         webbrowser.open(url)
@@ -255,12 +351,23 @@ def cmd_view(args: argparse.Namespace) -> int:
 def cmd_extract(args: argparse.Namespace) -> int:
     """nolli extract <repo> -o <dir>: build WORKTREE in <repo> afresh into <dir> (a directory
     that is no git repository: its files); prints a summary of the report."""
-    from .datasets import extract_directory
+    from nolli import operations
+    from nolli.model.keys import Repo
+    from nolli.store import directory
     from .logic.sources.git import WORKTREE, find_head
 
     repo = Path(args.repo).resolve()
-    if find_head(repo) is None and not (repo / ".git").exists():
-        report = extract_directory(repo, Path(args.out), args.budget)
+    if find_head(repo) is None and not (repo / ".git").exists():  # no git repository: its files as they are
+        out = Path(args.out)
+        key = Repo(str(repo)).make_commit("worktree")
+        m, maps = operations.extract_files(repo, key=key)
+        if args.budget:
+            m.meta["budget"] = args.budget
+        out.mkdir(parents=True, exist_ok=True)
+        directory.write_commit(out, key, m, maps)
+        stored = DirectoryStore(out.parent)
+        operations.precompute_scene(stored, key)
+        report = write_extras(operations.open_scene(stored, key), out)
     else:
         written = build_into(argparse.Namespace(target=WORKTREE, repo=str(repo), data=None, out=args.out, budget=args.budget), "extract")
         if written is None:
@@ -320,19 +427,24 @@ def cmd_brief(args: argparse.Namespace) -> int:
     """nolli agent brief: build the change and say, as JSON on stdout, where the brief is, where
     the verdicts go and how to check them."""
 
+    from nolli import operations
+    from nolli.review import brief, verdicts
+
     b = build(args, "agent brief", review=True)
     if b is None:
         return 2
-    spec = b.spec
+    key, title = b.key, b.target.about.get("title") or ""
+    with b.sources.open_commits(key.repo, key.base, key.head) as repo:  # yours, or a clone: where the agent reads the change
+        pass
     work = find_agent_dir(b.store, b.name)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "review.md").write_text(b.datasets.make_review_brief(b.datasets.open_scene(b.key)))
-    verdicts = work / "verdicts.json"
+    (work / "review.md").write_text(brief.make_brief(operations.open_scene(b.store, b.key)))
+    answer = work / "verdicts.json"
     print(json.dumps({
-        "repository": str(b.repo), "base": spec.base, "head": spec.head, "title": spec.title, "dataset": str(b.out),
-        "brief": str(work / "review.md"), "verdicts": str(verdicts),
-        "has_verdicts": verdicts.is_file() or b.datasets.find_provenance(b.key) is not None,
-        "inspect": f"git -C {b.repo} diff {spec.base[:12]} {spec.head[:12]}",
+        "repository": str(repo), "base": key.base, "head": key.head, "title": title, "dataset": str(b.out),
+        "brief": str(work / "review.md"), "verdicts": str(answer),
+        "has_verdicts": answer.is_file() or verdicts.find_provenance(b.store, b.key) is not None,
+        "inspect": f"git -C {repo} diff {key.base[:12]} {key.head[:12]}",
         "check": f"nolli agent check {b.out}",
         "view": f"nolli view {b.out}",
     }, indent=1))
@@ -342,21 +454,26 @@ def cmd_brief(args: argparse.Namespace) -> int:
 def cmd_check(args: argparse.Namespace) -> int:
     """nolli agent check: the verdicts against the diagram they answer; problems on stderr. Verdicts
     that pass become the change's review."""
-    from .datasets import VERDICTS, Datasets
+    from nolli import operations
+
+    from nolli.review import brief, verdicts
 
     target = Path(args.dataset).expanduser().resolve()
     vf: Path | None = None
     if target.is_file():  # a verdicts file: the agent's (.agent/<name>/verdicts.json), or one in the dataset's directory
         vf = target
         target = target.parent.parent.parent / target.parent.name if target.parent.parent.name == ".agent" else target.parent
-    ds = target if (target / "key.json").is_file() else find_data_dir(args.data) / args.dataset
-    store = DirectoryStore(ds.parent)
-    datasets = Datasets(store)
-    key = store.find_key(ds.name)
-    scene = datasets.open_scene(key) if isinstance(key, ChangeKey) else None
+    found = find_dataset(str(target), "agent check")
+    if found is None:  # a dataset's name under --data
+        found = find_dataset(str(find_data_dir(args.data) / args.dataset), "agent check")
+    if found is False:
+        return 2
+    store, key = found or (None, None)
+    scene = operations.open_scene(store, key) if isinstance(key, ChangeKey) else None
     if scene is None:
         print(f"nolli agent check: {args.dataset} is not a change's dataset", file=sys.stderr)
         return 2
+    ds = store.locate(key)
     if vf is None:
         vf = find_agent_dir(store, ds.name) / "verdicts.json"
         if not vf.is_file() and (ds / "verdicts.json").is_file():  # written into the dataset's directory by hand
@@ -364,14 +481,14 @@ def cmd_check(args: argparse.Namespace) -> int:
     if not vf.is_file():
         print(f"nolli agent check: no {vf}", file=sys.stderr)
         return 1
-    verdicts, errors = datasets.check_verdicts(scene, vf.read_text())
+    kept, errors = verdicts.check_verdicts(scene, brief.make_review_diagram(scene), vf.read_text())
     for e in errors:
         print(e, file=sys.stderr)
-    counts = {v: sum(x["verdict"] == v for x in verdicts) for v in reversed(VERDICTS)}
-    print(json.dumps({"ok": not errors, "verdicts": len(verdicts), **counts, "errors": len(errors)}))
+    counts = {v: sum(x["verdict"] == v for x in kept) for v in reversed(verdicts.VERDICTS)}
+    print(json.dumps({"ok": not errors, "verdicts": len(kept), **counts, "errors": len(errors)}))
     if errors:
         return 1
-    datasets.keep_verdicts(key, verdicts, {"by": "agent"})
+    verdicts.save_verdicts(store, key, kept, {"by": "agent"})
     return 0
 
 

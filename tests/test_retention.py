@@ -12,7 +12,8 @@ from nolli.logic.sources import CloneCache
 from nolli.model.keys import Repo
 from nolli.server import retention
 from nolli.server.retention import LeastRecentlyUsed, parse_size, scan, sweep
-from nolli.server.serve import KINDS, Job, Plan, Site
+from nolli.operations import Target
+from nolli.server.serve import KINDS, Job, Site
 from nolli.store import DirectoryStore
 
 
@@ -85,8 +86,8 @@ def test_site_keeps_what_a_build_uses(cache):
     site = Site(DirectoryStore(cache / "data"), CloneCache(cache / "repos"), cache, keep=0)
     assert not (cache / "extractions").exists()
     repo = Repo("github.com/o/r")
-    plan = Plan("o_r_c", "o/r", key=repo.make_commit("c" * 40))
-    site.jobs[plan.name] = Job(plan, state="building")
+    target = Target("key", key=repo.make_commit("c" * 40))
+    site.jobs[target.format()] = Job(target, state="building")
     site.sources.held[cache / "repos/o/r"] = 1  # type: ignore[attr-defined]  # a build's clone, open
     deleted = {str(e.path.relative_to(cache)) for e in site.tidy()}
     assert deleted == {"data/o_r-aaaaaaa-bbbbbbb", "repos/p/q"}

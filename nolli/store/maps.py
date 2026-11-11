@@ -40,8 +40,8 @@ class MemoryMaps(OverlayStore):
         self.about: dict[tuple[str, str], dict] = {}
         self.models: dict[ModelKey, Model] = {}
 
-    def open_maps(self, name: str) -> _MemoryHandle:
-        return _MemoryHandle(self, name)
+    def open_maps(self, name: str) -> MemoryHandle:
+        return MemoryHandle(self, name)
 
     def list_map_names(self, model_key: str) -> list[str]:
         return sorted(n for n, by_model in self.maps.items() if model_key in by_model)
@@ -53,7 +53,7 @@ class MemoryMaps(OverlayStore):
         self.models[model.key] = model
 
 
-class _MemoryHandle:
+class MemoryHandle:
     def __init__(self, store: MemoryMaps, name: str) -> None:
         self.store, self.name = store, name
 

@@ -1,5 +1,5 @@
 """Where models are kept (nolli/store/, nolli/model/keys.py) and where commits come from
-(nolli/logic/sources/), and building through them (nolli/build.py): keys, the directory store, clones fetched from a remote, and a change's model
+(nolli/logic/sources/), and building through them (nolli/operations.py): keys, the directory store, clones fetched from a remote, and a change's model
 built once, its commits' models reused."""
 
 from __future__ import annotations
@@ -10,13 +10,19 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from helpers import open_extracted
 
-from nolli.build import extract_commit, fetch_change, run_here
+from nolli.operations import _fetch_change, _run_here, extract_commit
+from nolli.logic import transformations
+from nolli.logic.formats import mermaid, viewer
 from nolli.logic.sources import CloneCache, FetchError, LocalRepository
+from nolli.logic.transformations import projection
 from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.model.model import Model
 from nolli.progress import Quiet
-from nolli.scenes import open_built, open_change_scene
+from nolli.review import brief, changes
+from nolli.review import verdicts as review_verdicts
+from nolli.operations import _open_change_scene, open_scene
 from nolli.store import DirectoryStore, directory
 from nolli.store.directory import _read_key, write_change
 
@@ -158,7 +164,7 @@ def test_clone_cache_fetches_what_is_missing_and_holds_the_clone(src, tmp_path, 
 def counting(calls: list):
     def run(fn, *args, progress):
         calls.append(fn.__name__)
-        return run_here(fn, *args, progress=progress)
+        return _run_here(fn, *args, progress=progress)
     return run
 
 
@@ -168,10 +174,10 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     repo = Repo(str(path))
     calls: list[str] = []
     first = repo.make_change(shas[0], shas[1])
-    about = fetch_change(store, sources, first, run=counting(calls), about={"title": "a cache", "budget": 12})
+    about = _fetch_change(store, sources, first, run=counting(calls), about={"title": "a cache", "budget": 12})
     assert calls == ["extract_commit", "extract_commit", "list_content"]
     assert about["title"] == "a cache" and about["budget"] == 12 and about["base"] == shas[0] and about["head"] == shas[1]
-    sc = open_change_scene(store, first)
+    sc = _open_change_scene(store, first)
     assert sc.model.meta["change"]["title"] == "a cache" and sc.model.meta["change"]["base"] == shas[0]
     assert sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
     assert sorted(f.name for f in store.locate(first).iterdir()) == ["base", "change.json", "head", "key.json", "model.json", "overlays"]
@@ -182,9 +188,9 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     assert any(el.find_same("base") and el.find_same("head") for el in sc.list_nodes())
 
     calls.clear()
-    assert fetch_change(store, sources, first, run=counting(calls))["title"] == "a cache"
+    assert _fetch_change(store, sources, first, run=counting(calls))["title"] == "a cache"
     assert calls == []  # stored: nothing built
-    fetch_change(store, sources, repo.make_change(shas[1], shas[2]), run=counting(calls))
+    _fetch_change(store, sources, repo.make_change(shas[1], shas[2]), run=counting(calls))
     assert calls == ["extract_commit", "list_content"]  # its base is the first change's head
 
 
@@ -194,38 +200,43 @@ def test_extract_commit_names_the_root(src):
     assert m.meta["commit"] == shas[0][:7] and m.meta["repo"] == "shop" and not m.has("repo:shop/cache.py")
     assert m.has("repo:shop/store.py")
     m.key = StringKey("shop@0")
-    assert open_built(m, maps).find_element("repo:").get("files")["name"] == "shop"
+    assert open_extracted(m, maps).find_element("repo:").get("files")["name"] == "shop"
+
+
+
+def _draw(scene, spec):
+    """``scene`` projected as ``spec`` asks."""
+    return transformations.apply(scene, projection.fold(spec))
 
 
 def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, tmp_path):
     """What a change says about itself (change, review) and its merged model are kept at diff
     time and read back; a change kept without them (an older nolli) is computed on every read."""
-    from nolli.datasets import Datasets
+    from helpers import spec
+
     from nolli.logic.transformations.merge import Change
-    from nolli.logic.transformations.projection import ProjectionSpec
     from nolli.review.card import Review
 
     path, shas = src
     store, sources = DirectoryStore(tmp_path / "data"), LocalRepository(path)
     change = Repo(str(path)).make_change(shas[0], shas[2])
-    fetch_change(store, sources, change, about={"title": "kept"})
-    datasets = Datasets(store)
-    kept = open_change_scene(store, change)
+    _fetch_change(store, sources, change, about={"title": "kept"})
+    kept = _open_change_scene(store, change)
     assert type(kept.overlays["change"]).__name__ == "PrecomputedOverlay" and kept.overlays["change"].find_kept(change.format_key())
     assert store.open_maps("review").load_about(change.format_key())["overlay"] == "review"
     computed = kept.with_overlays(Change(store.open_maps("content")), Review())  # the same scene, its own overlays computing
     for preset in ("folded", "changes", "unfolded"):
-        assert datasets.draw_json(kept, ProjectionSpec(preset=preset)) == datasets.draw_json(computed, ProjectionSpec(preset=preset))
+        assert viewer.export_scene(_draw(kept, spec(preset=preset))) == viewer.export_scene(_draw(computed, spec(preset=preset)))
     assert kept.read_all("change") == computed.read_all("change") and kept.read_all("review") == computed.read_all("review")
-    assert datasets.list_changes(kept) == datasets.list_changes(computed) and datasets.list_changes(kept)
+    assert changes.list_changes(kept) == changes.list_changes(computed) and changes.list_changes(kept)
 
     for f in ("model.json", "overlays/change.json", "overlays/review.json"):  # a change kept by an older nolli
         (store.locate(change) / f).unlink()
     older = DirectoryStore(tmp_path / "data")
     assert older.load_model(change) is None and older.open_maps("change").load(change.format_key()) == {}
-    old = open_change_scene(older, change)
+    old = _open_change_scene(older, change)
     assert old.overlays["change"].find_kept(change.format_key()) is None
-    assert Datasets(older).draw_json(old, ProjectionSpec(preset="changes")) == datasets.draw_json(kept, ProjectionSpec(preset="changes"))
+    assert viewer.export_scene(_draw(old, spec(preset="changes"))) == viewer.export_scene(_draw(kept, spec(preset="changes")))
 
 
 def test_maps_read_back_from_json_are_keyed_by_addresses_and_relations():
@@ -274,45 +285,45 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     afresh on the same directory (so every map is read back from JSON), draw it in every
     preset and side, list its changes, describe every box, brief the agent, and keep and
     describe verdicts. A rename is what git's per-file content says the most about."""
-    from nolli.datasets import Datasets
-    from nolli.logic.transformations.projection import ProjectionSpec
+    from helpers import spec
+
     from nolli.model.schema import EntityId
 
     path, base, head = renaming
     change = Repo(str(path)).make_change(base, head)
-    fetch_change(DirectoryStore(tmp_path / "data"), LocalRepository(path), change, about={"title": "rename"})
+    _fetch_change(DirectoryStore(tmp_path / "data"), LocalRepository(path), change, about={"title": "rename"})
 
     store = DirectoryStore(tmp_path / "data")
-    datasets = Datasets(store)
-    sc = datasets.open_scene(change)
+    sc = open_scene(store, change)
     renamed = EntityId.from_path("shop/helpers.py")
     assert sc.find_element(renamed).get("change")["old_path"] == "shop/legacy.py"
 
     for preset in ("folded", "changes", "unfolded", "whole"):
         for side in (None, "base", "head"):
-            st = ProjectionSpec(preset=preset, **({"side": side} if side else {}))
-            assert datasets.draw_json(sc, st)["nodes"]
-            text, ids = datasets.draw_mermaid(sc, st)
+            st = spec(preset=preset, **({"side": side} if side else {}))
+            assert viewer.export_scene(_draw(sc, st))["nodes"]
+            drawn = _draw(sc, st)
+            text, ids = mermaid.render(drawn), mermaid.list_ids(drawn)
             assert text and ids
-    unfolded = datasets.draw_json(sc, ProjectionSpec(expanded=["repo:", "repo:shop"]))
+    unfolded = viewer.export_scene(_draw(sc, spec(expanded=["repo:", "repo:shop"])))
     assert {n["id"] for n in unfolded["nodes"]} >= {"repo:shop/helpers.py", "repo:shop/api.py", "repo:shop/store.py"}
 
-    items = datasets.list_changes(sc)
+    items = changes.list_changes(sc)
     assert items and any("repo:shop/helpers.py" in it["focus"] for it in items)
 
-    brief = datasets.make_review_brief(sc)
-    assert "helpers" in brief
-    review_ids = [i for i in re.findall(r"\bn_\w+", datasets.make_review_diagram(sc)) if not i.endswith("_g")]
+    told = brief.make_brief(sc)
+    assert "helpers" in told
+    review_ids = [i for i in re.findall(r"\bn_\w+", brief.make_review_diagram(sc)) if not i.endswith("_g")]
     verdicts = [{"target": t, "verdict": "good", "reason": "fine"} for t in dict.fromkeys(review_ids)]
-    kept, problems = datasets.check_verdicts(sc, json.dumps(verdicts))
+    kept, problems = review_verdicts.check_verdicts(sc, brief.make_review_diagram(sc), json.dumps(verdicts))
     assert kept and not problems, problems
-    datasets.keep_verdicts(change, kept, {"by": "test"})
+    review_verdicts.save_verdicts(store, change, kept, {"by": "test"})
 
-    again = Datasets(DirectoryStore(tmp_path / "data"))  # the verdicts read back from JSON too
-    sc2 = again.open_scene(change)
-    described = again.describe_verdicts(sc2)
+    again = DirectoryStore(tmp_path / "data")  # the verdicts read back from JSON too
+    sc2 = open_scene(again, change)
+    described = review_verdicts.describe_verdicts(sc2, review_verdicts.load_verdicts(again, change))
     assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
-    assert again.draw_json(sc2, ProjectionSpec(preset="changes"))["nodes"]
+    assert viewer.export_scene(_draw(sc2, spec(preset="changes")))["nodes"]
 
 
 def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
@@ -320,8 +331,8 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
     projection returns has a key of no repository, under which nothing is kept, so asking for
     its kept values reads nothing and answers none; a change of the allowed repository projects
     in every preset, and a key of another repository is still refused."""
-    from nolli.datasets import Datasets
-    from nolli.logic.transformations.projection import ProjectionSpec
+    from helpers import spec
+
     from nolli.model.keys import NotAllowed
 
     path, shas = src
@@ -333,11 +344,10 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
                 raise NotAllowed(f"may not read {repo.url!r}")
 
     store = Checked(tmp_path / "data")
-    fetch_change(store, LocalRepository(path), change, about={"title": "checked"})
-    datasets = Datasets(store)
-    sc = datasets.open_scene(change)
+    _fetch_change(store, LocalRepository(path), change, about={"title": "checked"})
+    sc = open_scene(store, change)
     for preset in ("folded", "changes", "unfolded"):
-        assert datasets.draw_json(sc, ProjectionSpec(preset=preset))["nodes"]
+        assert viewer.export_scene(_draw(sc, spec(preset=preset)))["nodes"]
     assert store.list_map_names(StringKey().format_key()) == [] and store.locate_maps("", "change") is None
     with pytest.raises(NotAllowed):
         store.list_map_names(Repo("github.com/o/other").make_commit("a" * 40).format_key())

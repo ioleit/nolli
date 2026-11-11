@@ -171,7 +171,7 @@ export interface ProjectionSpec {
   preset: "default" | "folded" | "changes" | "unfolded" | null;  // the preset that gave expanded; null: unfolded by hand
   roles: string[];
   groups: string[];  // root groups drawn as boxes; the others are badges
-  budget: number;
+  budget: number | null;  // the default cut's budget; null for any other
   utilities: number;  // more incoming edges than this: a utility; 0: off
   max_lines: number;  // lines between two boxes at most (rollup.lift)
   side: "both" | "base" | "head";

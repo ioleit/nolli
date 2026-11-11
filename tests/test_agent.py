@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from nolli.cli import main
-from nolli.review.verdicts import parse_verdicts
+from nolli.review.verdicts import _parse_verdicts
 from nolli.store import DirectoryStore
 
 
@@ -63,14 +63,14 @@ def test_check(change, capsys):
     store = DirectoryStore(ds.parent)
     key = store.find_key(ds.name).format_key()
     assert store.open_maps("verdicts").load_about(key)["by"] == "agent"
-    assert [v["verdict"] for v in parse_verdicts(store.open_maps("verdicts").load(key))] == ["fine", "question"]
+    assert [v["verdict"] for v in _parse_verdicts(store.open_maps("verdicts").load(key))] == ["fine", "question"]
     bad = [{"target": f"{edge[2]} --> {edge[1]}", "verdict": "fine", "reason": "x"},
            {"target": "n_repo_shop_nope_py", "verdict": "bad", "reason": ""}]
     Path(change["verdicts"]).write_text(json.dumps(bad))
     assert main(["agent", "check", change["verdicts"]]) == 1
     err = capsys.readouterr().err
     assert "draws no edge" in err and "is not a node" in err and "must be one of" in err and "needs a reason" in err
-    assert len(parse_verdicts(store.open_maps("verdicts").load(key))) == 2  # failing verdicts replace no review
+    assert len(_parse_verdicts(store.open_maps("verdicts").load(key))) == 2  # failing verdicts replace no review
 
 
 def test_skill(tmp_path, capsys):

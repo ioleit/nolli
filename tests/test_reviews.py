@@ -16,12 +16,12 @@ from urllib.parse import quote
 
 import pytest
 
-from nolli.build import fetch_change
+from nolli.operations import _fetch_change
 from nolli.logic.sources import CloneCache, LocalRepository
 from nolli.model.keys import Repo
 from nolli.review import agent as reviewer
-from nolli.review.verdicts import _keep_verdicts_file, parse_verdicts
-from nolli.scenes import open_change_scene
+from nolli.review.verdicts import _keep_verdicts_file, _parse_verdicts
+from nolli.operations import _open_change_scene
 from nolli.server import serve
 from nolli.store import DirectoryStore
 
@@ -52,7 +52,7 @@ def dataset(tmp_path: Path) -> Path:
     git(r, "commit", "-q", "-m", "Add a cache")
     key = Repo("github.com/me/shop").make_change(base, git(r, "rev-parse", "HEAD"))  # as if built from '#7' on GitHub
     store = DirectoryStore(tmp_path / "data")
-    fetch_change(store, LocalRepository(r), key, about={"pr": 7, "title": "Add a cache"})
+    _fetch_change(store, LocalRepository(r), key, about={"pr": 7, "title": "Add a cache"})
     return store.locate(key)
 
 
@@ -60,7 +60,7 @@ def open_dataset(ds: Path):
     """The dataset's store, key and scene."""
     store = DirectoryStore(ds.parent)
     key = store.find_key(ds.name)
-    return store, key, open_change_scene(store, key)
+    return store, key, _open_change_scene(store, key)
 
 
 def k(ds: Path) -> str:
@@ -70,7 +70,7 @@ def k(ds: Path) -> str:
 
 def kept_verdicts(ds: Path) -> list[dict]:
     store, key, _ = open_dataset(ds)
-    return parse_verdicts(store.open_maps("verdicts").load(key.format_key()))
+    return _parse_verdicts(store.open_maps("verdicts").load(key.format_key()))
 
 
 def call(srv, path: str, method: str = "GET", body: bytes | None = None) -> tuple[int, dict]:

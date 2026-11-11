@@ -22,7 +22,8 @@ from nolli.logic.sources import LocalRepository
 from nolli.logic.sources.git import ChangeError
 from nolli.model.keys import Repo
 from nolli.progress import SHORT, Progress
-from nolli.server.serve import Board, Plan, Site, TooLarge, make_local_server, make_server, viewer_page
+from nolli import operations
+from nolli.server.serve import Board, Site, TooLarge, describe, make_local_server, make_server, viewer_page
 from nolli.store import DirectoryStore
 
 
@@ -101,8 +102,8 @@ def site(tmp_path: Path, src) -> Site:
     return Site(DirectoryStore(tmp_path / "cache" / "data"), LocalRepository(src[0]), tmp_path / "cache")
 
 
-def run(site: Site, plan: Plan, seconds: float = 60):
-    job = site.start(plan)
+def run(site: Site, target: operations.Target, seconds: float = 60):
+    job = site.start(target)
     deadline = time.time() + seconds
     while job.state in ("waiting", "building") and time.time() < deadline:
         time.sleep(0.05)
@@ -152,12 +153,12 @@ def test_a_pull_request_is_built_from_where_it_left_its_base(site, src, monkeypa
     monkeypatch.setattr(site, "get", fake_github({
         "repos/o/r": {"full_name": "o/r", "size": 1},
         "repos/o/r/pulls/7": {"head": {"sha": head}, "base": {"sha": main_tip}, "title": "a cache", "body": "the description"}}))
-    plan = site.plan("https://github.com/o/r/pull/7")
-    assert plan.key is None and plan.title == "o/r #7: a cache"  # where it left its base needs the commits
-    job = run(site, plan)
+    target = site.plan("https://github.com/o/r/pull/7")
+    assert target.kind == "pinned" and describe(target) == "o/r #7: a cache"  # where it left its base needs the commits
+    job = run(site, target)
     assert job.state == "done", job.error
     assert job.key == Repo("github.com/o/r").make_change(base, head)  # the merge base, not main's tip
-    key, sc = site.find_built(plan)
+    key, sc = site.find_built(target)
     about = sc.model.meta["change"]
     assert key == job.key and about["pr"] == 7 and about["description"] == "the description"
     assert about["remote"] == "https://github.com/o/r" and sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
@@ -168,10 +169,10 @@ def test_a_build_that_fails_leaves_no_model(site, src, monkeypatch):
     from nolli.server import serve
 
     _r, _tip, base, head = src
-    monkeypatch.setattr(serve.Datasets, "build", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
-    job = run(site, Plan("o_r_broken", "o/r", key=Repo("github.com/o/r").make_change(base, head)))
+    monkeypatch.setattr(serve.operations, "_fetch_change", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
+    job = run(site, operations.Target("key", key=Repo("github.com/o/r").make_change(base, head)))
     assert job.state == "error" and job.error == "half way"
-    assert site.find_built(job.plan) is None
+    assert site.find_built(job.target) is None
 
 
 def test_a_repository_too_large_is_not_built(site, monkeypatch):
@@ -213,8 +214,9 @@ def test_a_targets_page_builds_it_then_shows_it(served, src):
     status, body = get(f"{url}/api/scene?k={quote(key.format_key())}&p=changes")
     assert status == 200 and json.loads(body)["dataset"]["key"] == key.format_key()
     assert get(f"{url}/api/scene?k={quote(key.format_key()[:-1])}")[0] == 404  # no such model
-    dataset = srv.services.store.locate(key)
-    assert f'content="{key.format_key()}"' in get(f"{url}/?t={quote(str(dataset))}")[1]  # a dataset directory of the store
+    assert f'content="{key.format_key()}"' in get(f"{url}/?t={quote(key.format_key())}")[1]  # a key: built, shown as it is
+    assert get(f"{url}/?t={quote(str(srv.services.store.locate(key)))}")[0] == 404  # a dataset directory's path is no target
+    assert f'content="{key.format_key()}"' in get(f"{url}/?t={quote(srv.services.store.locate(key).name)}")[1]  # its name in the store is
     assert get(f"{url}/api/list")[0] == 404  # the store is not listed
 
 
@@ -222,9 +224,6 @@ def test_pages_that_show_nothing(served, tmp_path):
     url, _ = served
     status, body = get(f"{url}/?t=nope")
     assert status == 404 and "no commit" in body
-    (tmp_path / "elsewhere").mkdir()
-    (tmp_path / "elsewhere" / "key.json").write_text("{}")
-    assert "not in this server" in get(f"{url}/?t={quote(str(tmp_path / 'elsewhere'))}")[1]
     assert get(f"{url}/nope")[0] == 404
     assert "<form" in get(f"{url}/")[1]  # the landing page
 

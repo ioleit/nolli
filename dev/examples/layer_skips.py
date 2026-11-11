@@ -1,4 +1,4 @@
-"""Every dependency of the command line and the server that skips datasets, build and scenes:
+"""Every dependency of the command line and the server that skips nolli/operations.py:
 python dev/examples/layer_skips.py <nolli checkout>
 
 An example of nolli as a library that draws nothing. It opens a scene of the files as they
@@ -9,16 +9,18 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from nolli import build, scenes
+from nolli import operations
 from nolli.model import vocabulary
 from nolli.model.schema import RelationKind
+from nolli.store import MemoryStore
 
 TOP = ("nolli/cli.py", "nolli/server/")
-MIDDLE = ("nolli/datasets.py", "nolli/build.py", "nolli/scenes.py")
+MIDDLE = ("nolli/operations.py",)
 EVERYWHERE = ("nolli/model/",)
 
 repo = Path(sys.argv[1])
-scene = scenes.open_built(*build.extract(repo))
+files = MemoryStore()
+scene = operations.open_scene(files, operations.build_files(files, repo))
 
 
 def find_file(x: str) -> str | None:

@@ -39,6 +39,13 @@ class LocalRepository:
     def __init__(self, path: Path):
         self.path = Path(path)
 
+    def find_repo(self) -> Repo:
+        """Return this repository's key: its GitHub remote if it has one (the same commits there give
+        the same models), else its path."""
+        remote = git.find_remote(self.path)
+        found = Repo.from_remote(remote) if remote else None
+        return found if found and found.format_remote() else Repo(str(self.path.resolve()))
+
     @contextlib.contextmanager
     def open_commits(self, repo: Repo, *shas: str) -> Iterator[Path]:
         missing = [s for s in shas if not git.has_commit(self.path, s)]

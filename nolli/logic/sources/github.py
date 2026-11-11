@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -9,13 +10,14 @@ import shutil
 import subprocess
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
-from nolli.logic.sources import CloneCache, git
-from nolli.logic.sources.git import ChangeError, ChangeSpec
+from nolli.logic.sources import CloneCache, LocalRepository, git
+from nolli.logic.sources.git import ChangeError
+from nolli.model.keys import Repo
 
 URL = re.compile(r"^https?://github\.com/([^/]+)/([^/?#]+?)(?:\.git)?(/[^?#]*)?(?:[?#].*)?$")
 NUMBER = re.compile(r"^(?:#|pr:|pr/)(\d+)$", re.IGNORECASE)
@@ -89,7 +91,7 @@ AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN 
 class Answer:
     """What GitHub says a target is: the commits to fetch, and what the change says about
     itself. ``base`` is the change's base, or with ``merge`` the tip it left (the change starts
-    where head and base diverged, which needs the commits: ``finish_target``)."""
+    where head and base diverged, which needs the commits: ``operations.resolve_target``)."""
     head: str
     base: str | None = None
     merge: bool = False
@@ -123,7 +125,7 @@ def ask_target(t: Target, get: Callable[[str], dict] | None = None) -> Answer:
     return Answer(get(f"{path}/commits/{quote(ref, safe='')}")["sha"], title=f"{t.owner}/{t.name} at {ref}")
 
 
-def fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
+def _fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
     """Fetch ``shas`` of github.com/<owner>/<name> into the local repository ``repo``, objects
     only (no branch or tag): from its own remote for that repository if it has one (its
     credentials), else by URL."""
@@ -138,20 +140,35 @@ def fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
         raise ChangeError(f"could not fetch {', '.join(s[:7] for s in missing)} from {remote}: {exc}") from None
 
 
-def finish_target(t: Target, a: Answer, clone: Path) -> ChangeSpec:
-    """Return the change (or snapshot) that ``a`` names, reading what it needs from ``clone``,
-    which has its commits. Raise ChangeError if head and base give no change."""
-    if a.base is None:
-        return ChangeSpec(head=a.head, title=a.title) if a.title else git.describe(clone, ChangeSpec(head=a.head), a.head)
-    base = git.merge_base(clone, a.base, a.head) if a.merge else a.base
-    if base == a.head:
-        raise ChangeError(f"{t.owner}/{t.name}: no change ({a.head[:7]} is on {a.base[:7]})")
-    ch = ChangeSpec(head=a.head, base=base, title=a.title, description=a.description)
-    return ch if a.title else git.describe(clone, ch, t.head or a.head)
+class Checkout:
+    """Where the command line gets commits: the repository you are in (``path``, if any) when it
+    has them, or when they are of a GitHub repository it has a remote for (fetched into it,
+    objects only, so that you can look at them there too); else a clone under ``clones`` (made
+    when first needed), or the repository at a key's path."""
+
+    def __init__(self, path: Path | None, clones: Path):
+        self.path, self.clones_root = (Path(path) if path else None), Path(clones)
+        self.clones: CloneCache | None = None
+
+    @contextlib.contextmanager
+    def open_commits(self, repo: Repo, *shas: str) -> Iterator[Path]:
+        owner_name = tuple(repo.url.lower().split("/")[1:3]) if repo.format_remote() else None
+        if self.path is not None and (all(git.has_commit(self.path, s) for s in shas)
+                                      or owner_name in {(o.lower(), n.lower()) for o, n in _remotes(self.path).values()}):
+            if owner_name:
+                _fetch_into(self.path, *owner_name, list(shas))
+            yield self.path
+        elif owner_name:
+            self.clones = self.clones or _make_clone_cache(self.clones_root)
+            with self.clones.open_commits(repo, *shas) as clone:
+                yield clone
+        else:
+            with LocalRepository(Path(repo.url)).open_commits(repo, *shas) as path:
+                yield path
 
 
-def make_clone_cache(root: Path) -> CloneCache:
-    """Bare clones under ``root``, fetched with the token of whoever runs nolli."""
+def _make_clone_cache(root: Path) -> CloneCache:
+    """Make a cache of bare clones under ``root``, fetched with the token of whoever runs nolli."""
     return CloneCache(root, lambda owner, name: find_token())
 
 

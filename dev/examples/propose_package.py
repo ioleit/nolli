@@ -2,14 +2,14 @@
 python dev/examples/propose_package.py <nolli checkout>
 
 An example of nolli as a library: a scene of the files as they are, a custom transformation
-that proposes a directory that is not there and moves the command line, the datasets and the
+that proposes a directory that is not there and moves the command line and the
 server into it, the proposal folded to package level like any scene, cut down to nolli/
 itself, and the result as Mermaid. (nolli/logic/ was proposed the same way before it existed.)"""
 
 import sys
 from pathlib import Path
 
-from nolli import build, scenes
+from nolli import operations
 from nolli.logic import transformations
 from nolli.logic.formats import mermaid
 from nolli.logic.transformations import projection
@@ -18,13 +18,15 @@ from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId, RelationKind
+from nolli.store import MemoryStore
 
 NOLLI = EntityId.from_path("nolli")
 APP = EntityId.from_path("nolli/app")                                     # the proposed parent: no such directory exists
-MEMBERS = [EntityId.from_path(f"nolli/{p}") for p in ("cli.py", "datasets.py", "server")]
+MEMBERS = [EntityId.from_path(f"nolli/{p}") for p in ("cli.py", "server")]
 
 repo = Path(sys.argv[1])
-scene = scenes.open_built(*build.extract(repo))                     # the files as they are, with nolli's overlays
+files = MemoryStore()
+scene = operations.open_scene(files, operations.build_files(files, repo))                     # the files as they are, with nolli's overlays
 
 
 def group_into_app(scene: Scene) -> Scene:                          # the custom transformation
@@ -45,7 +47,7 @@ def group_into_app(scene: Scene) -> Scene:                          # the custom
 proposal = transformations.apply(scene, group_into_app)
 
 # package level: nolli/ unfolded, app/ one box among its packages
-spec = projection.ProjectionSpec.expanded_if(lambda el: el.key in (EntityId.REPO_ROOT, NOLLI), groups=[], utilities=0)
+spec = projection.ProjectionSpec(expand=projection.Where(lambda el: el.key in (EntityId.REPO_ROOT, NOLLI)), groups=[], utilities=0)
 folded = transformations.apply(proposal, projection.fold(spec))
 
 

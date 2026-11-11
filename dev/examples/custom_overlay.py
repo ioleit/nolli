@@ -10,15 +10,17 @@ kept."""
 import sys
 from pathlib import Path
 
-from nolli import build, scenes
+from nolli import operations
 from nolli.logic import transformations
 from nolli.logic.transformations import projection
 from nolli.model.keys import StringKey
 from nolli.model.scene import Element, Overlay, Scene
+from nolli.store import MemoryStore
 from nolli.store.maps import MemoryMaps
 
 repo = Path(sys.argv[1])
-scene = scenes.open_built(*build.extract(repo, key=StringKey("nolli@worktree")))   # the files as they are, with nolli's overlays
+files = MemoryStore()                                               # or a DirectoryStore
+scene = operations.open_scene(files, operations.build_files(files, repo, StringKey("nolli@worktree")))   # the files as they are, with nolli's overlays
 
 
 class Cool(Overlay):                                                # the custom overlay
@@ -54,9 +56,9 @@ print(len(live.read_all("cool")), "elements have a remark")
 store = MemoryMaps()                                                # or a DirectoryStore
 
 # module level: every directory unfolded, nothing else (a common projection; a named preset may come later)
-modules = projection.ProjectionSpec.expanded_if(lambda el: el.key == "repo:" or el.kind == "directory", groups=[], utilities=0)
+modules = projection.ProjectionSpec(expand=projection.Where(lambda el: el.key == "repo:" or el.kind == "directory"), groups=[], utilities=0)
 # one directory unfolded, a projection whose values are not kept
-one_dir = projection.ProjectionSpec.expanded_if(lambda el: el.key in ("repo:", "repo:nolli", "repo:nolli/model"), groups=[], utilities=0)
+one_dir = projection.ProjectionSpec(expand=projection.Where(lambda el: el.key in ("repo:", "repo:nolli", "repo:nolli/model")), groups=[], utilities=0)
 
 store.save_scene(live)                                              # the model, and what every overlay says about it
 store.precompute_overlay_values(transformations.apply(live, projection.fold(modules)), Cool())   # a projection, this overlay only

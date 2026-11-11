@@ -16,7 +16,7 @@ from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Overlay, Scene
 from nolli.model.schema import RelationKind
-from nolli.store import MemoryMaps, PrecomputedOverlay, SourceElementOverlay
+from nolli.store import MemoryMaps, SourceElementOverlay
 
 
 class Counting(Overlay):
@@ -42,7 +42,7 @@ def scene(tmp_path: Path):
     return open_dir(tmp_path, key="test@precomputed")
 
 
-MODULES = ProjectionSpec.expanded_if(lambda el: el.key == "repo:" or el.kind == "directory", groups=[], utilities=0)
+MODULES = ProjectionSpec(expand=projection.Where(lambda el: el.key == "repo:" or el.kind == "directory"), groups=[], utilities=0)
 
 
 def fold(scene):
