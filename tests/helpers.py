@@ -13,6 +13,7 @@ from nolli.logic.transformations.projection import ProjectionSpec
 from nolli.model.keys import StringKey
 from nolli.model.scene import Scene
 from nolli.progress import Quiet
+from nolli.review import changes
 from nolli.scenes import merge_built, open_built
 
 
@@ -21,9 +22,21 @@ def open_dir(path: Path, key: str = "test@0") -> Scene:
     return open_built(*extract(path, key=StringKey(key)))
 
 
+def spec(expanded: list[str] | None = None, preset: str | None = None, budget: int | None = None, **rest) -> ProjectionSpec:
+    """A ProjectionSpec as the viewer's URL asks for one: unfolded containers, or a preset by
+    name (the budget, for the default cut)."""
+    if expanded is not None:
+        expand = projection.Ids(tuple(expanded))
+    elif preset not in (None, "default"):
+        expand = changes.PRESETS.get(preset, projection.AtMost)()  # an unknown name: the default, as the server reads it
+    else:
+        expand = projection.AtMost(budget) if budget else projection.AtMost()
+    return ProjectionSpec(expand=expand, **rest)
+
+
 def draw(scene: Scene, **state) -> dict:
-    """The viewer's JSON of ``scene`` projected with ``ProjectionSpec(**state)``."""
-    return export_scene(transformations.apply(scene, projection.fold(ProjectionSpec(**state))))
+    """The viewer's JSON of ``scene`` projected with ``spec(**state)``."""
+    return export_scene(transformations.apply(scene, projection.fold(spec(**state))))
 
 
 def open_change(repo: Path, base: str, head: str, **about) -> Scene:

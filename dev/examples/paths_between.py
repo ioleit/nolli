@@ -22,7 +22,7 @@ def is_interesting_for_this_oneoff(el: Element) -> bool:
     return el.key == "repo:" or el.kind == "directory" and el.key.path.startswith("nolli")
 
 
-spec = projection.ProjectionSpec.expanded_if(is_interesting_for_this_oneoff, groups=[], utilities=0)
+spec = projection.ProjectionSpec(expand=projection.Where(is_interesting_for_this_oneoff), groups=[], utilities=0)
 folded = transformations.apply(scene, projection.fold(spec))
 
 

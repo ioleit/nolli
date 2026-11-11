@@ -6,8 +6,11 @@ Everything here reads a change's scene and returns plain data for a reviewer, pe
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 
+from nolli.logic.transformations import merge, projection
 from nolli.logic.transformations.merge import Links
+from nolli.logic.transformations.projection.reading import Reading
 from nolli.model import schema
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId
@@ -165,7 +168,7 @@ def number_changes(scene: Scene) -> list[dict]:
     return items
 
 
-def find_review_cut(scene: Scene) -> list[str]:
+def _find_review_cut(scene: Scene) -> list[str]:
     """The boxes to unfold so that every change in source code is drawn: what going to each
     of them unfolds, together. The review diagram and the viewer's "all changes" use it."""
     out = {EntityId.REPO_ROOT}
@@ -173,3 +176,22 @@ def find_review_cut(scene: Scene) -> list[str]:
         if it["role"] == "source":
             out.update(it["reveal"])
     return sorted(out)
+
+
+@dataclass(frozen=True)
+class Changes(projection.Expansion):
+    """The viewer's "all changes": for a change, every box ``_find_review_cut`` names unfolded;
+    for anything else, the default cut. Here, beside the numbered changes it reads, until they
+    move to logic."""
+    name = "changes"
+
+    def find(self, g: Reading, hidden: set[str], st: projection.ProjectionSpec) -> set[str]:
+        if not merge.is_change(g.scene):
+            return projection.AtMost().find(g, hidden, st)
+        return {EntityId.REPO_ROOT, *_find_review_cut(g.scene)}
+
+    def name_for(self, g: Reading) -> str | None:
+        return self.name if merge.is_change(g.scene) else projection.AtMost.name
+
+
+PRESETS: dict[str, type[projection.Expansion]] = {**projection.PRESETS, "changes": Changes}  # every preset the viewer offers

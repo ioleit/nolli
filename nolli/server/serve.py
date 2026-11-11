@@ -82,7 +82,10 @@ from nolli.logic.formats import mermaid, viewer  # noqa: E402
 from ..datasets import Datasets  # noqa: E402
 from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
 from ..logic.sources.git import ChangeError, GitError  # noqa: E402
-from ..logic.transformations.projection import DEFAULT_UTILITY_IN, PRESETS, ProjectionSpec  # noqa: E402
+from nolli.logic.transformations import projection  # noqa: E402
+from nolli.review import changes  # noqa: E402
+
+from ..logic.transformations.projection import DEFAULT_UTILITY_IN, ProjectionSpec  # noqa: E402
 from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..progress import Progress  # noqa: E402
@@ -435,13 +438,13 @@ def parse_spec(q: dict[str, str]) -> ProjectionSpec:
     """The viewer's URL parameters (the same keys as its location hash) as a scene state."""
     st = ProjectionSpec()
     if q.get("x"):
-        st.expanded = [x for x in q["x"].split(",") if x]
-    elif q.get("p") in PRESETS:
-        st.preset = q["p"]
+        st.expand = projection.Ids(tuple(x for x in q["x"].split(",") if x))
+    elif q.get("p") in changes.PRESETS:
+        st.expand = changes.PRESETS[q["p"]]()
+    if q.get("b") and isinstance(st.expand, projection.AtMost):  # the default cut's budget
+        st.expand = projection.AtMost(int(q["b"]))
     if q.get("r") is not None:
         st.roles = [r for r in q["r"].split(",") if r]
-    if q.get("b"):
-        st.budget = int(q["b"])
     if q.get("g") is not None:
         st.groups = [x for x in q["g"].split(",") if x]
     st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN

@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from nolli.build import extract_commit, _fetch_change, _run_here
+from nolli.build import _fetch_change, _run_here, extract_commit
+from nolli.logic.formats import mermaid, viewer
 from nolli.logic.sources import CloneCache, FetchError, LocalRepository
 from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.model.model import Model
 from nolli.progress import Quiet
-from nolli.scenes import open_built, _open_change_scene, open_stored
-from nolli.logic.formats import mermaid, viewer
+from nolli.scenes import _open_change_scene, open_built, open_stored
 from nolli.store import DirectoryStore, directory
 from nolli.store.directory import _read_key, write_change
 
@@ -201,9 +201,10 @@ def test_extract_commit_names_the_root(src):
 def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, tmp_path):
     """What a change says about itself (change, review) and its merged model are kept at diff
     time and read back; a change kept without them (an older nolli) is computed on every read."""
+    from helpers import spec
+
     from nolli.datasets import Datasets
     from nolli.logic.transformations.merge import Change
-    from nolli.logic.transformations.projection import ProjectionSpec
     from nolli.review.card import Review
 
     path, shas = src
@@ -216,7 +217,7 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     assert store.open_maps("review").load_about(change.format_key())["overlay"] == "review"
     computed = kept.with_overlays(Change(store.open_maps("content")), Review())  # the same scene, its own overlays computing
     for preset in ("folded", "changes", "unfolded"):
-        assert viewer.export_scene(datasets.draw(kept, ProjectionSpec(preset=preset))) == viewer.export_scene(datasets.draw(computed, ProjectionSpec(preset=preset)))
+        assert viewer.export_scene(datasets.draw(kept, spec(preset=preset))) == viewer.export_scene(datasets.draw(computed, spec(preset=preset)))
     assert kept.read_all("change") == computed.read_all("change") and kept.read_all("review") == computed.read_all("review")
     assert datasets.list_changes(kept) == datasets.list_changes(computed) and datasets.list_changes(kept)
 
@@ -226,7 +227,7 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     assert older.load_model(change) is None and older.open_maps("change").load(change.format_key()) == {}
     old = _open_change_scene(older, change)
     assert old.overlays["change"].find_kept(change.format_key()) is None
-    assert viewer.export_scene(Datasets(older).draw(old, ProjectionSpec(preset="changes"))) == viewer.export_scene(datasets.draw(kept, ProjectionSpec(preset="changes")))
+    assert viewer.export_scene(Datasets(older).draw(old, spec(preset="changes"))) == viewer.export_scene(datasets.draw(kept, spec(preset="changes")))
 
 
 def test_maps_read_back_from_json_are_keyed_by_addresses_and_relations():
@@ -275,8 +276,9 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     afresh on the same directory (so every map is read back from JSON), draw it in every
     preset and side, list its changes, describe every box, brief the agent, and keep and
     describe verdicts. A rename is what git's per-file content says the most about."""
+    from helpers import spec
+
     from nolli.datasets import Datasets
-    from nolli.logic.transformations.projection import ProjectionSpec
     from nolli.model.schema import EntityId
 
     path, base, head = renaming
@@ -291,12 +293,12 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
 
     for preset in ("folded", "changes", "unfolded", "whole"):
         for side in (None, "base", "head"):
-            st = ProjectionSpec(preset=preset, **({"side": side} if side else {}))
+            st = spec(preset=preset, **({"side": side} if side else {}))
             assert viewer.export_scene(datasets.draw(sc, st))["nodes"]
             drawn = datasets.draw(sc, st)
             text, ids = mermaid.render(drawn), mermaid.list_ids(drawn)
             assert text and ids
-    unfolded = viewer.export_scene(datasets.draw(sc, ProjectionSpec(expanded=["repo:", "repo:shop"])))
+    unfolded = viewer.export_scene(datasets.draw(sc, spec(expanded=["repo:", "repo:shop"])))
     assert {n["id"] for n in unfolded["nodes"]} >= {"repo:shop/helpers.py", "repo:shop/api.py", "repo:shop/store.py"}
 
     items = datasets.list_changes(sc)
@@ -314,7 +316,7 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     sc2 = open_stored(again.store, change)
     described = again.describe_verdicts(sc2)
     assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
-    assert viewer.export_scene(again.draw(sc2, ProjectionSpec(preset="changes")))["nodes"]
+    assert viewer.export_scene(again.draw(sc2, spec(preset="changes")))["nodes"]
 
 
 def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
@@ -322,8 +324,9 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
     projection returns has a key of no repository, under which nothing is kept, so asking for
     its kept values reads nothing and answers none; a change of the allowed repository projects
     in every preset, and a key of another repository is still refused."""
+    from helpers import spec
+
     from nolli.datasets import Datasets
-    from nolli.logic.transformations.projection import ProjectionSpec
     from nolli.model.keys import NotAllowed
 
     path, shas = src
@@ -339,7 +342,7 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
     datasets = Datasets(store)
     sc = open_stored(store, change)
     for preset in ("folded", "changes", "unfolded"):
-        assert viewer.export_scene(datasets.draw(sc, ProjectionSpec(preset=preset)))["nodes"]
+        assert viewer.export_scene(datasets.draw(sc, spec(preset=preset)))["nodes"]
     assert store.list_map_names(StringKey().format_key()) == [] and store.locate_maps("", "change") is None
     with pytest.raises(NotAllowed):
         store.list_map_names(Repo("github.com/o/other").make_commit("a" * 40).format_key())

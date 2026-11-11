@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import draw, find_node, open_dir
+from helpers import draw, find_node, open_dir, spec
 
 from nolli.logic import transformations
 from nolli.logic.extractors.facts import extract_facts
@@ -345,8 +345,7 @@ def test_mermaid_draws_the_scene(repo: Path):
     from nolli.logic.formats.viewer import export_scene
 
     scene = open_dir(repo)
-    for st in (ProjectionSpec(budget=12), ProjectionSpec(preset="folded"), ProjectionSpec(preset="unfolded"),
-               ProjectionSpec(expanded=["repo:", "repo:backend"])):
+    for st in (spec(budget=12), spec(preset="folded"), spec(preset="unfolded"), spec(expanded=["repo:", "repo:backend"])):
         projected = transformations.apply(scene, projection.fold(st))
         sc = export_scene(projected)
         text = render(projected)
@@ -378,7 +377,7 @@ def test_mermaid_ids(repo: Path):
     from nolli.logic.formats.mermaid import list_ids, render
     from nolli.logic.formats.viewer import export_scene
 
-    projected = transformations.apply(open_dir(repo), projection.fold(ProjectionSpec(expanded=["repo:", "repo:backend"])))
+    projected = transformations.apply(open_dir(repo), projection.fold(spec(expanded=["repo:", "repo:backend"])))
     sc = export_scene(projected)
     text = render(projected)
     drawn = {g.group(1) for line in text.splitlines() if (g := re.match(r"\s*(?:subgraph )?(n_\w+)\s*[\[(]", line))}

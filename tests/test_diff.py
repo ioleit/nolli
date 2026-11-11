@@ -142,7 +142,7 @@ def test_items_verdicts_and_export(repo):
     import json
 
     from nolli.review.brief import make_brief
-    from nolli.review.changes import find_review_cut, list_changes
+    from nolli.review.changes import _find_review_cut, list_changes
     from nolli.review.verdicts import find_diagram_ids, read_verdicts
 
     path, base, head = repo
@@ -155,7 +155,7 @@ def test_items_verdicts_and_export(repo):
     dep = by_title["app/api.py → app/store.py: dependency changed"]
     assert any(f.endswith("repo:app/store.py#Index|ref") for f in dep["facts"]) and dep["reveal"] == ["repo:", "repo:app"]
     assert any(it["category"] == "content" and it["title"].startswith("edited app/store.py") for it in items)
-    assert "repo:app" in find_review_cut(sc)
+    assert "repo:app" in _find_review_cut(sc)
     # verdicts name the diagram's nodes and edges; each lands on what stands for it in the view
     ids = find_diagram_ids(sc)
     v = read_verdicts(json.dumps([

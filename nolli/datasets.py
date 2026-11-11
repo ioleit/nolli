@@ -55,8 +55,6 @@ class Datasets:
     #   datasets.py only: draw_json, draw_mermaid, make_report
     def draw(self, scene: nolli.model.scene.Scene, state: nolli.logic.transformations.projection.ProjectionSpec) -> nolli.model.scene.Scene:
         """The projection ``state`` asks for; a change's "changes" preset unfolds what it changed."""
-        if state.preset == "changes" and state.focus is None and nolli.logic.transformations.merge.is_change(scene):
-            state.focus = nolli.review.changes.find_review_cut(scene)
         return nolli.logic.transformations.apply(scene, nolli.logic.transformations.projection.fold(state))
 
     # CALLERS (temp, not to be merged):
@@ -84,8 +82,7 @@ class Datasets:
         """The change as its review diagram draws it: every area that changed in source code
         unfolded. The same for the same change and version of nolli, so verdicts on its ids
         stay valid."""
-        budget = (scene.model.meta.get("change") or {}).get("budget") or nolli.logic.transformations.projection.DEFAULT_BUDGET
-        spec = nolli.logic.transformations.projection.ProjectionSpec(budget=budget, preset="changes", focus=nolli.review.changes.find_review_cut(scene))
+        spec = nolli.logic.transformations.projection.ProjectionSpec(expand=nolli.review.changes.Changes())
         return nolli.logic.transformations.apply(scene, nolli.logic.transformations.projection.fold(spec))
 
     # CALLERS (temp, not to be merged):
@@ -113,7 +110,7 @@ class Datasets:
         """The ``report.json`` of a model, its counts and the size of its default projection."""
         meta = scene.model.meta
         budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or nolli.logic.transformations.projection.DEFAULT_BUDGET
-        return nolli.logic.formats.report.make_report(scene, self.draw(scene, nolli.logic.transformations.projection.ProjectionSpec(budget=budget)))
+        return nolli.logic.formats.report.make_report(scene, self.draw(scene, nolli.logic.transformations.projection.ProjectionSpec(expand=nolli.logic.transformations.projection.AtMost(budget))))
 
     # -- a review's verdicts ---------------------------------------------------------
 

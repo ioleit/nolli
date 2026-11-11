@@ -115,7 +115,7 @@ async function refresh(keepZoom = false) {
  */
 function adopt(sc) {
   const s = sc.state;
-  state.expanded = s.expanded; state.preset = s.preset; state.roles = s.roles; state.groups = s.groups; state.budget = s.budget; state.utilities = s.utilities; state.maxLines = s.max_lines;
+  state.expanded = s.expanded; state.preset = s.preset; state.roles = s.roles; state.groups = s.groups; if (s.budget !== null) state.budget = s.budget;  /* only the default cut has a budget */ state.utilities = s.utilities; state.maxLines = s.max_lines;
 }
 
 /** Bring the tab shown up to date: the scene drawn, as Mermaid, or as JSON. */

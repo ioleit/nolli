@@ -27,32 +27,84 @@ DEFAULT_BUDGET = 34
 DEFAULT_UTILITY_IN = 4  # more incoming edges than this: a utility, drawn as badges
 DEFAULT_MAX_LINES = 4  # lines between two drawn boxes at most; more are lifted to a box they are inside (rollup.lift)
 DEFAULT_GROUPS = (EntityId.root(Scheme.API),)  # root groups drawn as boxes; the others are badges on their users
-PRESETS = ("default", "folded", "changes", "unfolded")
+
+
+class Expansion:
+    """Which containers a projection unfolds. ``find`` answers for the scene read by ``g``, given
+    what is hidden and the rest of the spec. ``name``: what the viewer calls it (its presets),
+    None for an explicit list or a predicate."""
+
+    name: str | None = None
+
+    def find(self, g: Reading, hidden: set[str], st: ProjectionSpec) -> set[str]:
+        raise NotImplementedError
+
+    def name_for(self, g: Reading) -> str | None:
+        """What the viewer calls what ``find`` did on ``g`` (a rule may fall back to another)."""
+        return self.name
+
+
+@dataclass(frozen=True)
+class Ids(Expansion):
+    """These containers (those the scene has)."""
+    ids: tuple[str, ...]
+
+    def find(self, g: Reading, hidden: set[str], st: ProjectionSpec) -> set[str]:
+        return {x for x in self.ids if g.has(x)}
+
+
+@dataclass(frozen=True)
+class Where(Expansion):
+    """Every container ``unfold`` says yes to, asked about each in the scene projected."""
+    unfold: Callable[[Element], bool] = field(repr=False, compare=False)
+
+    def find(self, g: Reading, hidden: set[str], st: ProjectionSpec) -> set[str]:
+        return {x for x in g.nodes if g.children(x) and self.unfold(g.scene.find_element(x))}
+
+
+@dataclass(frozen=True)
+class Root(Expansion):
+    """The top level only."""
+    name = "folded"
+
+    def find(self, g: Reading, hidden: set[str], st: ProjectionSpec) -> set[str]:
+        return {EntityId.REPO_ROOT}
+
+
+@dataclass(frozen=True)
+class All(Expansion):
+    """Every container that is not hidden."""
+    name = "unfolded"
+
+    def find(self, g: Reading, hidden: set[str], st: ProjectionSpec) -> set[str]:
+        return {x for x in g.nodes if x not in hidden and g.children(x)}
+
+
+@dataclass(frozen=True)
+class AtMost(Expansion):
+    """The default cut: as much unfolded as about ``budget`` boxes allow (hidden roles do not count)."""
+    budget: int = DEFAULT_BUDGET
+    name = "default"
+
+    def find(self, g: Reading, hidden: set[str], st: ProjectionSpec) -> set[str]:
+        hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
+        return set(unfold_lib.find_default_cut(g, budget=self.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
+
+
+PRESETS: dict[str, type[Expansion]] = {"default": AtMost, "folded": Root, "unfolded": All}  # the viewer's presets that need nothing but the scene
 
 
 @dataclass
 class ProjectionSpec:
-    """What a projection is asked for: which nodes become boxes (the unfolded containers,
-    ``expanded``, or those ``unfold`` says yes to, or a preset: ``default`` the default cut for
-    ``budget``, ``folded`` the top level, ``changes`` what ``focus`` names, ``unfolded``
-    everything; then the roles and namespace groups shown), how edges are simplified
-    (``utilities``, ``max_lines``), and for a change which side. A container unfolded inside a
-    folded one stays folded."""
-    expanded: list[str] | None = None
-    preset: str = "default"
+    """What a projection is asked for: which containers are unfolded (``expand``), the roles and
+    namespace groups shown, how edges are simplified (``utilities``, ``max_lines``), and for a
+    change which side. A container unfolded inside a folded one stays folded."""
+    expand: Expansion = field(default_factory=AtMost)
     roles: list[str] = field(default_factory=lambda: list(DEFAULT_ROLES))  # shown roles
-    budget: int = DEFAULT_BUDGET
     groups: list[str] = field(default_factory=lambda: list(DEFAULT_GROUPS))  # shown root groups
     utilities: int = DEFAULT_UTILITY_IN  # boxes with more incoming edges are badges on their users; 0: off
     side: str = "both"  # for a change, "base" or "head" draws one commit and "both" the merged model
     max_lines: int = DEFAULT_MAX_LINES  # lines drawn between two boxes at most (rollup.lift)
-    focus: list[str] | None = None  # what the "changes" preset unfolds; the caller says (for a change: nolli.review.changes.find_review_cut)
-    unfold: Callable[[Element], bool] | None = field(default=None, repr=False, compare=False)  # instead of expanded: asked per container
-
-    @classmethod
-    def expanded_if(cls, unfold: Callable[[Element], bool], **rest) -> ProjectionSpec:
-        """Unfold every container ``unfold`` says yes to (asked about each, in the scene projected)."""
-        return cls(unfold=unfold, **rest)
 
 
 @dataclass
@@ -81,27 +133,12 @@ def _is_root_group(g: Reading, x: str) -> bool:
     return g.has(x) and g.kind(x) == "group" and g.parent(x) is None
 
 
-def _find_preset_cut(g: Reading, st: ProjectionSpec, hidden: set[str]) -> set[str]:
-    """The containers a preset unfolds (a change's preset on a plain scene: the default cut)."""
-    if st.preset == "folded":
-        return {EntityId.REPO_ROOT}
-    if st.preset == "changes" and st.focus is not None:  # what the caller focuses on
-        return {EntityId.REPO_ROOT, *st.focus}
-    if st.preset == "unfolded":
-        return {x for x in g.nodes if x not in hidden and g.children(x)}
-    hidden_roles = [r for r in ALL_ROLES if r not in set(st.roles)]
-    return set(unfold_lib.find_default_cut(g, budget=st.budget, hidden_roles=hidden_roles, hidden=hidden)["expanded"])
-
-
 def _cut(g: Reading, st: ProjectionSpec) -> Cut:
     """``expanded`` is normalised to the containers actually reached, so folding a box also
     folds everything inside it."""
     hidden = _hide_for(g, st.roles, st.side)
     shown_groups = set(st.groups)
-    if st.unfold is not None:
-        expanded = {x for x in g.nodes if g.children(x) and st.unfold(g.scene.find_element(x))}
-    else:
-        expanded = _find_preset_cut(g, st, hidden) if st.expanded is None else {x for x in st.expanded if g.has(x)}
+    expanded = st.expand.find(g, hidden, st)
     expanded = {x for x in expanded if not (_is_root_group(g, x) and x not in shown_groups)}  # filtered out: stays folded
     walked: set[str] = set()
     visible = rollup.visible_from_expanded(g, expanded, hidden, walked=walked)
@@ -291,8 +328,8 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tupl
         r = g.file(x).get("role")
         if r in by_role and kind in ("file", "directory") and not g.file(x).get("root"):
             by_role[r]["files" if kind == "file" else "dirs"] += 1
-    state = {k: v for k, v in asdict(st).items() if k not in ("focus", "unfold")} | {"expanded": sorted(expanded),
-             "preset": None if st.expanded is not None else "default" if st.preset == "changes" and st.focus is None else st.preset}
+    state = {k: v for k, v in asdict(st).items() if k != "expand"} | {"expanded": sorted(expanded), "preset": st.expand.name_for(g),
+                                                                     "budget": getattr(st.expand, "budget", None)}
     drawn_count = sum(1 for x in order if not (root_group(x) and x not in touched))
     meta = {"projection": {"state": state, "order": order, "groups": groups, "roles": [{"id": r, **n} for r, n in by_role.items()],
                            "residue": residue, "utilities": sorted(utilities), "expanded": sorted(expanded),

@@ -45,7 +45,7 @@ def group_into_app(scene: Scene) -> Scene:                          # the custom
 proposal = transformations.apply(scene, group_into_app)
 
 # package level: nolli/ unfolded, app/ one box among its packages
-spec = projection.ProjectionSpec.expanded_if(lambda el: el.key in (EntityId.REPO_ROOT, NOLLI), groups=[], utilities=0)
+spec = projection.ProjectionSpec(expand=projection.Where(lambda el: el.key in (EntityId.REPO_ROOT, NOLLI)), groups=[], utilities=0)
 folded = transformations.apply(proposal, projection.fold(spec))
 
 
