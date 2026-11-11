@@ -28,7 +28,7 @@ scene = scenes.open_built(*build.extract(repo))                     # the files 
 
 
 def group_into_app(scene: Scene) -> Scene:                          # the custom transformation
-    """The same model with one more directory, app/ under nolli/, holding the three members
+    """Return the same model with one more directory, app/ under nolli/, that holds the three members
     in place of nolli/ itself. Every node and edge keeps its address, so it is its namesake's
     in the source and what extraction said about it holds; app/ is new and nothing is known
     about it but its place."""

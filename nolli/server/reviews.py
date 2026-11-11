@@ -71,9 +71,10 @@ class Reviews:
         return self.jobs.get(key)
 
     def start(self, store: ModelStore, key: ChangeKey, sources: Sources) -> Job:
-        """The run for ``key``: the one waiting or under way, or a new one. It reads the model
-        from ``store``, and the change's commits from ``sources`` when its turn comes. It runs in
-        the context of the request that started it (contextvars), as a store may need."""
+        """Return the review run for ``key``: the one waiting or under way, or else a new one started
+        in a thread. When its turn comes, a run reads the model from ``store`` and the change's
+        commits from ``sources``. It runs in the context of the request that started it (contextvars),
+        as a store may need."""
         with self.lock:
             job = self.jobs.get(key)
             if job and job.state in ("queued", "running"):

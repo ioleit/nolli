@@ -26,8 +26,8 @@ PAIR = " --> "
 
 
 def find_diagram_ids(scene: Scene) -> dict[str, str]:
-    """A diagram's node ids back to what they stand for: nodes (an unfolded one is a subgraph,
-    ``<id>_g``), and a module's own code (``<file>#``) or a directory's."""
+    """Map a diagram's node ids back to the nodes they stand for. An unfolded node is a subgraph
+    with the id ``<id>_g``, and a module's own code (``<file>#``) or a directory's has an id of its own."""
     out = {}
     for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
         out[x.as_identifier()] = out[x.as_identifier() + "_g"] = x
@@ -120,7 +120,7 @@ def _dump_verdicts(verdicts: list[dict]) -> dict[str, dict]:
 
 
 def parse_verdicts(values) -> list[dict]:
-    """The kept verdicts as a list in their order (V1, V2, …), each with its ``ends``."""
+    """Turn the kept verdicts into a list in their order (V1, V2, …), each with its ``ends``."""
     out = [{**v, "ends": [EntityId(x) for x in k.split(PAIR)]} for k, rec in values.items() if isinstance(k, str) for v in rec.get("verdicts", [])]
     return sorted(out, key=lambda v: int(v["id"][1:]))
 
@@ -165,7 +165,8 @@ def save_verdicts(maps: MapStore, key, verdicts: list[dict], by: dict) -> None:
 
 
 def _keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) -> list[dict]:
-    """A verdicts.json (on the review diagram's ids) read and kept as the change's verdicts."""
+    """Read a verdicts.json (on the review diagram's ids), keep it as the change's verdicts and
+    return them."""
     verdicts = read_verdicts(text, find_diagram_ids(scene))
     save_verdicts(maps, key, verdicts, by)
     return verdicts
@@ -190,7 +191,7 @@ class Verdicts(Overlay):
         return self.stored.load_about(scene.model.key.format_key())
 
     def group(self, scene: Scene) -> dict[str, list[dict]]:
-        """A change's verdicts by the node their first end belongs to."""
+        """Group a change's verdicts by the node their first end belongs to."""
         out: dict[str, list[dict]] = defaultdict(list)
         for v in self.load(scene):
             if v.get("ends"):
@@ -226,15 +227,16 @@ class Verdicts(Overlay):
 
 
 def _iter_boxes(el: Element):
-    """A drawn box and every box drawn inside it."""
+    """Yield a drawn box and every box drawn inside it."""
     yield el
     for c in el.children:
         yield from _iter_boxes(c)
 
 
 def find_box(scene: Scene, x: str) -> str | None:
-    """The drawn box that stands for ``x``: itself if drawn (a module's own code too), else the one
-    holding it (or its owner). ``x`` may be text, as a change item's ``focus`` holds addresses."""
+    """Find the drawn box that stands for ``x``. That is ``x`` itself if it is drawn (a module's own
+    code too), else the box holding it (or its owner), or None. ``x`` may be text, since a change
+    item's ``focus`` holds addresses."""
     x = EntityId(x)
     if scene.has(x):
         return x
@@ -242,7 +244,7 @@ def find_box(scene: Scene, x: str) -> str | None:
 
 
 def _land(scene: Scene, v: dict) -> object | None:
-    """The drawn box or edge a verdict is shown on.
+    """Find the drawn box or edge a verdict is shown on, or None if one of its ends has no box.
 
     A verdict on a node is shown on the box that stands for the node. A verdict on an edge is
     shown on the drawn edge between the innermost boxes around its two ends, since roll-up and
@@ -260,7 +262,8 @@ def _land(scene: Scene, v: dict) -> object | None:
 
 
 def _find_carrier(scene: Scene, a: str, b: str):
-    """The drawn edge that carries an edge from a to b (drawn boxes), or from b to a."""
+    """Find the drawn edge that carries an edge from a to b (drawn boxes), or from b to a; None if
+    there is none."""
     def around(x: str) -> list[str]:
         out = [x]
         while (p := scene.model.find_parent(out[-1])) is not None:

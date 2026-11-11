@@ -94,8 +94,9 @@ def _segment(s: str) -> str:
 
 
 def param(seg: str) -> str:
-    """A path segment as the address has it: a parameter, written ``{name}`` by the adapters,
-    is ``{}``, whatever the route calls it (``/items/{id}`` and ``/items/{item_id}`` are one)."""
+    """Return a path segment as an address writes it. A parameter, which the adapters write as
+    ``{name}``, becomes ``{}`` whatever the route calls it, so ``/items/{id}`` and
+    ``/items/{item_id}`` are the same; any other segment is returned unchanged."""
     return "{}" if seg.startswith("{") and seg.endswith("}") else seg
 
 
@@ -123,7 +124,8 @@ class EntityId(str):
 
     @classmethod
     def root(cls, scheme: str) -> EntityId:
-        """The root of a scheme's addresses: ``api:``. For ``repo:`` the repository's directory."""
+        """Return the root address of a scheme, such as ``api:``; for ``repo:`` it is the
+        repository's directory. Raise ``ValueError`` for an unknown scheme."""
         if scheme not in SCHEMES:
             raise ValueError(f"unknown scheme {scheme!r}")
         return cls(scheme + ":")
@@ -138,24 +140,26 @@ class EntityId(str):
         return self.endswith(":") and self[:-1] in SCHEMES
 
     def as_identifier(self) -> str:
-        """The address as an identifier, as diagrams name a node (Mermaid's
-        ``n_repo_nolli_scene_py``) and a review's verdicts name their targets."""
+        """Return the address as an identifier, ``n_`` followed by the address with every character
+        other than a letter or digit replaced by ``_`` (``n_repo_nolli_scene_py``). Diagrams name
+        a node by it (Mermaid), and a review's verdicts name their targets by it."""
         return "n_" + re.sub(r"[^A-Za-z0-9]", "_", self)
 
     # ---------- repo: ----------
 
     @classmethod
     def from_path(cls, path: str, *fragment: str) -> EntityId:
-        """A directory or file by its path relative to the repository root (``""`` or ``"."``
-        for the root), or a part of a file by the segments its extractor gives it:
-        ``repo:nolli/scene.py``, ``repo:`` for the root, ``repo:nolli/scene.py#ViewState``."""
+        """Make the address of a directory or file from its path relative to the repository root
+        (``""`` or ``"."`` for the root), or of a part of a file when the segments its extractor
+        gives it follow: ``repo:nolli/scene.py``, ``repo:`` for the root,
+        ``repo:nolli/scene.py#ViewState``."""
         path = "" if path in ("", ".") else path
         return cls(f"{Scheme.REPO}:{path}").part(*fragment)
 
     def part(self, *fragment: str) -> EntityId:
-        """A part of this file (a ``repo:`` address) by its segments, which the file's
-        extractor defines: ``f.part("Outer", "Inner")`` is ``…#Outer.Inner``. A ``.`` or ``#``
-        inside a segment is escaped."""
+        """Return the address of a part of this file (a ``repo:`` address), given its segments as
+        the file's extractor defines them; ``f.part("Outer", "Inner")`` is ``…#Outer.Inner``.
+        A ``.`` or ``#`` inside a segment is escaped. With no segments, return the file itself."""
         return EntityId(self.file + ("#" + ".".join(_segment(s) for s in fragment) if fragment else ""))
 
     @property
@@ -194,7 +198,7 @@ class EntityId(str):
     # become a part of the file like any other, or no node at all.
 
     def own_code(self) -> EntityId:
-        """The node of a file's or directory's own code."""
+        """Return the address of the node for a file's or directory's own code."""
         return EntityId(self.file + "#")
 
     @property
@@ -210,25 +214,25 @@ class EntityId(str):
 
     @classmethod
     def from_api_app(cls, protocol: str, key: str) -> EntityId:
-        """An API: the app, server or service definition serving operations, ``key`` unique
-        within the protocol: ``api:http:server/main.py:app``."""
+        """Make the address of an API, the app, server or service definition that serves
+        operations, with ``key`` unique within ``protocol``: ``api:http:server/main.py:app``."""
         return cls(f"{Scheme.API}:{protocol}:{key}")
 
     def api_step(self, segments: list[str]) -> EntityId:
-        """A step of this API's path tree, parameters written ``{}``:
-        ``api:http:server/main.py:app/items/{}``."""
+        """Return the address of a step of this API's path tree, with parameters written ``{}``,
+        e.g. ``api:http:server/main.py:app/items/{}``."""
         return EntityId(self + "".join("/" + param(s) for s in segments))
 
     def api_operation(self, segments: list[str], method: str) -> EntityId:
-        """An operation of this API: its method on a path below it, after ``#``:
-        ``api:http:server/main.py:app/items/{}#GET``."""
+        """Return the address of an operation of this API, its method on a path below it written
+        after ``#``, e.g. ``api:http:server/main.py:app/items/{}#GET``."""
         return EntityId(self.api_step(segments) + "#" + method)
 
     # ---------- pkg: ----------
 
     @classmethod
     def from_package(cls, lang: str, name: str) -> EntityId:
-        """A third-party package as a language's imports name it: ``("js", "@scope/name")``.
+        """Make a package's address from the name a language's imports give it: ``("js", "@scope/name")``.
 
         The address is a package URL (https://github.com/package-url/purl-spec): ``pkg:npm/elkjs``,
         ``pkg:npm/%40scope/name``. It is not relative to the repository, since a package has a
@@ -242,36 +246,37 @@ class EntityId(str):
 
     @classmethod
     def from_build_recipe(cls, recipe: str) -> EntityId:
-        """An artifact built from the recipe at the repository path ``recipe`` that has no
-        registry name: ``pkg:build/web/Dockerfile``. ``build`` is nolli's own package URL type,
-        not a registered one."""
+        """Make the address of an artifact that has no registry name from the repository path of the
+        recipe it is built from, e.g. ``pkg:build/web/Dockerfile``. ``build`` is nolli's own
+        package URL type, not a registered one."""
         return cls(f"{Scheme.PKG}:build/{recipe}")
 
     # ---------- runtime: and config: ----------
 
     @classmethod
     def from_host(cls, host: str) -> EntityId:
-        """A compose service or a host outside, by the host name it is reached at: ``runtime:db``
-        for a compose service the others reach as host ``db``, ``runtime:api.stripe.com``."""
+        """Make the address of a compose service or an outside host from the host name it is reached
+        at: ``runtime:db`` for a compose service the others reach as host ``db``,
+        ``runtime:api.stripe.com`` for an outside host."""
         return cls(f"{Scheme.RUNTIME}:{host}")
 
     @classmethod
     def from_config(cls, name: str) -> EntityId:
-        """A setting the code reads at runtime, such as an environment variable, by its name:
-        ``config:DATABASE_URL``."""
+        """Make the address of a setting the code reads at runtime, such as an environment
+        variable, from its name, e.g. ``config:DATABASE_URL``."""
         return cls(f"{Scheme.CONFIG}:{name}")
 
     # ---------- unresolved: ----------
 
     @classmethod
     def from_unresolved(cls, what: str, key: str) -> EntityId:
-        """A reference not bound yet: ``what`` says how to read ``key`` (``py`` a Python module,
-        ``pyref`` a name in one, ``js`` an import specifier, ``tsref``, a protocol's call):
-        ``unresolved:py:requests.adapters``."""
+        """Make the address of a reference not bound yet, e.g. ``unresolved:py:requests.adapters``.
+        ``what`` says how to read ``key``: ``py`` for a Python module, ``pyref`` for a name in
+        one, ``js`` for an import specifier, ``tsref``, or a protocol's call."""
         return cls(f"{Scheme.UNRESOLVED}:{what}:{key}")
 
     def unresolved_key(self, what: str) -> str | None:
-        """The key of an unresolved reference of sort ``what``, None for any other address."""
+        """Return the key of an unresolved reference of sort ``what``, or None for any other address."""
         prefix = f"{Scheme.UNRESOLVED}:{what}:"
         return self[len(prefix):] if self.startswith(prefix) else None
 

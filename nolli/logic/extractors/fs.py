@@ -51,9 +51,9 @@ def _lang_by_ext() -> dict[str, str]:
 
 
 def _module_facts(name: str, lang: str | None) -> dict:
-    """What the graph operations need to know about a file of an extracted language:
-    it is a ``module``; a package body (``__init__.py``, ``index.ts``) is also ``body``,
-    what it makes its folder ("package", "folder module")."""
+    """Return what the graph operations need to know about a file of an extracted language.
+    Such a file is a ``module``; a package body (``__init__.py``, ``index.ts``) also gets ``body``,
+    which says what it makes its folder ("package", "folder module")."""
     for language in extractors.languages():
         if lang in language.names:
             return {"module": True} | ({"body": language.package} if name in language.package_body else {})
@@ -101,7 +101,7 @@ def _classify(rel: str) -> tuple[str | None, str]:
 
 
 def run(ctx: Context) -> None:
-    """Adds the directory tree of tracked files as the ``contain`` hierarchy. Files get a
+    """Add the directory tree of tracked files as the ``contain`` hierarchy. Files get a
     ``language`` (by extension) and a ``role``: ``source``, ``test``, ``config``,
     ``docs``, ``data``, ``asset``, ``markup`` or ``other``. Roles are attributes: a file
     is left out only when it sits in a generated directory (``GENERATED_DIRS``)."""

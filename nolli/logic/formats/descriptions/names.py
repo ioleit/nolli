@@ -48,7 +48,7 @@ def _list_icons(el: Element) -> list[str]:
 
 
 def _format_name(el: Element) -> str:
-    """The node's readable name, mostly the last part of its address, such as a file, class
+    """Return the node's readable name, mostly the last part of its address, such as a file, class
     or package name. The repository's name comes from the model's meta, and root groups and
     APIs, whose addresses are not readable, take their names from the extractor that made them."""
     x = el.key
@@ -69,8 +69,8 @@ def _format_name(el: Element) -> str:
 
 
 def read_api(el: Element) -> dict:
-    """The extractor's record of an API, path step or endpoint, with its ``protocol``,
-    ``method``, ``path`` and ``short``, the path below the parent step. Empty for other nodes."""
+    """Return the extractor's record of an API, path step or endpoint, with its ``protocol``,
+    ``method``, ``path`` and ``short`` (the path below the parent step). It is empty for other nodes."""
     if el.key.scheme != Scheme.API:
         return {}
     v = vocabulary.read_external(el)

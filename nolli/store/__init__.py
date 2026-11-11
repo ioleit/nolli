@@ -30,23 +30,23 @@ class ModelStore(MapStore, Protocol):
     """
 
     def check(self, repo: Repo) -> None:
-        """Raises NotAllowed unless the current request may read ``repo``.
+        """Raise NotAllowed unless the current request may read ``repo``.
 
         This is the one place that decides who may read what: every read of a model, a change
         or a map goes through it. A store that restricts access overrides ``check`` and nothing
         else."""
 
     def load_model(self, key: ModelKey) -> Model | None:
-        """A commit's model, or a change's merged model if it was kept with the change; None if
-        there is none (or of another format). Raises NotAllowed if this request may not read
-        ``key.repo``."""
+        """Return a commit's model, or a change's merged model if it was kept with the change.
+        Return None if there is none or it is of another format. Raise NotAllowed if this
+        request may not read ``key.repo``."""
 
     def save_model(self, key: CommitKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         """Keep a commit's model and the maps its extractors made, replacing what was kept."""
 
     def load_change(self, key: ChangeKey) -> dict | None:
-        """What a change says about itself (title, pr, description, …), None if it is not kept.
-        Raises NotAllowed as load_model."""
+        """Return what a change says about itself (title, pr, description, …), or None if it is not
+        kept. Raise NotAllowed as load_model does."""
 
     def save_change(self, key: ChangeKey, about: dict, sides: Mapping[str, tuple[Model, Mapping[str, Mapping[Key, dict]]]],
                     maps: Mapping[str, Mapping[Key, dict]], model: Model | None = None) -> None:

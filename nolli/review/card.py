@@ -15,10 +15,11 @@ FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up
 
 
 def _index_items(scene: Scene) -> dict[Key, dict]:
-    """The numbered changes (``changes.number_changes``), as the ``review`` overlay says them on
-    the change itself: each item listed once, under the first node it focuses on (``listed``),
-    and for each node or edge which items it is about (a node those that focus on it, an edge
-    those whose facts it is), by id, with what placing them needs (``items``, ``about``)."""
+    """Index the numbered changes (``changes.number_changes``) as the ``review`` overlay records
+    them on the change itself. Each item is listed once, under the first node it focuses on
+    (``listed``). Each node or edge also gets the ids of the items it is about (for a node those
+    that focus on it, for an edge those whose facts it is), with what placing them needs
+    (``items``, ``about``)."""
     about: dict[Key, dict[str, dict]] = {}
     listed: dict[Key, list[dict]] = {}
     for it in changes.number_changes(scene):

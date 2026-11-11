@@ -138,8 +138,8 @@ def _is_file(g: Reading, x: str) -> bool:
 
 
 def is_init(g: Reading, x: str) -> bool:
-    """A package body (Python's ``__init__.py``, a TypeScript ``index.ts``; the file tree
-    marks it ``body``): the folder's own code, not a module of its own."""
+    """Tell whether ``x`` is a package body (Python's ``__init__.py``, a TypeScript ``index.ts``;
+    the file tree marks it ``body``), which holds the folder's own code and is no module of its own."""
     return g.has(x) and g.kind(x) == "file" and bool(g.file(x).get("body"))
 
 
@@ -154,8 +154,8 @@ def _under(g: Reading, x: str, d: str) -> bool:
 
 
 def _default_init_edge(g: Reading, r) -> bool:
-    """An edge from a package body to something inside its own package: the re-export /
-    submodule import every ``__init__`` has. It is not a dependency and is not drawn."""
+    """Tell whether an edge goes from a package body to something inside its own package. That is
+    the re-export / submodule import every ``__init__`` has. It is not a dependency and is not drawn."""
     if not is_init(g, r.src):
         return False
     d = g.parent(r.src)
@@ -189,7 +189,7 @@ def _file_degree(g: Reading, hidden: set[str]) -> dict[str, int]:
 
 
 def _shown_files(g: Reading, d: str, hidden: set[str], k: int, degree: dict[str, int]) -> tuple[list[str], list[str]]:
-    """The k most connected files of d (ties by name), and the rest."""
+    """Return the k most connected files of d (ties broken by name), and the rest."""
     loose = sorted((c for c in g.children(d) if c not in hidden and _is_file(g, c)),
                    key=lambda c: (-degree.get(c, 0), c))
     return loose[:k], loose[k:]
@@ -197,7 +197,7 @@ def _shown_files(g: Reading, d: str, hidden: set[str], k: int, degree: dict[str,
 
 def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show_files=None, degree=None,
                           walked: set[str] | None = None, anchors: set[str] | None = None) -> set[str]:
-    """The cut for a set of unfolded containers.
+    """Return the nodes drawn (the cut) for a set of unfolded containers.
 
     An unfolded container shows *all* its non-hidden children (a partially opened
     container hides problems); children that are unfolded themselves are walked. An
@@ -207,7 +207,7 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
     body is the package's anchor ``<dir>#``, present only if it has edges.
     ``show_files`` and ``degree`` are accepted for compatibility and ignored. ``walked``,
     if given, receives the unfolded containers actually reached (the effective unfold set).
-    ``anchors``: ``init_anchor_dirs(g, hidden)``, by a caller that tries many cuts.
+    ``anchors`` may be passed as ``init_anchor_dirs(g, hidden)``, computed once for many cuts.
     """
     visible: set[str] = set()
     if anchors is None:
@@ -245,9 +245,9 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
 
 
 def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[str, str] | None = None):
-    """A function from a node to the node that stands for it: itself if visible, else its
-    nearest visible ancestor (or the own code of its unfolded module or package), else None
-    when it is hidden."""
+    """Return a function that maps a node to the node standing for it. That is the node itself if
+    visible, else its nearest visible ancestor (or the own code of its unfolded module or
+    package), else None when it is hidden."""
     cache: dict[str, str | None] = {}
     alias = alias or {}
 
@@ -279,7 +279,7 @@ def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[
 
 
 def _fact_key(r) -> str:
-    """An edge's id: ``kind|src|dst|subkind``."""
+    """Return an edge's id, ``kind|src|dst|subkind``."""
     return r.key.format()
 
 
@@ -288,7 +288,7 @@ def _owner_of(node: str) -> str:
 
 
 def _top_of(g: Reading, node: str, expanded: set[str]) -> str:
-    """The outermost drawn ancestor of a drawn node (the top-level component it belongs to)."""
+    """Return the outermost drawn ancestor of a drawn node, i.e. the top-level component it belongs to."""
     cur = node
     while True:
         p = drawn_parent(g, cur, expanded)
@@ -330,7 +330,7 @@ def utility_badges(g: Reading, rolled: RolledUp, min_in: int = 6) -> set[str]:
 
 
 def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[str, int]]:
-    """What unfolding reveals, per container.
+    """Count, per container, the edges that unfolding it reveals; return ``(lca, loose)``.
 
     ``lca[C]`` counts relations whose endpoints lie in different children of C (their
     lowest common ancestor is C): exactly the edges that appear when C is unfolded.
@@ -380,7 +380,8 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
 
 
 def drawn_parent(g: Reading, node: str, expanded: set[str]) -> str | None:
-    """The unfolded container a drawn node sits in (the own code ``F#`` sits in F)."""
+    """Return the unfolded container a drawn node sits in (the own code ``F#`` sits in F), or None
+    at the top level."""
     if node.is_own_code:
         return _owner_of(node)
     p = g.parent(node)
@@ -468,13 +469,13 @@ def lift(g: Reading, edges: list[RolledEdge], expanded: set[str], max_lines: int
 
 def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
          shown_groups=frozenset(), side: str = "both") -> RolledUp:
-    """The edges drawn for a cut (``visible``). A relation between two nodes becomes a
-    relation between their representatives (``representative``); relations that land on one
-    node are *internal* to it and counted separately (they measure the structure a folded
-    node hides).
+    """Roll the relations up into the edges drawn for a cut (``visible``). A relation between two
+    nodes becomes a relation between their representatives (``representative``); relations that
+    land on one node are *internal* to it and counted separately (they measure the structure a
+    folded node hides).
 
-    ``shown_groups``: root groups (the namespaces' roots: Artifacts, Configuration, Runtime,
-    APIs) drawn as boxes, folded or not, like any other box; edges to them are drawn. Other
+    ``shown_groups`` names the root groups (the namespaces' roots: Artifacts, Configuration,
+    Runtime, APIs) that are drawn as boxes, folded or not, like any other box; edges to them are drawn. Other
     root groups are not drawn. An edge to one of them becomes an annotation on its other
     end ("uses 42 external packages"), and an edge between two of them is left out.
     Cross-cutting things are omnipresent; drawn, they hide the structure. Interfaces
@@ -512,7 +513,8 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
                             base=count if base is None else base, head=count if head is None else head, changed=changed or {}))
 
     def sides(r) -> tuple[int, int, str | None]:
-        """(references before, after, change status) of an edge; status None when unchanged."""
+        """Return (references before, references after, change status) of an edge; the status is None
+        when unchanged."""
         d = r.diff
         if not d:
             return r.count, r.count, None

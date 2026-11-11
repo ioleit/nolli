@@ -11,7 +11,7 @@ import re
 
 
 def code(value) -> str:
-    """A value as a code span, fenced with more backticks than it holds."""
+    """Format a value as a code span, fenced with more backticks than it holds; an empty value gives ""."""
     s = " ".join(str(value).split())
     if not s:
         return ""
@@ -29,9 +29,9 @@ def _esc(text: str) -> str:
 
 
 def quote(text: str) -> str:
-    """What the code says about itself (a docstring), as a paragraph quoted with "> ": its
-    code spans (``x`` in a docstring, `x` in a doc comment) stay code spans, the rest is
-    escaped text."""
+    """Quote what the code says about itself (a docstring) as a paragraph starting with "> ". Its
+    code spans (``x`` in a docstring, `x` in a doc comment) stay code spans, and the rest is
+    escaped as text."""
     text = " ".join(text.split())
     out, i = "", 0
     for run in re.finditer(r"`+", text):
@@ -47,7 +47,8 @@ def quote(text: str) -> str:
 
 
 def mark(verdict: str) -> str:
-    """A verdict's mark: a link to the made-up scheme ``verdict:``, ``[problem](verdict:problem)``."""
+    """Return a verdict's mark, a link to the made-up scheme ``verdict:`` such as
+    ``[problem](verdict:problem)``."""
     return f"[{verdict}](verdict:{verdict})"
 
 
@@ -62,8 +63,8 @@ def paragraphs(lines: list[str]) -> str:
 
 
 def say(template: str, *values) -> str:
-    """A sentence: the template (Markdown), each {} filled with a value as a code span, for the
-    data in it ("`api-mock` references `1 name` in `lib/`")."""
+    """Write a sentence from the template (Markdown), filling each {} with a value as a code span
+    so that the data in it stands out ("`api-mock` references `1 name` in `lib/`")."""
     out = ""
     for i, text in enumerate(template.split("{}")):
         out += text + (code(values[i]) if i < len(values) else "")

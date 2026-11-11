@@ -26,9 +26,10 @@ SHAPES = (FILES, SYMBOLS, REFERENCES, EXTERNALS)
 
 
 def shape_of(key: str | Relation, speaker: str) -> str:
-    """The overlay a fact belongs in, by what it is about and who said it: an edge's facts are
-    references; a repository node's are files from the file tree (``fs``) and symbols from a
-    language; anything outside the repository is externals."""
+    """Return the overlay a fact belongs in, given what it is about and who said it. An edge's
+    facts go in references. A repository node's go in files when the file tree (``fs``) said
+    them and in symbols when a language did. Facts about anything outside the repository go in
+    externals."""
     if isinstance(key, Relation):
         return REFERENCES
     if key.is_repo:
@@ -91,32 +92,33 @@ class SymbolFacts(TypedDict):
 
 
 def read_file(el: Element) -> FileFacts | dict:
-    """What the file tree says about a file or directory ({} for anything else)."""
+    """Return what the file tree says about a file or directory, or {} for any other element."""
     return el.get(FILES) or {}
 
 
 def read_references(el: Element) -> list[Reference]:
-    """The references an edge stands for, as the extractor that found it says ([] for none)."""
+    """Return the references an edge stands for, as the extractor that found it says, or [] for none."""
     return (el.get(REFERENCES) or {}).get("references", [])
 
 
 def read_external(el: Element) -> dict:
-    """What an extractor says about a node outside the repository ({} for one inside, or one
-    nothing was said about): its ``name``, its ``language``, an API's ``method`` and ``protocol``."""
+    """Return what an extractor says about a node outside the repository: its ``name``, its
+    ``language``, and for an API its ``method`` and ``protocol``. Return {} for a node inside the
+    repository or one nothing was said about."""
     return el.get(EXTERNALS) or {}
 
 
 def read_all_files(scene: Scene) -> Mapping[str, FileFacts]:
-    """What the file tree says about every file and directory of a scene, by address."""
+    """Return what the file tree says about every file and directory of a scene, by address."""
     return scene.read_all(FILES)  # type: ignore[return-value]
 
 
 def read_all_references(scene: Scene) -> Mapping[Relation, list[Reference]]:
-    """The references every edge of a scene stands for, by edge (edges no extractor found
-    references for are left out), as ``read_references`` reads them one by one."""
+    """Return the references every edge of a scene stands for, by edge, as ``read_references``
+    reads them one by one. Edges no extractor found references for are left out."""
     return {k: v["references"] for k, v in scene.read_all(REFERENCES).items()}  # type: ignore[misc]
 
 
 def read_all_symbols(scene: Scene) -> Mapping[str, ModuleFacts | SymbolFacts]:
-    """What every module, class or type of a scene defines, by address."""
+    """Return what every module, class or type of a scene defines, by address."""
     return scene.read_all(SYMBOLS)  # type: ignore[return-value]

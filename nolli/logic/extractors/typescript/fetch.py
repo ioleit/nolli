@@ -52,7 +52,7 @@ def _module_constants(root) -> dict[str, str]:
 
 
 def _url_pattern(node, consts: dict[str, str] | None = None) -> str | None:
-    """Static shape of a URL expression: '/api/x/*' or None if nothing static.
+    """Return the static shape of a URL expression, e.g. '/api/x/*', or None if nothing is static.
     Substitutions of known module constants are folded in; others become \\x00."""
     consts = consts or {}
     if node is None:
@@ -82,7 +82,7 @@ def _url_pattern(node, consts: dict[str, str] | None = None) -> str | None:
 
 
 def _static_prefix(node, param: str, consts: dict[str, str]) -> str:
-    """Static text of a URL template before the substitution that carries ``param``."""
+    """Return the static text of a URL template before the substitution that carries ``param``."""
     if node is None or node.type != "template_string":
         return ""
     parts: list[str] = []

@@ -47,7 +47,7 @@ def size_of(path: Path) -> int:
 
 
 def scan(cache: Path, kinds: dict[str, str]) -> list[Entry]:
-    """The entries under ``cache``: for each kind, what its glob pattern finds."""
+    """List the entries under ``cache``: for each kind, what its glob pattern finds (hidden names skipped)."""
     out = []
     for kind, pattern in kinds.items():
         for p in cache.glob(pattern):
@@ -106,7 +106,7 @@ def delete(cache: Path, kinds: dict[str, str], e: Entry) -> bool:
 
 
 def fixed_part(pattern: str) -> Path:
-    """The folder a glob pattern starts in: ``repos`` for ``repos/*/*``."""
+    """Return the folder a glob pattern starts in, e.g. ``repos`` for ``repos/*/*``."""
     fixed = []
     for part in Path(pattern).parts:
         if any(c in part for c in "*?["):

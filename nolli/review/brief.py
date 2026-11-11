@@ -9,8 +9,9 @@ from nolli.model.scene import Scene
 
 
 def make_brief(scene: Scene, mermaid: str, description: str | None = None) -> str:
-    """What a review agent gets: the change's title, the diagram of everything that changed
-    (the reviewer looks at the same picture), how to answer, and the PR's description.
+    """Write the brief a review agent gets for a change. It holds the change's title, the diagram
+    of everything that changed (the reviewer looks at the same picture), how to answer, and the
+    PR's description.
     Verdicts come back as JSON on the diagram's nodes and edges and are shown in the viewer.
 
     ``mermaid``: the review diagram (``review.mmd``), the change with every area that changed

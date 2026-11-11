@@ -85,15 +85,15 @@ def _install_ref(work: Path, ref: str) -> tuple[str, Path]:
 
 
 def _checkout_version() -> str:
-    """This checkout's commit, with ``-dirty`` when the working tree has uncommitted changes."""
+    """Return this checkout's short commit, with ``-dirty`` when ``nolli/`` has uncommitted changes."""
     root = Path(__file__).resolve().parent.parent
     git = lambda *a: subprocess.run(["git", *a], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
     return git("rev-parse", "--short", "HEAD") + ("-dirty" if git("status", "--porcelain", "--", "nolli") else "")
 
 
 def _clone(work: Path, repo: str, history: bool = False) -> Path:
-    """A local checkout of ``repo``: the path itself, or a clone kept under the work directory
-    (shallow, or with its whole history for a change)."""
+    """Return a local checkout of ``repo``: the path itself if it is a directory, else a clone kept
+    under the work directory (shallow, or with its whole history for a change), cloned if missing."""
     if Path(repo).is_dir():
         return Path(repo).resolve()
     out = work / ("repos-full" if history else "repos") / repo.rstrip("/").rsplit("/", 1)[-1]
@@ -167,7 +167,8 @@ class Server:
             return r.read()
 
     def ask(self, path: str, query: dict, as_json: bool = True):
-        """The answer to ``path?<the dataset>&query``; {"error": ...} for an HTTP error or a timeout."""
+        """Ask the server ``path?<the dataset>&query`` and return its answer, or {"error": ...} for an
+        HTTP error or a timeout."""
         try:
             body = self.get(path + "?" + urllib.parse.urlencode({**self.names, **query}))
         except urllib.error.HTTPError as exc:
@@ -187,7 +188,7 @@ class Server:
 
 
 def _list_foldable(scene: dict) -> list[str]:
-    """The folded boxes a click would unfold, largest first (either version's JSON)."""
+    """List the folded boxes a click would unfold, largest first; read either version's JSON."""
     out = []
     for n in scene["nodes"]:
         p = n.get("projection", n)
@@ -208,7 +209,8 @@ def _make_queries(scene: dict, unfold: int) -> list[tuple[str, dict]]:
 
 
 def _time(server: Server, query: dict, runs: int) -> tuple[float | None, dict | None]:
-    """The median time of ``query``, and the scene; (None, None) if the server took too long."""
+    """Time ``query`` over ``runs`` runs after a warm-up and return the median time and the scene,
+    or (None, None) if the server took too long."""
     try:
         scene, _ = server.fetch_scene(query)  # warm-up: the server may cache the dataset
     except TimeoutError:
@@ -226,7 +228,7 @@ _RENAMED = {"label": {"text": "label", "icons": "icons"}, "hover": {"text": "inf
 
 
 def _flatten_element(x: dict) -> dict:
-    """A box or edge of viewer JSON format 1 in the flat fields of the format before it."""
+    """Convert a box or edge of viewer JSON format 1 to the flat fields of the format before it."""
     out = {}
     for k, v in x.items():
         if k == "projection" and isinstance(v, dict):
@@ -266,7 +268,7 @@ def _list_differences(a, b, path: tuple = ()):
 
 
 def _pattern(path: tuple) -> str:
-    """A difference's path with the box, edge and list index left out: where in the answer it is."""
+    """Reduce a difference's path to where in the answer it is, leaving out the box, edge and list index."""
     out = []
     for i, p in enumerate(path):
         keyed = i > 0 and path[i - 1] in ("nodes", "edges")
@@ -329,7 +331,7 @@ def _report_text(name: str, a: str | dict, b: str | dict, labels: list[str]) -> 
 
 
 def _compare(servers: dict[str, Server], ds: Dataset) -> list[str]:
-    """What both versions answer on one dataset, and how they differ."""
+    """Ask both versions the same questions on one dataset; return Markdown lines on how they differ."""
     labels = list(servers)
     a, b = servers.values()
     presets = ["default", "folded", "unfolded"] + (["changes"] if ds.is_change else [])

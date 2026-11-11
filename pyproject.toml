@@ -59,10 +59,15 @@ packages = ["nolli", "nolli.logic", "nolli.model", "nolli.logic.formats", "nolli
 line-length = 110
 
 [tool.ruff.lint]
-# ruff's own rules, and no relative imports: every module names the package it imports from
-extend-select = ["TID252"]
+# ruff's own rules; no relative imports: every module names the package it imports from; and
+# docstrings that say what a function does, as a command ("Build the model…"), as PEP 257 asks
+extend-select = ["TID252", "D401"]
 # nested ifs that each say one thing; a bad file is a ValueError, whatever is wrong in it
 ignore = ["SIM102", "TRY004"]
+
+[tool.ruff.lint.per-file-ignores]
+# a test's docstring states what is expected of the code, not a command
+"tests/**" = ["D401"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
