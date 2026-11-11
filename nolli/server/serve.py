@@ -306,6 +306,9 @@ class Site:
         """Work out what the target ``text`` names now and return it pinned (``build.Target.pin``).
         Raise github.NotFound for a repository the token cannot read, TooLarge, and ChangeError for
         a target this server cannot show or GitHub cannot be asked about."""
+        key = self.store.find_key(text) if self.here and text else None
+        if key is not None:  # a dataset of this server's store, by its name (nolli view, in its data directory)
+            return build.Target("key", key=key, text=text)
         t = build.Target.from_string(text, self.local)
         if t.kind == "github":
             return self.plan_github(t.github)

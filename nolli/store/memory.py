@@ -30,6 +30,10 @@ class MemoryStore(OverlayStore):
     def list_map_names(self, model_key: str) -> list[str]:
         return sorted(n for n, by_model in self.maps.items() if model_key in by_model)
 
+    def find_key(self, name: str) -> ModelKey | None:
+        """Return None: models in memory have keys, not names."""
+        return None
+
     def load_model(self, key: ModelKey) -> Model | None:
         return self.models.get(key)
 

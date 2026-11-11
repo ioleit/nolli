@@ -36,6 +36,10 @@ class ModelStore(MapStore, Protocol):
         or a map goes through it. A store that restricts access overrides ``check`` and nothing
         else."""
 
+    def find_key(self, name: str) -> ModelKey | None:
+        """Return the key of the model the store calls ``name`` (``DirectoryStore``: a dataset
+        directory's name), or None if it calls none so."""
+
     def load_model(self, key: ModelKey) -> Model | None:
         """Return a commit's model, or a change's merged model if it was kept with the change.
         Return None if there is none or it is of another format. Raise NotAllowed if this
