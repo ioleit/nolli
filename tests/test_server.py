@@ -22,7 +22,7 @@ from nolli.logic.sources import LocalRepository
 from nolli.logic.sources.git import ChangeError
 from nolli.model.keys import Repo
 from nolli.progress import SHORT, Progress
-from nolli import build
+from nolli import operations
 from nolli.server.serve import Board, Site, TooLarge, describe, make_local_server, make_server, viewer_page
 from nolli.store import DirectoryStore
 
@@ -102,7 +102,7 @@ def site(tmp_path: Path, src) -> Site:
     return Site(DirectoryStore(tmp_path / "cache" / "data"), LocalRepository(src[0]), tmp_path / "cache")
 
 
-def run(site: Site, target: build.Target, seconds: float = 60):
+def run(site: Site, target: operations.Target, seconds: float = 60):
     job = site.start(target)
     deadline = time.time() + seconds
     while job.state in ("waiting", "building") and time.time() < deadline:
@@ -169,8 +169,8 @@ def test_a_build_that_fails_leaves_no_model(site, src, monkeypatch):
     from nolli.server import serve
 
     _r, _tip, base, head = src
-    monkeypatch.setattr(serve.build, "_fetch_change", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
-    job = run(site, build.Target("key", key=Repo("github.com/o/r").make_change(base, head)))
+    monkeypatch.setattr(serve.operations, "_fetch_change", lambda *a, **k: (_ for _ in ()).throw(ChangeError("half way")))
+    job = run(site, operations.Target("key", key=Repo("github.com/o/r").make_change(base, head)))
     assert job.state == "error" and job.error == "half way"
     assert site.find_built(job.target) is None
 

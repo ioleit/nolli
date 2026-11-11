@@ -12,7 +12,7 @@ from nolli.logic.sources import CloneCache
 from nolli.model.keys import Repo
 from nolli.server import retention
 from nolli.server.retention import LeastRecentlyUsed, parse_size, scan, sweep
-from nolli.build import Target
+from nolli.operations import Target
 from nolli.server.serve import KINDS, Job, Site
 from nolli.store import DirectoryStore
 

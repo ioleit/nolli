@@ -1,5 +1,5 @@
 """Where models are kept (nolli/store/, nolli/model/keys.py) and where commits come from
-(nolli/logic/sources/), and building through them (nolli/build.py): keys, the directory store, clones fetched from a remote, and a change's model
+(nolli/logic/sources/), and building through them (nolli/operations.py): keys, the directory store, clones fetched from a remote, and a change's model
 built once, its commits' models reused."""
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from helpers import open_extracted
 
-from nolli.build import _fetch_change, _run_here, extract_commit
+from nolli.operations import _fetch_change, _run_here, extract_commit
 from nolli.logic import transformations
 from nolli.logic.formats import mermaid, viewer
 from nolli.logic.sources import CloneCache, FetchError, LocalRepository
@@ -22,7 +22,7 @@ from nolli.model.model import Model
 from nolli.progress import Quiet
 from nolli.review import brief, changes
 from nolli.review import verdicts as review_verdicts
-from nolli.scenes import _open_change_scene, open
+from nolli.operations import _open_change_scene, open_scene
 from nolli.store import DirectoryStore, directory
 from nolli.store.directory import _read_key, write_change
 
@@ -294,7 +294,7 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     _fetch_change(DirectoryStore(tmp_path / "data"), LocalRepository(path), change, about={"title": "rename"})
 
     store = DirectoryStore(tmp_path / "data")
-    sc = open(store, change)
+    sc = open_scene(store, change)
     renamed = EntityId.from_path("shop/helpers.py")
     assert sc.find_element(renamed).get("change")["old_path"] == "shop/legacy.py"
 
@@ -320,7 +320,7 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     review_verdicts.save_verdicts(store, change, kept, {"by": "test"})
 
     again = DirectoryStore(tmp_path / "data")  # the verdicts read back from JSON too
-    sc2 = open(again, change)
+    sc2 = open_scene(again, change)
     described = review_verdicts.describe_verdicts(sc2, review_verdicts.load_verdicts(again, change))
     assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
     assert viewer.export_scene(_draw(sc2, spec(preset="changes")))["nodes"]
@@ -345,7 +345,7 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
 
     store = Checked(tmp_path / "data")
     _fetch_change(store, LocalRepository(path), change, about={"title": "checked"})
-    sc = open(store, change)
+    sc = open_scene(store, change)
     for preset in ("folded", "changes", "unfolded"):
         assert viewer.export_scene(_draw(sc, spec(preset=preset)))["nodes"]
     assert store.list_map_names(StringKey().format_key()) == [] and store.locate_maps("", "change") is None

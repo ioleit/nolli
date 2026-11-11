@@ -1,4 +1,4 @@
-"""What a target names (nolli/build.py: Target.from_string, Target.pin; nolli/logic/sources/git.py),
+"""What a target names (nolli/operations.py: Target.from_string, Target.pin; nolli/logic/sources/git.py),
 on a small git history:
 
     main:    c1 - c2 ------- m (merge of feature, --no-ff)
@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from nolli.cli import main
-from nolli.build import Target
+from nolli.operations import Target
 from nolli.logic.sources.git import WORKTREE, ChangeError, Revs, _default_branch, find_toplevel
 from nolli.model.keys import Repo
 from nolli.store import DirectoryStore

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from helpers import draw
-from nolli.scenes import _open_change_scene
+from nolli.operations import _open_change_scene
 from nolli.cli import main
 from nolli.store import DirectoryStore
 

@@ -16,12 +16,12 @@ from urllib.parse import quote
 
 import pytest
 
-from nolli.build import _fetch_change
+from nolli.operations import _fetch_change
 from nolli.logic.sources import CloneCache, LocalRepository
 from nolli.model.keys import Repo
 from nolli.review import agent as reviewer
 from nolli.review.verdicts import _keep_verdicts_file, _parse_verdicts
-from nolli.scenes import _open_change_scene
+from nolli.operations import _open_change_scene
 from nolli.server import serve
 from nolli.store import DirectoryStore
 

@@ -76,7 +76,7 @@ import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 
 HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 
-from nolli import build, scenes  # noqa: E402
+from nolli import operations  # noqa: E402
 from nolli.logic.formats import mermaid, viewer  # noqa: E402
 
 from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
@@ -143,7 +143,7 @@ def token_from_env(env: dict | None = None) -> Token:
     return Fixed(value) if value else Token()
 
 
-def describe(t: build.Target) -> str:
+def describe(t: operations.Target) -> str:
     """Describe a pinned target for its pages: the repository, the pull request or commits, and
     what the change calls itself."""
     if t.kind == "pinned":
@@ -184,7 +184,7 @@ class Board:
 
 @dataclass
 class Job:
-    target: build.Target  # pinned
+    target: operations.Target  # pinned
     board: Board = field(default_factory=Board)
     state: str = "waiting"  # waiting, building, done, error
     error: str = ""
@@ -236,7 +236,7 @@ def processes() -> multiprocessing.context.BaseContext:
     """How build steps' processes start: from a server process that has nolli loaded already, where there is one."""
     if "forkserver" in multiprocessing.get_all_start_methods():
         ctx = multiprocessing.get_context("forkserver")
-        ctx.set_forkserver_preload(["nolli.build"])
+        ctx.set_forkserver_preload(["nolli.operations"])
         return ctx
     return multiprocessing.get_context("spawn")
 
@@ -302,14 +302,14 @@ class Site:
                 raise
             return github.api(path, None)
 
-    def plan(self, text: str | None) -> build.Target:
-        """Work out what the target ``text`` names now and return it pinned (``build.Target.pin``).
+    def plan(self, text: str | None) -> operations.Target:
+        """Work out what the target ``text`` names now and return it pinned (``operations.Target.pin``).
         Raise github.NotFound for a repository the token cannot read, TooLarge, and ChangeError for
         a target this server cannot show or GitHub cannot be asked about."""
         key = self.store.find_key(text) if self.here and text else None
         if key is not None:  # a dataset of this server's store, by its name (nolli view, in its data directory)
-            return build.Target("key", key=key, text=text)
-        t = build.Target.from_string(text, self.local)
+            return operations.Target("key", key=key, text=text)
+        t = operations.Target.from_string(text, self.local)
         if t.kind == "github":
             return self.plan_github(t.github)
         if not self.here:
@@ -318,24 +318,24 @@ class Site:
             raise ChangeError("this viewer was started outside a git repository: name a GitHub URL or a dataset directory")
         return t.pin()
 
-    def plan_github(self, t: github.Target) -> build.Target:
+    def plan_github(self, t: github.Target) -> operations.Target:
         info = self.api(t.owner, t.name)
         owner, name = info["full_name"].split("/")  # GitHub's spelling (paths are case-insensitive)
         if self.max_repo is not None and info.get("size", 0) * 1024 > self.max_repo:
             raise TooLarge(f"{owner}/{name} is {info['size'] >> 10} MB on GitHub; this host builds repositories up to {self.max_repo >> 20} MB")
-        return build.Target("github", github=dataclasses.replace(t, owner=owner, name=name)).pin(self.get)
+        return operations.Target("github", github=dataclasses.replace(t, owner=owner, name=name)).pin(self.get)
 
-    def find_built(self, target: build.Target) -> tuple[ModelKey, Scene] | None:
+    def find_built(self, target: operations.Target) -> tuple[ModelKey, Scene] | None:
         """Return the key and scene that the pinned ``target`` names if it is built, else None. Raise
         NotAllowed as the store does."""
         key = target.key or self.built.get(target.format())
         if key is None:
             return None
         kept = self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key)
-        sc = scenes.open(self.store, key) if build.is_fresh(kept) else None
+        sc = operations.open_scene(self.store, key) if operations.is_fresh(kept) else None
         return (key, sc) if sc is not None else None
 
-    def start(self, target: build.Target) -> Job:
+    def start(self, target: operations.Target) -> Job:
         """Return the build of the pinned ``target``, reusing the existing one unless it failed, and
         otherwise starting a new one in a thread. The build runs in the context of the request that
         started it."""
@@ -353,8 +353,8 @@ class Site:
         with self.builds:
             job.state, job.t0 = "building", time.time()
             try:
-                job.key = build.resolve(target, self.sources, progress)  # known before it is built: tidy() leaves it
-                build.build(self.store, dataclasses.replace(target, kind="key", key=job.key), self.sources,
+                job.key = operations.resolve_target(target, self.sources, progress)  # known before it is built: tidy() leaves it
+                operations.build_target(self.store, dataclasses.replace(target, kind="key", key=job.key), self.sources,
                             about={"budget": self.budget}, run=self.run_step, progress=progress)
                 self.built[job.name] = job.key
                 job.state = "done"
@@ -571,7 +571,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not isinstance(key, (CommitKey, ChangeKey)):
             return None
         try:
-            sc = scenes.open(self.services.store, key)
+            sc = operations.open_scene(self.services.store, key)
         except NotAllowed:
             return None
         return (key, sc) if sc is not None else None

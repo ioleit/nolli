@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from nolli import build, scenes
+from nolli import operations
 from nolli.logic import transformations
 from nolli.logic.formats.viewer import export_scene
 from nolli.logic.sources import LocalRepository
@@ -22,14 +22,14 @@ from nolli.store.maps import Maps
 def open_dir(path: Path, key: str = "test@0") -> Scene:
     """The scene of the files under ``path`` as they are, built into memory."""
     store = MemoryStore()
-    return scenes.open(store, build.build_files(store, path, StringKey(key)))
+    return operations.open_scene(store, operations.build_files(store, path, StringKey(key)))
 
 
 def open_extracted(model: Model, maps: Maps, key: str = "test@0") -> Scene:
     """The scene of a model and maps just extracted (``Facts.split``), kept in memory."""
     store = MemoryStore()
     store.save_model(StringKey(key), model, maps)
-    return scenes.open(store, StringKey(key))
+    return operations.open_scene(store, StringKey(key))
 
 
 def spec(expanded: list[str] | None = None, preset: str | None = None, budget: int | None = None, **rest) -> ProjectionSpec:
@@ -57,8 +57,8 @@ def open_change(repo: Path, base: str, head: str, **about) -> Scene:
 
     store, local = MemoryStore(), LocalRepository(repo)
     key = local.find_repo().make_change(sha(base), sha(head))
-    build.build(store, build.Target("key", key=key), local, about=about)
-    return scenes.open(store, key)
+    operations.build_target(store, operations.Target("key", key=key), local, about=about)
+    return operations.open_scene(store, key)
 
 
 def find_node(sc: dict, x: str) -> dict:

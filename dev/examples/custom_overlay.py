@@ -10,7 +10,7 @@ kept."""
 import sys
 from pathlib import Path
 
-from nolli import build, scenes
+from nolli import operations
 from nolli.logic import transformations
 from nolli.logic.transformations import projection
 from nolli.model.keys import StringKey
@@ -20,7 +20,7 @@ from nolli.store.maps import MemoryMaps
 
 repo = Path(sys.argv[1])
 files = MemoryStore()                                               # or a DirectoryStore
-scene = scenes.open(files, build.build_files(files, repo, StringKey("nolli@worktree")))   # the files as they are, with nolli's overlays
+scene = operations.open_scene(files, operations.build_files(files, repo, StringKey("nolli@worktree")))   # the files as they are, with nolli's overlays
 
 
 class Cool(Overlay):                                                # the custom overlay

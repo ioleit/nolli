@@ -91,7 +91,7 @@ AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN 
 class Answer:
     """What GitHub says a target is: the commits to fetch, and what the change says about
     itself. ``base`` is the change's base, or with ``merge`` the tip it left (the change starts
-    where head and base diverged, which needs the commits: ``build.resolve``)."""
+    where head and base diverged, which needs the commits: ``operations.resolve_target``)."""
     head: str
     base: str | None = None
     merge: bool = False

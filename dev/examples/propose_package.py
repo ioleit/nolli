@@ -9,7 +9,7 @@ itself, and the result as Mermaid. (nolli/logic/ was proposed the same way befor
 import sys
 from pathlib import Path
 
-from nolli import build, scenes
+from nolli import operations
 from nolli.logic import transformations
 from nolli.logic.formats import mermaid
 from nolli.logic.transformations import projection
@@ -26,7 +26,7 @@ MEMBERS = [EntityId.from_path(f"nolli/{p}") for p in ("cli.py", "server")]
 
 repo = Path(sys.argv[1])
 files = MemoryStore()
-scene = scenes.open(files, build.build_files(files, repo))                     # the files as they are, with nolli's overlays
+scene = operations.open_scene(files, operations.build_files(files, repo))                     # the files as they are, with nolli's overlays
 
 
 def group_into_app(scene: Scene) -> Scene:                          # the custom transformation

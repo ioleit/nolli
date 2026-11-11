@@ -9,17 +9,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_paths_between_build_and_store():
+def test_paths_between_operations_and_store():
     out = subprocess.run([sys.executable, str(ROOT / "dev/examples/paths_between.py"), str(ROOT)], capture_output=True, text=True, check=True).stdout
     assert out.startswith("flowchart TD")
-    assert "n_repo_nolli_build_py" in out and "n_repo_nolli_store_maps_py" in out
+    assert "n_repo_nolli_operations_py" in out and "n_repo_nolli_store_maps_py" in out
     assert "n_repo_nolli_cli_py" not in out  # nothing that is not on a path
 
 
-def test_layer_skips_past_build_scenes():
+def test_layer_skips_past_operations():
     out = subprocess.run([sys.executable, str(ROOT / "dev/examples/layer_skips.py"), str(ROOT)], capture_output=True, text=True, check=True).stdout
     assert "nolli/server/serve.py\n" in out and "-> nolli/logic/transformations/projection/__init__.py: " in out
-    assert "-> nolli/build.py" not in out and "-> nolli/model/" not in out
+    assert "-> nolli/operations.py" not in out and "-> nolli/model/" not in out
 
 
 def test_propose_package_groups_the_layers_above_logic():

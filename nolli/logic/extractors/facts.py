@@ -103,7 +103,7 @@ class Facts:
         self.entities: dict[str, EntityFact] = {}
         self.relations: list[RelationFact] = []
         self.meta: dict = {}
-        self.current = "fs"  # the extractor running (build.extract sets it)
+        self.current = "fs"  # the extractor running (extract_facts sets it)
         self._parent: dict[str, str] | None = None
         self._children: dict[str, list[str]] | None = None
 
