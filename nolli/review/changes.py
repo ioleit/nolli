@@ -182,9 +182,9 @@ def _find_review_cut(scene: Scene) -> list[str]:
 
 @dataclass(frozen=True)
 class Changes(projection.Expansion):
-    """The viewer's "all changes": for a change, every box ``_find_review_cut`` names unfolded;
-    for anything else, the default cut. Here, beside the numbered changes it reads, until they
-    move to logic."""
+    """The viewer's "all changes": for a change, every box that ``_find_review_cut`` names is
+    unfolded; for anything else, the default cut. It lives here, next to the numbered changes it
+    reads, until those move to ``logic.transformations.merge``."""
     name = "changes"
 
     def find(self, g: Reading, hidden: set[str], st: projection.ProjectionSpec) -> set[str]:

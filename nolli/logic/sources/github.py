@@ -168,7 +168,7 @@ class Checkout:
 
 
 def _make_clone_cache(root: Path) -> CloneCache:
-    """Bare clones under ``root``, fetched with the token of whoever runs nolli."""
+    """Make a cache of bare clones under ``root``, fetched with the token of whoever runs nolli."""
     return CloneCache(root, lambda owner, name: find_token())
 
 

@@ -60,7 +60,8 @@ def version() -> str:
 
 
 def is_fresh(m: Model | dict | None) -> bool:
-    """Built by this version of nolli (an older model is built again when it is asked for)."""
+    """Tell whether ``m`` (a model, or a change's record) was built by this version of nolli; an
+    older one is built again when it is asked for."""
     meta = m.meta if isinstance(m, Model) else (m or {})
     return meta.get("nolli") == version()
 
@@ -214,8 +215,8 @@ def build_target(store: ModelStore, target: Target, sources: Sources, *, about: 
 
 def build_files(store: ModelStore, path: Path, key: ModelKey = StringKey("files@worktree"), progress: Progress | None = None) -> ModelKey:
     """Build the files under ``path`` as they are (a working tree, a checkout, a directory that is
-    no git repository) into ``store``, under ``key``, every time: they are no commit, so nothing
-    says a kept one is fresh. Its key."""
+    no git repository) into ``store`` under ``key``, and return the key. They are built every
+    time: they are no commit, so nothing says a kept model of them is fresh."""
     model, maps = extract_files(path, progress=progress, key=key)
     store.save_model(key, model, maps)  # type: ignore[arg-type]  # a store keeps a model under any key it can hold
     return key
@@ -426,9 +427,9 @@ def describe_change_meta(base: Model, head: Model, about: dict) -> dict:
 
 
 def precompute_scene(store: ModelStore, key: ModelKey) -> None:
-    """Compute the overlays a stored model keeps (``_make_kept_overlays``; for a change, its two
-    commits' first) and save their values in the store, so that opening it reads them instead of
-    computing them. Raise KeyError if the store does not have the model."""
+    """Compute the overlays a stored model keeps (``_make_kept_overlays``) and save their values in
+    the store, so that opening the model reads them instead of computing them. For a change, its
+    two commits are precomputed first. Raise KeyError if the store does not have the model."""
     for side in key.list_sides() if isinstance(key, ChangeKey) else ():
         precompute_scene(store, side)
     scene = open_scene(store, key)

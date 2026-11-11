@@ -37,8 +37,8 @@ class ModelStore(MapStore, Protocol):
         else."""
 
     def find_key(self, name: str) -> ModelKey | None:
-        """Return the key of the model the store calls ``name`` (``DirectoryStore``: a dataset
-        directory's name), or None if it calls none so."""
+        """Return the key of the model the store calls ``name`` (for a ``DirectoryStore``, a dataset
+        directory's name), or None if no model has that name."""
 
     def load_model(self, key: ModelKey) -> Model | None:
         """Return a commit's model, or a change's merged model if it was kept with the change.

@@ -237,14 +237,14 @@ UNCOMMITTED = "Uncommitted edits"  # the subject of a working tree's snapshot
 
 
 def _resolve_snapshot(repo: Path, rev: str) -> ChangeSpec:
-    """One commit (or the working tree) as a whole: the target ``R`` or ``WORKTREE``."""
+    """Resolve one commit (or the working tree) as a whole: the target ``R`` or ``WORKTREE``."""
     return _describe(repo, ChangeSpec(head=_find_point(repo, rev)), rev)
 
 
 def _resolve_range(repo: Path, a: str | None, b: str | None, symmetric: bool) -> ChangeSpec:
-    """``A..B`` (exactly from A to B) or, ``symmetric``, ``A...B`` (from where they diverged
-    to B). An end left out is HEAD, except a left-out A of ``...B``: the default branch.
-    Raises ChangeError for a change with nothing in it."""
+    """Resolve ``A..B`` (exactly from A to B) or, with ``symmetric``, ``A...B`` (from where they
+    diverged to B). An end left out is HEAD, except a left-out A of ``...B``, which is the default
+    branch. Raise ChangeError for a change with nothing in it."""
     head = _find_point(repo, b or "HEAD")
     if symmetric:
         left = a or _default_branch(repo)
@@ -262,7 +262,7 @@ def _resolve_range(repo: Path, a: str | None, b: str | None, symmetric: bool) ->
 
 
 def _resolve_own(repo: Path, rev: str) -> ChangeSpec:
-    """``R^!``: commit R against its first parent."""
+    """Resolve ``R^!``: commit R against its first parent."""
     head = _find_point(repo, rev)
     parent = _first_parent(repo, head)
     if parent is None:
@@ -287,9 +287,9 @@ def _resolve_adds(repo: Path, rev: str) -> ChangeSpec:
 
 
 def _describe(repo: Path, ch: ChangeSpec, rev: str) -> ChangeSpec:
-    """``ch`` with its title and description from its commits (``rev``: what the user called its
-    head): one commit gives its subject and body; several give the branch's name (or the
-    range) and the list of their subjects."""
+    """Return ``ch`` with its title and description taken from its commits (``rev`` is what the user
+    called its head): one commit gives its subject and body; several give the branch's name (or
+    the range) and the list of their subjects."""
     if not ch.is_diff:
         ch.title = run_git(repo, "log", "-1", "--format=%s", ch.head).strip()
         return ch

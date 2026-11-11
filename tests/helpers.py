@@ -20,21 +20,21 @@ from nolli.store.maps import Maps
 
 
 def open_dir(path: Path, key: str = "test@0") -> Scene:
-    """The scene of the files under ``path`` as they are, built into memory."""
+    """Build the files under ``path`` as they are into memory, and open them as a scene."""
     store = MemoryStore()
     return operations.open_scene(store, operations.build_files(store, path, StringKey(key)))
 
 
 def open_extracted(model: Model, maps: Maps, key: str = "test@0") -> Scene:
-    """The scene of a model and maps just extracted (``Facts.split``), kept in memory."""
+    """Keep a model and maps just extracted (``Facts.split``) in memory, and open them as a scene."""
     store = MemoryStore()
     store.save_model(StringKey(key), model, maps)
     return operations.open_scene(store, StringKey(key))
 
 
 def spec(expanded: list[str] | None = None, preset: str | None = None, budget: int | None = None, **rest) -> ProjectionSpec:
-    """A ProjectionSpec as the viewer's URL asks for one: unfolded containers, or a preset by
-    name (the budget, for the default cut)."""
+    """Make a ProjectionSpec as the viewer's URL asks for one: unfolded containers, or a preset by
+    name (with the budget, for the default cut)."""
     if expanded is not None:
         expand = projection.Ids(tuple(expanded))
     elif preset not in (None, "default"):
@@ -45,12 +45,13 @@ def spec(expanded: list[str] | None = None, preset: str | None = None, budget: i
 
 
 def draw(scene: Scene, **state) -> dict:
-    """The viewer's JSON of ``scene`` projected with ``spec(**state)``."""
+    """Project ``scene`` with ``spec(**state)`` and return the viewer's JSON of it."""
     return export_scene(transformations.apply(scene, projection.fold(spec(**state))))
 
 
 def open_change(repo: Path, base: str, head: str, **about) -> Scene:
-    """The change between two revisions of the git repository ``repo``, built into memory."""
+    """Build the change between two revisions of the git repository ``repo`` into memory, and open
+    it as a scene."""
     def sha(rev: str) -> str:
         return subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", f"{rev}^{{commit}}"],
                               check=True, capture_output=True, text=True).stdout.strip()

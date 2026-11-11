@@ -174,8 +174,8 @@ def pin(args: argparse.Namespace, cmd: str, review: bool = False):
 
 def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | None:
     """Build args.target into the data directory unless a fresh one is stored there (or it is a
-    dataset directory already), and return it. Progress goes to stderr; print why and return None
-    if the target names nothing or cannot be built."""
+    dataset directory already), and return it as ``Built``. Progress goes to stderr; print why and
+    return None if the target names nothing or cannot be built."""
     from nolli import operations
 
     target = pin(args, cmd, review)
