@@ -132,9 +132,10 @@ def test_lift_ends_when_provide_lines_cannot_merge():
     """Five modules implementing one shown API under max_lines 4: the provide lines keep
     their module end by design, so the pair cannot get under the limit. Lifting must
     leave it over the limit and return instead of picking it again forever (issue #49)."""
+    from helpers import open_extracted
+
     from nolli.logic.extractors.facts import EntityFact, Facts, Provenance
     from nolli.logic.transformations.projection.rollup import RolledEdge
-    from nolli.scenes import open_built
 
     m = Facts()
     m.ensure_root("api", "test")
@@ -145,7 +146,7 @@ def test_lift_ends_when_provide_lines_cannot_merge():
     for mod in modules:
         m.add_entity(EntityFact(mod, "file", mod.rsplit("/", 1)[-1], {}, Provenance("fs")))
         m.contain("repo:app", mod, "fs")
-    g = Graph(open_built(*m.split(StringKey("test@0"))))
+    g = Graph(open_extracted(*m.split(StringKey("test@0"))))
     edges = [RolledEdge("provide", "api:", mod, "route", count=1) for mod in modules]
     lines = lift(g, edges, {"repo:", "repo:app"}, max_lines=4)
     assert sorted((e.src, e.dst) for e in lines) == [("api:", mod) for mod in modules]
@@ -297,8 +298,9 @@ def test_own_code_dot(tmp_path: Path):
 
 def test_directory_with_source_inside_stays_shown():
     """A directory whose bytes are mostly config is still drawn when it holds source files."""
+    from helpers import open_extracted
+
     from nolli.logic.extractors.facts import EntityFact, Facts, Provenance
-    from nolli.scenes import open_built
 
     m = Facts()
     for eid, kind, role in [("repo:", "directory", "mixed"), ("repo:evals", "directory", "config"), ("repo:evals/probe.py", "file", "source"),
@@ -306,7 +308,7 @@ def test_directory_with_source_inside_stays_shown():
         m.add_entity(EntityFact(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("fs")))
     for parent, child in [("repo:", "repo:evals"), ("repo:evals", "repo:evals/probe.py"), ("repo:evals", "repo:evals/runs.json"), ("repo:", "repo:docs"), ("repo:docs", "repo:docs/a.md")]:
         m.contain(parent, child, "fs")
-    assert hidden_by_role(Graph(open_built(*m.split(StringKey("test@0"))))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
+    assert hidden_by_role(Graph(open_extracted(*m.split(StringKey("test@0"))))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
 
 
 def test_box_names_are_icons_then_a_name(repo: Path):

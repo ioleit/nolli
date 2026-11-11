@@ -15,7 +15,7 @@ from nolli.model.keys import ChangeKey, CommitKey, ModelKey
 from nolli.model.model import Key, Model
 from nolli.model.scene import Overlay, Scene
 from nolli.store import ModelStore
-from nolli.store.maps import Maps, MapStore, MemoryMaps
+from nolli.store.maps import MapStore
 
 
 def _make_derived_overlays() -> list[Overlay]:
@@ -112,25 +112,7 @@ def keep_change_scene(store: ModelStore, change: ChangeKey, by: dict | None = No
         store.precompute_overlay_values(scene, o, by)
 
 
-def open_built(model: Model, maps: Maps, overlays: list[Overlay] | None = None) -> Scene:
-    """A model just extracted, not kept anywhere, as a scene."""
-    store = MemoryMaps({n: {model.key.format_key(): v} for n, v in maps.items()})
-    return _open_scene(model, store, overlays)
-
-
-def merge_built(base: tuple[Model, Maps], head: tuple[Model, Maps], key: ModelKey, about: dict, content: Mapping[Key, dict],
-                overlays: list[Overlay] | None = None) -> Scene:
-    """A change of two models just extracted, not kept anywhere (``nolli diff``, tests)."""
-    store = MemoryMaps()
-    for m, maps in (base, head):
-        for n, v in maps.items():
-            store.open_maps(n).save(m.key.format_key(), v)
-    store.open_maps("content").save(key.format_key(), content)
-    bs, hs = (_open_scene(m, store, overlays) for m, _ in (base, head))
-    return transformations.apply({"base": bs, "head": hs}, merge.union(key, _describe_scene_meta(bs.model, hs.model, about, content)))
-
-
-def open_stored(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:
+def open(store: ModelStore, key: ModelKey, overlays: list[Overlay] | None = None) -> Scene | None:  # noqa: A001
     """The scene of a kept model: a change merged from its commits, or one commit; None if the
     store does not have it. Raises NotAllowed as the store does."""
     return _open_change_scene(store, key, overlays) if isinstance(key, ChangeKey) else _open_commit_scene(store, key, overlays)

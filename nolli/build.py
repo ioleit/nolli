@@ -271,18 +271,27 @@ def resolve(target: Target, sources: Sources, progress: Progress | None = None) 
 
 
 def build(store: ModelStore, target: Target, sources: Sources, *, about: dict | None = None, run: Run = _run_here,
-          progress: Progress | None = None, rebuild: bool = False) -> tuple[ModelKey, bool]:
+          progress: Progress | None = None, rebuild: bool = False) -> ModelKey:
     """Build what ``target`` names (pinned first if it is not stable) into ``store``, its commits
-    from ``sources``, unless a fresh one is kept there: its key, and whether it was built.
+    from ``sources``, unless a fresh one is kept there; its key.
     ``about``: more of what a change says about itself (``budget``; what the user said of it),
     over what the target says. ``run``: where the steps that take time run."""
     target = target if target.is_stable else target.pin()
     key = resolve(target, sources, progress)
     kept = None if rebuild else store.load_change(key) if isinstance(key, ChangeKey) else store.load_model(key)
     if is_fresh(kept):
-        return key, False
+        return key
     if isinstance(key, ChangeKey):
         _fetch_change(store, sources, key, about={**target.about, **(about or {})}, run=run, progress=progress, rebuild=rebuild)
     else:
         _fetch_whole_model(store, sources, key, run=run, progress=progress, rebuild=rebuild)
-    return key, True
+    return key
+
+
+def build_files(store: ModelStore, path: Path, key: ModelKey = StringKey("files@worktree"), progress: Progress | None = None) -> ModelKey:
+    """Build the files under ``path`` as they are (a working tree, a checkout, a directory that is
+    no git repository) into ``store``, under ``key``, every time: they are no commit, so nothing
+    says a kept one is fresh. Its key."""
+    model, maps = extract(path, progress=progress, key=key)
+    store.save_model(key, model, maps)  # type: ignore[arg-type]  # a store keeps a model under any key it can hold
+    return key

@@ -12,13 +12,15 @@ from pathlib import Path
 from nolli import build, scenes
 from nolli.model import vocabulary
 from nolli.model.schema import RelationKind
+from nolli.store import MemoryStore
 
 TOP = ("nolli/cli.py", "nolli/server/")
 MIDDLE = ("nolli/build.py", "nolli/scenes.py")
 EVERYWHERE = ("nolli/model/",)
 
 repo = Path(sys.argv[1])
-scene = scenes.open_built(*build.extract(repo))
+files = MemoryStore()
+scene = scenes.open(files, build.build_files(files, repo))
 
 
 def find_file(x: str) -> str | None:

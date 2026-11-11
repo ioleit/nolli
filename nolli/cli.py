@@ -81,7 +81,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
 
 from nolli.logic.sources.git import ChangeError, GitError, find_toplevel
@@ -184,16 +183,14 @@ def build(args: argparse.Namespace, cmd: str, review: bool = False) -> Built | N
     if isinstance(target, tuple):  # a dataset directory
         return Built(*target)
     store, sources = DirectoryStore(find_data_dir(args.data)), make_sources(args)
-    t0 = time.time()
     try:
-        key, built = build.build(store, target, sources, about={**find_about(args), "budget": args.budget},
-                                 progress=Progress(), rebuild=args.rebuild)
+        key = build.build(store, target, sources, about={**find_about(args), "budget": args.budget},
+                          progress=Progress(), rebuild=args.rebuild)
     except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
-    if built:
-        m = store.load_model(key.list_sides()[1] if isinstance(key, ChangeKey) else key)
-        print(f"built {store.locate(key)} in {time.time() - t0:.1f} s: {count_found(m)}", file=sys.stderr)
+    m = store.load_model(key.list_sides()[1] if isinstance(key, ChangeKey) else key)
+    print(f"{store.locate(key)}: {count_found(m)}", file=sys.stderr)
     return Built(store, key, target, sources)
 
 
@@ -260,6 +257,7 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
     from nolli.store import directory
     about = {k: v for k, v in about.items() if v}
     out.mkdir(parents=True, exist_ok=True)
+    stored = DirectoryStore(out.parent)  # the directory as nolli serve and view read it
     if isinstance(key, CommitKey):
         with sources.open_commits(key.repo, key.sha) as clone:
             m, maps = build.extract_commit(clone, key.sha, key.repo.format_name(), Quiet())
@@ -267,8 +265,8 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
         if budget:
             m.meta["budget"] = budget
         directory.write_commit(out, key, m, maps)
-        scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
-        return about, write_extras(scenes.open_built(m, maps), out)
+        scenes.keep_commit_scene(stored, key, {"nolli": build.version()})
+        return about, write_extras(scenes.open(stored, key), out)
     sides = {}
     with sources.open_commits(key.repo, key.base, key.head) as clone:
         for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
@@ -277,11 +275,10 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
             sides[side] = (m, maps)
         content = build.list_content(clone, key.base, key.head, Quiet())
     about.update({"base": key.base, "head": key.head, "remote": key.repo.format_remote(), "nolli": build.version()})
-    scene = scenes.merge_built(sides["base"], sides["head"], key, about, content)
     merged = merge.merge_models(key, sides["base"][0], sides["head"][0], scenes.describe_change_meta(sides["base"][0], sides["head"][0], about))
     directory.write_change(out, key, about, sides, {"content": content}, merged)
-    scenes.keep_change_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
-    return about, write_extras(scene, out)
+    scenes.keep_change_scene(stored, key, {"nolli": build.version()})
+    return about, write_extras(scenes.open(stored, key), out)
 
 
 def write_extras(scene, out: Path) -> dict:
@@ -366,8 +363,9 @@ def cmd_extract(args: argparse.Namespace) -> int:
             m.meta["budget"] = args.budget
         out.mkdir(parents=True, exist_ok=True)
         directory.write_commit(out, key, m, maps)
-        scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})
-        report = write_extras(scenes.open_built(m, maps), out)
+        stored = DirectoryStore(out.parent)
+        scenes.keep_commit_scene(stored, key, {"nolli": build.version()})
+        report = write_extras(scenes.open(stored, key), out)
     else:
         written = build_into(argparse.Namespace(target=WORKTREE, repo=str(repo), data=None, out=args.out, budget=args.budget), "extract")
         if written is None:
@@ -438,7 +436,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
         pass
     work = find_agent_dir(b.store, b.name)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "review.md").write_text(brief.make_brief(scenes.open_stored(b.store, b.key)))
+    (work / "review.md").write_text(brief.make_brief(scenes.open(b.store, b.key)))
     answer = work / "verdicts.json"
     print(json.dumps({
         "repository": str(repo), "base": key.base, "head": key.head, "title": title, "dataset": str(b.out),
@@ -469,7 +467,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     if found is False:
         return 2
     store, key = found or (None, None)
-    scene = scenes.open_stored(store, key) if isinstance(key, ChangeKey) else None
+    scene = scenes.open(store, key) if isinstance(key, ChangeKey) else None
     if scene is None:
         print(f"nolli agent check: {args.dataset} is not a change's dataset", file=sys.stderr)
         return 2

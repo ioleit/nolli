@@ -327,7 +327,7 @@ class Site:
         if key is None:
             return None
         kept = self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key)
-        sc = scenes.open_stored(self.store, key) if build.is_fresh(kept) else None
+        sc = scenes.open(self.store, key) if build.is_fresh(kept) else None
         return (key, sc) if sc is not None else None
 
     def start(self, target: build.Target) -> Job:
@@ -563,7 +563,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not isinstance(key, (CommitKey, ChangeKey)):
             return None
         try:
-            sc = scenes.open_stored(self.services.store, key)
+            sc = scenes.open(self.services.store, key)
         except NotAllowed:
             return None
         return (key, sc) if sc is not None else None

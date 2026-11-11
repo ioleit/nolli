@@ -19,6 +19,10 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
     server build through the same function; the server runs it as a job on the pinned target.
   - `datasets.parse_target`, `resolve_target`, `Asked` and the server's `Plan` are gone.
   - The extractor run is `extractors.facts.extract_facts`.
+- **A scene is opened from a store: `scenes.open(store, key)`** (was `open_stored`). A model
+  built to be looked at once goes into a `nolli.store.MemoryStore` first: `build.build` into it,
+  or `build.build_files(store, path, key)` for the files under a directory as they are.
+  `scenes.open_built` and `merge_built` are gone, and `build.build` returns the key only.
 - **A model's key is a target**: `<repo>@<sha>` or `<repo>@<base>..<head>`, full shas. A pinned
   pull request, `<repo>@<base>...<head>`, is one too.
 - **A dataset directory is the command line's**: `nolli view <dir>` serves the store the

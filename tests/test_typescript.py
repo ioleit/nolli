@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from helpers import open_extracted
 
 from nolli.logic.extractors.facts import extract_facts
 from nolli.logic.formats.descriptions.hover import Ctx, Source, _edge_info
@@ -17,7 +18,6 @@ from nolli.logic.sources import git
 from nolli.logic.transformations.projection.reading import Reading as Graph
 from nolli.logic.transformations.projection.rollup import RolledEdge, is_init
 from nolli.model.keys import StringKey
-from nolli.scenes import open_built
 
 FILES = {
     "tsconfig.base.json": '{ // shared\n "compilerOptions": { "baseUrl": "./app/src", "paths": { "@/*": ["./*"] } } }\n',
@@ -73,7 +73,7 @@ def model(tmp_path_factory):
 
 
 def open_graph(m) -> Graph:
-    return Graph(open_built(*m.split(StringKey("test@0"))))
+    return Graph(open_extracted(*m.split(StringKey("test@0"))))
 
 
 def uses(m, subkind=None):

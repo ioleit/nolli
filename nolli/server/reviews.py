@@ -113,7 +113,7 @@ class Reviews:
             work = self.work / re.sub(r"[^A-Za-z0-9._-]+", "_", key.format_key())
             shutil.rmtree(work, ignore_errors=True)
             try:
-                scene = scenes.open_stored(store, key)
+                scene = scenes.open(store, key)
                 if scene is None:
                     raise ValueError(f"no model of {key.format_key()}")
                 out = work / "out"  # what the reviewer writes; its brief, as it read it, beside

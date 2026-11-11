@@ -8,13 +8,13 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from helpers import open_extracted
 
 from nolli.logic.extractors.facts import extract_facts
 from nolli.logic.sources import git
 from nolli.logic.transformations.projection.reading import Reading as Graph
 from nolli.logic.transformations.projection.rollup import hidden_by_role
 from nolli.model.keys import StringKey
-from nolli.scenes import open_built
 
 FILES = {
     "site/index.html": (
@@ -104,5 +104,5 @@ def test_a_root_path_from_the_pages_directory(model):
 
 
 def test_pages_are_shown_by_default(model):
-    g = Graph(open_built(*model.split(StringKey("test@0"))))
+    g = Graph(open_extracted(*model.split(StringKey("test@0"))))
     assert "repo:site/index.html" not in hidden_by_role(g), "a page's edges would be dropped with it"

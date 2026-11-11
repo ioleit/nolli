@@ -18,13 +18,15 @@ from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId, RelationKind
+from nolli.store import MemoryStore
 
 NOLLI = EntityId.from_path("nolli")
 APP = EntityId.from_path("nolli/app")                                     # the proposed parent: no such directory exists
 MEMBERS = [EntityId.from_path(f"nolli/{p}") for p in ("cli.py", "server")]
 
 repo = Path(sys.argv[1])
-scene = scenes.open_built(*build.extract(repo))                     # the files as they are, with nolli's overlays
+files = MemoryStore()
+scene = scenes.open(files, build.build_files(files, repo))                     # the files as they are, with nolli's overlays
 
 
 def group_into_app(scene: Scene) -> Scene:                          # the custom transformation

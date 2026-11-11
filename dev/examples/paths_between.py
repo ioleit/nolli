@@ -12,9 +12,11 @@ from nolli.logic.formats import mermaid
 from nolli.logic.transformations import projection
 from nolli.logic.transformations.select import select
 from nolli.model.scene import Element, Scene
+from nolli.store import MemoryStore
 
 repo = Path(sys.argv[1])
-scene = scenes.open_built(*build.extract(repo))                     # the files as they are, with nolli's overlays
+files = MemoryStore()
+scene = scenes.open(files, build.build_files(files, repo))                     # the files as they are, with nolli's overlays
 
 
 def is_interesting_for_this_oneoff(el: Element) -> bool:
