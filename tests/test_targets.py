@@ -19,6 +19,8 @@ import pytest
 from nolli.cli import main
 from nolli.datasets import Target, parse_target, resolve_target
 from nolli.logic.sources.git import WORKTREE, ChangeError, _default_branch
+from nolli.model.keys import Repo
+from nolli.store import DirectoryStore
 
 
 def git(repo: Path, *args: str) -> str:
@@ -70,6 +72,9 @@ def test_forms():
     assert parse_target("HEAD..WORKTREE") == Target("range", base="HEAD", head=WORKTREE)
     assert parse_target("v1^!") == Target("own", head="v1")
     assert parse_target("https://github.com/o/r").kind == "github"
+    key = Repo("github.com/o/r").make_change("a" * 40, "b" * 40)
+    assert parse_target(key.format_key()) == Target("key", key=key)
+    assert parse_target("o/r@abc..def").kind == "range" and parse_target("main@{u}").kind == "snapshot"  # no key: short shas, a reflog
 
 
 def test_default_branch(repo):
@@ -195,7 +200,11 @@ def test_build_and_the_older_shorthands(repo, tmp_path, capsys):
     assert main(["build", "main", "--repo", str(r), "--data", str(data)]) == 0
     built = Path(capsys.readouterr().out.strip())
     assert built.parent == data and json.loads((built / "key.json").read_text())["head"] == c["m"]
-    assert resolve_target(str(built), r, data).dataset == built  # a dataset directory: nothing to build
+    store, key = DirectoryStore.find_dataset(built)
+    assert store.root == data.resolve() and key.sha == c["m"]
+    assert resolve_target(key.format_key(), r, data).key == key  # a key: nothing to resolve
+    assert main(["build", str(built), "--data", str(tmp_path / "other")]) == 0  # a dataset directory: nothing to build
+    assert Path(capsys.readouterr().out.strip()) == built.resolve()
 
     (r / "new.py").write_text("Y = 1\n")
     assert main(["extract", str(r), "-o", str(tmp_path / "x")]) == 0  # nolli build WORKTREE -o

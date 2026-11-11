@@ -13,6 +13,7 @@ commits come from (``nolli/logic/sources/``), extraction (``nolli/logic/extracto
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,7 +31,6 @@ import nolli.review.brief
 import nolli.review.changes
 import nolli.review.verdicts
 import nolli.store
-import nolli.store.directory
 
 # CALLERS (temp, not to be merged):
 #   cli.py:369 cmd_check — nolli agent check
@@ -171,14 +171,14 @@ class Datasets:
 #   tests: test_targets.py
 @dataclass(frozen=True)
 class Target:
-    """A target's form, read but not resolved: ``kind`` is ``dataset`` (``path``), ``snapshot``
-    (``head``), ``range`` (``base`` and ``head``, either left out; ``symmetric`` for ``...``),
-    ``own`` (``head^!``) or ``github`` (``github``)."""
+    """A target's form, read but not resolved: ``kind`` is ``key`` (``key``: a model's key as
+    text, already resolved), ``snapshot`` (``head``), ``range`` (``base`` and ``head``, either
+    left out; ``symmetric`` for ``...``), ``own`` (``head^!``) or ``github`` (``github``)."""
     kind: str
     head: str | None = None
     base: str | None = None
     symmetric: bool = False
-    path: Path | None = None
+    key: nolli.model.keys.ModelKey | None = None
     github: nolli.logic.sources.github.Target | None = None
 
 
@@ -192,8 +192,9 @@ def parse_target(text: str | None, local: Path | None = None) -> Target:
     to. Raises ChangeError for a github.com URL nolli cannot build."""
     if not text:
         return Target("range", head="HEAD", symmetric=True)
-    if (Path(text).expanduser() / "key.json").is_file():
-        return Target("dataset", path=Path(text).expanduser().resolve())
+    key = _parse_key(text)
+    if key is not None:
+        return Target("key", key=key)
     gh = nolli.logic.sources.github.parse_target(text, local)
     if gh is not None:
         return Target("github", github=gh)
@@ -206,6 +207,14 @@ def parse_target(text: str | None, local: Path | None = None) -> Target:
     if text.endswith("^!"):
         return Target("own", head=text[:-2])
     return Target("snapshot", head=text)
+
+
+def _parse_key(text: str) -> nolli.model.keys.ModelKey | None:
+    """The key ``text`` is (``<repo>@<sha>`` or ``<repo>@<base>..<head>``, full shas), None for
+    anything else: no git revision has a repository before an ``@`` and 40 hex digits after."""
+    key = nolli.model.keys.ModelKey.parse(text)
+    shas = (key.base, key.head) if isinstance(key, nolli.model.keys.ChangeKey) else (getattr(key, "sha", ""),)
+    return key if all(re.fullmatch(r"[0-9a-f]{40}", s) for s in shas) else None
 
 
 # CALLERS (temp, not to be merged):
@@ -258,14 +267,9 @@ def resolve_target(text: str | None, path: Path, clones: Path, review: bool = Fa
     except nolli.logic.sources.git.ChangeError:
         local = None
     t = parse_target(text, local)
-    if t.kind == "dataset":
-        if review:
-            raise nolli.logic.sources.git.ChangeError(f"{text} is a dataset built already; name the change to review, or check verdicts: nolli agent check {text}")
-        key = nolli.store.directory.DirectoryStore(t.path.parent).find_key(t.path.name)
-        if key is None:
-            raise nolli.logic.sources.git.ChangeError(f"{t.path} is a dataset of another nolli version; build it again")
-        return Asked(key, dataset=t.path)
-    if t.kind == "github":
+    if t.kind == "key":
+        asked = _resolve_key(t.key, local, clones)
+    elif t.kind == "github":
         asked = _resolve_github(t.github, local, clones)
     else:
         if local is None:
@@ -294,6 +298,21 @@ def resolve_local(t: Target, local: Path, text: str | None = None, review: bool 
     r = find_repo(local)
     key: nolli.model.keys.ModelKey = r.make_change(spec.base, spec.head) if spec.is_diff else r.make_commit(spec.head)
     return Asked(key, local, spec, {"title": spec.title, "description": spec.description}, nolli.logic.sources.LocalRepository(local))
+
+
+def _resolve_key(key: nolli.model.keys.ModelKey, local: Path | None, clones: Path) -> Asked:
+    """A key, resolved already: where its commits are, should it need building (``local`` if
+    it is that repository's, else a clone of its GitHub remote, else the repository at its path)."""
+    if local is not None and find_repo(local) == key.repo:
+        where, sources = local, nolli.logic.sources.LocalRepository(local)
+    elif key.repo.format_remote():
+        where, sources = None, nolli.logic.sources.github.make_clone_cache(clones)
+    else:
+        where = Path(key.repo.url)
+        sources = nolli.logic.sources.LocalRepository(where)
+    change = isinstance(key, nolli.model.keys.ChangeKey)
+    spec = nolli.logic.sources.git.ChangeSpec(head=key.head if change else key.sha, base=key.base if change else None)
+    return Asked(key, where, spec, {}, sources)
 
 
 def _resolve_range(local: Path, t: Target, text: str | None, review: bool = False) -> nolli.logic.sources.git.ChangeSpec:

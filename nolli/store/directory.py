@@ -87,6 +87,20 @@ class DirectoryStore(OverlayStore):
                 places[k.format_key()] = d
             self.index, self.names, self.places = index, names, places
 
+    @classmethod
+    def find_dataset(cls, path: Path) -> tuple[DirectoryStore, ModelKey] | None:
+        """The store a dataset directory is in (its parent directory) and the key of the model it
+        holds; None if ``path`` is no dataset directory. Raises ValueError for a dataset of
+        another format (built by another version of nolli)."""
+        path = Path(path).expanduser().resolve()
+        if not (path / "key.json").is_file():
+            return None
+        store = cls(path.parent)
+        key = store.find_key(path.name)
+        if key is None:
+            raise ValueError(f"{path} is a dataset of another nolli version; build it again")
+        return store, key
+
     def find_key(self, name: str) -> ModelKey | None:
         """The key of the model in the directory ``name`` under the root, None if there is none."""
         if not name or "/" in name or name.startswith("."):

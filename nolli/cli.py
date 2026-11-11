@@ -112,11 +112,34 @@ class Built:
         self.name = self.out.name
 
 
-def resolve(args: argparse.Namespace, cmd: str, review: bool = False):
-    """args.target resolved in args.repo (``datasets.resolve_target``); None, after saying why,
-    if it cannot be. Says what it resolved to on stderr."""
-    from .datasets import BUILD_ERRORS, resolve_target
+def find_dataset(text: str | None, cmd: str):
+    """The store and key of the dataset directory ``text`` names (``DirectoryStore.find_dataset``):
+    a dataset already built, used as it is; None if it names none; False, after saying why, for
+    a dataset this nolli cannot read."""
+    if not text:
+        return None
+    try:
+        return DirectoryStore.find_dataset(Path(text))
+    except ValueError as exc:
+        print(f"nolli {cmd}: {exc}", file=sys.stderr)
+        return False
 
+
+def resolve(args: argparse.Namespace, cmd: str, review: bool = False):
+    """args.target resolved in args.repo (``datasets.resolve_target``), or the dataset directory
+    it names; None, after saying why, if it cannot be. Says what it resolved to on stderr."""
+    from nolli.datasets import BUILD_ERRORS, Asked, resolve_target
+
+    found = find_dataset(args.target, cmd)
+    if found is False:
+        return None
+    if found:
+        if review:
+            print(f"nolli {cmd}: {args.target} is a dataset built already; name the change to review, "
+                  f"or check verdicts: nolli agent check {args.target}", file=sys.stderr)
+            return None
+        store, key = found
+        return Asked(key, dataset=store.locate(key))
     try:
         asked = resolve_target(args.target, Path(args.repo), find_data_dir(args.data) / ".repos", review=review)
     except BUILD_ERRORS as exc:
@@ -272,18 +295,23 @@ def cmd_view(args: argparse.Namespace) -> int:
         local = find_toplevel(Path(args.repo).resolve())
     except ChangeError:
         local = None
-    try:
-        target = parse_target(args.target, local)
-    except ChangeError as exc:
-        print(f"nolli view: {exc}", file=sys.stderr)
+    text = args.target
+    found = find_dataset(text, "view")
+    if found is False:
         return 2
-    if target.kind == "dataset":  # served from the store it is in
-        data = target.path.parent
+    if found:  # a dataset directory: served from the store it is in, its key the target
+        data, text = found[0].root, found[1].format_key()
+    else:
+        try:
+            parse_target(text, local)
+        except ChangeError as exc:
+            print(f"nolli view: {exc}", file=sys.stderr)
+            return 2
     try:
         srv = make_local_server(data, local, args.host, args.port, args.budget)
     except OSError:  # the port is taken (another viewer, perhaps): any free one
         srv = make_local_server(data, local, args.host, 0, args.budget)
-    url = f"http://{args.host}:{srv.server_address[1]}/?t={quote(args.target or '', safe='')}"
+    url = f"http://{args.host}:{srv.server_address[1]}/?t={quote(text or '', safe='')}"
     print(f"viewer: {url}  (Ctrl-C to stop)", file=sys.stderr, flush=True)
     if not args.no_open:
         webbrowser.open(url)
@@ -410,14 +438,18 @@ def cmd_check(args: argparse.Namespace) -> int:
     if target.is_file():  # a verdicts file: the agent's (.agent/<name>/verdicts.json), or one in the dataset's directory
         vf = target
         target = target.parent.parent.parent / target.parent.name if target.parent.parent.name == ".agent" else target.parent
-    ds = target if (target / "key.json").is_file() else find_data_dir(args.data) / args.dataset
-    store = DirectoryStore(ds.parent)
-    datasets = Datasets(store)
-    key = store.find_key(ds.name)
+    found = find_dataset(str(target), "agent check")
+    if found is None:  # a dataset's name under --data
+        found = find_dataset(str(find_data_dir(args.data) / args.dataset), "agent check")
+    if found is False:
+        return 2
+    store, key = found or (None, None)
     scene = scenes.open_stored(store, key) if isinstance(key, ChangeKey) else None
     if scene is None:
         print(f"nolli agent check: {args.dataset} is not a change's dataset", file=sys.stderr)
         return 2
+    datasets = Datasets(store)
+    ds = store.locate(key)
     if vf is None:
         vf = find_agent_dir(store, ds.name) / "verdicts.json"
         if not vf.is_file() and (ds / "verdicts.json").is_file():  # written into the dataset's directory by hand

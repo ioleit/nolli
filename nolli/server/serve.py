@@ -299,13 +299,10 @@ class Site:
             return self.plan_github(t.github)
         if not self.here:
             raise ChangeError("this host shows GitHub's paths: /<owner>/<repo>, …/pull/<n>, …/commit/<sha>")
-        if t.kind == "dataset":
-            if not isinstance(self.store, DirectoryStore) or t.path.parent != self.store.root:
-                raise ChangeError(f"{t.path} is not in this server's data directory {getattr(self.store, 'root', '')}")
-            key = self.store.find_key(t.path.name)
-            if key is None:
-                raise ChangeError(f"{t.path} is a dataset of another nolli version; build it again")
-            return Plan(key.format_key(), t.path.name, key)
+        if t.kind == "key":  # resolved already (nolli view <dataset> names it so)
+            k = t.key
+            what = f"{k.base[:7]}..{k.head[:7]}" if isinstance(k, ChangeKey) else f"@{k.sha[:7]}"
+            return Plan(k.format_key(), f"{k.repo.format_name()} {what}", k)
         if self.local is None:
             raise ChangeError("this viewer was started outside a git repository: name a GitHub URL or a dataset directory")
         asked = resolve_local(t, self.local, text)
