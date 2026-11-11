@@ -106,13 +106,13 @@ def test_repository_untouched(repo):
 
 
 def test_scene_review(repo):
-    from nolli.datasets import find_repo
+    from nolli.logic.sources import LocalRepository
     from nolli.logic.transformations.merge import Links
     from nolli.review.changes import list_changes
 
     path, base, head = repo
     git(path, "remote", "add", "origin", "git@github.com:acme/demo.git")
-    sc = open_change(path, base, head, remote=find_repo(path).format_remote(), pr=7)
+    sc = open_change(path, base, head, remote=LocalRepository(path).find_repo().format_remote(), pr=7)
     unfolded = ["repo:", "repo:app", "repo:app/store.py"]
     d = draw(sc, expanded=unfolded)
     nodes = {n["id"]: n for n in d["nodes"]}

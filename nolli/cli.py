@@ -128,7 +128,7 @@ def find_dataset(text: str | None, cmd: str):
 def resolve(args: argparse.Namespace, cmd: str, review: bool = False):
     """args.target resolved in args.repo (``datasets.resolve_target``), or the dataset directory
     it names; None, after saying why, if it cannot be. Says what it resolved to on stderr."""
-    from nolli.datasets import Asked, resolve_target
+    from nolli import build
 
     found = find_dataset(args.target, cmd)
     if found is False:
@@ -139,9 +139,9 @@ def resolve(args: argparse.Namespace, cmd: str, review: bool = False):
                   f"or check verdicts: nolli agent check {args.target}", file=sys.stderr)
             return None
         store, key = found
-        return Asked(key, dataset=store.locate(key))
+        return build.ResolvedTarget(key, dataset=store.locate(key))
     try:
-        asked = resolve_target(args.target, Path(args.repo), find_data_dir(args.data) / ".repos", review=review)
+        asked = build.resolve_target(args.target, Path(args.repo), find_data_dir(args.data) / ".repos", review=review)
     except GitError as exc:  # ChangeError, FetchError: what the user named, or commits not to be had
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return None
@@ -278,7 +278,7 @@ def cmd_view(args: argparse.Namespace) -> int:
     import webbrowser
     from urllib.parse import quote
 
-    from .datasets import parse_target
+    from nolli.build import Target
     from .logic.sources.git import find_toplevel
     from .server.serve import make_local_server
 
@@ -299,7 +299,7 @@ def cmd_view(args: argparse.Namespace) -> int:
         data, text = found[0].root, found[1].format_key()
     else:
         try:
-            parse_target(text, local)
+            Target.from_string(text, local)
         except ChangeError as exc:
             print(f"nolli view: {exc}", file=sys.stderr)
             return 2

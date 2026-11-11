@@ -78,7 +78,7 @@ HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 from nolli import build, scenes  # noqa: E402
 from nolli.logic.formats import mermaid, viewer  # noqa: E402
 
-from ..datasets import Datasets, parse_target, resolve_local  # noqa: E402
+from ..datasets import Datasets  # noqa: E402
 from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
 from ..logic.sources.git import ChangeError, GitError, merge_base  # noqa: E402
 from ..logic.transformations.projection import DEFAULT_UTILITY_IN, PRESETS, ProjectionSpec  # noqa: E402
@@ -294,7 +294,7 @@ class Site:
         """What the target ``text`` names now. Raises github.NotFound for a repository the token
         cannot read, NotAllowed as the store does, TooLarge, and ChangeError for a target this
         server cannot show or GitHub cannot be asked about."""
-        t = parse_target(text, self.local)
+        t = build.Target.from_string(text, self.local)
         if t.kind == "github":
             return self.plan_github(t.github)
         if not self.here:
@@ -305,7 +305,7 @@ class Site:
             return Plan(k.format_key(), f"{k.repo.format_name()} {what}", k)
         if self.local is None:
             raise ChangeError("this viewer was started outside a git repository: name a GitHub URL or a dataset directory")
-        asked = resolve_local(t, self.local, text)
+        asked = build.resolve_local(t, self.local, text)
         return Plan(asked.key.format_key(), asked.spec.title or text or "", asked.key, about=asked.about)
 
     def plan_github(self, t: github.Target) -> Plan:

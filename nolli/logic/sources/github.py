@@ -14,8 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
-from nolli.logic.sources import CloneCache, git
+from nolli.logic.sources import CloneCache, LocalRepository, Sources, git
 from nolli.logic.sources.git import ChangeError, ChangeSpec
+from nolli.model.keys import Repo
 
 URL = re.compile(r"^https?://github\.com/([^/]+)/([^/?#]+?)(?:\.git)?(/[^?#]*)?(?:[?#].*)?$")
 NUMBER = re.compile(r"^(?:#|pr:|pr/)(\d+)$", re.IGNORECASE)
@@ -89,7 +90,7 @@ AMBIENT = object()  # the token of whoever runs nolli: $GH_TOKEN, $GITHUB_TOKEN 
 class Answer:
     """What GitHub says a target is: the commits to fetch, and what the change says about
     itself. ``base`` is the change's base, or with ``merge`` the tip it left (the change starts
-    where head and base diverged, which needs the commits: ``finish_target``)."""
+    where head and base diverged, which needs the commits: ``_finish_target``)."""
     head: str
     base: str | None = None
     merge: bool = False
@@ -122,7 +123,7 @@ def ask_target(t: Target, get: Callable[[str], dict] | None = None) -> Answer:
     return Answer(get(f"{path}/commits/{quote(ref, safe='')}")["sha"], title=f"{t.owner}/{t.name} at {ref}")
 
 
-def fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
+def _fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
     """Fetch ``shas`` of github.com/<owner>/<name> into the local repository ``repo``, objects
     only (no branch or tag): from its own remote for that repository if it has one (its
     credentials), else by URL."""
@@ -137,7 +138,7 @@ def fetch_into(repo: Path, owner: str, name: str, shas: list[str]) -> None:
         raise ChangeError(f"could not fetch {', '.join(s[:7] for s in missing)} from {remote}: {exc}") from None
 
 
-def finish_target(t: Target, a: Answer, clone: Path) -> ChangeSpec:
+def _finish_target(t: Target, a: Answer, clone: Path) -> ChangeSpec:
     """The change (or snapshot) ``a`` names, in ``clone``, which has its commits."""
     if a.base is None:
         return ChangeSpec(head=a.head, title=a.title) if a.title else git.describe(clone, ChangeSpec(head=a.head), a.head)
@@ -146,6 +147,20 @@ def finish_target(t: Target, a: Answer, clone: Path) -> ChangeSpec:
         raise ChangeError(f"{t.owner}/{t.name}: no change ({a.head[:7]} is on {a.base[:7]})")
     ch = ChangeSpec(head=a.head, base=base, title=a.title, description=a.description)
     return ch if a.title else git.describe(clone, ch, t.head or a.head)
+
+
+def resolve(t: Target, local: Path | None, clones: Path) -> tuple[Answer, ChangeSpec, Path, Sources]:
+    """A target on GitHub, asked of GitHub's API and its commits fetched: into ``local`` (objects
+    only), or into a clone under ``clones``. What GitHub answered, the change it names, the
+    local repository that has its commits, and where a build gets them."""
+    answer = ask_target(t)
+    shas = [s for s in (answer.base, answer.head) if s]
+    if local is not None:
+        _fetch_into(local, t.owner, t.name, shas)
+        return answer, _finish_target(t, answer, local), local, LocalRepository(local)
+    cache = make_clone_cache(clones)
+    with cache.open_commits(Repo(f"github.com/{t.owner}/{t.name}"), *shas) as clone:
+        return answer, _finish_target(t, answer, clone), clone, cache
 
 
 def make_clone_cache(root: Path) -> CloneCache:

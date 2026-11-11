@@ -1,4 +1,4 @@
-"""What a target names (nolli/datasets.py: parse_target, resolve_target; nolli/logic/sources/git.py),
+"""What a target names (nolli/build.py: Target, resolve_target; nolli/logic/sources/git.py),
 on a small git history:
 
     main:    c1 - c2 ------- m (merge of feature, --no-ff)
@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 
 from nolli.cli import main
-from nolli.datasets import Target, parse_target, resolve_target
-from nolli.logic.sources.git import WORKTREE, ChangeError, _default_branch
+from nolli.build import Target, resolve_target
+from nolli.logic.sources.git import WORKTREE, ChangeError, Revs, _default_branch
 from nolli.model.keys import Repo
 from nolli.store import DirectoryStore
 
@@ -63,18 +63,23 @@ def unmerge(r: Path, c: dict[str, str]) -> None:
 
 
 def test_forms():
-    assert parse_target(None) == Target("range", head="HEAD", symmetric=True)
-    assert parse_target("main") == Target("snapshot", head="main")
-    assert parse_target(WORKTREE) == Target("snapshot", head=WORKTREE)
-    assert parse_target("a..b") == Target("range", base="a", head="b")
-    assert parse_target("a...b") == Target("range", base="a", head="b", symmetric=True)
-    assert parse_target("...b") == Target("range", head="b", symmetric=True)
-    assert parse_target("HEAD..WORKTREE") == Target("range", base="HEAD", head=WORKTREE)
-    assert parse_target("v1^!") == Target("own", head="v1")
-    assert parse_target("https://github.com/o/r").kind == "github"
+    def revs(text):
+        t = Target.from_string(text)
+        assert t.kind == "revs"
+        return t.revs
+
+    assert revs(None) == Revs("range", head="HEAD", symmetric=True)
+    assert revs("main") == Revs("snapshot", head="main")
+    assert revs(WORKTREE) == Revs("snapshot", head=WORKTREE)
+    assert revs("a..b") == Revs("range", base="a", head="b")
+    assert revs("a...b") == Revs("range", base="a", head="b", symmetric=True)
+    assert revs("...b") == Revs("range", head="b", symmetric=True)
+    assert revs("HEAD..WORKTREE") == Revs("range", base="HEAD", head=WORKTREE)
+    assert revs("v1^!") == Revs("own", head="v1")
+    assert Target.from_string("https://github.com/o/r").kind == "github"
     key = Repo("github.com/o/r").make_change("a" * 40, "b" * 40)
-    assert parse_target(key.format_key()) == Target("key", key=key)
-    assert parse_target("o/r@abc..def").kind == "range" and parse_target("main@{u}").kind == "snapshot"  # no key: short shas, a reflog
+    assert Target.from_string(key.format_key()) == Target("key", key=key)
+    assert revs("o/r@abc..def").kind == "range" and revs("main@{u}").kind == "snapshot"  # no key: short shas, a reflog
 
 
 def test_default_branch(repo):
