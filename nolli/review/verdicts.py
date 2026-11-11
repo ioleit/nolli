@@ -119,7 +119,7 @@ def _dump_verdicts(verdicts: list[dict]) -> dict[str, dict]:
     return dict(out)
 
 
-def parse_verdicts(values) -> list[dict]:
+def _parse_verdicts(values) -> list[dict]:
     """The kept verdicts as a list in their order (V1, V2, …), each with its ``ends``."""
     out = [{**v, "ends": [EntityId(x) for x in k.split(PAIR)]} for k, rec in values.items() if isinstance(k, str) for v in rec.get("verdicts", [])]
     return sorted(out, key=lambda v: int(v["id"][1:]))
@@ -143,6 +143,11 @@ def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
         out.append(v | {"ends": ends, "edge": len(ends) == 2, "reveal": reveal,
                         "label": " → ".join(name(x) for x in ends) if ends else v["target"]})
     return out
+
+
+def load_verdicts(maps: MapStore, key) -> list[dict]:
+    """A change's kept verdicts, in their order (``_parse_verdicts``)."""
+    return _parse_verdicts(maps.open_maps("verdicts").load(key.format_key()))
 
 
 def find_provenance(maps: MapStore, key) -> dict | None:
@@ -184,7 +189,7 @@ class Verdicts(Overlay):
         self.stored = stored
 
     def load(self, scene: Scene) -> list[dict]:
-        return parse_verdicts(self.stored.load(scene.model.key.format_key()))
+        return _parse_verdicts(self.stored.load(scene.model.key.format_key()))
 
     def load_about(self, scene: Scene) -> dict | None:
         return self.stored.load_about(scene.model.key.format_key())

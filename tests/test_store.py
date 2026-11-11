@@ -12,7 +12,11 @@ from pathlib import Path
 import pytest
 
 from nolli.build import _fetch_change, _run_here, extract_commit
+from nolli.logic import transformations
 from nolli.logic.formats import mermaid, viewer
+from nolli.logic.transformations import projection
+from nolli.review import brief, changes
+from nolli.review import verdicts as review_verdicts
 from nolli.logic.sources import CloneCache, FetchError, LocalRepository
 from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.model.model import Model
@@ -198,12 +202,17 @@ def test_extract_commit_names_the_root(src):
     assert open_built(m, maps).find_element("repo:").get("files")["name"] == "shop"
 
 
+
+def _draw(scene, spec):
+    """``scene`` projected as ``spec`` asks."""
+    return transformations.apply(scene, projection.fold(spec))
+
+
 def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, tmp_path):
     """What a change says about itself (change, review) and its merged model are kept at diff
     time and read back; a change kept without them (an older nolli) is computed on every read."""
     from helpers import spec
 
-    from nolli.datasets import Datasets
     from nolli.logic.transformations.merge import Change
     from nolli.review.card import Review
 
@@ -211,15 +220,14 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     store, sources = DirectoryStore(tmp_path / "data"), LocalRepository(path)
     change = Repo(str(path)).make_change(shas[0], shas[2])
     _fetch_change(store, sources, change, about={"title": "kept"})
-    datasets = Datasets(store)
     kept = _open_change_scene(store, change)
     assert type(kept.overlays["change"]).__name__ == "PrecomputedOverlay" and kept.overlays["change"].find_kept(change.format_key())
     assert store.open_maps("review").load_about(change.format_key())["overlay"] == "review"
     computed = kept.with_overlays(Change(store.open_maps("content")), Review())  # the same scene, its own overlays computing
     for preset in ("folded", "changes", "unfolded"):
-        assert viewer.export_scene(datasets.draw(kept, spec(preset=preset))) == viewer.export_scene(datasets.draw(computed, spec(preset=preset)))
+        assert viewer.export_scene(_draw(kept, spec(preset=preset))) == viewer.export_scene(_draw(computed, spec(preset=preset)))
     assert kept.read_all("change") == computed.read_all("change") and kept.read_all("review") == computed.read_all("review")
-    assert datasets.list_changes(kept) == datasets.list_changes(computed) and datasets.list_changes(kept)
+    assert changes.list_changes(kept) == changes.list_changes(computed) and changes.list_changes(kept)
 
     for f in ("model.json", "overlays/change.json", "overlays/review.json"):  # a change kept by an older nolli
         (store.locate(change) / f).unlink()
@@ -227,7 +235,7 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     assert older.load_model(change) is None and older.open_maps("change").load(change.format_key()) == {}
     old = _open_change_scene(older, change)
     assert old.overlays["change"].find_kept(change.format_key()) is None
-    assert viewer.export_scene(Datasets(older).draw(old, spec(preset="changes"))) == viewer.export_scene(datasets.draw(kept, spec(preset="changes")))
+    assert viewer.export_scene(_draw(old, spec(preset="changes"))) == viewer.export_scene(_draw(kept, spec(preset="changes")))
 
 
 def test_maps_read_back_from_json_are_keyed_by_addresses_and_relations():
@@ -278,7 +286,6 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     describe verdicts. A rename is what git's per-file content says the most about."""
     from helpers import spec
 
-    from nolli.datasets import Datasets
     from nolli.model.schema import EntityId
 
     path, base, head = renaming
@@ -286,7 +293,6 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     _fetch_change(DirectoryStore(tmp_path / "data"), LocalRepository(path), change, about={"title": "rename"})
 
     store = DirectoryStore(tmp_path / "data")
-    datasets = Datasets(store)
     sc = open_stored(store, change)
     renamed = EntityId.from_path("shop/helpers.py")
     assert sc.find_element(renamed).get("change")["old_path"] == "shop/legacy.py"
@@ -294,29 +300,29 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     for preset in ("folded", "changes", "unfolded", "whole"):
         for side in (None, "base", "head"):
             st = spec(preset=preset, **({"side": side} if side else {}))
-            assert viewer.export_scene(datasets.draw(sc, st))["nodes"]
-            drawn = datasets.draw(sc, st)
+            assert viewer.export_scene(_draw(sc, st))["nodes"]
+            drawn = _draw(sc, st)
             text, ids = mermaid.render(drawn), mermaid.list_ids(drawn)
             assert text and ids
-    unfolded = viewer.export_scene(datasets.draw(sc, spec(expanded=["repo:", "repo:shop"])))
+    unfolded = viewer.export_scene(_draw(sc, spec(expanded=["repo:", "repo:shop"])))
     assert {n["id"] for n in unfolded["nodes"]} >= {"repo:shop/helpers.py", "repo:shop/api.py", "repo:shop/store.py"}
 
-    items = datasets.list_changes(sc)
+    items = changes.list_changes(sc)
     assert items and any("repo:shop/helpers.py" in it["focus"] for it in items)
 
-    brief = datasets.make_review_brief(sc)
-    assert "helpers" in brief
-    review_ids = [i for i in re.findall(r"\bn_\w+", datasets.make_review_diagram(sc)) if not i.endswith("_g")]
+    told = brief.make_brief(sc)
+    assert "helpers" in told
+    review_ids = [i for i in re.findall(r"\bn_\w+", brief.make_review_diagram(sc)) if not i.endswith("_g")]
     verdicts = [{"target": t, "verdict": "good", "reason": "fine"} for t in dict.fromkeys(review_ids)]
-    kept, problems = datasets.check_verdicts(sc, json.dumps(verdicts))
+    kept, problems = review_verdicts.check_verdicts(sc, brief.make_review_diagram(sc), json.dumps(verdicts))
     assert kept and not problems, problems
-    datasets.keep_verdicts(change, kept, {"by": "test"})
+    review_verdicts.save_verdicts(store, change, kept, {"by": "test"})
 
-    again = Datasets(DirectoryStore(tmp_path / "data"))  # the verdicts read back from JSON too
-    sc2 = open_stored(again.store, change)
-    described = again.describe_verdicts(sc2)
+    again = DirectoryStore(tmp_path / "data")  # the verdicts read back from JSON too
+    sc2 = open_stored(again, change)
+    described = review_verdicts.describe_verdicts(sc2, review_verdicts.load_verdicts(again, change))
     assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
-    assert viewer.export_scene(again.draw(sc2, spec(preset="changes")))["nodes"]
+    assert viewer.export_scene(_draw(sc2, spec(preset="changes")))["nodes"]
 
 
 def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
@@ -326,7 +332,6 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
     in every preset, and a key of another repository is still refused."""
     from helpers import spec
 
-    from nolli.datasets import Datasets
     from nolli.model.keys import NotAllowed
 
     path, shas = src
@@ -339,10 +344,9 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
 
     store = Checked(tmp_path / "data")
     _fetch_change(store, LocalRepository(path), change, about={"title": "checked"})
-    datasets = Datasets(store)
     sc = open_stored(store, change)
     for preset in ("folded", "changes", "unfolded"):
-        assert viewer.export_scene(datasets.draw(sc, spec(preset=preset)))["nodes"]
+        assert viewer.export_scene(_draw(sc, spec(preset=preset)))["nodes"]
     assert store.list_map_names(StringKey().format_key()) == [] and store.locate_maps("", "change") is None
     with pytest.raises(NotAllowed):
         store.list_map_names(Repo("github.com/o/other").make_commit("a" * 40).format_key())

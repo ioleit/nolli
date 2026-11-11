@@ -4,18 +4,31 @@ from __future__ import annotations
 
 import re
 
+from nolli.logic import transformations
+from nolli.logic.formats import mermaid as mermaid_format
+from nolli.logic.transformations import projection
 from nolli.logic.transformations.merge import Links
 from nolli.model.scene import Scene
+from nolli.review import changes
 
 
-def make_brief(scene: Scene, mermaid: str, description: str | None = None) -> str:
+def make_review_diagram(scene: Scene) -> str:
+    """The review diagram (``review.mmd``): the change with every area that changed in source
+    code unfolded (``changes.Changes``), the rest of the projection as it is by default. The
+    same for the same change and version of nolli, so verdicts on its ids stay valid."""
+    return mermaid_format.render(transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=changes.Changes()))))
+
+
+def make_brief(scene: Scene, mermaid: str | None = None, description: str | None = None) -> str:
     """What a review agent gets: the change's title, the diagram of everything that changed
     (the reviewer looks at the same picture), how to answer, and the PR's description.
     Verdicts come back as JSON on the diagram's nodes and edges and are shown in the viewer.
 
-    ``mermaid``: the review diagram (``review.mmd``), the change with every area that changed
-    in source code unfolded (``changes._find_review_cut``)."""
+    ``mermaid``: the review diagram (default: ``make_review_diagram``); ``description``: the
+    change's (default: what it says about itself)."""
     d = scene.model.meta["change"]
+    mermaid = make_review_diagram(scene) if mermaid is None else mermaid
+    description = d.get("description") if description is None else description
     links = Links(d)
     head = f"# Architecture review: {d.get('title') or 'change'}\n\n"
     head += (f"{d['base_short']} → {d['head_short']}" + (f", PR #{d['pr']}" if d.get("pr") else "")

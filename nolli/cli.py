@@ -105,10 +105,7 @@ class Built:
     directory named as it is."""
 
     def __init__(self, store: DirectoryStore, key, target=None, sources=None):
-        from .datasets import Datasets
-
         self.store, self.key, self.target, self.sources = store, key, target, sources
-        self.datasets = Datasets(store)
         self.out = store.locate(key)
         self.name = self.out.name
 
@@ -233,7 +230,7 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 
 def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
-    """The target built afresh into the directory -o with its extras (``datasets.write_extras``):
+    """The target built afresh into the directory -o with its extras (``write_extras``):
     what it says about itself and the report; None after saying why it could not be."""
     from nolli import build
 
@@ -261,10 +258,6 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
     from nolli.model.keys import CommitKey
     from nolli.progress import Quiet
     from nolli.store import directory
-    from nolli.store.maps import MemoryMaps
-
-    from .datasets import Datasets, write_extras
-
     about = {k: v for k, v in about.items() if v}
     out.mkdir(parents=True, exist_ok=True)
     if isinstance(key, CommitKey):
@@ -275,7 +268,7 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
             m.meta["budget"] = budget
         directory.write_commit(out, key, m, maps)
         scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
-        return about, write_extras(Datasets(MemoryMaps()), scenes.open_built(m, maps), out)
+        return about, write_extras(scenes.open_built(m, maps), out)
     sides = {}
     with sources.open_commits(key.repo, key.base, key.head) as clone:
         for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
@@ -288,7 +281,28 @@ def write_dataset(key, sources, out: Path, about: dict, budget: int | None = Non
     merged = merge.merge_models(key, sides["base"][0], sides["head"][0], scenes.describe_change_meta(sides["base"][0], sides["head"][0], about))
     directory.write_change(out, key, about, sides, {"content": content}, merged)
     scenes.keep_change_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})  # the directory as nolli serve reads it
-    return about, write_extras(Datasets(MemoryMaps()), scene, out)
+    return about, write_extras(scene, out)
+
+
+def write_extras(scene, out: Path) -> dict:
+    """What a dataset directory written on its own gets beside the model: report.json, and for a
+    change what a review agent reads (changes.json, review.mmd, review.md). Returns the report."""
+    from nolli.logic import transformations
+    from nolli.logic.formats import report as report_format
+    from nolli.logic.transformations import merge, projection
+    from nolli.review import brief, changes
+
+    meta = scene.model.meta
+    budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or projection.DEFAULT_BUDGET
+    default = transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=projection.AtMost(budget))))
+    report = report_format.make_report(scene, default)
+    (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
+    if merge.is_change(scene):
+        (out / "changes.json").write_text(json.dumps(changes.list_changes(scene), indent=1))
+        mmd = brief.make_review_diagram(scene)
+        (out / "review.mmd").write_text(mmd)
+        (out / "review.md").write_text(brief.make_brief(scene, mmd))
+    return report
 
 
 def cmd_view(args: argparse.Namespace) -> int:
@@ -341,9 +355,6 @@ def cmd_extract(args: argparse.Namespace) -> int:
     from nolli import build, scenes
     from nolli.model.keys import Repo
     from nolli.store import directory
-    from nolli.store.maps import MemoryMaps
-
-    from .datasets import Datasets, write_extras
     from .logic.sources.git import WORKTREE, find_head
 
     repo = Path(args.repo).resolve()
@@ -356,7 +367,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
         out.mkdir(parents=True, exist_ok=True)
         directory.write_commit(out, key, m, maps)
         scenes.keep_commit_scene(DirectoryStore(out.parent), key, {"nolli": build.version()})
-        report = write_extras(Datasets(MemoryMaps()), scenes.open_built(m, maps), out)
+        report = write_extras(scenes.open_built(m, maps), out)
     else:
         written = build_into(argparse.Namespace(target=WORKTREE, repo=str(repo), data=None, out=args.out, budget=args.budget), "extract")
         if written is None:
@@ -417,6 +428,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
     the verdicts go and how to check them."""
 
     from nolli import scenes
+    from nolli.review import brief, verdicts
 
     b = build(args, "agent brief", review=True)
     if b is None:
@@ -426,12 +438,12 @@ def cmd_brief(args: argparse.Namespace) -> int:
         pass
     work = find_agent_dir(b.store, b.name)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "review.md").write_text(b.datasets.make_review_brief(scenes.open_stored(b.store, b.key)))
-    verdicts = work / "verdicts.json"
+    (work / "review.md").write_text(brief.make_brief(scenes.open_stored(b.store, b.key)))
+    answer = work / "verdicts.json"
     print(json.dumps({
         "repository": str(repo), "base": key.base, "head": key.head, "title": title, "dataset": str(b.out),
-        "brief": str(work / "review.md"), "verdicts": str(verdicts),
-        "has_verdicts": verdicts.is_file() or b.datasets.find_provenance(b.key) is not None,
+        "brief": str(work / "review.md"), "verdicts": str(answer),
+        "has_verdicts": answer.is_file() or verdicts.find_provenance(b.store, b.key) is not None,
         "inspect": f"git -C {repo} diff {key.base[:12]} {key.head[:12]}",
         "check": f"nolli agent check {b.out}",
         "view": f"nolli view {b.out}",
@@ -444,7 +456,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     that pass become the change's review."""
     from nolli import scenes
 
-    from .datasets import VERDICTS, Datasets
+    from nolli.review import brief, verdicts
 
     target = Path(args.dataset).expanduser().resolve()
     vf: Path | None = None
@@ -461,7 +473,6 @@ def cmd_check(args: argparse.Namespace) -> int:
     if scene is None:
         print(f"nolli agent check: {args.dataset} is not a change's dataset", file=sys.stderr)
         return 2
-    datasets = Datasets(store)
     ds = store.locate(key)
     if vf is None:
         vf = find_agent_dir(store, ds.name) / "verdicts.json"
@@ -470,14 +481,14 @@ def cmd_check(args: argparse.Namespace) -> int:
     if not vf.is_file():
         print(f"nolli agent check: no {vf}", file=sys.stderr)
         return 1
-    verdicts, errors = datasets.check_verdicts(scene, vf.read_text())
+    kept, errors = verdicts.check_verdicts(scene, brief.make_review_diagram(scene), vf.read_text())
     for e in errors:
         print(e, file=sys.stderr)
-    counts = {v: sum(x["verdict"] == v for x in verdicts) for v in reversed(VERDICTS)}
-    print(json.dumps({"ok": not errors, "verdicts": len(verdicts), **counts, "errors": len(errors)}))
+    counts = {v: sum(x["verdict"] == v for x in kept) for v in reversed(verdicts.VERDICTS)}
+    print(json.dumps({"ok": not errors, "verdicts": len(kept), **counts, "errors": len(errors)}))
     if errors:
         return 1
-    datasets.keep_verdicts(key, verdicts, {"by": "agent"})
+    verdicts.save_verdicts(store, key, kept, {"by": "agent"})
     return 0
 
 

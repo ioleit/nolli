@@ -94,10 +94,9 @@ class Reviews:
     def _run(self, job: Job, store: ModelStore, key: ChangeKey, sources: Sources) -> None:
         from nolli import scenes
 
-        from ..datasets import Datasets
-        from ..review import agent as reviewer
+        from nolli.review import brief, verdicts
 
-        datasets = Datasets(store)
+        from ..review import agent as reviewer
 
         def on_step(s: str, run: reviewer.Run) -> None:
             if s != job.step:
@@ -119,18 +118,18 @@ class Reviews:
                     raise ValueError(f"no model of {key.format_key()}")
                 out = work / "out"  # what the reviewer writes; its brief, as it read it, beside
                 out.mkdir(parents=True)
-                diagram = datasets.make_review_diagram(scene)
-                brief = datasets.make_review_brief(scene, diagram)
-                (work / "review.md").write_text(brief)
+                diagram = brief.make_review_diagram(scene)
+                told = brief.make_brief(scene, diagram)
+                (work / "review.md").write_text(told)
 
                 def check(text: str):
-                    return datasets.check_verdicts(scene, text)
+                    return verdicts.check_verdicts(scene, diagram, text)
 
                 job.step = "fetching the change's commits"
                 with sources.open_commits(key.repo, key.base, key.head) as repo:
-                    run = self.reviewer.review(brief, key.head, check, repo, out, on_step, job.cancel)
-                verdicts, _errors = check((out / "verdicts.json").read_text())
-                datasets.keep_verdicts(key, verdicts, {"by": "agent", "model": run.model, "seconds": run.seconds,
+                    run = self.reviewer.review(told, key.head, check, repo, out, on_step, job.cancel)
+                kept, _errors = check((out / "verdicts.json").read_text())
+                verdicts.save_verdicts(store, key, kept, {"by": "agent", "model": run.model, "seconds": run.seconds,
                                                      "turns": run.turns, "cost": round(run.cost, 2)})
                 job.state, job.turns, job.cost = "done", run.turns, run.cost
             except reviewer.Cancelled:

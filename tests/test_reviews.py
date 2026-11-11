@@ -20,7 +20,7 @@ from nolli.build import _fetch_change
 from nolli.logic.sources import CloneCache, LocalRepository
 from nolli.model.keys import Repo
 from nolli.review import agent as reviewer
-from nolli.review.verdicts import _keep_verdicts_file, parse_verdicts
+from nolli.review.verdicts import _keep_verdicts_file, _parse_verdicts
 from nolli.scenes import _open_change_scene
 from nolli.server import serve
 from nolli.store import DirectoryStore
@@ -70,7 +70,7 @@ def k(ds: Path) -> str:
 
 def kept_verdicts(ds: Path) -> list[dict]:
     store, key, _ = open_dataset(ds)
-    return parse_verdicts(store.open_maps("verdicts").load(key.format_key()))
+    return _parse_verdicts(store.open_maps("verdicts").load(key.format_key()))
 
 
 def call(srv, path: str, method: str = "GET", body: bytes | None = None) -> tuple[int, dict]:

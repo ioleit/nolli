@@ -2,7 +2,7 @@
 python dev/examples/propose_package.py <nolli checkout>
 
 An example of nolli as a library: a scene of the files as they are, a custom transformation
-that proposes a directory that is not there and moves the command line, the datasets and the
+that proposes a directory that is not there and moves the command line and the
 server into it, the proposal folded to package level like any scene, cut down to nolli/
 itself, and the result as Mermaid. (nolli/logic/ was proposed the same way before it existed.)"""
 
@@ -21,7 +21,7 @@ from nolli.model.schema import EntityId, RelationKind
 
 NOLLI = EntityId.from_path("nolli")
 APP = EntityId.from_path("nolli/app")                                     # the proposed parent: no such directory exists
-MEMBERS = [EntityId.from_path(f"nolli/{p}") for p in ("cli.py", "datasets.py", "server")]
+MEMBERS = [EntityId.from_path(f"nolli/{p}") for p in ("cli.py", "server")]
 
 repo = Path(sys.argv[1])
 scene = scenes.open_built(*build.extract(repo))                     # the files as they are, with nolli's overlays

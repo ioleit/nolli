@@ -4,7 +4,7 @@ uses a function or constant of another nolli module through that module
 (``projection.fold``, ``schema.SYMBOL_KINDS``), so a call site says whose ``fold`` it is.
 Classes and type aliases (``Scene``, ``Key``) may be imported by name.
 
-The layers above ``datasets.py`` (it, the command line and the server) are not held to it yet."""
+The command line and the server are not held to it yet."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import importlib.util
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-NOT_YET = {"nolli/datasets.py", "nolli/cli.py", "nolli/server"}
+NOT_YET = {"nolli/cli.py", "nolli/server"}
 
 
 def list_checked() -> list[Path]:

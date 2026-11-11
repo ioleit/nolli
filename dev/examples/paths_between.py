@@ -1,4 +1,4 @@
-"""Every path from nolli/datasets.py to nolli/store/, as Mermaid: python dev/examples/paths_between.py <nolli checkout>
+"""Every path from nolli/build.py to nolli/store/, as Mermaid: python dev/examples/paths_between.py <nolli checkout>
 
 An example of nolli as a library: a scene of the files as they are, folded to module level by a
 predicate, a custom transformation that keeps the boxes on a path, and the result as Mermaid."""
@@ -38,9 +38,9 @@ def reach(froms, step):
 
 
 def on_paths(folded: Scene) -> Scene:                               # the custom transformation
-    """The boxes on a path from datasets.py to store/, and the boxes they are drawn in."""
+    """The boxes on a path from build.py to store/, and the boxes they are drawn in."""
     m = folded.model
-    down = reach(["repo:nolli/datasets.py"], lambda x: [e.dst for e in m.list_out(x)])
+    down = reach(["repo:nolli/build.py"], lambda x: [e.dst for e in m.list_out(x)])
     up = reach([x for x in m.entities if x.startswith("repo:nolli/store")], lambda x: [e.src for e in m.list_in(x)])
     keep = down & up
     return select(folded, keep | {p for x in keep for p in m.iter_ancestors(x)})

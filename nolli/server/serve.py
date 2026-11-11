@@ -79,11 +79,11 @@ HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 from nolli import build, scenes  # noqa: E402
 from nolli.logic.formats import mermaid, viewer  # noqa: E402
 
-from ..datasets import Datasets  # noqa: E402
 from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
 from ..logic.sources.git import ChangeError, GitError  # noqa: E402
-from nolli.logic.transformations import projection  # noqa: E402
-from nolli.review import changes  # noqa: E402
+from nolli.logic import transformations  # noqa: E402
+from nolli.logic.transformations import merge, projection  # noqa: E402
+from nolli.review import brief, changes, verdicts  # noqa: E402
 
 from ..logic.transformations.projection import DEFAULT_UTILITY_IN, ProjectionSpec  # noqa: E402
 from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
@@ -468,9 +468,6 @@ class Services:
     def sources(self) -> Sources:
         return self.site.sources
 
-    @property
-    def datasets(self) -> Datasets:
-        return Datasets(self.store)
 
 
 class Server(ThreadingHTTPServer):
@@ -587,7 +584,7 @@ class Handler(SimpleHTTPRequestHandler):
         if why is None and self.find_sources(key) is None:
             why = "repo"
         job = reviews.job(key)
-        return {"verdicts": self.services.datasets.find_provenance(key), "run": job.status() if job else None,
+        return {"verdicts": verdicts.find_provenance(self.services.store, key), "run": job.status() if job else None,
                 "can_run": why is None, "why_not": why, "uploads": self.services.uploads,
                 "model": reviews.reviewer.model(), "server": "view" if self.site.here else "serve"}
 
@@ -600,10 +597,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         key, sc = found
         t1 = time.perf_counter()
-        datasets = self.services.datasets
         if path == "/api/scene":
             try:
-                out = viewer.export_scene(datasets.draw(sc, parse_spec(q)))
+                out = viewer.export_scene(transformations.apply(sc, projection.fold(parse_spec(q))))
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
                 return
@@ -614,7 +610,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(out)
         elif path == "/api/mermaid":
             try:
-                drawn = datasets.draw(sc, parse_spec(q))
+                drawn = transformations.apply(sc, projection.fold(parse_spec(q)))
                 text, ids = mermaid.render(drawn, fade=q.get("nodim") != "1"), mermaid.list_ids(drawn)
             except (ValueError, KeyError) as exc:
                 self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
@@ -624,12 +620,14 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 self.send_text(text)
         elif path == "/api/changes":
-            self.send_json({"items": datasets.list_changes(sc), "verdicts": datasets.describe_verdicts(sc)})
+            is_change = merge.is_change(sc)
+            self.send_json({"items": changes.list_changes(sc) if is_change else [],
+                            "verdicts": verdicts.describe_verdicts(sc, verdicts.load_verdicts(self.services.store, key)) if is_change else []})
         elif path == "/api/brief":
             if not isinstance(key, ChangeKey):
                 self.send_json({"error": "not a change"}, 404)
                 return
-            self.send_text(datasets.make_review_brief(sc), "text/markdown; charset=utf-8")
+            self.send_text(brief.make_brief(sc), "text/markdown; charset=utf-8")
         elif path == "/api/review":
             self.send_json(self.review_status(key, sc))
         else:
@@ -662,11 +660,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"error": "not a change"}, 400)
             return
         try:
-            v = self.services.datasets.read_verdicts(found[1], body)
+            v = verdicts.read_verdicts(body, verdicts.find_diagram_ids(found[1]))
         except (ValueError, KeyError, TypeError) as exc:
             self.send_json({"error": str(exc)}, 400)
             return
-        self.services.datasets.keep_verdicts(found[0], v, {"by": "upload"})
+        verdicts.save_verdicts(self.services.store, found[0], v, {"by": "upload"})
         self.send_json({"saved": len(v)})
 
     def send_json(self, obj, status: int = 200) -> None:

@@ -17,13 +17,21 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   - `build.Target.from_string` reads a target. `Target.pin()` says what a moving target (a
     branch, `WORKTREE`, a pull request) names now, as a stable one. The command line and the
     server build through the same function; the server runs it as a job on the pinned target.
-  - `datasets.parse_target`, `resolve_target`, `Asked`, the server's `Plan` and the thin
-    `Datasets` wrappers (`open_scene`, `build`, `draw_json`, …) are gone.
+  - `datasets.parse_target`, `resolve_target`, `Asked` and the server's `Plan` are gone.
   - The extractor run is `extractors.facts.extract_facts`.
 - **A model's key is a target**: `<repo>@<sha>` or `<repo>@<base>..<head>`, full shas. A pinned
   pull request, `<repo>@<base>...<head>`, is one too.
 - **A dataset directory is the command line's**: `nolli view <dir>` serves the store the
   directory is in and opens the viewer on its key. The viewer's `?t=` no longer takes a path.
+- **`nolli/datasets.py` is gone**: the command line and the server call build, scenes, the
+  store, the formats and `nolli.review` directly. The review diagram is
+  `review.brief.make_review_diagram`; `review.brief.make_brief(scene)` makes the diagram and reads
+  the description itself; `review.verdicts.load_verdicts` reads a change's verdicts.
+- **`ProjectionSpec.expand` says which containers unfold**, one rule instead of `expanded`,
+  `unfold`, `preset`, `focus` and `budget`: `Ids`, `Where` (was `ProjectionSpec.expanded_if`),
+  `Root` (the `folded` preset), `All` (`unfolded`), `AtMost(budget)` (`default`), and
+  `nolli.review.changes.Changes` (`changes`), which computes the change's cut itself. The viewer's
+  URL is unchanged; the state it gets back has a `budget` only for the default cut.
 - **A GitHub comparison built from the command line has no title** unless GitHub gives one:
   the title used to be read from the commits.
 
