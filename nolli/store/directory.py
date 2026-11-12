@@ -13,6 +13,7 @@ from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo, StringKey
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.scene import Scene
 from nolli.store import maps as maps_lib
+from nolli.store import precomputed
 from nolli.store.precomputed import OverlayStore
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
@@ -201,7 +202,7 @@ class DirectoryStore(OverlayStore):
         d = self.places.get(model_key)
         return sorted(f.stem for f in (d / "overlays").glob("*.json")) if d is not None and (d / "overlays").is_dir() else []
 
-    def save_scene(self, scene: Scene, by: dict | None = None) -> None:
+    def save_scene(self, scene: Scene, about: dict | None = None) -> None:
         """Not yet: this store keeps models under commit and change keys only (``save_model``,
         ``save_change``). What an overlay says about one it holds is kept with
         ``precompute_overlay_values``."""
@@ -246,7 +247,7 @@ class DirectoryMaps:
             raise KeyError(f"no model {model_key} to keep {self.name} for")
         f.parent.mkdir(exist_ok=True)
         tmp = f.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
-        tmp.write_text(json.dumps(maps_lib.dump_map(model_key, values, about), indent=1))
+        tmp.write_text(json.dumps(maps_lib.dump_map(model_key, values, precomputed.stamp(about)), indent=1))
         tmp.replace(f)
 
 

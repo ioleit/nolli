@@ -6,6 +6,10 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **Values for a model are kept with `open_maps(name).save(model_key, values, about)`**, whether an
+  overlay computed them or they were handed in (`KeptMaps`, `nolli/store/precomputed.py`). `save`
+  adds when they were kept to `about` (`at`, `precomputed.stamp`), in memory as on disk.
+  `precompute_overlay_values` and `save_scene` take `about=` (was `by=`, which nothing passed).
 - **An edge is keyed by its id, a `RelationId`, as a node is by its address**
   (`nolli/model/schema.py`). A `RelationId` is a `str`, `kind|src|dst|subkind`, checked when
   made from text and made from its parts with `RelationId.from_parts`; `Relation.id` gives an

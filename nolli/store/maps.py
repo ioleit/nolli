@@ -5,10 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from nolli.model.keys import ModelKey
 from nolli.model import schema
+from nolli.model.keys import ModelKey
 from nolli.model.model import Key, Model
 from nolli.model.schema import EntityId, RelationId
+from nolli.store import precomputed
 from nolli.store.precomputed import KeptMaps, OverlayStore
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
@@ -63,8 +64,7 @@ class MemoryHandle:
 
     def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None:
         self.store.maps.setdefault(self.name, {})[model_key] = dict(values)
-        if about is not None:
-            self.store.about[(self.name, model_key)] = about
+        self.store.about[(self.name, model_key)] = precomputed.stamp(about)
 
     def load_about(self, model_key: str) -> dict | None:
         return self.store.about.get((self.name, model_key))

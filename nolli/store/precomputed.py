@@ -27,10 +27,22 @@ from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 
 
 class KeptMaps(StoredMaps, Protocol):
-    """A store's handle on the maps of one name: what an overlay reads, and ``save``, which
-    only the store's own methods call."""
+    """A store's handle on the maps of one name: what an overlay reads, and ``save``.
+
+    ``save`` keeps ``values`` (by element id: an address, or a relation's ``kind|src|dst|subkind``,
+    plain text included) for the model of ``model_key`` in place of what was kept, with ``about``
+    (where they came from) and the time they were kept (``at``, see ``stamp``). Whoever has
+    values for a model keeps them so, whether an overlay computed them or they were handed in.
+    It does not check the ids against the model: a value for an id the model lacks is kept and
+    never shown."""
 
     def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None: ...
+
+
+def stamp(about: dict | None) -> dict:
+    """Return a map's ``about`` as ``save`` keeps it: as given, with the time it is kept (``at``)
+    unless it says one."""
+    return {**(about or {}), "at": (about or {}).get("at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
 class CachingStrategy(Enum):
@@ -39,20 +51,19 @@ class CachingStrategy(Enum):
     USE_PRECOMPUTED_VALUES = "use_precomputed_values"
 
 
-def _describe_values(overlay: Overlay, by: dict | None = None) -> dict:
-    """Return a map's ``about``: which overlay said it, in which version and when, plus ``by``
-    (who ran it) if given."""
-    return {**(by or {}), "overlay": overlay.name, "cache_version": overlay.cache_version,
-            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+def _describe_values(overlay: Overlay, about: dict | None = None) -> dict:
+    """Return a map's ``about``: which overlay said it and in which version, plus ``about`` if
+    given (who ran it, say); ``save`` adds when."""
+    return {**(about or {}), "overlay": overlay.name, "cache_version": overlay.cache_version}
 
 
-def _precompute(stored: KeptMaps, scene: Scene, overlay: Overlay, by: dict | None = None) -> Mapping[Key, dict]:
+def _precompute(stored: KeptMaps, scene: Scene, overlay: Overlay, about: dict | None = None) -> Mapping[Key, dict]:
     """Compute what ``overlay`` says about every element of ``scene``, keep it in ``stored`` under
     the scene's model key in place of what was kept, and return the values. The overlay answers
     on the scene with itself attached (in place of one of the same name), so what it asks of
     other overlays, and of the scenes the model was made from, is answered as usual."""
     values = scene.with_overlays(overlay).read_all(overlay.name)
-    stored.save(scene.model.key.format_key(), values, _describe_values(overlay, by))
+    stored.save(scene.model.key.format_key(), values, _describe_values(overlay, about))
     return values
 
 
@@ -140,10 +151,10 @@ class OverlayStore:
         """Return the names of the maps kept for a model."""
         raise NotImplementedError
 
-    def precompute_overlay_values(self, scene: Scene, overlay: Overlay, by: dict | None = None) -> Mapping[Key, dict]:
+    def precompute_overlay_values(self, scene: Scene, overlay: Overlay, about: dict | None = None) -> Mapping[Key, dict]:
         """Keep what ``overlay`` says about ``scene``'s model, for a precomputed overlay to
         answer from."""
-        return _precompute(self.open_maps(overlay.name), scene, overlay, by)
+        return _precompute(self.open_maps(overlay.name), scene, overlay, about)
 
     def strictly_precomputed_overlay(self, name: str) -> PrecomputedOverlay:
         """Return an overlay that answers with what was kept under ``name`` for an element's model,
@@ -177,8 +188,8 @@ class OverlayStore:
         kept = [self.strictly_precomputed_overlay(n) for n in self.list_map_names(model.key.format_key()) if n not in named]
         return Scene(model, [*kept, *own])
 
-    def save_scene(self, scene: Scene, by: dict | None = None) -> None:
+    def save_scene(self, scene: Scene, about: dict | None = None) -> None:
         """Keep the scene's model (``save_model``) and what every overlay on it says about it."""
         self.save_model(scene.model)  # type: ignore[attr-defined]
         for o in scene.overlays.values():
-            self.precompute_overlay_values(scene, o, by)
+            self.precompute_overlay_values(scene, o, about)

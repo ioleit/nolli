@@ -95,7 +95,8 @@ def test_directory_store_keeps_models_changes_and_verdicts(tmp_path):
     kept = {"repo:x": {"verdicts": [{"id": "V1", "target": "n_x", "verdict": "good", "reason": "ok"}]}}
     verdicts.save(change.format_key(), kept, {"by": "upload"})
     store.save_change(change, {"title": "rebuilt"}, sides, {"content": {}})  # the verdicts stay with the change they answer
-    assert verdicts.load(change.format_key()) == kept and verdicts.load_about(change.format_key()) == {"by": "upload"}
+    about = verdicts.load_about(change.format_key())
+    assert verdicts.load(change.format_key()) == kept and about == {"by": "upload", "at": about["at"]}  # save says when
     assert store.load_change(change) == {"title": "rebuilt"}
     assert not [p for p in store.root.iterdir() if p.name.startswith(".")]  # no work left over
     with pytest.raises(KeyError):
