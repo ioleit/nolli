@@ -29,7 +29,7 @@ class RelationKind(StrEnum):
 class EntityKind(StrEnum):
     """Entity kinds by UML metaclass. ``group`` is a synthetic container with no counterpart
     in the repository (each scheme's root but ``repo:``); ``anchor`` is drawn only, in a
-    projection (``nolli/logic/transformations/projection/__init__.py``)."""
+    projection (``nolli/logic/transformations/projection/_core.py``)."""
 
     DIRECTORY = "directory"
     FILE = "file"

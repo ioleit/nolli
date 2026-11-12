@@ -23,7 +23,7 @@ what was used longest ago is deleted (nolli/server/retention.py).
 
 The viewer's page asks the API about the model it shows by its key (``k=<key>``,
 ``ModelKey.format_key()``): ``/api/scene?k=…&…`` the scene a scene state projects
-(``parse_spec`` reads the viewer's location-hash keys; nolli/logic/transformations/projection/__init__.py),
+(``parse_spec`` reads the viewer's location-hash keys; nolli/logic/transformations/projection/spec.py),
 as JSON with every overlay (nolli/logic/formats/viewer.py); ``/api/mermaid`` the same scene as
 Mermaid (``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid, ids}``);
 ``/api/changes`` a change's numbered changes and the review's verdicts; ``/api/brief`` what a

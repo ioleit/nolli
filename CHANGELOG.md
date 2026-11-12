@@ -35,8 +35,11 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   (`dev/examples/logic.py` had proposed the directory; `propose_package.py` now proposes the next one
   the same way). Imports change accordingly: `nolli.logic.transformations`, and so on.
 - **`projection` is a package**: `reading`, `rollup` and `unfold`, used by the projection
-  only, moved into `nolli/logic/transformations/projection/`. `projection.fold` and
-  `ProjectionSpec` are imported as before.
+  only, moved into `nolli/logic/transformations/projection/`. What a projection is asked for
+  (`ProjectionSpec`, the expansions, its text form, `make_key`) is in `spec`, the projection
+  itself in `_core`; `__init__` re-exports what callers use, so `projection.fold` and
+  `projection.ProjectionSpec` are as before. A package's `__init__` may re-export its own
+  modules' functions and constants (`tests/test_imports.py`).
 - **`nolli/operations.py`: what the command line and the server share** (was `build.py`,
   `scenes.py` and `datasets.py`). High-level operations that tie the store and the logic
   together:

@@ -222,7 +222,7 @@ def test_groups_are_a_filter(repo: Path):
 def test_utilities_by_incoming_edges(repo: Path):
     """A box with more than N incoming dependency edges is a utility: its incoming edges
     become badges on their sources. Boxes in groups never are."""
-    from nolli.logic.transformations.projection import _cut
+    from nolli.logic.transformations.projection._core import _cut
     from nolli.logic.transformations.projection.rollup import utility_badges
     from nolli.model.schema import RelationKind
 
