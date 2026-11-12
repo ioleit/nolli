@@ -24,7 +24,7 @@ from nolli.model.keys import Repo
 from nolli.progress import SHORT, Progress
 from nolli import operations
 from nolli.server.serve import Board, Site, TooLarge, describe, make_local_server, make_server, viewer_page
-from nolli.store import DirectoryStore
+from nolli.store import RepoStoreProvider
 
 
 def test_viewer_page_names_its_model():
@@ -99,7 +99,7 @@ def src(tmp_path: Path) -> tuple[Path, str, str, str]:
 
 @pytest.fixture
 def site(tmp_path: Path, src) -> Site:
-    return Site(DirectoryStore(tmp_path / "cache" / "data"), LocalRepository(src[0]), tmp_path / "cache")
+    return Site(RepoStoreProvider(tmp_path / "cache" / "data"), LocalRepository(src[0]), tmp_path / "cache")
 
 
 def run(site: Site, target: operations.Target, seconds: float = 60):
@@ -162,7 +162,7 @@ def test_a_pull_request_is_built_from_where_it_left_its_base(site, src, monkeypa
     about = sc.model.meta["change"]
     assert key == job.key and about["pr"] == 7 and about["description"] == "the description"
     assert about["remote"] == "https://github.com/o/r" and sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
-    assert site.store.load_model(Repo("github.com/o/r").make_commit(base)) is not None  # its base, kept for the next push
+    assert site.stores.open(Repo("github.com/o/r")).load_model(Repo("github.com/o/r").make_commit(base)) is not None  # its base, kept for the next push
 
 
 def test_a_build_that_fails_leaves_no_model(site, src, monkeypatch):
@@ -215,8 +215,7 @@ def test_a_targets_page_builds_it_then_shows_it(served, src):
     assert status == 200 and json.loads(body)["dataset"]["key"] == key.format_key()
     assert get(f"{url}/api/scene?k={quote(key.format_key()[:-1])}")[0] == 404  # no such model
     assert f'content="{key.format_key()}"' in get(f"{url}/?t={quote(key.format_key())}")[1]  # a key: built, shown as it is
-    assert get(f"{url}/?t={quote(str(srv.services.store.locate(key)))}")[0] == 404  # a dataset directory's path is no target
-    assert f'content="{key.format_key()}"' in get(f"{url}/?t={quote(srv.services.store.locate(key).name)}")[1]  # its name in the store is
+    assert get(f"{url}/?t={quote(srv.services.stores.locate(key).name)}")[0] == 404  # where the store keeps it names nothing
     assert get(f"{url}/api/list")[0] == 404  # the store is not listed
 
 
@@ -229,8 +228,7 @@ def test_pages_that_show_nothing(served, tmp_path):
 
 
 def test_a_server_without_a_repository_shows_githubs_paths_only(tmp_path, src):
-    store = DirectoryStore(tmp_path / "data")
-    srv = make_server(store, LocalRepository(src[0]), tmp_path, port=0)
+    srv = make_server(RepoStoreProvider(tmp_path / "data"), LocalRepository(src[0]), tmp_path, port=0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         status, body = get(f"http://127.0.0.1:{srv.server_address[1]}/?t=main")

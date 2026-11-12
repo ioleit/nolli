@@ -8,11 +8,13 @@ A page shows one model, named by a target (``nolli --help`` lists the forms):
 - GitHub's paths with this host: ``/<owner>/<repo>``, ``…/tree/<ref>``, ``…/commit/<sha>``,
   ``…/compare/<a>...<b>``, ``…/pull/<n>``;
 - ``/?t=<target>``, any target, on a server started on a local repository (``nolli view``): a
-  branch, a range, ``WORKTREE``, ``#<n>``, or a dataset directory in the server's store.
+  branch, a range, ``WORKTREE``, ``#<n>``, or a model's key (``nolli view`` names a dataset
+  directory by the key it imported it under).
 
 A target is resolved on every visit, so a new push or a new edit is a new model. What it names
 is built in the background if the store does not have it yet (a page says how far it got, and
-shows the model when it is ready), and kept in the store, keyed by its commits (nolli/store/).
+shows the model when it is ready), and kept in its repository's store, keyed by its commits
+(nolli/store/).
 Each commit's model is kept too, so a pull request's base is extracted once for all its pushes.
 
 The steps of a build that take time run in processes of their own, ``--builds`` at the same
@@ -36,16 +38,19 @@ GitHub's API is asked with a token (``Token``): for ``nolli serve`` ``NOLLI_GITH
 it is set (5,000 requests an hour instead of 60), else as nobody; ``nolli view`` uses yours
 ($GH_TOKEN, $GITHUB_TOKEN or gh). ``nolli serve`` shows whatever its token can read, to anyone
 who can reach it, and runs git with none of this machine's credentials or configuration.
-Deciding who may see what is a store's (and sources') job: one that refuses raises
-NotAllowed, and the page answers 404 as for a missing repository.
+Deciding who may see what is the store provider's job (and the sources'): the server opens a
+repository's store once per request (``StoreProvider.open``, ``RepoStoreProvider.allow`` for
+nolli's own), a refusal raises NotAllowed, and the page answers 404 as for a missing
+repository. The store it gets keeps that repository's models only, so a request cannot read
+another's by mistake.
 
 A service built on this one passes make_server() (and main()) parts of its own: a Token (one
-per repository, say a GitHub App's installation token for each installation), a store and
-sources (which may decide per request who may read what), a subclass of Handler for pages and
+per repository, say a GitHub App's installation token for each installation), a store
+provider and sources (which may decide per request who may read what), a subclass of Handler for pages and
 routes of its own, a subclass of Services for what those need, and a reviewer for "Review
 structural changes" (nolli.review.agent.Reviewer by default). A build runs in the context
-(contextvars) of the request that started it, so a store that checks who asks sees that
-request. With ``ANTHROPIC_API_KEY`` set where the server runs, anyone who can open a page can
+(contextvars) of the request that started it, so a provider that checks who asks sees that
+request when the build opens its repository's store. With ``ANTHROPIC_API_KEY`` set where the server runs, anyone who can open a page can
 start a review, so the key's owner pays for every visitor's review (one run per model at a
 time, two runs at once).
 """
@@ -90,7 +95,7 @@ from ..logic.transformations.projection import ProjectionSpec  # noqa: E402
 from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..progress import Progress  # noqa: E402
-from ..store import DirectoryStore, ModelStore  # noqa: E402
+from nolli.store import ModelStore, RepoStoreProvider, StoreProvider  # noqa: E402
 from . import retention  # noqa: E402
 from .reviews import Reviews  # noqa: E402
 
@@ -98,7 +103,7 @@ LOOKUP_TTL = 60  # s: how long an answer from GitHub's API is reused
 BUILDS = min(4, os.cpu_count() or 1)  # builds at the same time; the rest wait their turn
 TIMEOUT = 600  # s: a step of a build taking longer is stopped (nolli serve)
 MAX_REPO = 1 << 30  # bytes: GitHub's size of a repository (all its history) above which it is not built (nolli serve)
-KINDS = {"model": "data/*", "clone": "repos/*/*"}  # what retention may delete (nolli serve's store and clones)
+KINDS = {"model": "data/github.com/*/*/*", "clone": "repos/*/*"}  # what retention may delete: nolli serve's models (RepoStoreProvider's layout) and clones
 OLD = ("extractions",)  # what nolli before 0.7 kept under the cache: deleted at the start
 
 
@@ -245,14 +250,14 @@ def processes() -> multiprocessing.context.BaseContext:
 class Site:
     """The models a server shows, where their commits come from, and the builds under way.
     ``work``: where build steps keep temporary files; ``here``: targets on this machine are
-    shown too (nolli view: a dataset directory of the store, and with ``local``, the repository
+    shown too (nolli view: with ``local``, the repository
     you are in, its branches, ranges and WORKTREE), else GitHub's paths only (nolli serve);
     ``timeout`` and ``max_repo``: None for no limit."""
 
-    def __init__(self, store: ModelStore, sources: Sources, work: Path, *, here: bool = False, local: Path | None = None, budget: int = 34,
+    def __init__(self, stores: StoreProvider, sources: Sources, work: Path, *, here: bool = False, local: Path | None = None, budget: int = 34,
                  keep: int | None = None, builds: int = BUILDS, timeout: float | None = TIMEOUT, max_repo: int | None = MAX_REPO,
                  token: Token | None = None):
-        self.store, self.sources, self.work, self.here, self.local, self.budget = store, sources, work, here, local, budget
+        self.stores, self.sources, self.work, self.here, self.local, self.budget = stores, sources, work, here, local, budget
         for old in OLD:
             shutil.rmtree(work / old, ignore_errors=True)
         self.builds, self.timeout, self.max_repo = threading.BoundedSemaphore(builds), timeout, max_repo
@@ -307,9 +312,6 @@ class Site:
         """Work out what the target ``text`` names now and return it pinned (``operations.Target.pin``).
         Raise github.NotFound for a repository the token cannot read, TooLarge, and ChangeError for
         a target this server cannot show or GitHub cannot be asked about."""
-        key = self.store.find_key(text) if self.here and text else None
-        if key is not None:  # a dataset of this server's store, by its name (nolli view, in its data directory)
-            return operations.Target("key", key=key, text=text)
         t = operations.Target.from_string(text, self.local)
         if t.kind == "github":
             return self.plan_github(t.github)
@@ -328,12 +330,13 @@ class Site:
 
     def find_built(self, target: operations.Target) -> tuple[ModelKey, Scene] | None:
         """Return the key and scene that the pinned ``target`` names if it is built, else None. Raise
-        NotAllowed as the store does."""
+        NotAllowed if this request may not read its repository."""
         key = target.key or self.built.get(target.format())
         if key is None:
             return None
-        kept = self.store.load_change(key) if isinstance(key, ChangeKey) else self.store.load_model(key)
-        sc = operations.open_scene(self.store, key, card.make_overlays(self.store)) if operations.is_fresh(kept) else None
+        store = self.stores.open(key.repo)
+        kept = store.load_change(key) if isinstance(key, ChangeKey) else store.load_model(key)
+        sc = operations.open_scene(store, key, card.make_overlays(store)) if operations.is_fresh(kept) else None
         return (key, sc) if sc is not None else None
 
     def start(self, target: operations.Target) -> Job:
@@ -355,7 +358,8 @@ class Site:
             job.state, job.t0 = "building", time.time()
             try:
                 job.key = operations.resolve_target(target, self.sources, progress)  # known before it is built: tidy() leaves it
-                operations.build_target(self.store, dataclasses.replace(target, kind="key", key=job.key), self.sources,
+                store = self.stores.open(job.key.repo)  # in the context of the request that started the build
+                operations.build_target(store, dataclasses.replace(target, kind="key", key=job.key), self.sources,
                             about={"budget": self.budget}, run=self.run_step, progress=progress)
                 self.built[job.name] = job.key
                 job.state = "done"
@@ -413,7 +417,7 @@ class Site:
             chosen = self.policy(retention.scan(self.work, KINDS))
             with self.lock:  # no build starts while what it uses may be going
                 active = [j for j in self.jobs.values() if j.state in ("waiting", "building")]
-                busy = {self.store.locate(k) for j in active if (k := j.target.key or j.key)} if isinstance(self.store, DirectoryStore) else set()
+                busy = {self.stores.locate(k) for j in active if (k := j.target.key or j.key)} if isinstance(self.stores, RepoStoreProvider) else set()
                 held = self.sources.clones if isinstance(self.sources, LocalFirst) else self.sources
                 if isinstance(held, CloneCache):
                     busy |= held.list_held()
@@ -451,7 +455,7 @@ def parse_spec(q: dict[str, str]) -> ProjectionSpec:
 class Services:
     """What a server works with. A service built on it passes its own (a subclass, for more)."""
 
-    store: ModelStore
+    stores: StoreProvider
     reviews: Reviews
     site: Site
     uploads: bool = False  # POST /api/verdicts stores a review's verdicts (nolli view)
@@ -550,17 +554,19 @@ class Handler(SimpleHTTPRequestHandler):
 
     # -- the API -------------------------------------------------------------------
 
-    def open_model(self, text: str | None) -> tuple[ModelKey, Scene] | None:
-        """Open the scene of the model whose key is ``text`` through the store and return it with
-        the key; return None if there is no such model or the store refuses it."""
+    def open_model(self, text: str | None) -> tuple[ModelKey, Scene, ModelStore] | None:
+        """Open the scene of the model whose key is ``text`` and return it with the key and its
+        repository's store, opened once for this request; return None if there is no such model or
+        this request may not read its repository."""
         key = ModelKey.parse(text or "")
         if not isinstance(key, (CommitKey, ChangeKey)):
             return None
         try:
-            sc = operations.open_scene(self.services.store, key, card.make_overlays(self.services.store))
+            store = self.services.stores.open(key.repo)
+            sc = operations.open_scene(store, key, card.make_overlays(store))
         except NotAllowed:
             return None
-        return (key, sc) if sc is not None else None
+        return (key, sc, store) if sc is not None else None
 
     def find_sources(self, key: ModelKey) -> Sources | None:
         """Where a review agent run on ``key`` gets the change's commits: None if this server
@@ -568,7 +574,7 @@ class Handler(SimpleHTTPRequestHandler):
         local = self.site.local
         return self.services.sources if key.repo.format_remote() or (local and key.repo == Repo(str(local.resolve()))) else None
 
-    def review_status(self, key: ModelKey, m: Scene) -> dict:
+    def review_status(self, key: ModelKey, store: ModelStore) -> dict:
         """Collect what the review panel shows: where the verdicts came from, the run under way or the
         last one, and whether a run can be started here, and if not, why not."""
         reviews = self.services.reviews
@@ -578,7 +584,7 @@ class Handler(SimpleHTTPRequestHandler):
         if why is None and self.find_sources(key) is None:
             why = "repo"
         job = reviews.job(key)
-        return {"verdicts": verdicts.find_provenance(self.services.store, key), "run": job.status() if job else None,
+        return {"verdicts": verdicts.find_provenance(store, key), "run": job.status() if job else None,
                 "can_run": why is None, "why_not": why, "uploads": self.services.uploads,
                 "model": reviews.reviewer.model(), "server": "view" if self.site.here else "serve"}
 
@@ -589,7 +595,7 @@ class Handler(SimpleHTTPRequestHandler):
         if found is None:
             self.send_json({"error": f"no model {q.get('k')!r}"}, 404)
             return
-        key, sc = found
+        key, sc, store = found
         t1 = time.perf_counter()
         if path == "/api/scene":
             try:
@@ -616,14 +622,14 @@ class Handler(SimpleHTTPRequestHandler):
         elif path == "/api/changes":
             is_change = merge.is_change(sc)
             self.send_json({"items": items.list_changes(sc) if is_change else [],
-                            "verdicts": verdicts.describe_verdicts(sc, verdicts.load_verdicts(self.services.store, key)) if is_change else []})
+                            "verdicts": verdicts.describe_verdicts(sc, verdicts.load_verdicts(store, key)) if is_change else []})
         elif path == "/api/brief":
             if not isinstance(key, ChangeKey):
                 self.send_json({"error": "not a change"}, 404)
                 return
             self.send_text(brief.make_brief(sc), "text/markdown; charset=utf-8")
         elif path == "/api/review":
-            self.send_json(self.review_status(key, sc))
+            self.send_json(self.review_status(key, store))
         else:
             self.send_json({"error": f"no {path}"}, 404)
 
@@ -633,16 +639,16 @@ class Handler(SimpleHTTPRequestHandler):
         path = unquote(self.path.split("?")[0])
         found = self.open_model(self.query().get("k"))
         if path in ("/api/review", "/api/review/cancel") and found is not None:
-            key, m = found
-            st = self.review_status(key, m)
+            key, _, store = found
+            st = self.review_status(key, store)
             if path == "/api/review/cancel":
                 self.services.reviews.cancel(key)
             elif not st["can_run"]:
                 self.send_json({"error": f"no review agent here ({st['why_not']})", **st}, 409)
                 return
             else:
-                self.services.reviews.start(self.services.store, key, self.find_sources(key))  # type: ignore[arg-type]
-            self.send_json(self.review_status(key, m))
+                self.services.reviews.start(store, key, self.find_sources(key))  # type: ignore[arg-type]
+            self.send_json(self.review_status(key, store))
             return
         uploads = self.services.uploads
         if path != "/api/verdicts" or found is None or not uploads:
@@ -658,7 +664,7 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError, KeyError, TypeError) as exc:
             self.send_json({"error": str(exc)}, 400)
             return
-        verdicts.save_verdicts(self.services.store, found[0], v, {"by": "upload"})
+        verdicts.save_verdicts(found[2], found[0], v, {"by": "upload"})
         self.send_json({"saved": len(v)})
 
     def send_json(self, obj, status: int = 200) -> None:
@@ -714,20 +720,20 @@ NOT_A_PAGE = """<h1>Not a nolli page</h1>
 <code>…/commit/&lt;sha&gt;</code>. <a href="/">Start here</a>.</p>"""
 
 
-def make_server(store: ModelStore, sources: Sources, work: Path, host: str = "127.0.0.1", port: int = 8730, *,
+def make_server(stores: StoreProvider, sources: Sources, work: Path, host: str = "127.0.0.1", port: int = 8730, *,
                 here: bool = False, local: Path | None = None, budget: int = 34, keep: int | None = None, builds: int = BUILDS,
                 timeout: float | None = TIMEOUT, max_repo: int | None = MAX_REPO, token: Token | None = None,
                 uploads: bool = False, handler: type[Handler] | None = None, reviewer=None,
                 services: type[Services] = Services, **more: Any) -> Server:
-    """Make a server for the models of ``store``, built from ``sources``, but do not start serving.
+    """Make a server for the models of the stores ``stores`` opens, built from ``sources``, but do not start serving.
     Temporary files and review runs go under ``work``. Port 0 picks a free port. ``here`` and
     ``local`` mean the same as for Site. ``handler`` is a subclass of Handler that adds a service's
     own routes; ``reviewer`` runs reviews (default: nolli.review.agent.Reviewer); ``services`` is a
     subclass of Services, given ``more`` of its fields."""
-    site = Site(store, sources, work, here=here, local=local, budget=budget, keep=keep, builds=builds, timeout=timeout,
+    site = Site(stores, sources, work, here=here, local=local, budget=budget, keep=keep, builds=builds, timeout=timeout,
                 max_repo=max_repo, token=token)
     threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now
-    svc = services(store, Reviews(reviewer, work / ".reviews"), site, uploads=uploads, **more)
+    svc = services(stores, Reviews(reviewer, work / ".reviews"), site, uploads=uploads, **more)
     return Server((host, port), partial(handler or Handler, directory=str(HERE)), svc)
 
 
@@ -735,14 +741,14 @@ def make_local_server(data: Path, local: Path | None, host: str = "127.0.0.1", p
     """nolli view's server: the store under ``data``, commits from ``local`` (the repository you
     are in, if any) or clones under ``data/.repos``, no limits, your GitHub token, and
     uploaded verdicts stored."""
-    store = DirectoryStore(data)
-    clones = CloneCache(store.root / ".repos", lambda owner, name: github.find_token())
-    return make_server(store, LocalFirst(local, clones), store.root, host, port, here=True, local=local, budget=budget,
+    stores = RepoStoreProvider(data)
+    clones = CloneCache(stores.root / ".repos", lambda owner, name: github.find_token())
+    return make_server(stores, LocalFirst(local, clones), stores.root, host, port, here=True, local=local, budget=budget,
                        timeout=None, max_repo=None, token=Yours(), uploads=True)
 
 
 def main(argv: list[str] | None = None, token: Token | None = None, handler: type[Handler] | None = None,
-         reviewer=None, store: ModelStore | None = None, sources: Sources | None = None,
+         reviewer=None, stores: StoreProvider | None = None, sources: Sources | None = None,
          services: type[Services] = Services, **more: Any) -> int:
     """``nolli serve``: its options from ``argv``; the rest as make_server() takes them. ``store``
     and ``sources`` default to directories under --cache (``data/``, ``repos/``)."""
@@ -765,10 +771,10 @@ def main(argv: list[str] | None = None, token: Token | None = None, handler: typ
                       SSH_ASKPASS="true", GIT_SSH_COMMAND="false")
     cache = Path(args.cache).expanduser().resolve()
     token = token if token is not None else token_from_env()
-    store = store or DirectoryStore(cache / "data")
+    stores = stores or RepoStoreProvider(cache / "data")
     holder: list[Site] = []
     sources = sources or CloneCache(cache / "repos", lambda owner, name: holder[0].find_token(owner, name))
-    srv = make_server(store, sources, cache, args.host, args.port, budget=args.budget, keep=args.keep, builds=args.builds,
+    srv = make_server(stores, sources, cache, args.host, args.port, budget=args.budget, keep=args.keep, builds=args.builds,
                       timeout=args.timeout, max_repo=args.max_repo or None, token=token, handler=handler, reviewer=reviewer,
                       services=services, **more)
     holder.append(srv.services.site)

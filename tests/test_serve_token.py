@@ -8,11 +8,11 @@ import pytest
 
 from nolli.logic.sources import CloneCache, github
 from nolli.server import serve
-from nolli.store import DirectoryStore
+from nolli.store import RepoStoreProvider
 
 
 def make_site(cache, **kw) -> serve.Site:
-    return serve.Site(DirectoryStore(cache / "data"), CloneCache(cache / "repos"), cache, **kw)
+    return serve.Site(RepoStoreProvider(cache / "data"), CloneCache(cache / "repos"), cache, **kw)
 
 
 def test_from_env():
@@ -74,14 +74,14 @@ def test_a_service_brings_its_handler_parts_and_store(tmp_path):
     class MyServices(serve.Services):
         hooks: str = ""
 
-    store = DirectoryStore(tmp_path / "elsewhere")
-    srv = serve.make_server(store, CloneCache(tmp_path / "repos"), tmp_path, port=0, token=serve.Fixed("t"), handler=Mine,
+    stores = RepoStoreProvider(tmp_path / "elsewhere")
+    srv = serve.make_server(stores, CloneCache(tmp_path / "repos"), tmp_path, port=0, token=serve.Fixed("t"), handler=Mine,
                              services=MyServices, hooks="mine")
-    other = serve.make_server(DirectoryStore(tmp_path / "other"), CloneCache(tmp_path / "repos2"), tmp_path / "w", port=0)
+    other = serve.make_server(RepoStoreProvider(tmp_path / "other"), CloneCache(tmp_path / "repos2"), tmp_path / "w", port=0)
     try:
-        assert srv.services.site.github.token("o", "r") == "t" and srv.services.store is store and srv.services.hooks == "mine"
+        assert srv.services.site.github.token("o", "r") == "t" and srv.services.stores is stores and srv.services.hooks == "mine"
         assert srv.RequestHandlerClass.func is Mine  # type: ignore[attr-defined]
-        assert other.services.store is not store and other.services.site.github.token("o", "r") is None
+        assert other.services.stores is not stores and other.services.site.github.token("o", "r") is None
     finally:
         srv.server_close()
         other.server_close()

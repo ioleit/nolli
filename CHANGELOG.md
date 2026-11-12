@@ -6,6 +6,33 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **A store per repository, opened once per request** (`nolli/store/repo_directory.py`):
+  - `RepoStoreProvider(root).open(repo)` decides whether the current request may read `repo`
+    (`allow`, the one method a service overrides) and returns a `RepoDirectoryStore`, which keeps
+    that repository's models only. A key of another repository raises `NotAllowed`; one of no
+    repository has nothing kept and cannot be kept. The server holds a provider
+    (`make_server(stores, …)`, `Services.stores`, `serve.main(stores=…)`) and opens a model's
+    store once per request; builds and reviews get that store. `ModelStore` loses `check` and
+    `find_key`.
+  - Where a model is kept follows from its key alone:
+    `<root>/github.com/<owner>/<repo>/<rest of the key>/`, or `local/<path>/…` for a repository
+    not on GitHub. Any key of the repository can be kept (a projection's maps, `save_scene`), and
+    nothing is scanned. A change's commits are kept beside it, not copied into it.
+  - `DirectoryStore` is gone. Models kept under the old layout (`<owner>_<repo>-<sha7>`) are not
+    read: they are built again, and review verdicts kept there are not carried over.
+  - `StringKey` takes an optional `repo` (`StringKey(text, repo)`, written `<repo>@~<text>`) so a
+    transformation's model can be kept in its repository's store.
+- **Files go in and out of the store only as dataset directories** (`nolli/datasets.py`):
+  - `export_dataset(store, key, dir)` and `import_dataset(store, dir)` work with any
+    `ModelStore`. A dataset directory keeps the shape `-o` wrote before, so existing ones import.
+  - `nolli build` prints the model's key, not a directory. With `-o DIR` (and `diff`/`extract
+    -o`), it builds into the data directory as usual, reusing a fresh build (`--rebuild` to
+    force), then exports it with its report and review files; it no longer always rebuilds.
+  - `nolli view DIR`, `nolli build DIR` and `nolli agent check DIR` import a dataset directory
+    into the data directory first. A model's key works as a target too.
+  - `nolli agent brief` prints `key` in place of `dataset`, and its `check` and `view` commands
+    name the key (with `--data` when one was given). The agent's directory under `.agent/` holds
+    the key in a file `key`, so `agent check <verdicts file>` still finds the change.
 - **A projection spec has one text form, and a projected model is keyed by it**:
   - `ProjectionSpec.to_query()` / `from_query(q, presets)` write and read it as the viewer's URL
     parameters, defaults left out and lists sorted; `format()` / `parse()` as text

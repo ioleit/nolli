@@ -20,7 +20,9 @@ from nolli.cli import main
 from nolli.operations import Target
 from nolli.logic.sources.git import WORKTREE, ChangeError, Revs, _default_branch, find_toplevel
 from nolli.model.keys import Repo
-from nolli.store import DirectoryStore
+from nolli import datasets
+from nolli.model.keys import ModelKey
+from nolli.store import RepoStoreProvider
 
 
 def git(repo: Path, *args: str) -> str:
@@ -210,13 +212,18 @@ def test_build_and_the_older_shorthands(repo, tmp_path, capsys):
     r, c = repo
     data = tmp_path / "data"
     assert main(["build", "main", "--repo", str(r), "--data", str(data)]) == 0
-    built = Path(capsys.readouterr().out.strip())
-    assert built.parent == data and json.loads((built / "key.json").read_text())["head"] == c["m"]
-    store, key = DirectoryStore.find_dataset(built)
-    assert store.root == data.resolve() and key.sha == c["m"]
+    key = ModelKey.parse(capsys.readouterr().out.strip())  # build prints the key, not where the store keeps it
+    assert key.sha == c["m"] and RepoStoreProvider(data).open(key.repo).load_model(key) is not None
     assert Target.from_string(key.format_key()).pin().key == key  # a key: stable already
-    assert main(["build", str(built), "--data", str(tmp_path / "other")]) == 0  # a dataset directory: nothing to build
-    assert Path(capsys.readouterr().out.strip()) == built.resolve()
+    assert main(["build", key.format_key(), "--data", str(data)]) == 0  # nothing to build
+    assert capsys.readouterr().out.strip() == key.format_key()
+
+    assert main(["build", "main", "--repo", str(r), "--data", str(data), "-o", str(tmp_path / "m")]) == 0  # also as a dataset
+    assert Path(capsys.readouterr().out.strip()) == (tmp_path / "m").resolve()
+    assert datasets.read_key(tmp_path / "m") == key and (tmp_path / "m" / "report.json").is_file()
+    assert main(["build", str(tmp_path / "m"), "--data", str(tmp_path / "other")]) == 0  # a dataset directory: imported, nothing built
+    assert capsys.readouterr().out.strip() == key.format_key()
+    assert RepoStoreProvider(tmp_path / "other").open(key.repo).load_model(key) is not None
 
     (r / "new.py").write_text("Y = 1\n")
     assert main(["extract", str(r), "-o", str(tmp_path / "x")]) == 0  # nolli build WORKTREE -o

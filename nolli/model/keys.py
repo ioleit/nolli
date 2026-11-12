@@ -48,6 +48,7 @@ class Repo:
 
 
 PROJECTED = "~project:"  # between a projected model's source key and which projection it is
+NAMED = "@~"  # between a StringKey's repository and its text
 
 
 class ModelKey:
@@ -65,11 +66,14 @@ class ModelKey:
     @classmethod
     def parse(cls, text: str) -> ModelKey:
         """Parse ``text`` as ``format_key()`` writes it: ``<source>~project:<spec>`` gives a
-        ProjectionKey, ``<repo>@<sha>`` a CommitKey, ``<repo>@<base>..<head>`` a ChangeKey, and
-        anything else a StringKey."""
+        ProjectionKey, ``<repo>@~<text>`` a StringKey of that repository, ``<repo>@<sha>`` a
+        CommitKey, ``<repo>@<base>..<head>`` a ChangeKey, and anything else a StringKey without one."""
         source, projected, spec = text.rpartition(PROJECTED)
         if projected and spec:
             return ProjectionKey(ModelKey.parse(source), spec)
+        repo, named, rest = text.partition(NAMED)
+        if named and repo:
+            return StringKey(rest, Repo(repo))
         repo, at, rest = text.rpartition("@")
         if not at or not repo or not rest:
             return StringKey(text)
@@ -85,7 +89,7 @@ class ModelKey:
         if "projection" in d:
             return ProjectionKey(ModelKey.from_dict(d["source"]), d["projection"])
         if "key" in d:
-            return StringKey(d["key"])
+            return StringKey(d["key"], Repo(d["repo"]) if d.get("repo") else None)
         repo = Repo(d["repo"])
         return repo.make_change(d["base"], d["head"]) if d.get("base") else repo.make_commit(d["head"])
 
@@ -128,15 +132,18 @@ class ChangeKey(ModelKey):
 
 @dataclass(frozen=True)
 class StringKey(ModelKey):
-    """An adhoc key not directly tied to a repository, e.g. for the result of a transformation."""
+    """An adhoc key, e.g. for the result of a transformation. ``repo`` is the repository whose
+    model it was made from, if any: a store bound to one repository keeps only keys of that
+    repository (``nolli.store.repo_directory``), so a key without one is kept in memory only."""
 
     text: str = ""
+    repo: Repo | None = None  # type: ignore[assignment]  # None: a model of no repository
 
     def format_key(self) -> str:
-        return self.text
+        return f"{self.repo.url}{NAMED}{self.text}" if self.repo else self.text
 
     def to_dict(self) -> dict:
-        return {"key": self.text}
+        return {"key": self.text, **({"repo": self.repo.url} if self.repo else {})}
 
 
 @dataclass(frozen=True)
@@ -151,7 +158,7 @@ class ProjectionKey(ModelKey):
 
     @property
     def repo(self) -> Repo:  # type: ignore[override]
-        """The source's repository (a ``StringKey`` source has none)."""
+        """The source's repository (None for a ``StringKey`` source without one)."""
         return self.source.repo
 
     def format_key(self) -> str:

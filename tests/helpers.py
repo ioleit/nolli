@@ -11,13 +11,21 @@ from nolli.logic.formats.viewer import export_scene
 from nolli.logic.sources import LocalRepository
 from nolli.logic.transformations import projection
 from nolli.logic.transformations.projection import ProjectionSpec
-from nolli.model.keys import StringKey
+from nolli.model.keys import ModelKey, StringKey
 from nolli.model.model import Model
 from nolli.model.scene import Scene
 from nolli.review import card
 from nolli.logic.transformations.merge import items as changes
 from nolli.store import MemoryStore
 from nolli.store.maps import Maps
+
+
+def open_dataset(ds: Path) -> tuple[MemoryStore, ModelKey]:
+    """Import the dataset directory ``ds`` (``nolli build -o``) into memory and return the store and the key."""
+    from nolli import datasets
+
+    store = MemoryStore()
+    return store, datasets.import_dataset(store, ds)
 
 
 def open_dir(path: Path, key: str = "test@0") -> Scene:

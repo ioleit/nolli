@@ -33,6 +33,7 @@ import argparse
 import difflib
 import html
 import json
+import os
 import re
 import shutil
 import socket
@@ -54,8 +55,15 @@ REPOS = [
 ]
 
 
-def _run(*cmd: str | Path, cwd: Path | None = None) -> None:
-    subprocess.run([str(c) for c in cmd], cwd=cwd, check=True, stdout=subprocess.DEVNULL)
+def _run(*cmd: str | Path, cwd: Path | None = None, env: dict | None = None) -> None:
+    subprocess.run([str(c) for c in cmd], cwd=cwd, env=env, check=True, stdout=subprocess.DEVNULL)
+
+
+def _make_env(data: Path) -> dict:
+    """Return the environment one version runs in: its own data directory ($NOLLI_DATA), where a
+    version that builds into a store first (``-o``, ``view <dir>``) keeps what it builds. Versions
+    before that ignore it."""
+    return {**os.environ, "NOLLI_DATA": str(data)}
 
 
 def _install_release(work: Path, version: str) -> Path:
@@ -114,11 +122,22 @@ class Dataset:
     def is_change(self) -> bool:
         return self.base is not None
 
-    def build(self, nolli: Path, out: Path, cwd: Path) -> None:
+    def build(self, nolli: Path, out: Path, cwd: Path, env: dict | None = None) -> None:
         if self.is_change:
-            _run(nolli, "diff", self.src, self.base, self.head, "-o", out, cwd=cwd)
+            _run(nolli, "diff", self.src, self.base, self.head, "-o", out, cwd=cwd, env=env)
         else:
-            _run(nolli, "extract", self.src, "-o", out, cwd=cwd)
+            _run(nolli, "extract", self.src, "-o", out, cwd=cwd, env=env)
+
+
+def _read_key_text(dataset: Path) -> str | None:
+    """Return the key a dataset directory's key.json names, as text, or None if it has none."""
+    try:
+        j = json.loads((dataset / "key.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if "base" in j:
+        return f"{j['repo']}@{j['base']}..{j['head']}"
+    return f"{j['repo']}@{j['head']}" if "repo" in j else None
 
 
 def _find_free_port() -> int:
@@ -130,10 +149,10 @@ def _find_free_port() -> int:
 class Server:
     """One version's ``nolli view`` on one dataset directory."""
 
-    def __init__(self, nolli: Path, dataset: Path) -> None:
+    def __init__(self, nolli: Path, dataset: Path, env: dict | None = None) -> None:
         self.nolli, self.port = nolli, _find_free_port()
         self.proc = subprocess.Popen([str(nolli), "view", str(dataset), "--no-open", "--port", str(self.port)],
-                                     cwd=dataset.parent, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                     cwd=dataset.parent, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.time() + 60
         while True:
             try:
@@ -147,12 +166,18 @@ class Server:
     def find_name(self, dataset: Path) -> dict:
         """Find how this version's API names the dataset: by its key (``k``, which the page of
         ``/?t=<dataset's name>`` says; the server runs in the dataset's parent directory, so 0.9
-        reads the name as a path and later versions find it in their store) or, before 0.9, by its
+        reads the name as a path and later versions find it in their store; a version that imports
+        the dataset into a store of its own takes the key, ``/?t=<key>``) or, before 0.9, by its
         directory's name (``d``)."""
-        page = self.get("/?t=" + urllib.parse.quote(dataset.name, safe="")).decode() if self.answers("/") else ""
-        m = re.search(r'name="nolli-key" content="([^"]*)"', page)
-        if m:
-            return {"k": html.unescape(m.group(1))}
+        up = self.answers("/")
+        for target in (dataset.name, _read_key_text(dataset)):
+            try:
+                page = self.get("/?t=" + urllib.parse.quote(target, safe="")).decode() if target and up else ""
+            except urllib.error.HTTPError:  # this version names it otherwise
+                continue
+            m = re.search(r'name="nolli-key" content="([^"]*)"', page)
+            if m:
+                return {"k": html.unescape(m.group(1))}
         names = [d["name"] for d in json.loads(self.get("/api/list"))]
         if dataset.name not in names:
             raise RuntimeError(f"{self.nolli} view serves {names}, not {dataset.name}")
@@ -375,6 +400,9 @@ def main() -> int:
     versions = {base_label: base, f"this checkout ({head_key})": Path(sys.executable).with_name("nolli")}
     keys = dict(zip(versions, (base_key, head_key)))
 
+    for key in keys.values():  # a dirty checkout's store may hold models of other code under the same version
+        if key.endswith("-dirty"):
+            shutil.rmtree(args.work / "store" / key, ignore_errors=True)
     datasets = [Dataset(_clone(args.work, r)) for r in args.repos]
     datasets += [Dataset(_clone(args.work, r, history=True), base, head) for r, base, head in args.diff]
     if args.compare:
@@ -389,8 +417,8 @@ def main() -> int:
             if keys[label].endswith("-dirty") or not any((out / f).exists() for f in ("key.json", "model.json")):
                 if out.exists():
                     shutil.rmtree(out)
-                ds.build(nolli, out, cwd=args.work)
-            servers[label] = Server(nolli, out)
+                ds.build(nolli, out, cwd=args.work, env=_make_env(args.work / "store" / keys[label]))
+            servers[label] = Server(nolli, out, _make_env(args.work / "store" / keys[label]))
         try:
             if args.compare:
                 print("\n".join(_compare(servers, ds)), flush=True)
