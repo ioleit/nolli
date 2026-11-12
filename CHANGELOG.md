@@ -6,6 +6,11 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **`nolli serve --keep` limits the clones only.** Models in the store are no longer deleted to
+  make room: one size for both let a large clone push out extracted models, and the models'
+  "used" time was really when they were built. What the store keeps is
+  `RepoStoreProvider.cleanup`'s to bound, called after each build; it keeps everything for now.
+  The provider and its stores no longer hand out paths (`locate` is gone).
 - **A store per repository, opened once per request** (`nolli/store/repo_directory.py`):
   - `RepoStoreProvider(root).open(repo)` decides whether the current request may read `repo`
     (`allow`, the one method a service overrides) and returns a `RepoDirectoryStore`, which keeps

@@ -83,7 +83,7 @@ def test_a_store_keeps_models_changes_and_verdicts(tmp_path):
     assert store.load_model(C2).meta["repo"] == "head" and store.load_model(C1).meta["repo"] == "base"  # its commits, kept as commits
     assert store.open_maps("fs").load(C2.format_key()) == {"repo:": {"name": "head"}}
     assert store.open_maps("content").load(CHANGE.format_key()) == {"repo:a.py": {"status": "added"}}
-    assert sorted(f.name for f in store.locate(CHANGE).iterdir()) == ["change.json", "key.json", "overlays"]  # no copies of its sides
+    assert sorted(f.name for f in store._locate(CHANGE).iterdir()) == ["change.json", "key.json", "overlays"]  # no copies of its sides
 
     verdicts = store.open_maps("verdicts")
     assert verdicts.load(CHANGE.format_key()) == {} and verdicts.load_about(CHANGE.format_key()) is None
@@ -101,7 +101,7 @@ def test_a_store_keeps_models_changes_and_verdicts(tmp_path):
     assert store.list_map_names(projected.format_key()) == ["layout"] and store.load_model(projected) is None
 
     import shutil
-    shutil.rmtree(store.locate(C1))  # a change without one of its commits is not kept
+    shutil.rmtree(store._locate(C1))  # a change without one of its commits is not kept
     assert store.load_change(CHANGE) is None
 
 
@@ -114,7 +114,7 @@ def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
     monkeypatch.setattr(repo_directory.RepoDirectoryStore, "_write_model", broken)
     with pytest.raises(RuntimeError):
         store.save_model(C1, model("x"), {})
-    assert list(store.path.iterdir()) == [store.locate(C1)]  # the model kept before, no work left over
+    assert list(store.path.iterdir()) == [store._locate(C1)]  # the model kept before, no work left over
     assert store.load_model(C1).meta["repo"] == "before"
 
 

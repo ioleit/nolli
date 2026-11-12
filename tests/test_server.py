@@ -25,6 +25,7 @@ from nolli.progress import SHORT, Progress
 from nolli import operations
 from nolli.server.serve import Board, Site, TooLarge, describe, make_local_server, make_server, viewer_page
 from nolli.store import RepoStoreProvider
+from nolli.store.repo_directory import _format_key_path
 
 
 def test_viewer_page_names_its_model():
@@ -215,7 +216,7 @@ def test_a_targets_page_builds_it_then_shows_it(served, src):
     assert status == 200 and json.loads(body)["dataset"]["key"] == key.format_key()
     assert get(f"{url}/api/scene?k={quote(key.format_key()[:-1])}")[0] == 404  # no such model
     assert f'content="{key.format_key()}"' in get(f"{url}/?t={quote(key.format_key())}")[1]  # a key: built, shown as it is
-    assert get(f"{url}/?t={quote(srv.services.stores.locate(key).name)}")[0] == 404  # where the store keeps it names nothing
+    assert get(f"{url}/?t={quote(_format_key_path(key).name)}")[0] == 404  # where the store keeps it names nothing
     assert get(f"{url}/api/list")[0] == 404  # the store is not listed
 
 

@@ -6,7 +6,7 @@ overlay of its own, which says something about each element and handles folded b
 overlay's values are kept in a store for the scene and for one projection of it, and the
 kept overlay is then used instead, both on those and on a projection whose values were not
 kept. Everything is kept in a ``RepoDirectoryStore`` under the data directory (a new temporary
-one unless one is given), and the script prints where."""
+one unless one is given, printed)."""
 
 import sys
 import tempfile
@@ -22,6 +22,7 @@ from nolli.store import RepoStoreProvider
 repo = Path(sys.argv[1]).resolve()
 data = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(tempfile.mkdtemp(prefix="nolli-custom-overlay-"))
 source = Repo(str(repo)).make_commit("worktree")                    # the files as they are, as `nolli extract` keys them
+print("data directory:", data)
 store = RepoStoreProvider(data).open(source.repo)                   # or a MemoryStore, which keeps nothing on disk
 scene = operations.open_scene(store, operations.build_files(store, repo, source))   # with nolli's overlays
 
@@ -64,8 +65,8 @@ one_dir = projection.ProjectionSpec(expand=projection.Ids(("repo:", "repo:nolli"
 store.save_scene(live)                                              # the model, and what every overlay says about it
 store.precompute_overlay_values(transformations.apply(live, projection.fold(modules)), Cool())   # a projection, this overlay only
 folded = transformations.apply(live, projection.fold(modules)).model.key
-print("kept for the scene:", store.list_map_names(scene.model.key.format_key()), "in", store.locate(scene.model.key))
-print("kept for the projection:", store.list_map_names(folded.format_key()), "in", store.locate(folded))
+print("kept for the scene:", store.list_map_names(scene.model.key.format_key()))
+print("kept for the projection:", store.list_map_names(folded.format_key()))
 
 cool = store.caching_overlay(Cool())                                # Cool, answered from its kept values where they exist
 

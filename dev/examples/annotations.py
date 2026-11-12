@@ -14,7 +14,7 @@ or a relation's ``kind|src|dst|subkind`` (a ``RelationId``,
 store's keys as they are.
 
 Everything is kept in a ``RepoDirectoryStore`` under the data directory (a new temporary one
-unless one is given), so the files can be looked at afterwards; the script prints where.
+unless one is given, printed), so the files can be looked at afterwards.
 The model is keyed as ``nolli extract`` keys a working tree, ``<path>@worktree``, so the
 projection's key has a repository and the repository's store can keep it."""
 
@@ -31,6 +31,7 @@ from nolli.store import RepoStoreProvider
 
 repo, given = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
 data = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(tempfile.mkdtemp(prefix="nolli-annotations-"))
+print("data directory:", data)
 stores = RepoStoreProvider(data)                                    # decides once per repository whether it may be read
 source = Repo(str(repo)).make_commit("worktree")                    # the files as they are, as `nolli extract` keys them
 store = stores.open(source.repo)                                    # the model and every map kept for it, this repository only
@@ -59,8 +60,6 @@ assert not missing, f"not in the projected model: {missing}"
 store.open_maps("annotations").save(key.format_key(), values, about={"source": given.name})
 # keys are ids (EntityId | RelationId, both str); save adds when to about ("at")
 print("maps kept:", store.list_map_names(key.format_key()), "about:", store.open_maps("annotations").load_about(key.format_key()))
-print("the model is in:     ", stores.locate(source))
-print("the projection is in:", stores.locate(key))                  # its own directory, though no model was saved for it
 
 # -- read them back on the same projection, made afresh ------------------------------------
 

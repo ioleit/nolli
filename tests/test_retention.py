@@ -9,12 +9,12 @@ from pathlib import Path
 import pytest
 
 from nolli.logic.sources import CloneCache
-from nolli.model.keys import Repo
 from nolli.server import retention
 from nolli.server.retention import LeastRecentlyUsed, parse_size, scan, sweep
-from nolli.operations import Target
-from nolli.server.serve import KINDS, Job, Site
+from nolli.server.serve import Site
 from nolli.store import RepoStoreProvider
+
+KINDS = {"model": "data/github.com/*/*/*", "clone": "repos/*/*"}  # two kinds of entries, as any cache may have
 
 A = "data/github.com/o/r/@" + "a" * 40 + ".." + "b" * 40  # a change's model, where RepoStoreProvider keeps it
 C = "data/github.com/o/r/@" + "c" * 40  # a commit's
@@ -82,19 +82,16 @@ def test_parse_size():
         parse_size("lots")
 
 
-def test_site_keeps_what_a_build_uses(cache):
-    """The model a build under way makes, and the clones held open, stay; what nolli before 0.7
-    kept (extractions) is deleted when the site starts."""
+def test_site_deletes_old_clones_but_not_the_store(cache):
+    """The clones used longest ago go, except one held open by a build; the store is the
+    provider's to keep (``cleanup``), and what nolli before 0.7 kept (extractions) is deleted
+    when the site starts."""
     make(cache, "extractions/" + "a" * 40 + ".json", 10, time.time())
     site = Site(RepoStoreProvider(cache / "data"), CloneCache(cache / "repos"), cache, keep=0)
     assert not (cache / "extractions").exists()
-    repo = Repo("github.com/o/r")
-    target = Target("key", key=repo.make_commit("c" * 40))
-    site.jobs[target.format()] = Job(target, state="building")
     site.sources.held[cache / "repos/o/r"] = 1  # type: ignore[attr-defined]  # a build's clone, open
-    deleted = {str(e.path.relative_to(cache)) for e in site.tidy()}
-    assert deleted == {A, "repos/p/q"}
-    assert (cache / C).is_dir() and (cache / "repos/o/r").is_dir()
+    assert {str(e.path.relative_to(cache)) for e in site.tidy()} == {"repos/p/q"}
+    assert (cache / A).is_dir() and (cache / C).is_dir() and (cache / "repos/o/r").is_dir()
 
 
 def test_site_without_keep_deletes_nothing(cache):

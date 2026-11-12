@@ -20,8 +20,9 @@ Each commit's model is kept too, so a pull request's base is extracted once for 
 The steps of a build that take time run in processes of their own, ``--builds`` at the same
 time (the rest wait). ``nolli serve`` stops a step running past ``--timeout`` and does not
 build a repository GitHub says is larger than ``--max-repo``: anyone can ask for any public
-repository. With ``--keep 20G`` its store and clones stay within that size: after each build,
-what was used longest ago is deleted (nolli/server/retention.py).
+repository. With ``--keep 20G`` its clones stay within that size: after each build, the clones
+used longest ago are deleted (nolli/server/retention.py). What is extracted is the store's to
+keep in bounds (``RepoStoreProvider.cleanup``, which keeps everything for now).
 
 The viewer's page asks the API about the model it shows by its key (``k=<key>``,
 ``ModelKey.format_key()``): ``/api/scene?k=…&…`` the scene a scene state projects
@@ -103,7 +104,7 @@ LOOKUP_TTL = 60  # s: how long an answer from GitHub's API is reused
 BUILDS = min(4, os.cpu_count() or 1)  # builds at the same time; the rest wait their turn
 TIMEOUT = 600  # s: a step of a build taking longer is stopped (nolli serve)
 MAX_REPO = 1 << 30  # bytes: GitHub's size of a repository (all its history) above which it is not built (nolli serve)
-KINDS = {"model": "data/github.com/*/*/*", "clone": "repos/*/*"}  # what retention may delete: nolli serve's models (RepoStoreProvider's layout) and clones
+KINDS = {"clone": "repos/*/*"}  # what retention may delete: nolli serve's clones
 OLD = ("extractions",)  # what nolli before 0.7 kept under the cache: deleted at the start
 
 
@@ -408,19 +409,19 @@ class Site:
         return ended[1]
 
     def tidy(self) -> list[retention.Entry]:
-        """Keep the store and clones under ``work`` within their size (--keep): delete what was
-        used longest ago, except clones in use and the models of builds under way. Runs after
-        each build, the only thing that adds to them."""
-        if not self.policy or not self.tidying.acquire(blocking=False):
+        """Keep the clones under ``work`` within their size (--keep): delete those used longest
+        ago, except clones in use. Then let the store keep itself in bounds (``cleanup``). Runs
+        after each build, the only thing that adds to them."""
+        if not self.tidying.acquire(blocking=False):
             return []
         try:
+            self.stores.cleanup()
+            if not self.policy:
+                return []
             chosen = self.policy(retention.scan(self.work, KINDS))
             with self.lock:  # no build starts while what it uses may be going
-                active = [j for j in self.jobs.values() if j.state in ("waiting", "building")]
-                busy = {self.stores.locate(k) for j in active if (k := j.target.key or j.key)}
                 held = self.sources.clones if isinstance(self.sources, LocalFirst) else self.sources
-                if isinstance(held, CloneCache):
-                    busy |= held.list_held()
+                busy = held.list_held() if isinstance(held, CloneCache) else set()
                 deleted = [e for e in chosen if e.path not in busy and retention.delete(self.work, KINDS, e)]
             for e in deleted:
                 print(f"nolli serve: deleted {e.kind} {e.path.relative_to(self.work)} ({e.size >> 20} MB, used {retention.ago(e.used)} ago)",
@@ -758,7 +759,7 @@ def main(argv: list[str] | None = None, token: Token | None = None, handler: typ
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT") or 8730))
     ap.add_argument("--budget", type=int, default=34)
     ap.add_argument("--keep", type=retention.parse_size, default=os.environ.get("NOLLI_CACHE_KEEP"),
-                    help="the cache's size at most, e.g. 20G: what was used longest ago goes first (default: keep everything)")
+                    help="the clones' size at most, e.g. 20G: those used longest ago go first (default: keep every one)")
     ap.add_argument("--builds", type=int, default=int(os.environ.get("NOLLI_BUILDS") or BUILDS),
                     help=f"builds at the same time (default: $NOLLI_BUILDS, else {BUILDS}: the CPUs, at most 4)")
     ap.add_argument("--timeout", type=float, default=float(os.environ.get("NOLLI_BUILD_TIMEOUT") or TIMEOUT),

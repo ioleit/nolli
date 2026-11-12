@@ -218,10 +218,10 @@ class RepoStoreProvider:
         self.allow(repo)
         return RepoDirectoryStore(self.root / _format_repo_path(repo), repo, self.cache)
 
-    def locate(self, key: ModelKey) -> Path:
-        """Return the directory the model with ``key`` is kept in, whether it is there or not (for
-        retention, which deletes models it does not read)."""
-        return self.root / _format_repo_path(key.repo) / _format_key_path(key)
+    def cleanup(self) -> None:
+        """Keep what is stored under ``root`` within bounds. It deletes nothing for now: what is
+        extracted is small and goes stale with every version of nolli. The server calls it after
+        each build, so a policy can be added here without touching the server."""
 
 
 # -- the store ------------------------------------------------------------------------
@@ -267,7 +267,7 @@ class RepoDirectoryStore(OverlayStore):
             raise NotAllowed(f"{key.format_key()} is no model of {self.repo.url}")
         return key
 
-    def locate(self, key: ModelKey) -> Path:
+    def _locate(self, key: ModelKey) -> Path:
         """Return the directory of the model with ``key``, whether it is there or not."""
         return self.path / _format_key_path(self.own(key))
 
@@ -275,16 +275,16 @@ class RepoDirectoryStore(OverlayStore):
 
     def load_model(self, key: ModelKey) -> Model | None:
         """Return the model kept under ``key`` (a change's merged model, if one was kept), or None."""
-        return self.cache.read(self.locate(key) / "model.json", lambda j: _parse_model(j, key), key.format_key())
+        return self.cache.read(self._locate(key) / "model.json", lambda j: _parse_model(j, key), key.format_key())
 
     def save_model(self, key: ModelKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         """Keep a model under ``key`` with the maps its extractors made, replacing what was kept."""
-        out = self.locate(key)
+        out = self._locate(key)
         _swap(out, lambda tmp: self._write_model(tmp, key, model, maps))
 
     def load_change(self, key: ChangeKey) -> dict | None:
         """Return what a change says about itself, or None unless it and both its commits are kept."""
-        about = self.cache.read(self.locate(key) / "change.json", lambda j: j["about"] if j.get("format") == FORMAT else None)
+        about = self.cache.read(self._locate(key) / "change.json", lambda j: j["about"] if j.get("format") == FORMAT else None)
         if about is None or any(self.load_model(c) is None for c in key.list_sides()):
             return None
         return about
@@ -296,7 +296,7 @@ class RepoDirectoryStore(OverlayStore):
         ``maps`` has new ones."""
         for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
             self.save_model(commit, *sides[side])
-        out = self.locate(key)
+        out = self._locate(key)
 
         def write(tmp: Path) -> None:
             if model is not None:
@@ -338,12 +338,12 @@ class RepoDirectoryStore(OverlayStore):
 
     def list_map_names(self, model_key: str) -> list[str]:
         """Return the names of the maps kept for the model with key text ``model_key``."""
-        d = self.locate(ModelKey.parse(model_key)) / "overlays"
+        d = self._locate(ModelKey.parse(model_key)) / "overlays"
         return sorted(_decode(f.stem) for f in d.glob("*.json")) if d.is_dir() else []
 
     def locate_maps(self, model_key: str, name: str) -> Path:
         """Return the file of the map ``name`` kept for the model with key text ``model_key``."""
-        return self.locate(ModelKey.parse(model_key)) / "overlays" / f"{_encode(name)}.json"
+        return self._locate(ModelKey.parse(model_key)) / "overlays" / f"{_encode(name)}.json"
 
 
 class RepoDirectoryMaps:

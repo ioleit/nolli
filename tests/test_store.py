@@ -114,9 +114,9 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     sc = _open_change_scene(store, first)
     assert sc.model.meta["change"]["title"] == "a cache" and sc.model.meta["change"]["base"] == shas[0]
     assert sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
-    assert sorted(f.name for f in store.locate(first).iterdir()) == ["change.json", "key.json", "model.json", "overlays"]
-    assert sorted(f.name for f in (store.locate(first) / "overlays").iterdir()) == ["change.json", "content.json", "items.json", "names.json"]
-    assert "refs" not in json.loads((store.locate(first) / "model.json").read_text())  # union says what it refers to
+    assert sorted(f.name for f in store._locate(first).iterdir()) == ["change.json", "key.json", "model.json", "overlays"]
+    assert sorted(f.name for f in (store._locate(first) / "overlays").iterdir()) == ["change.json", "content.json", "items.json", "names.json"]
+    assert "refs" not in json.loads((store._locate(first) / "model.json").read_text())  # union says what it refers to
     added = sc.find_element("repo:shop/cache.py")
     assert added.find_same("head") is not None and added.find_same("base") is None  # each node its namesake on each side
     assert any(el.find_same("base") and el.find_same("head") for el in sc.list_nodes())
@@ -165,7 +165,7 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     assert changes.list_changes(kept) == changes.list_changes(computed) and changes.list_changes(kept)
 
     for f in ("model.json", "overlays/change.json", "overlays/items.json"):  # a change kept by an older nolli
-        (store.locate(change) / f).unlink()
+        (store._locate(change) / f).unlink()
     older = open_store(tmp_path, change.repo)
     assert older.load_model(change) is None and older.open_maps("change").load(change.format_key()) == {}
     old = _open_change_scene(older, change)
