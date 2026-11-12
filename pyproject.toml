@@ -44,7 +44,7 @@ build-backend = "setuptools.build_meta"
 # installed as nolli.viewer: the page and its scripts (libraries come from a CDN); the server is nolli.server.
 [tool.setuptools]
 # Every directory with an __init__.py, listed (tests/test_packaging.py checks it).
-packages = ["nolli", "nolli.logic", "nolli.model", "nolli.logic.formats", "nolli.logic.sources", "nolli.logic.transformations", "nolli.logic.transformations.projection", "nolli.logic.extractors", "nolli.logic.extractors.infra", "nolli.logic.extractors.markup",
+packages = ["nolli", "nolli.logic", "nolli.model", "nolli.logic.formats", "nolli.logic.sources", "nolli.logic.transformations", "nolli.logic.transformations.merge", "nolli.logic.transformations.projection", "nolli.logic.extractors", "nolli.logic.extractors.infra", "nolli.logic.extractors.markup",
             "nolli.logic.extractors.python",
             "nolli.logic.extractors.typescript", "nolli.review", "nolli.server", "nolli.store", "nolli.logic.formats.descriptions", "nolli.viewer"]
 

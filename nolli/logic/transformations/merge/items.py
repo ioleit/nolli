@@ -1,20 +1,25 @@
-"""Lists what changed in a change, as a reviewer goes through it.
+"""Numbers what changed in a change, and says which numbered change each box and edge shows.
 
-Everything here reads a change's scene and returns plain data for a reviewer, person or agent.
+The numbered changes (C1, C2, …) are what the viewer's changes panel lists and what a review
+goes through. The ``items`` overlay keeps them with the change and places them on any scene
+drawn from it; the ``Changes`` projection rule unfolds every box they name in source code.
+Everything here reads a change's scene and returns plain data, reviewed or not.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from nolli.logic.transformations import merge, projection
 from nolli.logic.transformations.merge import Links
+from nolli.logic.transformations.merge.reading import Reader
 from nolli.logic.transformations.projection.reading import Reading
 from nolli.model import schema
-from nolli.model.scene import Scene
+from nolli.model.model import Key, Relation
+from nolli.model.scene import Element, Overlay, Scene
 from nolli.model.schema import EntityId
-from nolli.review.reading import Reader
 
 # ---------- the numbered changes a reviewer (person or agent) goes through ----------
 
@@ -70,18 +75,18 @@ def list_ancestors_to_unfold(g: Reader, x: str) -> list[str]:
 
 
 def list_changes(scene: Scene) -> list[dict]:
-    """Return a change's numbered changes in their order, as the ``review`` overlay keeps them
-    (computed by ``number_changes`` once per change)."""
-    listed = [it for v in scene.read_all("review").values() for it in v.get("listed", ())]
+    """Return a change's numbered changes in their order, as the ``items`` overlay keeps them
+    (computed by ``_number_changes`` once per change)."""
+    listed = [it for v in scene.read_all(ChangeItems.name).values() for it in v.get("listed", ())]
     return sorted(listed, key=lambda it: int(it["id"][1:]))
 
 
-def number_changes(scene: Scene) -> list[dict]:
+def _number_changes(scene: Scene) -> list[dict]:
     """List a change's changes and number them C1, C2, … in a stable order. Changes to source code
     come first, then those to tests, docs and the rest. Within each, components added or removed
     come first (a new module once, with its classes, not once per class), then dependencies
     between modules, then edited files. Each item names the nodes and facts it is about, so a
-    verdict on it can be shown on whatever box or edge contains them. The ``review`` overlay
+    verdict on it can be shown on whatever box or edge contains them. The ``items`` overlay
     computes the list and keeps it; readers take it from there (``list_changes``)."""
     g = Reader(scene)
     links = Links(scene.model.meta.get("change") or {})
@@ -180,11 +185,112 @@ def _find_review_cut(scene: Scene) -> list[str]:
     return sorted(out)
 
 
+# ---------- where each numbered change is shown ----------
+
+
+def find_box(scene: Scene, x: str) -> str | None:
+    """Find the drawn box that stands for ``x``. That is ``x`` itself if it is drawn (a module's own
+    code too), else the box holding it (or its owner), or None. ``x`` may be text, since a change
+    item's ``focus`` holds addresses."""
+    x = EntityId(x)
+    if scene.has(x):
+        return x
+    return scene.find_holder(x) or scene.find_holder(x.owner)
+
+
+def _index_items(scene: Scene) -> dict[Key, dict]:
+    """Index the numbered changes (``_number_changes``) as the ``items`` overlay records them on
+    the change itself. Each item is listed once, under the first node it focuses on
+    (``listed``). Each node or edge also gets the ids of the items it is about (for a node those
+    that focus on it, for an edge those whose facts it is), with what placing them needs
+    (``items``, ``about``)."""
+    about: dict[Key, dict[str, dict]] = {}
+    listed: dict[Key, list[dict]] = {}
+    for it in _number_changes(scene):
+        what = {"category": it["category"], "focus": it["focus"]}
+        for x in it["focus"]:
+            about.setdefault(x, {})[it["id"]] = what
+        for f in it["facts"]:
+            about.setdefault(Relation.parse(f), {})[it["id"]] = what
+        listed.setdefault(it["focus"][0], []).append(it)
+    out = {k: {"items": sorted(v, key=lambda i: int(i[1:])), "about": v} for k, v in about.items()}
+    for k, its in listed.items():
+        out[k]["listed"] = its
+    return out
+
+
+def _place_edge_items(el: Element, about: Mapping[Key, dict]) -> list[str]:
+    """Return which numbered changes a drawn edge shows: those about the facts it carries
+    (``about``: the ``items`` overlay of the change drawn)."""
+    return sorted({i for s in el.sources.get("source", ()) for i in (about.get(s.key) or {}).get("about", {})}, key=lambda i: int(i[1:]))
+
+
+def _place_box_items(scene: Scene, about: Mapping[Key, dict], on_edges: Mapping[Key, list[str]]) -> dict[str, list[str]]:
+    """Return which numbered changes each drawn box shows: those about nodes it stands for, and
+    facts that fell inside it or became a badge, unless a line around it carries them
+    (``on_edges``: a line lifted to a box around it carries what is inside too). Each box is
+    asked about what it stands for; whether a line near it carries an item is read off the
+    lines' ends."""
+    ends: dict[str, set[str]] = defaultdict(set)  # item -> the drawn boxes at the ends of the lines carrying it
+    for e, items in on_edges.items():
+        for i in items:
+            ends[i].update((e.src, e.dst))
+    above: dict[str, set[str]] = {}  # a box and the boxes around it
+
+    def around(x: str) -> set[str]:
+        got = above.get(x)
+        if got is None:
+            got = above[x] = {x, *scene.model.iter_ancestors(x)}
+        return got
+
+    out: dict[str, list[str]] = {}
+    for x in scene.model.entities:
+        el, placed = scene.find_element(x), set()
+        for s in el.sources.get("source", ()):
+            for i, it in (about.get(s.key) or {}).get("about", {}).items():
+                if it["category"] == "dependency" and any(b in around(x) or x in around(b) for b in ends.get(i, ())):
+                    continue
+                first = next((f for f in it["focus"] if find_box(scene, f) is not None), None)
+                if first is not None and find_box(scene, first) == x:
+                    placed.add(i)
+        out[x] = sorted(placed, key=lambda i: int(i[1:]))
+    return out
+
+
+class ChangeItems(Overlay):
+    """The ``items`` overlay: the numbered changes, on a change and on any scene drawn from it.
+
+    On a change's node or edge: the numbered changes about it (``items``, ``about``), and on the
+    first node each focuses on the change itself (``listed``, as ``list_changes`` reads them).
+    On a drawn box or edge of a change: which of the numbered changes it shows (``items``).
+    Its values on the change are kept with it at build time (``operations.precompute_scene``)."""
+
+    name = "items"
+    cache_version = "1"  # bumped when what it says changes, in this class or in this module's numbering and placing
+
+    def compute(self, el: Element) -> dict | None:
+        return el.scene.read_all(self.name).get(el.key)  # computed for the whole scene in compute_all
+
+    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
+        """For the change itself, the numbered changes each node and edge is about. For a scene
+        drawn from the change, which of them each drawn edge carries and each box shows."""
+        if "change" not in scene.model.meta:
+            return {}
+        if "source" not in scene.sources:
+            return _index_items(scene)
+        about = scene.sources["source"].read_all(self.name)
+        on_edges = {e: _place_edge_items(scene.find_element(e), about) for e in scene.model.list_edges()}
+        on_boxes = _place_box_items(scene, about, on_edges)
+        return {**{e: {"items": items} for e, items in on_edges.items()}, **{x: {"items": items} for x, items in on_boxes.items()}}
+
+
+# ---------- the viewer's "all changes" ----------
+
+
 @dataclass(frozen=True)
 class Changes(projection.Expansion):
-    """The viewer's "all changes": for a change, every box that ``_find_review_cut`` names is
-    unfolded; for anything else, the default cut. It lives here, next to the numbered changes it
-    reads, until those move to ``logic.transformations.merge``."""
+    """The viewer's "all changes", and the review diagram's cut: for a change, every box that
+    ``_find_review_cut`` names is unfolded; for anything else, the default cut."""
     name = "changes"
 
     def find(self, g: Reading, hidden: set[str], st: projection.ProjectionSpec) -> set[str]:

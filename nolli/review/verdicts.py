@@ -10,8 +10,8 @@ from collections.abc import Mapping
 from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 from nolli.model.schema import EntityId
-from nolli.review import changes
-from nolli.review.reading import Reader
+from nolli.logic.transformations.merge import items
+from nolli.logic.transformations.merge.reading import Reader
 from nolli.store.maps import MapStore
 
 # least attention first: praise asks for more than "fine", a doubt more than praise (the viewer
@@ -132,12 +132,12 @@ def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
     out = []
     for v in verdicts:
         ends = [EntityId(x) for x in v.get("ends") or []]
-        name = lambda x: changes.format_name(g, x.owner) + (" (own code)" if x.is_own_code else "")
+        name = lambda x: items.format_name(g, x.owner) + (" (own code)" if x.is_own_code else "")
         reveal: list[str] = []
         for x in ends:
             if not g.has(x.owner):
                 continue
-            for a in changes.list_ancestors_to_unfold(g, x.owner) + ([x.owner] if x.is_own_code else []):
+            for a in items.list_ancestors_to_unfold(g, x.owner) + ([x.owner] if x.is_own_code else []):
                 if a not in reveal:
                     reveal.append(a)
         out.append(v | {"ends": ends, "edge": len(ends) == 2, "reveal": reveal,
@@ -238,16 +238,6 @@ def _iter_boxes(el: Element):
         yield from _iter_boxes(c)
 
 
-def find_box(scene: Scene, x: str) -> str | None:
-    """Find the drawn box that stands for ``x``. That is ``x`` itself if it is drawn (a module's own
-    code too), else the box holding it (or its owner), or None. ``x`` may be text, since a change
-    item's ``focus`` holds addresses."""
-    x = EntityId(x)
-    if scene.has(x):
-        return x
-    return scene.find_holder(x) or scene.find_holder(x.owner)
-
-
 def _land(scene: Scene, v: dict) -> object | None:
     """Find the drawn box or edge a verdict is shown on, or None if one of its ends has no box.
 
@@ -256,7 +246,7 @@ def _land(scene: Scene, v: dict) -> object | None:
     fan bundling draw an edge between boxes that contain its ends (a folded box, or the
     unfolded box a bundle ends at). An edge that falls inside one box is shown on that box,
     and one drawn as a badge on its source."""
-    ends = [find_box(scene, x) for x in v["ends"]]
+    ends = [items.find_box(scene, x) for x in v["ends"]]
     if not ends or None in ends:
         return None
     if len(ends) == 2 and ends[0] != ends[1]:

@@ -14,7 +14,8 @@ from nolli.logic.transformations.projection import ProjectionSpec
 from nolli.model.keys import StringKey
 from nolli.model.model import Model
 from nolli.model.scene import Scene
-from nolli.review import changes
+from nolli.review import card
+from nolli.logic.transformations.merge import items as changes
 from nolli.store import MemoryStore
 from nolli.store.maps import Maps
 
@@ -51,7 +52,7 @@ def draw(scene: Scene, **state) -> dict:
 
 def open_change(repo: Path, base: str, head: str, **about) -> Scene:
     """Build the change between two revisions of the git repository ``repo`` into memory, and open
-    it as a scene."""
+    it as a scene with a review's overlays, as the server does."""
     def sha(rev: str) -> str:
         return subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", f"{rev}^{{commit}}"],
                               check=True, capture_output=True, text=True).stdout.strip()
@@ -59,7 +60,7 @@ def open_change(repo: Path, base: str, head: str, **about) -> Scene:
     store, local = MemoryStore(), LocalRepository(repo)
     key = local.find_repo().make_change(sha(base), sha(head))
     operations.build_target(store, operations.Target("key", key=key), local, about=about)
-    return operations.open_scene(store, key)
+    return operations.open_scene(store, key, card.make_overlays(store))
 
 
 def find_node(sc: dict, x: str) -> dict:

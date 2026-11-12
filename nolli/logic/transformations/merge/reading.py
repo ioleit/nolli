@@ -1,4 +1,4 @@
-"""Reads what a review needs off a change's scene."""
+"""Reads a change's scene by node: names, places and roles, and what changed in each node and edge."""
 
 from __future__ import annotations
 
@@ -36,7 +36,8 @@ class ChangedEdge:
 
 
 class Reader:
-    """Utilities for reviewing a Scene representing a change."""
+    """Read a change's scene by node: its tree, what extraction said about each node, and what
+    the change did to each node and edge."""
 
     def __init__(self, scene: Scene) -> None:
         self.scene, self.model = scene, scene.model

@@ -1,75 +1,18 @@
-"""Sums up changes and verdicts on each drawn box and edge."""
+"""Sums up changes and verdicts on each drawn box and edge, as the second part of its hover card."""
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 from collections.abc import Mapping
 
 from nolli.logic.formats.descriptions import prose
-from nolli.model.model import Key, Relation
+from nolli.logic.transformations.merge.items import ChangeItems
+from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene
-from nolli.review import changes
 from nolli.review import verdicts as verdicts_lib
+from nolli.store.maps import MapStore
 
 FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside
-
-
-def _index_items(scene: Scene) -> dict[Key, dict]:
-    """Index the numbered changes (``changes.number_changes``) as the ``review`` overlay records
-    them on the change itself. Each item is listed once, under the first node it focuses on
-    (``listed``). Each node or edge also gets the ids of the items it is about (for a node those
-    that focus on it, for an edge those whose facts it is), with what placing them needs
-    (``items``, ``about``)."""
-    about: dict[Key, dict[str, dict]] = {}
-    listed: dict[Key, list[dict]] = {}
-    for it in changes.number_changes(scene):
-        what = {"category": it["category"], "focus": it["focus"]}
-        for x in it["focus"]:
-            about.setdefault(x, {})[it["id"]] = what
-        for f in it["facts"]:
-            about.setdefault(Relation.parse(f), {})[it["id"]] = what
-        listed.setdefault(it["focus"][0], []).append(it)
-    out = {k: {"items": sorted(v, key=lambda i: int(i[1:])), "about": v} for k, v in about.items()}
-    for k, its in listed.items():
-        out[k]["listed"] = its
-    return out
-
-
-def _place_edge_items(el: Element, about: Mapping[Key, dict]) -> list[str]:
-    """Which numbered changes a drawn edge shows: those about the facts it carries (``about``:
-    the ``review`` overlay of the change drawn)."""
-    return sorted({i for s in el.sources.get("source", ()) for i in (about.get(s.key) or {}).get("about", {})}, key=lambda i: int(i[1:]))
-
-
-def _place_box_items(scene: Scene, about: Mapping[Key, dict], on_edges: Mapping[Key, list[str]]) -> dict[str, list[str]]:
-    """Which numbered changes each drawn box shows: those about nodes it stands for, and facts
-    that fell inside it or became a badge, unless a line around it carries them (``on_edges``: a
-    line lifted to a box around it carries what is inside too). Each box is asked about what
-    it stands for; whether a line near it carries an item is read off the lines' ends."""
-    ends: dict[str, set[str]] = defaultdict(set)  # item -> the drawn boxes at the ends of the lines carrying it
-    for e, items in on_edges.items():
-        for i in items:
-            ends[i].update((e.src, e.dst))
-    above: dict[str, set[str]] = {}  # a box and the boxes around it
-
-    def around(x: str) -> set[str]:
-        got = above.get(x)
-        if got is None:
-            got = above[x] = {x, *scene.model.iter_ancestors(x)}
-        return got
-
-    out: dict[str, list[str]] = {}
-    for x in scene.model.entities:
-        el, placed = scene.find_element(x), set()
-        for s in el.sources.get("source", ()):
-            for i, it in (about.get(s.key) or {}).get("about", {}).items():
-                if it["category"] == "dependency" and any(b in around(x) or x in around(b) for b in ends.get(i, ())):
-                    continue
-                first = next((f for f in it["focus"] if verdicts_lib.find_box(scene, f) is not None), None)
-                if first is not None and verdicts_lib.find_box(scene, first) == x:
-                    placed.add(i)
-        out[x] = sorted(placed, key=lambda i: int(i[1:]))
-    return out
 
 
 def _list_verdict_lines(verdicts: list[dict], inside: list[dict] = (), items: int = 0, where: str = "") -> list[str]:
@@ -137,10 +80,9 @@ def _describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (
 
 
 class Review(Overlay):
-    """The ``review`` overlay. On a change's node or edge: the numbered changes about it
-    (``items``, ``about``). On a drawn box or edge of a change: which of the numbered changes it
-    carries (``items``), and the second part of its hover card, under a line: what happened to
-    it and the verdicts on it (``card``, Markdown)."""
+    """The ``review`` overlay. On a drawn box or edge of a change: the second part of its hover
+    card, under a line: what happened to it and the verdicts on it (``card``, Markdown). Which
+    numbered changes it shows is the ``items`` overlay's (``merge.items.ChangeItems``)."""
 
     name = "review"
 
@@ -148,26 +90,26 @@ class Review(Overlay):
         return el.scene.read_all(self.name).get(el.key)  # computed for the whole scene in compute_all
 
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """For the change itself, the numbered changes each node and edge is about. For a scene
-        drawn from the change, what each drawn edge carries, what each box shows, and the
-        cards, built from that scene's verdicts and changes as a whole."""
-        if "change" not in scene.model.meta:
+        """For a scene drawn from a change, the cards of its boxes and edges, built from that
+        scene's verdicts and changes as a whole. A change itself, and a commit, have none."""
+        if "change" not in scene.model.meta or "source" not in scene.sources:
             return {}
-        if "source" not in scene.sources:
-            return _index_items(scene)
-        about, named = scene.sources["source"].read_all(self.name), scene.sources["source"].read_all("names")
-        verdicts, changed = scene.read_all("verdicts"), scene.read_all("change")
+        named = scene.sources["source"].read_all("names")
+        verdicts, changed, shown = scene.read_all("verdicts"), scene.read_all("change"), scene.read_all(ChangeItems.name)
         out: dict[Key, dict] = {}
-        on_edges = {e: _place_edge_items(scene.find_element(e), about) for e in scene.model.list_edges()}
-        for e, items in on_edges.items():
+        for e in scene.model.list_edges():
             el = scene.find_element(e)
-            v = verdicts.get(e) or {}
+            v, items = verdicts.get(e) or {}, (shown.get(e) or {}).get("items", [])
             names = {s.key.dst: named[s.key.dst]["name"] for s in el.sources.get("source", ()) if s.is_edge}
-            out[e] = {"items": items, "card": _describe_edge(changed.get(e), v.get("own", []), v.get("inside", []), len(items), names)}
-        on_boxes = _place_box_items(scene, about, on_edges)
+            out[e] = {"card": _describe_edge(changed.get(e), v.get("own", []), v.get("inside", []), len(items), names)}
         for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
-            items = on_boxes[x]
-            v = verdicts.get(x) or {}
+            v, items = verdicts.get(x) or {}, (shown.get(x) or {}).get("items", [])
             kind = kind if kind != "anchor" else "box"
-            out[x] = {"items": items, "card": _describe_box(changed.get(x), v.get("own", []), v.get("inside", []), len(items), kind.replace("_", " "))}
+            out[x] = {"card": _describe_box(changed.get(x), v.get("own", []), v.get("inside", []), len(items), kind.replace("_", " "))}
         return out
+
+
+def make_overlays(maps: MapStore) -> list[Overlay]:
+    """Make the overlays a review adds to a change's scene: its verdicts, kept in ``maps``, and
+    the cards that show them. Pass them to ``operations.open_scene``."""
+    return [verdicts_lib.Verdicts(maps.open_maps("verdicts")), Review()]

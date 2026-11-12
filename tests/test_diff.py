@@ -108,7 +108,7 @@ def test_repository_untouched(repo):
 def test_scene_review(repo):
     from nolli.logic.sources import LocalRepository
     from nolli.logic.transformations.merge import Links
-    from nolli.review.changes import list_changes
+    from nolli.logic.transformations.merge.items import list_changes
 
     path, base, head = repo
     git(path, "remote", "add", "origin", "git@github.com:acme/demo.git")
@@ -142,7 +142,7 @@ def test_items_verdicts_and_export(repo):
     import json
 
     from nolli.review.brief import make_brief
-    from nolli.review.changes import _find_review_cut, list_changes
+    from nolli.logic.transformations.merge.items import _find_review_cut, list_changes
     from nolli.review.verdicts import find_diagram_ids, read_verdicts
 
     path, base, head = repo

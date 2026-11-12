@@ -1,7 +1,8 @@
 """Merges the models of two commits into the model of their change.
 
 It also says what the change did: per node and edge in the ``change`` overlay, and as a
-whole in the change's totals and its links on GitHub.
+whole in the change's totals and its links on GitHub. ``items`` numbers the changes and says
+which box and edge shows each (the ``items`` overlay); ``reading`` reads a change's scene for it.
 """
 
 from __future__ import annotations

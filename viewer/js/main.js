@@ -141,11 +141,11 @@ const reviewHandlers = {
   reload: () => { itemsFor = null; refresh(true); },
 };
 
-/** The drawn boxes and edges that show a change or carry a verdict (scene.nodes[].review.items / .verdicts.verdicts,
+/** The drawn boxes and edges that show a change or carry a verdict (scene.nodes[].items.items / .verdicts.verdicts,
  * the same on edges). @param {string} id */
 function targets(id) {
   if (!scene) return { ids: [], keys: [] };
-  const on = (/** @type {{ review?: { items: string[] }, verdicts?: { verdicts: string[] } }} */ x) => (id.startsWith("V") ? x.verdicts?.verdicts : x.review?.items)?.includes(id);
+  const on = (/** @type {{ items?: { items: string[] }, verdicts?: { verdicts: string[] } }} */ x) => (id.startsWith("V") ? x.verdicts?.verdicts : x.items?.items)?.includes(id);
   return { ids: scene.nodes.filter(on).map(n => n.id), keys: scene.edges.filter(on).map(e => e.key) };
 }
 
