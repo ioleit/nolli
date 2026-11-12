@@ -42,7 +42,7 @@ def scene(tmp_path: Path):
     return open_dir(tmp_path, key="test@precomputed")
 
 
-MODULES = ProjectionSpec(expand=projection.Where(lambda el: el.key == "repo:" or el.kind == "directory"), groups=[], utilities=0)
+MODULES = ProjectionSpec(expand=projection.Dirs(), groups=[], utilities=0)
 
 
 def fold(scene):

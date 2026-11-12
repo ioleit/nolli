@@ -86,7 +86,7 @@ from nolli.logic.transformations import merge, projection  # noqa: E402
 from nolli.logic.transformations.merge import items  # noqa: E402
 from nolli.review import brief, card, verdicts  # noqa: E402
 
-from ..logic.transformations.projection import DEFAULT_UTILITY_IN, ProjectionSpec  # noqa: E402
+from ..logic.transformations.projection import ProjectionSpec  # noqa: E402
 from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..progress import Progress  # noqa: E402
@@ -442,24 +442,9 @@ def viewer_page(key: ModelKey, title: str) -> bytes:
 
 
 def parse_spec(q: dict[str, str]) -> ProjectionSpec:
-    """Parse the viewer's URL parameters (the same keys as its location hash) into a scene state."""
-    st = ProjectionSpec()
-    if q.get("x"):
-        st.expand = projection.Ids(tuple(x for x in q["x"].split(",") if x))
-    elif q.get("p") in items.PRESETS:
-        st.expand = items.PRESETS[q["p"]]()
-    if q.get("b") and isinstance(st.expand, projection.AtMost):  # the default cut's budget
-        st.expand = projection.AtMost(int(q["b"]))
-    if q.get("r") is not None:
-        st.roles = [r for r in q["r"].split(",") if r]
-    if q.get("g") is not None:
-        st.groups = [x for x in q["g"].split(",") if x]
-    st.utilities = 0 if q.get("nu") == "1" else int(q["ut"]) if q.get("ut") else DEFAULT_UTILITY_IN
-    if q.get("s") in ("base", "head"):
-        st.side = q["s"]
-    if q.get("ml"):
-        st.max_lines = max(1, int(q["ml"]))
-    return st
+    """Parse the viewer's URL parameters (the same keys as its location hash) into a scene state,
+    with every preset the viewer offers (``items.PRESETS``)."""
+    return ProjectionSpec.from_query(q, items.PRESETS)
 
 
 @dataclass

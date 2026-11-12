@@ -64,12 +64,12 @@ class ModelKey:
 
     @classmethod
     def parse(cls, text: str) -> ModelKey:
-        """Parse ``text`` as ``format_key()`` writes it: ``<source>~project:<digest>`` gives a
+        """Parse ``text`` as ``format_key()`` writes it: ``<source>~project:<spec>`` gives a
         ProjectionKey, ``<repo>@<sha>`` a CommitKey, ``<repo>@<base>..<head>`` a ChangeKey, and
         anything else a StringKey."""
-        source, projected, digest = text.rpartition(PROJECTED)
-        if projected and digest:
-            return ProjectionKey(ModelKey.parse(source), digest)
+        source, projected, spec = text.rpartition(PROJECTED)
+        if projected and spec:
+            return ProjectionKey(ModelKey.parse(source), spec)
         repo, at, rest = text.rpartition("@")
         if not at or not repo or not rest:
             return StringKey(text)
@@ -141,13 +141,13 @@ class StringKey(ModelKey):
 
 @dataclass(frozen=True)
 class ProjectionKey(ModelKey):
-    """A projection of another model: the source's key and which projection it is, a digest of
-    what the projection drew (its resolved state, so two specs that draw the same diagram give
-    the same key). The same projection of the same model always has the same key, so what is
-    kept for it is found again when it is drawn again."""
+    """A projection of another model: the source's key and which projection it is, the
+    projection's spec as text (``ProjectionSpec.format``, e.g. ``p=default``). The same spec of
+    the same model always draws the same, so the key is known before projecting
+    (``projection.make_key``), and what is kept for it is found again when it is drawn again."""
 
     source: ModelKey
-    digest: str
+    spec: str  # ProjectionSpec.format()
 
     @property
     def repo(self) -> Repo:  # type: ignore[override]
@@ -155,7 +155,7 @@ class ProjectionKey(ModelKey):
         return self.source.repo
 
     def format_key(self) -> str:
-        return f"{self.source.format_key()}{PROJECTED}{self.digest}"
+        return f"{self.source.format_key()}{PROJECTED}{self.spec}"
 
     def to_dict(self) -> dict:
-        return {"source": self.source.to_dict(), "projection": self.digest}
+        return {"source": self.source.to_dict(), "projection": self.spec}

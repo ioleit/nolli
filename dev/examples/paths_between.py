@@ -11,7 +11,7 @@ from nolli.logic import transformations
 from nolli.logic.formats import mermaid
 from nolli.logic.transformations import projection
 from nolli.logic.transformations.select import select
-from nolli.model.scene import Element, Scene
+from nolli.model.scene import Scene
 from nolli.store import MemoryStore
 
 repo = Path(sys.argv[1])
@@ -19,12 +19,7 @@ files = MemoryStore()
 scene = operations.open_scene(files, operations.build_files(files, repo))                     # the files as they are, with nolli's overlays
 
 
-def is_interesting_for_this_oneoff(el: Element) -> bool:
-    """Unfold the repository and every directory under nolli/: module level, no classes."""
-    return el.key == "repo:" or el.kind == "directory" and el.key.path.startswith("nolli")
-
-
-spec = projection.ProjectionSpec(expand=projection.Where(is_interesting_for_this_oneoff), groups=[], utilities=0)
+spec = projection.ProjectionSpec(expand=projection.Dirs("nolli"), groups=[], utilities=0)   # module level under nolli/, no classes
 folded = transformations.apply(scene, projection.fold(spec))
 
 

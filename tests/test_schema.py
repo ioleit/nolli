@@ -128,3 +128,25 @@ def test_projection_keys():
         assert k.format_key() == source.format_key() + "~project:abcd"
         assert ModelKey.parse(k.format_key()) == k and ModelKey.from_dict(k.to_dict()) == k
     assert ProjectionKey(change, "abcd").repo == change.repo
+
+
+def test_projection_specs_have_one_text_form():
+    """A spec is written as the viewer's URL parameters, lists sorted and defaults left out, and
+    read back to the same spec; so the key of a projection is known before projecting."""
+    from nolli.logic.transformations import projection
+    from nolli.logic.transformations.merge import items
+    from nolli.model.keys import ModelKey, StringKey
+    from nolli.server.serve import parse_spec
+
+    P = projection.ProjectionSpec
+    for st, text in [(P(), "p=default"), (P(expand=projection.AtMost(20)), "p=default&b=20"),
+                     (P(expand=projection.Ids(("repo:b", "repo:a"))), "x=repo:a,repo:b"),
+                     (P(expand=projection.Root(), roles=[], utilities=0), "p=folded&r=&nu=1"),
+                     (P(expand=projection.Dirs("nolli"), side="head", max_lines=2, utilities=7), "p=dirs&d=nolli&ut=7&s=head&ml=2"),
+                     (P(expand=items.Changes(), groups=["api:", "pkg:"]), "p=changes&g=api:,pkg:")]:
+        assert st.format() == text
+        assert P.parse(text, items.PRESETS).format() == text
+    assert isinstance(parse_spec({"p": "changes"}).expand, items.Changes)  # the server reads the viewer's parameters so
+    assert parse_spec({"p": "dirs", "d": "nolli"}).expand == projection.Dirs("nolli")
+    key = projection.make_key(StringKey("m"), P(expand=projection.Root()))
+    assert key.format_key() == "m~project:p=folded" and ModelKey.parse(key.format_key()) == key

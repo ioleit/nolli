@@ -55,10 +55,10 @@ print(len(live.read_all("cool")), "elements have a remark")
 
 store = MemoryMaps()                                                # or a DirectoryStore
 
-# module level: every directory unfolded, nothing else (a common projection; a named preset may come later)
-modules = projection.ProjectionSpec(expand=projection.Where(lambda el: el.key == "repo:" or el.kind == "directory"), groups=[], utilities=0)
+# module level: every directory unfolded, nothing else
+modules = projection.ProjectionSpec(expand=projection.Dirs(), groups=[], utilities=0)
 # one directory unfolded, a projection whose values are not kept
-one_dir = projection.ProjectionSpec(expand=projection.Where(lambda el: el.key in ("repo:", "repo:nolli", "repo:nolli/model")), groups=[], utilities=0)
+one_dir = projection.ProjectionSpec(expand=projection.Ids(("repo:", "repo:nolli", "repo:nolli/model")), groups=[], utilities=0)
 
 store.save_scene(live)                                              # the model, and what every overlay says about it
 store.precompute_overlay_values(transformations.apply(live, projection.fold(modules)), Cool())   # a projection, this overlay only

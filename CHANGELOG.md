@@ -6,11 +6,18 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
-- **A projected model is keyed by its source's key and which projection it is**: a
-  `ProjectionKey(source, digest)`, written `<source key>~project:<digest>` and read back by
-  `ModelKey.parse` (was an opaque `StringKey("project:<hash>")`). The digest is of what the
-  projection drew, as before, so the same projection of the same model has the same key.
-  Values kept under the old keys (in memory only) are not found.
+- **A projection spec has one text form, and a projected model is keyed by it**:
+  - `ProjectionSpec.to_query()` / `from_query(q, presets)` write and read it as the viewer's URL
+    parameters, defaults left out and lists sorted; `format()` / `parse()` as text
+    (`p=default`, `x=repo:,repo:nolli&nu=1`). The server's `parse_spec` is `from_query` with the
+    viewer's presets.
+  - A projected model's key is a `ProjectionKey(source, spec)`, written
+    `<source key>~project:<spec>` and read back by `ModelKey.parse` (was an opaque
+    `StringKey("project:<hash>")` of what the projection drew). `projection.make_key(source, spec)`
+    makes it without projecting. Two specs that happen to draw the same are now two keys.
+    Values kept under the old keys (in memory only) are not found.
+  - `Where(predicate)` is gone: a function has no text form. `Dirs(under="")` unfolds every
+    directory (at or below ``under``), the cut the examples used it for; a fixed list is `Ids`.
 - **Values for a model are kept with `open_maps(name).save(model_key, values, about)`**, whether an
   overlay computed them or they were handed in (`KeptMaps`, `nolli/store/precomputed.py`). `save`
   adds when they were kept to `about` (`at`, `precomputed.stamp`), in memory as on disk.
@@ -60,7 +67,7 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   `review.brief.make_review_diagram`; `review.brief.make_brief(scene)` makes the diagram and reads
   the description itself; `review.verdicts.load_verdicts` reads a change's verdicts.
 - **`ProjectionSpec.expand` says which containers unfold**, one rule instead of `expanded`,
-  `unfold`, `preset`, `focus` and `budget`: `Ids`, `Where` (was `ProjectionSpec.expanded_if`),
+  `unfold`, `preset`, `focus` and `budget`: `Ids`, `Where` (was `ProjectionSpec.expanded_if`; since gone),
   `Root` (the `folded` preset), `All` (`unfolded`), `AtMost(budget)` (`default`), and
   `nolli.review.changes.Changes` (`changes`), which computes the change's cut itself. The viewer's
   URL is unchanged; the state it gets back has a `budget` only for the default cut.

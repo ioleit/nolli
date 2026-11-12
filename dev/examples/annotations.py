@@ -29,11 +29,14 @@ scene = operations.open_scene(store, operations.build_files(store, repo, StringK
 
 # nolli/ unfolded, its directories folded: lines between them stand for many edges of the scene
 modules = projection.ProjectionSpec(expand=projection.Ids(("repo:", "repo:nolli")), groups=[], utilities=0)
-projected = transformations.apply(scene, projection.fold(modules))
 
-key = projected.model.key                                           # a ProjectionKey
-print("projected model:", key.format_key())                         # nolli@worktree~project:<digest>
+key = projection.make_key(scene.model.key, modules)                 # a ProjectionKey, known before projecting
+print("projected model:", key.format_key())                         # nolli@worktree~project:x=repo:,repo:nolli&g=&nu=1
 print("projected from: ", key.source.format_key())                  # the source's key, read back
+print("projected as:   ", projection.ProjectionSpec.parse(key.spec).format())   # the spec, read back
+
+projected = transformations.apply(scene, projection.fold(modules))
+assert projected.model.key == key                                   # the projection has the key made for it
 
 # -- keep the annotations as a map of the projected model ----------------------------------
 
