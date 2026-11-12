@@ -39,8 +39,8 @@ it is set (5,000 requests an hour instead of 60), else as nobody; ``nolli view``
 ($GH_TOKEN, $GITHUB_TOKEN or gh). ``nolli serve`` shows whatever its token can read, to anyone
 who can reach it, and runs git with none of this machine's credentials or configuration.
 Deciding who may see what is the store provider's job (and the sources'): the server opens a
-repository's store once per request (``StoreProvider.open``, ``RepoStoreProvider.allow`` for
-nolli's own), a refusal raises NotAllowed, and the page answers 404 as for a missing
+repository's store once per request (``RepoStoreProvider.open``, which asks ``allow``, the
+method a service overrides), a refusal raises NotAllowed, and the page answers 404 as for a missing
 repository. The store it gets keeps that repository's models only, so a request cannot read
 another's by mistake.
 
@@ -95,7 +95,7 @@ from ..logic.transformations.projection import ProjectionSpec  # noqa: E402
 from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..progress import Progress  # noqa: E402
-from nolli.store import ModelStore, RepoStoreProvider, StoreProvider  # noqa: E402
+from nolli.store import ModelStore, RepoStoreProvider  # noqa: E402
 from . import retention  # noqa: E402
 from .reviews import Reviews  # noqa: E402
 
@@ -254,7 +254,7 @@ class Site:
     you are in, its branches, ranges and WORKTREE), else GitHub's paths only (nolli serve);
     ``timeout`` and ``max_repo``: None for no limit."""
 
-    def __init__(self, stores: StoreProvider, sources: Sources, work: Path, *, here: bool = False, local: Path | None = None, budget: int = 34,
+    def __init__(self, stores: RepoStoreProvider, sources: Sources, work: Path, *, here: bool = False, local: Path | None = None, budget: int = 34,
                  keep: int | None = None, builds: int = BUILDS, timeout: float | None = TIMEOUT, max_repo: int | None = MAX_REPO,
                  token: Token | None = None):
         self.stores, self.sources, self.work, self.here, self.local, self.budget = stores, sources, work, here, local, budget
@@ -417,7 +417,7 @@ class Site:
             chosen = self.policy(retention.scan(self.work, KINDS))
             with self.lock:  # no build starts while what it uses may be going
                 active = [j for j in self.jobs.values() if j.state in ("waiting", "building")]
-                busy = {self.stores.locate(k) for j in active if (k := j.target.key or j.key)} if isinstance(self.stores, RepoStoreProvider) else set()
+                busy = {self.stores.locate(k) for j in active if (k := j.target.key or j.key)}
                 held = self.sources.clones if isinstance(self.sources, LocalFirst) else self.sources
                 if isinstance(held, CloneCache):
                     busy |= held.list_held()
@@ -455,7 +455,7 @@ def parse_spec(q: dict[str, str]) -> ProjectionSpec:
 class Services:
     """What a server works with. A service built on it passes its own (a subclass, for more)."""
 
-    stores: StoreProvider
+    stores: RepoStoreProvider
     reviews: Reviews
     site: Site
     uploads: bool = False  # POST /api/verdicts stores a review's verdicts (nolli view)
@@ -720,7 +720,7 @@ NOT_A_PAGE = """<h1>Not a nolli page</h1>
 <code>…/commit/&lt;sha&gt;</code>. <a href="/">Start here</a>.</p>"""
 
 
-def make_server(stores: StoreProvider, sources: Sources, work: Path, host: str = "127.0.0.1", port: int = 8730, *,
+def make_server(stores: RepoStoreProvider, sources: Sources, work: Path, host: str = "127.0.0.1", port: int = 8730, *,
                 here: bool = False, local: Path | None = None, budget: int = 34, keep: int | None = None, builds: int = BUILDS,
                 timeout: float | None = TIMEOUT, max_repo: int | None = MAX_REPO, token: Token | None = None,
                 uploads: bool = False, handler: type[Handler] | None = None, reviewer=None,
@@ -748,7 +748,7 @@ def make_local_server(data: Path, local: Path | None, host: str = "127.0.0.1", p
 
 
 def main(argv: list[str] | None = None, token: Token | None = None, handler: type[Handler] | None = None,
-         reviewer=None, stores: StoreProvider | None = None, sources: Sources | None = None,
+         reviewer=None, stores: RepoStoreProvider | None = None, sources: Sources | None = None,
          services: type[Services] = Services, **more: Any) -> int:
     """``nolli serve``: its options from ``argv``; the rest as make_server() takes them. ``store``
     and ``sources`` default to directories under --cache (``data/``, ``repos/``)."""

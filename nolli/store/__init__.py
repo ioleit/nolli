@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from nolli.model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: F401 (NotAllowed: a store may raise it)
+from nolli.model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed  # noqa: F401 (NotAllowed: a store may raise it)
 from nolli.model.model import Key, Model
 from nolli.model.scene import StoredMaps  # noqa: F401
 from nolli.store.maps import MapStore, MemoryMaps  # noqa: F401
@@ -48,14 +48,6 @@ class ModelStore(MapStore, Protocol):
         read. Maps saved for it since (a review's verdicts) stay."""
 
 
-
-class StoreProvider(Protocol):
-    """Opens the store of one repository's models for the current request: what a server holds
-    instead of a store. ``open`` decides once whether the request may read ``repo`` and raises
-    NotAllowed if not; the store it returns keeps that repository's models only, so whatever
-    holds it (a build, a review) reads nothing else."""
-
-    def open(self, repo: Repo) -> ModelStore: ...
 
 
 from nolli.store.memory import MemoryStore  # noqa: E402, F401 (a ModelStore kept nowhere else)

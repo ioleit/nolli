@@ -9,9 +9,9 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **A store per repository, opened once per request** (`nolli/store/repo_directory.py`):
   - `RepoStoreProvider(root).open(repo)` decides whether the current request may read `repo`
     (`allow`, the one method a service overrides) and returns a `RepoDirectoryStore`, which keeps
-    that repository's models only. A key of another repository raises `NotAllowed`; one of no
-    repository has nothing kept and cannot be kept. The server holds a provider
-    (`make_server(stores, …)`, `Services.stores`, `serve.main(stores=…)`) and opens a model's
+    that repository's models only. A key of another repository, or of none, raises
+    `NotAllowed`. The server holds a `RepoStoreProvider` (a service subclasses it for its own
+    `allow`; `make_server(stores, …)`, `Services.stores`, `serve.main(stores=…)`) and opens a model's
     store once per request; builds and reviews get that store. `ModelStore` loses `check` and
     `find_key`.
   - Where a model is kept follows from its key alone:
