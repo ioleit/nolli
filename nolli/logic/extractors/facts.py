@@ -220,7 +220,7 @@ class Facts:
             if p and p.line is not None:
                 ref["line"] = p.line
             _check_reference(ref, p.extractor if p else "unknown", k)
-            maps[vocabulary.REFERENCES].setdefault(k, {"references": []})["references"].append(ref)
+            maps[vocabulary.REFERENCES].setdefault(k.id, {"references": []})["references"].append(ref)
         model = Model(key, (Entity(x, e.kind) for x, e in self.entities.items()), edges, meta=dict(self.meta))
         return model, {name: dict(v) for name, v in sorted(maps.items())}
 
@@ -230,9 +230,9 @@ def _check_reference(ref: dict, extractor: str, key: Relation) -> None:
     extractor says it in the same words, so code that works with any language can count on them."""
     for k in ("count", "confidence", "path"):
         if ref.get(k) is None:
-            raise ValueError(f"{extractor}: a reference of {key.format()} without {k}")
+            raise ValueError(f"{extractor}: a reference of {key.id} without {k}")
     if not isinstance(ref["count"], int) or ("line" in ref and not isinstance(ref["line"], int)):
-        raise ValueError(f"{extractor}: a reference of {key.format()} with a count or line that is no number")
+        raise ValueError(f"{extractor}: a reference of {key.id} with a count or line that is no number")
 
 
 WORKING_NOTES = ("py-imports", "js-imports", "py-aliases", "ts-exports")  # extractors' state between passes, not kept

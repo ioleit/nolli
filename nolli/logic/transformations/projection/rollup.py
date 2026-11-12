@@ -280,7 +280,7 @@ def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[
 
 def _fact_key(r) -> str:
     """Return an edge's id, ``kind|src|dst|subkind``."""
-    return r.key.format()
+    return r.relation.id
 
 
 def _owner_of(node: str) -> str:
@@ -548,7 +548,7 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
         types = sum(f["count"] for f in r.references if f.get("type_only"))
         n = drawn_count(rb, rh)
         add(r.kind, a, b, r.subkind, n, r.confidence, names, rb, rh, {_fact_key(r): st} if st else None,
-            min(types, n) if types and types >= r.count else types, r.key)
+            min(types, n) if types and types >= r.count else types, r.relation.id)
 
     # Edges touching a filtered-out group become annotations on the other end (or are left out
     # when both ends are such groups, e.g. environment set by deployment); a code node copied

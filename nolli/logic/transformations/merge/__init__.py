@@ -14,7 +14,7 @@ from nolli.model import schema, vocabulary
 from nolli.model.keys import ModelKey
 from nolli.model.model import Key, Model, Relation
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
-from nolli.model.schema import EntityId, RelationKind
+from nolli.model.schema import EntityId, RelationId, RelationKind
 
 
 def is_change(scene: Scene) -> bool:
@@ -58,9 +58,9 @@ class Change(Overlay):
             if rec is not None:
                 out[x.id] = rec
         for e in scene.model.edges:
-            rec = _compare_edge(e, scene.model.meta, {role: s.model.has(e) and s.references.get(e, []) for role, s in sides.items()})
+            rec = _compare_edge(e, scene.model.meta, {role: s.model.has(e.id) and s.references.get(e.id, []) for role, s in sides.items()})
             if rec is not None:
-                out[e] = rec
+                out[e.id] = rec
         return out
 
 
@@ -75,7 +75,7 @@ class _Side:
 
 def _index_old_paths(content: Mapping[Key, dict]) -> dict[str, dict]:
     """git's per-file content of a renamed file, by its old path."""
-    return {v["old_path"]: v for k, v in content.items() if isinstance(k, str) and v.get("old_path")}
+    return {v["old_path"]: v for k, v in content.items() if not isinstance(k, RelationId) and v.get("old_path")}
 
 
 def _compare_node(x: str, kind: str, sides: Mapping[str, _Side], content: Mapping[Key, dict], renames: Mapping[str, str],
@@ -132,7 +132,7 @@ def _list_class_lines(x: str, bf: Mapping, hf: Mapping, content: Mapping[Key, di
 
 def _list_renames(content: Mapping[Key, dict]) -> dict[str, str]:
     """old file -> its new path, for the files git saw renamed (git's per-file content)."""
-    return {EntityId.from_path(v["old_path"]): k.path for k, v in content.items() if isinstance(k, str) and v.get("old_path")}
+    return {EntityId.from_path(v["old_path"]): k.path for k, v in content.items() if not isinstance(k, RelationId) and v.get("old_path")}
 
 
 # ---------- links ----------
@@ -252,7 +252,7 @@ def _describe_fact(key: Relation, meta: dict, rec: dict, refs: list | bool) -> d
     path = first.get("path")
     line = first.get("line")
     links = Links(meta.get("change") or {})
-    return {"fact": key.format(), "status": rec["status"], "kind": key.kind, "subkind": key.subkind, "src": key.src, "dst": key.dst,
+    return {"fact": key.id, "status": rec["status"], "kind": key.kind, "subkind": key.subkind, "src": key.src, "dst": key.dst,
             "base": rec.get("base", 0), "head": rec.get("head", 0), "path": path, "line": line,
             "link": links.diff(path, line, "base" if rec["status"] == "removed" else "head") if path else None}
 

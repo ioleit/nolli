@@ -302,7 +302,8 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tupl
     for e in edges:
         if e.src not in drawn or e.dst not in drawn:
             continue
-        k = Relation(e.kind, e.src, e.dst, e.subkind)
+        r = Relation(e.kind, e.src, e.dst, e.subkind)
+        k = r.id
         ot = out_total.get(e.src, 0)
         values[k] = {
             "count": e.count, "confidence": e.confidence, "via": sorted(e.via), "style": _edge_style(e),
@@ -316,7 +317,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tupl
             "status": e.status if g.is_change else None, "base": e.base, "head": e.head, "changed": sorted(e.changed),
         }
         refs[k] = sorted(e.members)
-        keys.append(k)
+        keys.append(r)
 
     entities = [Entity(x, EntityKind.ANCHOR if x.is_own_code else g.kind(x)) for x in order]
     contain = [Relation(RelationKind.CONTAIN, p, x) for x, p in parent_of.items() if p is not None]

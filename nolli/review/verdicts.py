@@ -225,7 +225,7 @@ class Verdicts(Overlay):
         vs.sort(key=lambda v: int(v["id"][1:]))
         if not vs:
             return {"verdicts": [], "verdict": None, "own": [], "inside": []}
-        ends = [el.key.src, el.key.dst] if el.is_edge else [el.key]
+        ends = [el.relation.src, el.relation.dst] if el.is_edge else [el.key]
         own = [v for v in vs if [x.owner for x in v["ends"]] == ends]
         return {"verdicts": [v["id"] for v in vs], "verdict": max((v["verdict"] for v in vs), key=VERDICT_RANK.get),
                 "own": own, "inside": [v for v in vs if v not in own]}
@@ -269,5 +269,5 @@ def _find_carrier(scene: Scene, a: str, b: str):
         found = [(i + j, e) for i, x in enumerate(around(s)) for j, y in enumerate(around(d))
                  for e in scene.model.list_out(x) if e.dst == y]
         if found:
-            return min(found, key=lambda f: f[0])[1]
+            return min(found, key=lambda f: f[0])[1].id
     return None

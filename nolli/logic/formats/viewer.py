@@ -29,7 +29,7 @@ def export_scene(scene: Scene) -> dict:
     said = {n: scene.read_all(n) for n in names}  # each overlay asked once, for the whole scene
     order = mermaid.list_drawing_order(scene)
     nodes = [{"id": x, "kind": scene.model.entities[x].kind, "parent": scene.model.find_parent(x), **_describe(x, said)} for x in order]
-    edges = [{"key": e.format(), "kind": e.kind, "subkind": e.subkind, "src": e.src, "dst": e.dst, **_describe(e, said)}
+    edges = [{"key": e.id, "kind": e.kind, "subkind": e.subkind, "src": e.src, "dst": e.dst, **_describe(e.id, said)}
              for e in scene.model.list_edges()]
     residue = list(meta.get("residue", []))
     if meta.get("utilities"):  # each utility by its label's prose

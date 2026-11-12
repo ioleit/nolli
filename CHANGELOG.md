@@ -6,6 +6,14 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **An edge is keyed by its id, a `RelationId`, as a node is by its address**
+  (`nolli/model/schema.py`). A `RelationId` is a `str`, `kind|src|dst|subkind`, checked when
+  made from text and made from its parts with `RelationId.from_parts`; `Relation.id` gives an
+  edge's. Overlays, kept maps, refs and `Scene.find_element` take ids, never `Relation` objects
+  (passing one raises `TypeError`); the `Relation` an id names is the model's
+  (`Model.find_relation`, `Element.relation`). `Relation.format()` and `Relation.parse()` are
+  gone. `schema.parse_key` reads either kind of id back from text. Kept maps and the viewer's
+  JSON are unchanged: they already named edges this way.
 - **`nolli/logic/` holds what nolli computes between a repository and what it shows**:
   `extractors`, `sources`, `transformations` and `formats` moved under it from `nolli/`
   (`dev/examples/logic.py` had proposed the directory; `propose_package.py` now proposes the next one

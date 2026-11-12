@@ -81,7 +81,7 @@ def _read_scene(scene: Scene) -> tuple[list[dict], list[dict], bool]:
     edges = []
     for el in scene.list_edges():
         p = el.get("projection") or {}
-        edges.append({"src": el.key.src, "dst": el.key.dst, "subkind": el.key.subkind, "count": p.get("count", 0),
+        edges.append({"src": el.relation.src, "dst": el.relation.dst, "subkind": el.relation.subkind, "count": p.get("count", 0),
                       "style": p.get("style"), "types": p.get("types"), "local": p.get("local"), "weak": p.get("weak"),
                       "diff": el.get("change")})
     return nodes, edges, "change" in scene.model.meta  # whether the scene is drawn from a change

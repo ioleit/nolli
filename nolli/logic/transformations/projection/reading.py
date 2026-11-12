@@ -22,7 +22,7 @@ CONF_RANK = {"exact": 0, "heuristic": 1, "statistical": 2}
 class Rel:
     """An edge with the references it stands for."""
 
-    key: Relation
+    relation: Relation
     count: int
     confidence: str
     references: list[Reference] = field(default_factory=list)
@@ -30,19 +30,19 @@ class Rel:
 
     @property
     def kind(self) -> str:
-        return self.key.kind
+        return self.relation.kind
 
     @property
     def src(self) -> str:
-        return self.key.src
+        return self.relation.src
 
     @property
     def dst(self) -> str:
-        return self.key.dst
+        return self.relation.dst
 
     @property
     def subkind(self) -> str:
-        return self.key.subkind
+        return self.relation.subkind
 
 
 class Reading:
@@ -118,9 +118,9 @@ class Reading:
         for e in self.model.edges:
             if e.kind == RelationKind.CONTAIN:
                 continue
-            refs = references.get(e, [])
+            refs = references.get(e.id, [])
             conf = max((r["confidence"] for r in refs), key=lambda c: CONF_RANK.get(c, 0), default="exact")
-            d = self.changes.get(e)
+            d = self.changes.get(e.id)
             out.append(Rel(e, sum(r["count"] for r in refs), conf, refs,
                            d if d and d.get("status") in ("added", "removed", "changed") else None))
         return out

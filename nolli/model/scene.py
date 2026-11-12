@@ -13,7 +13,7 @@ from functools import cached_property
 from typing import Protocol
 
 from nolli.model.model import Key, Model, Relation
-from nolli.model.schema import EntityId
+from nolli.model import schema
 
 
 def _hash_source(cls: type) -> str:
@@ -65,7 +65,7 @@ class Overlay:
         """Compute this overlay's properties for every node and edge of the scene's model and
         return them by key, leaving out those it says nothing about."""
         out: dict[Key, dict] = {}
-        for key in [*scene.model.entities, *scene.model.edges]:
+        for key in [*scene.model.entities, *(e.id for e in scene.model.edges)]:
             v = scene.find_element(key).get(self.name)
             if v is not None:
                 out[key] = v
@@ -107,12 +107,17 @@ class Element:
 
     @property
     def is_edge(self) -> bool:
-        return isinstance(self.key, Relation)
+        return self._scene.model.is_edge(self.key)
 
     @property
     def id(self) -> str:
-        """The key as text: a node's address, an edge's ``kind|src|dst|subkind``."""
-        return self.key.format() if isinstance(self.key, Relation) else self.key
+        """The key, which is text already: a node's address, an edge's ``kind|src|dst|subkind``."""
+        return self.key
+
+    @property
+    def relation(self) -> Relation | None:
+        """The edge this element is (its kind, ends and subkind), or None for a node."""
+        return self._scene.model.find_relation(self.key)
 
     @property
     def meta(self) -> dict:
@@ -154,11 +159,11 @@ class Element:
 
     @property
     def src(self) -> Element:
-        return self._scene.find_element(self.key.src)  # type: ignore[union-attr]
+        return self._scene.find_element(self.relation.src)  # type: ignore[union-attr]
 
     @property
     def dst(self) -> Element:
-        return self._scene.find_element(self.key.dst)  # type: ignore[union-attr]
+        return self._scene.find_element(self.relation.dst)  # type: ignore[union-attr]
 
     @property
     def parent(self) -> Element | None:
@@ -171,11 +176,11 @@ class Element:
 
     @property
     def out_edges(self) -> list[Element]:
-        return [self._scene.find_element(e) for e in self._scene.model.list_out(self.key)]  # type: ignore[arg-type]
+        return [self._scene.find_element(e.id) for e in self._scene.model.list_out(self.key)]  # type: ignore[arg-type]
 
     @property
     def in_edges(self) -> list[Element]:
-        return [self._scene.find_element(e) for e in self._scene.model.list_in(self.key)]  # type: ignore[arg-type]
+        return [self._scene.find_element(e.id) for e in self._scene.model.list_in(self.key)]  # type: ignore[arg-type]
 
     def iter_ancestors(self):
         p = self.parent
@@ -241,10 +246,12 @@ class Scene:
 
     def find_element(self, key: Key | str) -> Element:
         """Return the element for ``key``, made once and then reused; raise ``KeyError`` if the
-        model has no such node or edge. A node's address may be given as text (read back from
-        JSON)."""
+        model has no such node or edge. An id may be given as plain text (read back from JSON);
+        an edge is asked for by its id, never as a ``Relation``."""
         if type(key) is str:
-            key = EntityId(key)
+            key = schema.parse_key(key)
+        elif isinstance(key, Relation):
+            raise TypeError(f"an edge is looked up by its id, not as a Relation: {key.id}")
         el = self._elements.get(key)
         if el is None:
             if not self.model.has(key):
@@ -256,7 +263,7 @@ class Scene:
         return [self.find_element(x) for x in sorted(self.model.entities)]
 
     def list_edges(self, kinds: Iterable[str] | None = None) -> list[Element]:
-        return [self.find_element(e) for e in self.model.list_edges(kinds)]
+        return [self.find_element(e.id) for e in self.model.list_edges(kinds)]
 
     def list_roots(self) -> list[Element]:
         return [self.find_element(x) for x in self.model.list_roots()]
@@ -285,6 +292,8 @@ class Scene:
         if got is None:
             o = self.overlays.get(overlay)
             got = self._whole[overlay] = {} if o is None else o.compute_all(self)
+            if any(isinstance(k, Relation) for k in got):
+                raise TypeError(f"{overlay} keys an edge as a Relation, not by its id")
         return got
 
     def _compute(self, element: Element, overlay: str) -> dict | None:

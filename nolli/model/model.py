@@ -10,7 +10,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
 from nolli.model.keys import ModelKey, StringKey
-from nolli.model.schema import EntityId, EntityKind, RelationKind
+from nolli.model.schema import EntityId, EntityKind, RelationId, RelationKind
 
 
 @dataclass(frozen=True)
@@ -31,14 +31,16 @@ class Entity:
 
 @dataclass(frozen=True, order=True)
 class Relation:
-    """An edge, which is also its address: its kind, its two ends and its subkind (how a use
-    was found: ``import``, ``ref``, ``http``, …)."""
+    """An edge: its kind, its two ends and its subkind (how a use was found: ``import``,
+    ``ref``, ``http``, …). All four are its identity, and ``id`` (a ``RelationId``,
+    ``kind|src|dst|subkind``) writes them as text: an edge is keyed by its id everywhere
+    outside the model (overlays, kept maps, the viewer), as a node is by its address."""
 
     kind: RelationKind  # given as its name too ("use"); an unknown one raises
     src: EntityId  # given as text too
     dst: EntityId
     subkind: str = ""
-    _hash: int = field(init=False, repr=False, compare=False, default=0)  # computed once: a key is hashed on every lookup
+    id: RelationId = field(init=False, repr=False, compare=False)  # made once: it is asked for on every lookup
 
     def __post_init__(self) -> None:
         try:
@@ -47,22 +49,13 @@ class Relation:
             raise ValueError(f"unknown relation kind {self.kind!r}") from None
         object.__setattr__(self, "src", EntityId(self.src))
         object.__setattr__(self, "dst", EntityId(self.dst))
-        object.__setattr__(self, "_hash", hash((self.kind, self.src, self.dst, self.subkind)))
+        object.__setattr__(self, "id", RelationId.from_parts(self.kind, self.src, self.dst, self.subkind))
 
     def __hash__(self) -> int:
-        return self._hash
-
-    def format(self) -> str:
-        """``kind|src|dst|subkind``: how the viewer, verdicts and changes name an edge."""
-        return f"{self.kind}|{self.src}|{self.dst}|{self.subkind}"
-
-    @classmethod
-    def parse(cls, s: str) -> Relation:
-        kind, src, dst, sub = s.split("|", 3)
-        return cls(kind, src, dst, sub)
+        return hash(self.id)
 
 
-Key = EntityId | Relation  # a node's address, or an edge's
+Key = EntityId | RelationId  # a node's address, or an edge's id
 
 
 class Model:
@@ -81,7 +74,7 @@ class Model:
         self.entities: dict[EntityId, Entity] = {x.id: x for x in entities}
         self.edges: list[Relation] = sorted(set(edges))
         self.meta: dict = meta or {}
-        self._edge_set = set(self.edges)
+        self._relations: dict[RelationId, Relation] = {e.id: e for e in self.edges}
         parent: dict[str, str] = {}
         children: dict[str, list[str]] = defaultdict(list)
         out: dict[str, list[Relation]] = defaultdict(list)
@@ -89,7 +82,7 @@ class Model:
         for e in self.edges:
             if check:
                 if e.src not in self.entities or e.dst not in self.entities:
-                    raise KeyError(f"edge {e.format()}: unknown node {e.src if e.src not in self.entities else e.dst}")
+                    raise KeyError(f"edge {e.id}: unknown node {e.src if e.src not in self.entities else e.dst}")
             if e.kind == RelationKind.CONTAIN:
                 if e.dst in parent and parent[e.dst] != e.src:
                     raise ValueError(f"{e.dst} has two owners: {parent[e.dst]} and {e.src}")
@@ -106,10 +99,21 @@ class Model:
     # -- structure -----------------------------------------------------------
 
     def has(self, key: Key) -> bool:
-        return key in self._edge_set if isinstance(key, Relation) else key in self.entities
+        """Whether the model has the node or the edge of this id."""
+        if isinstance(key, Relation):
+            raise TypeError(f"an edge is looked up by its id, not as a Relation: {key.id}")
+        return key in self.entities or key in self._relations
 
     def find_kind(self, key: Key) -> str:
-        return key.kind if isinstance(key, Relation) else self.entities[key].kind
+        r = self._relations.get(key)  # type: ignore[call-overload]
+        return r.kind if r is not None else self.entities[key].kind  # type: ignore[index]
+
+    def find_relation(self, key: Key) -> Relation | None:
+        """Return the edge of this id, or None for a node's address or an id the model lacks."""
+        return self._relations.get(key)  # type: ignore[call-overload]
+
+    def is_edge(self, key: Key) -> bool:
+        return key in self._relations
 
     def find_parent(self, x: str) -> str | None:
         return self._parent.get(x)

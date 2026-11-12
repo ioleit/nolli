@@ -98,10 +98,10 @@ class Review(Overlay):
         verdicts, changed, shown = scene.read_all("verdicts"), scene.read_all("change"), scene.read_all(ChangeItems.name)
         out: dict[Key, dict] = {}
         for e in scene.model.list_edges():
-            el = scene.find_element(e)
-            v, items = verdicts.get(e) or {}, (shown.get(e) or {}).get("items", [])
-            names = {s.key.dst: named[s.key.dst]["name"] for s in el.sources.get("source", ()) if s.is_edge}
-            out[e] = {"card": _describe_edge(changed.get(e), v.get("own", []), v.get("inside", []), len(items), names)}
+            el = scene.find_element(e.id)
+            v, items = verdicts.get(e.id) or {}, (shown.get(e.id) or {}).get("items", [])
+            names = {s.relation.dst: named[s.relation.dst]["name"] for s in el.sources.get("source", ()) if s.is_edge}
+            out[e.id] = {"card": _describe_edge(changed.get(e.id), v.get("own", []), v.get("inside", []), len(items), names)}
         for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
             v, items = verdicts.get(x) or {}, (shown.get(x) or {}).get("items", [])
             kind = kind if kind != "anchor" else "box"
