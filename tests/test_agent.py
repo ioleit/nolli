@@ -50,6 +50,7 @@ def test_brief(change):
     assert work == Path(change["brief"]).parent and work.parent.name == ".agent" and (work / "key").read_text().strip() == change["key"]
     assert isinstance(ModelKey.parse(change["key"]), ModelKey) and change["base"] in change["key"]
     assert shlex.split(change["check"])[:4] == ["nolli", "agent", "check", change["key"]] and "--data" in change["check"]
+    assert change["dataset"] == change["key"] and "out of date" in change["dataset_note"]  # what a skill from before 0.10 reads
 
 
 def test_check(change, capsys):

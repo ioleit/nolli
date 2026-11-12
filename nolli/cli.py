@@ -502,6 +502,11 @@ def cmd_brief(args: argparse.Namespace) -> int:
         "inspect": f"git -C {repo} diff {key.base[:12]} {key.head[:12]}",
         "check": format_command(args, "agent", "check", key.format_key()),
         "view": format_command(args, "view", key.format_key()),
+        # for a skill from before 0.10, which names the change by "dataset": a key works wherever a dataset directory did
+        "dataset": key.format_key(),
+        "dataset_note": "deprecated, the same as key. If your instructions use dataset, the nolli-review skill you "
+                        "follow is out of date: tell the user to update it (nolli agent skill --install <their skills "
+                        "directory>, e.g. ~/.claude/skills).",
     }, indent=1))
     return 0
 

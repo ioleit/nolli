@@ -42,8 +42,11 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
     force), then exports it with its report and review files; it no longer always rebuilds.
   - `nolli view DIR`, `nolli build DIR` and `nolli agent check DIR` import a dataset directory
     into the data directory first. A model's key works as a target too.
-  - `nolli agent brief` prints `key` in place of `dataset`, and its `check` and `view` commands
-    name the key (with `--data` when one was given). The agent's directory under `.agent/` holds
+  - `nolli agent brief` prints `key`, and its `check` and `view` commands name the key (with
+    `--data` when one was given). `dataset` stays, deprecated, with the same value, so a skill
+    from before 0.10 still works (a key goes wherever a dataset directory did); `dataset_note`
+    asks an agent following such a skill to tell the user to update it (`nolli agent skill
+    --install`). The agent's directory under `.agent/` holds
     the key in a file `key`, so `agent check <verdicts file>` still finds the change.
 - **A projection spec has one text form, and a projected model is keyed by it**:
   - `ProjectionSpec.to_query()` / `from_query(q, presets)` write and read it as the viewer's URL
