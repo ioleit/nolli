@@ -123,3 +123,26 @@ def read_all_references(scene: Scene) -> Mapping[RelationId, list[Reference]]:
 def read_all_symbols(scene: Scene) -> Mapping[str, ModuleFacts | SymbolFacts]:
     """Return what every module, class or type of a scene defines, by address."""
     return scene.read_all(SYMBOLS)  # type: ignore[return-value]
+
+# -- the other well-known overlays --------------------------------------------------------
+#
+# This module is the right pattern for an overlay that code other than its producer relies
+# on: one declaration of its name (a constant), of the shape of its value (a TypedDict) and
+# of a reader (``read_*``), and consumers that import the reader rather than spell the name.
+# We should use it for all well-known overlays. Today only extraction's four follow it; the
+# others are a ``name = "..."`` on the class that produces them, spelled again as a string
+# by each consumer (``viewer.SHOWN`` lists the viewer's once more), and the shape of their
+# value is written down, if at all, only for the viewer, in TypeScript
+# (``viewer/types/nolli.d.ts``). As of this writing:
+#
+# | Overlay      | Produced by                                  | Named as a string in                                   | Value (where known)                                    |
+# |--------------|----------------------------------------------|--------------------------------------------------------|--------------------------------------------------------|
+# | ``projection`` | ``projection.fold`` (a ``FixedOverlay``)     | merge, viewer, hover, mermaid                          | box: ``BoxProjection`` / ``AnchorProjection``; edge: ``EdgeProjection`` (nolli.d.ts) |
+# | ``label``      | ``logic/formats/descriptions/label.py``      | viewer, mermaid, hover                                 | ``{text, icons, prose}`` (``Label``, nolli.d.ts)        |
+# | ``names``      | ``logic/formats/descriptions/names.py``      | merge/reading, hover, label, review/card               | node: ``{name, icons}``                                 |
+# | ``hover``      | ``logic/formats/descriptions/hover.py``      | viewer                                                 | ``{text}``, ``text`` an ``Info`` (nolli.d.ts)           |
+# | ``change``     | ``merge.Change``                             | cli, merge/reading, merge/items, projection/reading, viewer, mermaid, report, review/card | drawn: ``NodeDiff`` / ``EdgeDiff``; on the change: a node's record, an edge's ``{status, base, head, fact}`` (``FactChange``) |
+# | ``items``      | ``merge/items.ChangeItems``                  | viewer; review/card through ``ChangeItems.name``       | drawn: ``{items}`` (``Items``); on the change: ``{items, about}`` |
+# | ``verdicts``   | ``review/verdicts.Verdicts``                 | viewer, review/card                                    | drawn: ``{verdicts, verdict, own, inside}`` (``Verdicts``, in part) |
+# | ``review``     | ``review/card.Review``                       | viewer (``SHOWN``)                                     | ``{card}`` (``Review``)                                 |
+# | ``content``    | a kept map (git's per file), no overlay class | operations, merge/items                                | a file: ``{git, added, removed, hunks}``, ``old_path`` when renamed (``logic/sources/git.py``) |
