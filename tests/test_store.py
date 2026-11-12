@@ -173,19 +173,28 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     assert viewer.export_scene(_draw(old, spec(preset="changes"))) == viewer.export_scene(_draw(kept, spec(preset="changes")))
 
 
-def test_maps_read_back_from_json_are_keyed_by_addresses_and_relations():
-    """A map kept as JSON reads back as it was given: nodes keyed by ``EntityId`` (so their
-    methods work on keys read from disk), edges by ``RelationId``, also when given as plain text."""
-    from nolli.model.model import Relation
+def test_maps_read_back_from_json_are_keyed_by_addresses_and_relations(tmp_path):
+    """A map kept as JSON reads back as it was given, from a store's files and from a dataset
+    directory: nodes keyed by ``EntityId`` (so their methods work on keys read from disk), edges
+    by ``RelationId``, also when given as plain text."""
+    from nolli.logic.formats.dataset import Dataset, read_dataset, write_dataset
+    from nolli.model.keys import Repo
+    from nolli.model.model import Model, Relation
     from nolli.model.schema import EntityId, RelationId, RelationKind
-    from nolli.model.serialized import dump_map, parse_map
+    from nolli.store import RepoStoreProvider
 
     a, b = EntityId.from_path("a.py"), EntityId.from_path("b.py", "B")
     e = Relation(RelationKind.USE, a, b, "import").id
-    values, about = parse_map(json.loads(json.dumps(dump_map("m", {a: {"x": 1}, a.own_code(): {}, str(e): {"y": 2}}, {"by": "t"}))))
-    assert values == {a: {"x": 1}, a.own_code(): {}, e: {"y": 2}} and about == {"by": "t"}
-    assert all(type(k) is (RelationId if k == e else EntityId) for k in values)
-    assert next(k for k in values if k == a).path == "a.py"
+    given = {a: {"x": 1}, a.own_code(): {}, str(e): {"y": 2}}
+    key = Repo("github.com/o/r").make_commit("a" * 40)
+    store = RepoStoreProvider(tmp_path / "data").open(key.repo)
+    store.open_maps("m").save(key.format_key(), given, {"by": "t"})
+    write_dataset(Dataset(key, Model(key), {"m": (given, {"by": "t"})}), tmp_path / "ds")
+    for values, about in [(store.open_maps("m").load(key.format_key()), store.open_maps("m").load_about(key.format_key())),
+                          read_dataset(tmp_path / "ds").maps["m"]]:
+        assert values == {a: {"x": 1}, a.own_code(): {}, e: {"y": 2}} and about["by"] == "t"
+        assert all(type(k) is (RelationId if k == e else EntityId) for k in values)
+        assert next(k for k in values if k == a).path == "a.py"
 
 
 @pytest.fixture
@@ -260,11 +269,10 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     assert viewer.export_scene(_draw(sc2, spec(preset="changes")))["nodes"]
 
 
-def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
-    """A store keeps one repository's models (as a hosted server's does): the scene a projection
-    returns has a key of no repository, under which nothing is kept, so asking for its kept values
-    reads nothing and answers none; a change of the store's repository projects in every preset,
-    and a key of another repository is refused."""
+def test_a_store_answers_for_its_repository_only(src, tmp_path):
+    """A store keeps one repository's models (as a hosted server's does): a change of the store's
+    repository projects in every preset, every scene drawn on the way asking only for keys of
+    that repository, and a key of another repository, or of none, is refused."""
     from helpers import spec
 
     from nolli.model.keys import NotAllowed
@@ -276,6 +284,6 @@ def test_nothing_is_looked_up_for_a_key_of_no_repository(src, tmp_path):
     sc = open_scene(store, change)
     for preset in ("folded", "changes", "unfolded"):
         assert viewer.export_scene(_draw(sc, spec(preset=preset)))["nodes"]
-    assert store.list_map_names(StringKey().format_key()) == [] and store.locate_maps("", "change") is None
-    with pytest.raises(NotAllowed):
-        store.list_map_names(Repo("github.com/o/other").make_commit("a" * 40).format_key())
+    for key in (StringKey(), Repo("github.com/o/other").make_commit("a" * 40)):
+        with pytest.raises(NotAllowed):
+            store.list_map_names(key.format_key())

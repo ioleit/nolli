@@ -20,11 +20,18 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
     nothing is scanned. A change's commits are kept beside it, not copied into it.
   - `DirectoryStore` is gone. Models kept under the old layout (`<owner>_<repo>-<sha7>`) are not
     read: they are built again, and review verdicts kept there are not carried over.
-  - `StringKey` takes an optional `repo` (`StringKey(text, repo)`, written `<repo>@~<text>`) so a
-    transformation's model can be kept in its repository's store.
-- **Files go in and out of the store only as dataset directories** (`nolli/datasets.py`):
-  - `export_dataset(store, key, dir)` and `import_dataset(store, dir)` work with any
-    `ModelStore`. A dataset directory keeps the shape `-o` wrote before, so existing ones import.
+  - Every key a repository's store is asked about names that repository; one of another
+    repository, or of none, raises `NotAllowed`. `StringKey` takes an optional `repo`
+    (`StringKey(text, repo)`, written `<repo>@~<text>`) for a model made in code, and `select`
+    keys the part it keeps with a `SelectionKey` (`<source>~select:<digest of the kept ids>`)
+    in place of a `StringKey` of no repository.
+  - The store's JSON forms of a model and a map are its own (`nolli/model/serialized.py` is
+    gone), so they can change without changing the files the command line exchanges.
+- **Files go in and out of the store only as dataset directories**
+  (`nolli/logic/formats/dataset.py`, a frozen format of its own):
+  - `cli.export_dataset(store, key, dir)` and `cli.import_dataset(store, dir)` work with any
+    `ModelStore`; the format module only reads and writes files (`read_dataset`,
+    `write_dataset`). A dataset directory keeps the shape `-o` wrote before, so existing ones import.
   - `nolli build` prints the model's key, not a directory. With `-o DIR` (and `diff`/`extract
     -o`), it builds into the data directory as usual, reusing a fresh build (`--rebuild` to
     force), then exports it with its report and review files; it no longer always rebuilds.

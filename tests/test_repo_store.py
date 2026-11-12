@@ -1,6 +1,6 @@
 """nolli's own store (nolli/store/repo_directory.py): a store per repository, opened once per
 request by its provider, keeping any key of that repository where the key says; and dataset
-directories (nolli/datasets.py), the files that go in and out of a store."""
+directories (nolli/logic/formats/dataset.py), the files that go in and out of a store."""
 
 from __future__ import annotations
 
@@ -12,9 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from nolli import datasets, operations
+from nolli import cli, operations
+from nolli.logic.formats import dataset
 from nolli.logic.sources import LocalRepository
-from nolli.model.keys import ModelKey, NotAllowed, ProjectionKey, Repo, StringKey
+from nolli.model.keys import ModelKey, NotAllowed, ProjectionKey, Repo, SelectionKey, StringKey
 from nolli.model.model import Model
 from nolli.model.scene import FixedOverlay
 from nolli.operations import open_scene
@@ -35,7 +36,8 @@ def test_a_key_is_kept_where_its_text_says():
     """Any key of a repository has a directory of its own, worked out from the key alone and
     back: case kept on a file system that ignores it, no name over 255 bytes."""
     keys = [C1, CHANGE, ProjectionKey(CHANGE, "p=default"), ProjectionKey(CHANGE, "x=repo:Shop/A.py,repo:shop/a.py" * 20),
-            StringKey("files@worktree", REPO), ProjectionKey(StringKey("picked", REPO), "p=folded")]
+            StringKey("files@worktree", REPO), ProjectionKey(StringKey("picked", REPO), "p=folded"),
+            SelectionKey(ProjectionKey(CHANGE, "p=default"), "0123abcd"), ProjectionKey(SelectionKey(C1, "0123abcd"), "p=default")]
     paths = [_format_key_path(k) for k in keys]
     for k, p in zip(keys, paths, strict=True):
         assert _parse_key_path(REPO, p) == k
@@ -52,6 +54,21 @@ def test_string_keys_name_their_repository():
     assert ModelKey.parse(k.format_key()) == k and ModelKey.from_dict(k.to_dict()) == k
     assert ModelKey.parse("picked") == StringKey("picked") and StringKey("picked").repo is None
     assert ProjectionKey(k, "p=default").repo == REPO and ModelKey.parse(ProjectionKey(k, "p=default").format_key()).source == k
+
+
+def test_a_selection_is_keyed_by_its_source_and_its_part():
+    """``select`` keys the part it keeps by the source's key and a digest of the part: of the
+    source's repository, the same for the same part, read back from its text and its dict."""
+    from nolli.logic.transformations.select import select
+    from nolli.model.model import Entity
+    from nolli.model.scene import Scene
+
+    source = ProjectionKey(C1, "p=default")
+    scene = Scene(Model(source, [Entity("repo:a", "directory"), Entity("repo:b", "directory")]), [])
+    part = select(scene, ["repo:a"]).model.key
+    assert isinstance(part, SelectionKey) and part.source == source and part.repo == REPO
+    assert part == select(scene, ["repo:a", "repo:gone"]).model.key != select(scene, ["repo:b"]).model.key  # by what is kept
+    assert ModelKey.parse(part.format_key()) == part and ModelKey.from_dict(part.to_dict()) == part
 
 
 def test_a_store_keeps_models_changes_and_verdicts(tmp_path):
@@ -102,8 +119,7 @@ def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
 
 
 def test_a_store_keeps_its_repository_only(tmp_path):
-    """Another repository's key is refused, to read or to write; a key of no repository (a
-    transformation's) has nothing kept, and cannot be kept."""
+    """Another repository's key is refused, to read or to write, and so is a key of no repository."""
     store = RepoStoreProvider(tmp_path / "data").open(REPO)
     other = Repo("github.com/o/other").make_commit("a" * 40)
     for read in (lambda: store.load_model(other), lambda: store.load_change(other.make_change_to("b" * 40)),
@@ -115,10 +131,10 @@ def test_a_store_keeps_its_repository_only(tmp_path):
     with pytest.raises(NotAllowed):
         store.open_maps("fs").save(other.format_key(), {})
     nobody = StringKey("picked")
-    assert store.load_model(nobody) is None and store.open_maps("fs").load(nobody.format_key()) == {}
-    assert store.list_map_names(nobody.format_key()) == [] and store.locate_maps("", "change") is None
-    with pytest.raises(NotAllowed):
-        store.save_model(nobody, model("x"), {})
+    for use in (lambda: store.load_model(nobody), lambda: store.open_maps("fs").load(nobody.format_key()),
+                lambda: store.list_map_names(nobody.format_key()), lambda: store.save_model(nobody, model("x"), {})):
+        with pytest.raises(NotAllowed):
+            use()
     assert not (tmp_path / "data" / "github.com" / "o" / "other").exists()
 
 
@@ -201,12 +217,12 @@ def test_a_dataset_goes_out_and_back_in_whole(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
     (out / "pr.md").write_text("mine")
-    datasets.export_dataset(store, CHANGE, out)
+    cli.export_dataset(store, CHANGE, out)
     assert sorted(f.name for f in out.iterdir()) == ["base", "change.json", "head", "key.json", "model.json", "overlays", "pr.md"]
-    assert datasets.is_dataset(out) and datasets.read_key(out) == CHANGE
+    assert dataset.is_dataset(out) and dataset.read_key(out) == CHANGE
 
     into = MemoryStore()
-    assert datasets.import_dataset(into, out) == CHANGE
+    assert cli.import_dataset(into, out) == CHANGE
     assert into.load_change(CHANGE) == {"title": "a change"} and into.load_model(CHANGE).meta["repo"] == "merged"
     assert into.load_model(C1).meta["repo"] == "base" and into.open_maps("fs").load(C1.format_key()) == {"repo:": {"name": "base"}}
     assert into.open_maps("content").load(CHANGE.format_key()) == {"repo:a.py": {"status": "added"}}
@@ -214,8 +230,8 @@ def test_a_dataset_goes_out_and_back_in_whole(tmp_path):
     assert into.open_maps("verdicts").load_about(CHANGE.format_key()) == {"by": "agent", "at": "2026-11-12T00:00:00Z"}
 
     again = RepoStoreProvider(tmp_path / "again").open(REPO)  # and into a store on disk, twice
-    datasets.import_dataset(again, out)
-    datasets.import_dataset(again, out)
+    cli.import_dataset(again, out)
+    cli.import_dataset(again, out)
     assert again.load_change(CHANGE) == {"title": "a change"} and again.open_maps("verdicts").load(CHANGE.format_key()) == kept
     assert open_scene(again, CHANGE) is not None
 
@@ -224,9 +240,9 @@ def test_a_dataset_of_another_format_is_refused(tmp_path):
     store = RepoStoreProvider(tmp_path / "data").open(REPO)
     store.save_model(C1, model("one"), {})
     out = tmp_path / "out"
-    datasets.export_dataset(store, C1, out)
+    cli.export_dataset(store, C1, out)
     (out / "key.json").write_text(json.dumps({**json.loads((out / "key.json").read_text()), "format": 0}))
-    with pytest.raises(datasets.DatasetError, match="another nolli version"):
-        datasets.import_dataset(MemoryStore(), out)
+    with pytest.raises(dataset.DatasetError, match="another nolli version"):
+        cli.import_dataset(MemoryStore(), out)
     with pytest.raises(KeyError):
-        datasets.export_dataset(store, C2, tmp_path / "none")
+        cli.export_dataset(store, C2, tmp_path / "none")

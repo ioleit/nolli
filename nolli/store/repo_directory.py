@@ -4,8 +4,8 @@ that decides who may open one.
 ``RepoStoreProvider(root).open(repo)`` decides once whether the current request may read
 ``repo`` (``allow``, the one method a service overrides) and returns a ``RepoDirectoryStore``
 that keeps only that repository's models: a key of another repository raises ``NotAllowed``,
-and one of no repository (a transformation's) has nothing kept and cannot be kept. A request that holds the store for one repository cannot read another's by
-mistake, and what runs later for it (a build, a review) holds the same store.
+and so does one of no repository. A request that holds the store for one repository cannot
+read another's by mistake, and what runs later for it (a build, a review) holds the same store.
 
 Where a model is kept follows from its key alone, so nothing is scanned or indexed:
 
@@ -13,12 +13,14 @@ Where a model is kept follows from its key alone, so nothing is scanned or index
     <root>/local/<the repository's path>/<rest of the key>/
 
 ``<rest of the key>`` is ``format_key()`` after the repository's URL (``@<sha>``,
-``@<base>..<head>``, ``@<sha>~project:<spec>``, ``@~<text>``), escaped for any file system
+``@<base>..<head>``, ``@<sha>~project:<spec>``, ``@<sha>~select:<digest>``, ``@~<text>``), escaped for any file system
 (``_encode``) and cut into names of at most 200 bytes. A model's directory holds
 ``key.json``, ``model.json`` and ``overlays/<name>.json``, and for a change ``change.json``;
 a change's two commits are kept in their own directories beside it. The layout is this
-module's own: nothing outside it reads these files (``nolli/datasets.py`` writes the
-files the command line exchanges, through the store).
+module's own, and so are the JSON forms of a model and a map in it (``_dump_model``,
+``_dump_map``): nothing outside it reads these files, and they change with ``MODEL_FORMAT`` and
+``MAP_FORMAT`` as the store needs. The files the command line exchanges are another format
+(``nolli/logic/formats/dataset.py``), moved in and out through the store's interface.
 """
 
 from __future__ import annotations
@@ -31,14 +33,17 @@ from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from nolli.model import serialized
+from nolli.model import schema
 from nolli.model.keys import ChangeKey, ModelKey, NotAllowed, Repo
-from nolli.model.model import Key, Model
+from nolli.model.model import Entity, Key, Model, Relation
+from nolli.model.schema import EntityId, RelationId
 from nolli.model.scene import Scene
 from nolli.store import precomputed
 from nolli.store.precomputed import OverlayStore
 
 FORMAT = 1  # of key.json and change.json
+MODEL_FORMAT = 3  # of model.json; a model of another format reads as not kept, and is built again
+MAP_FORMAT = 2  # of overlays/<name>.json; a map of another format reads as not kept
 SEGMENT = 200  # bytes in one name of a key's path, at most (file systems allow 255)
 CACHE_ENTRIES = 4096  # parsed files kept by a provider, at most
 _SAFE = frozenset("abcdefghijklmnopqrstuvwxyz0123456789._@=,+-")
@@ -125,6 +130,39 @@ def _parse_key_path(repo: Repo, path: Path) -> ModelKey:
 
 
 # -- the provider ---------------------------------------------------------------------
+
+
+# -- the JSON forms of a model and a map ---------------------------------------------------
+
+
+def _dump_model(model: Model) -> dict:
+    return {"format": MODEL_FORMAT, "meta": model.meta,
+            "nodes": {x: model.entities[x].kind for x in sorted(model.entities)},
+            "edges": [[e.kind, e.src, e.dst, e.subkind] for e in model.edges]}
+
+
+def _parse_model(d: dict, key: ModelKey) -> Model:
+    """Parse a model from its ``model.json`` form, under ``key``. Raise ValueError for another format."""
+    if d.get("format") != MODEL_FORMAT:
+        raise ValueError(f"model.json of format {d.get('format')!r}")
+    return Model(key, (Entity(x, k) for x, k in d["nodes"].items()), (Relation(*e) for e in d["edges"]), meta=d.get("meta") or {})
+
+
+def _dump_map(values: Mapping[Key, dict], about: dict | None) -> dict:
+    keys = {k: schema.parse_key(k) for k in values}  # ids given as plain text (read from JSON) are told apart by their text
+    return {"format": MAP_FORMAT, "about": about,
+            "nodes": {k: v for k, v in values.items() if not isinstance(keys[k], RelationId)},
+            "edges": {k: v for k, v in values.items() if isinstance(keys[k], RelationId)}}
+
+
+def _parse_map(d: dict) -> tuple[dict[Key, dict], dict | None]:
+    """Parse a map as ``_dump_map`` wrote it, returning its values (a node keyed by its
+    ``EntityId``, an edge by its ``RelationId``) and its ``about``. Raise ValueError for another format."""
+    if d.get("format") != MAP_FORMAT:
+        raise ValueError(f"a map of format {d.get('format')!r}")
+    values: dict[Key, dict] = {EntityId(k): v for k, v in (d.get("nodes") or {}).items()}
+    values.update({RelationId(k): v for k, v in (d.get("edges") or {}).items()})
+    return values, d.get("about")
 
 
 class ParseCache:
@@ -217,22 +255,17 @@ def _write_json(f: Path, value: dict, indent: int | None = None) -> None:
 class RepoDirectoryStore(OverlayStore):
     """The models of one repository, any key of it, with the maps kept for them; in the
     directory ``path`` (``RepoStoreProvider.open`` gives one). Every method refuses a key of
-    another repository (``NotAllowed``); a key of no repository reads as nothing kept and cannot
-    be written."""
+    another repository, or of none (``NotAllowed``)."""
 
     def __init__(self, path: Path, repo: Repo, cache: ParseCache | None = None) -> None:
         self.path, self.repo, self.cache = Path(path), repo, cache or ParseCache()
 
     def own(self, key: ModelKey) -> ModelKey:
-        """Return ``key`` if it is one of this store's repository, else raise NotAllowed."""
+        """Return ``key`` if it is one of this store's repository, else raise NotAllowed: for
+        another repository's key, and for one of none."""
         if getattr(key, "repo", None) != self.repo:
             raise NotAllowed(f"{key.format_key()} is no model of {self.repo.url}")
         return key
-
-    def find(self, key: ModelKey) -> Path | None:
-        """Return the directory a read of ``key`` looks in: None for a key of no repository (a
-        transformation's, which nothing keeps), and NotAllowed for another repository's."""
-        return None if getattr(key, "repo", None) is None else self.locate(key)
 
     def locate(self, key: ModelKey) -> Path:
         """Return the directory of the model with ``key``, whether it is there or not."""
@@ -242,8 +275,7 @@ class RepoDirectoryStore(OverlayStore):
 
     def load_model(self, key: ModelKey) -> Model | None:
         """Return the model kept under ``key`` (a change's merged model, if one was kept), or None."""
-        d = self.find(key)
-        return None if d is None else self.cache.read(d / "model.json", lambda j: serialized.parse_model(j, key), key.format_key())
+        return self.cache.read(self.locate(key) / "model.json", lambda j: _parse_model(j, key), key.format_key())
 
     def save_model(self, key: ModelKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         """Keep a model under ``key`` with the maps its extractors made, replacing what was kept."""
@@ -291,13 +323,13 @@ class RepoDirectoryStore(OverlayStore):
     def _write_model(self, d: Path, key: ModelKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         model.key = key
         self._write_key(d, key)
-        _write_json(d / "model.json", serialized.dump_model(model), indent=1)
+        _write_json(d / "model.json", _dump_model(model), indent=1)
         self._write_maps(d, key, maps)
 
     def _write_maps(self, d: Path, key: ModelKey, maps: Mapping[str, Mapping[Key, dict]]) -> None:
         (d / "overlays").mkdir(exist_ok=True)
         for name, values in maps.items():
-            _write_json(d / "overlays" / f"{_encode(name)}.json", serialized.dump_map(key.format_key(), values, None))
+            _write_json(d / "overlays" / f"{_encode(name)}.json", _dump_map(values, None))
 
     # -- maps
 
@@ -306,15 +338,12 @@ class RepoDirectoryStore(OverlayStore):
 
     def list_map_names(self, model_key: str) -> list[str]:
         """Return the names of the maps kept for the model with key text ``model_key``."""
-        d = self.find(ModelKey.parse(model_key))
-        return sorted(_decode(f.stem) for f in (d / "overlays").glob("*.json")) if d is not None and (d / "overlays").is_dir() else []
+        d = self.locate(ModelKey.parse(model_key)) / "overlays"
+        return sorted(_decode(f.stem) for f in d.glob("*.json")) if d.is_dir() else []
 
-    def locate_maps(self, model_key: str, name: str, *, writing: bool = False) -> Path | None:
-        """Return the file of the map ``name`` kept for the model with key text ``model_key``: for a
-        read, None for a key of no repository (``find``); a write needs one of this repository."""
-        key = ModelKey.parse(model_key)
-        d = self.locate(key) if writing else self.find(key)
-        return None if d is None else d / "overlays" / f"{_encode(name)}.json"
+    def locate_maps(self, model_key: str, name: str) -> Path:
+        """Return the file of the map ``name`` kept for the model with key text ``model_key``."""
+        return self.locate(ModelKey.parse(model_key)) / "overlays" / f"{_encode(name)}.json"
 
 
 class RepoDirectoryMaps:
@@ -325,8 +354,7 @@ class RepoDirectoryMaps:
         self.store, self.name = store, name
 
     def read(self, model_key: str) -> tuple[dict[Key, dict], dict | None] | None:
-        f = self.store.locate_maps(model_key, self.name)
-        return None if f is None else self.store.cache.read(f, serialized.parse_map)
+        return self.store.cache.read(self.store.locate_maps(model_key, self.name), _parse_map)
 
     def load(self, model_key: str) -> Mapping[Key, dict]:
         got = self.read(model_key)
@@ -337,5 +365,5 @@ class RepoDirectoryMaps:
         return got[1] if got else None
 
     def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None:
-        _write_json(self.store.locate_maps(model_key, self.name, writing=True),  # type: ignore[arg-type]  # never None for a write
-                    serialized.dump_map(model_key, values, precomputed.stamp(about)), indent=1)
+        _write_json(self.store.locate_maps(model_key, self.name),
+                    _dump_map(values, precomputed.stamp(about)), indent=1)

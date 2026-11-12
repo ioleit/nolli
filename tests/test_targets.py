@@ -20,7 +20,7 @@ from nolli.cli import main
 from nolli.operations import Target
 from nolli.logic.sources.git import WORKTREE, ChangeError, Revs, _default_branch, find_toplevel
 from nolli.model.keys import Repo
-from nolli import datasets
+from nolli.logic.formats import dataset
 from nolli.model.keys import ModelKey
 from nolli.store import RepoStoreProvider
 
@@ -220,7 +220,7 @@ def test_build_and_the_older_shorthands(repo, tmp_path, capsys):
 
     assert main(["build", "main", "--repo", str(r), "--data", str(data), "-o", str(tmp_path / "m")]) == 0  # also as a dataset
     assert Path(capsys.readouterr().out.strip()) == (tmp_path / "m").resolve()
-    assert datasets.read_key(tmp_path / "m") == key and (tmp_path / "m" / "report.json").is_file()
+    assert dataset.read_key(tmp_path / "m") == key and (tmp_path / "m" / "report.json").is_file()
     assert main(["build", str(tmp_path / "m"), "--data", str(tmp_path / "other")]) == 0  # a dataset directory: imported, nothing built
     assert capsys.readouterr().out.strip() == key.format_key()
     assert RepoStoreProvider(tmp_path / "other").open(key.repo).load_model(key) is not None

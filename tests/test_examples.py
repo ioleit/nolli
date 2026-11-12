@@ -31,10 +31,11 @@ def test_propose_package_groups_the_layers_above_logic():
     assert "n_repo_dev" not in out and "n_repo_viewer" not in out  # nothing outside nolli/
 
 
-def test_custom_overlay_kept_and_read_back():
-    out = subprocess.run([sys.executable, str(ROOT / "dev/examples/custom_overlay.py"), str(ROOT)], capture_output=True, text=True, check=True).stdout
+def test_custom_overlay_kept_and_read_back(tmp_path):
+    out = subprocess.run([sys.executable, str(ROOT / "dev/examples/custom_overlay.py"), str(ROOT), str(tmp_path)], capture_output=True, text=True, check=True).stdout
     assert "live: repo:nolli/model/scene.py: cool node, bro" in out
     assert "cool folded node comprising" in out and "cool edge, bro" in out
+    assert "kept for the projection: ['cool']" in out and any(tmp_path.glob("local/**/overlays/cool.json"))  # kept in the data directory given
     assert out.rstrip().endswith("live and kept agree on the scene and the module-level projection")
 
 
@@ -42,8 +43,10 @@ def test_annotations_kept_on_a_projection(tmp_path):
     given = tmp_path / "notes.json"
     given.write_text(json.dumps({"repo:nolli/model": {"text": "the schema"},
                                  "use|repo:nolli/server|repo:nolli/logic|import": {"text": "a line between folded boxes"}}))
-    out = subprocess.run([sys.executable, str(ROOT / "dev/examples/annotations.py"), str(ROOT), str(given)], capture_output=True, text=True, check=True).stdout
-    assert "projected model: nolli@worktree~project:" in out and "projected from:  nolli@worktree\n" in out
+    data = tmp_path / "data"
+    out = subprocess.run([sys.executable, str(ROOT / "dev/examples/annotations.py"), str(ROOT), str(given), str(data)], capture_output=True, text=True, check=True).stdout
+    assert f"projected model: {ROOT}@worktree~project:" in out and f"projected from:  {ROOT}@worktree\n" in out
+    assert len(list(data.glob("local/**/overlays/annotations.json"))) == 1  # kept in the data directory given
     assert "use|repo:nolli/server|repo:nolli/logic|import: a line between folded boxes   (only in the projection)" in out
     assert "repo:nolli/model: the schema\n" in out
     assert out.rstrip().endswith("the annotations were kept on the projected model and read back")

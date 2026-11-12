@@ -48,13 +48,15 @@ class Repo:
 
 
 PROJECTED = "~project:"  # between a projected model's source key and which projection it is
+SELECTED = "~select:"  # between a selected part's source key and which part it is
 NAMED = "@~"  # between a StringKey's repository and its text
 
 
 class ModelKey:
     """What a model is the model of: a repository at one commit (``CommitKey``), the change
     between two of its commits (``ChangeKey``), a projection of another model
-    (``ProjectionKey``), or anything else, by name (``StringKey``)."""
+    (``ProjectionKey``), a part of another model (``SelectionKey``), or anything else, by name
+    (``StringKey``)."""
 
     repo: Repo
 
@@ -66,11 +68,16 @@ class ModelKey:
     @classmethod
     def parse(cls, text: str) -> ModelKey:
         """Parse ``text`` as ``format_key()`` writes it: ``<source>~project:<spec>`` gives a
-        ProjectionKey, ``<repo>@~<text>`` a StringKey of that repository, ``<repo>@<sha>`` a
-        CommitKey, ``<repo>@<base>..<head>`` a ChangeKey, and anything else a StringKey without one."""
-        source, projected, spec = text.rpartition(PROJECTED)
-        if projected and spec:
-            return ProjectionKey(ModelKey.parse(source), spec)
+        ProjectionKey, ``<source>~select:<digest>`` a SelectionKey, ``<repo>@~<text>`` a StringKey
+        of that repository, ``<repo>@<sha>`` a CommitKey, ``<repo>@<base>..<head>`` a ChangeKey,
+        and anything else a StringKey without one."""
+        at = max(text.rfind(PROJECTED), text.rfind(SELECTED))  # the last step made it
+        if at > 0:
+            source, rest = ModelKey.parse(text[:at]), text[at:]
+            if rest.startswith(PROJECTED) and rest[len(PROJECTED):]:
+                return ProjectionKey(source, rest[len(PROJECTED):])
+            if rest.startswith(SELECTED) and rest[len(SELECTED):]:
+                return SelectionKey(source, rest[len(SELECTED):])
         repo, named, rest = text.partition(NAMED)
         if named and repo:
             return StringKey(rest, Repo(repo))
@@ -88,6 +95,8 @@ class ModelKey:
     def from_dict(cls, d: dict) -> ModelKey:
         if "projection" in d:
             return ProjectionKey(ModelKey.from_dict(d["source"]), d["projection"])
+        if "selection" in d:
+            return SelectionKey(ModelKey.from_dict(d["source"]), d["selection"])
         if "key" in d:
             return StringKey(d["key"], Repo(d["repo"]) if d.get("repo") else None)
         repo = Repo(d["repo"])
@@ -132,9 +141,10 @@ class ChangeKey(ModelKey):
 
 @dataclass(frozen=True)
 class StringKey(ModelKey):
-    """An adhoc key, e.g. for the result of a transformation. ``repo`` is the repository whose
-    model it was made from, if any: a store bound to one repository keeps only keys of that
-    repository (``nolli.store.repo_directory``), so a key without one is kept in memory only."""
+    """An adhoc key, for a model made in code (a test's, a custom transformation's). ``repo`` is
+    the repository whose model it was made from, if any: a store bound to one repository keeps
+    only keys of that repository (``nolli.store.repo_directory``), so a key without one can only
+    be kept in memory (``MemoryStore``)."""
 
     text: str = ""
     repo: Repo | None = None  # type: ignore[assignment]  # None: a model of no repository
@@ -166,3 +176,24 @@ class ProjectionKey(ModelKey):
 
     def to_dict(self) -> dict:
         return {"source": self.source.to_dict(), "projection": self.spec}
+
+
+@dataclass(frozen=True)
+class SelectionKey(ModelKey):
+    """A part of another model (``select``): the source's key and which part it is, a digest of
+    the ids of the nodes and edges kept. The same part of the same model
+    has the same key, so what is kept for it is found again when it is selected again."""
+
+    source: ModelKey
+    selection: str  # a digest of the kept ids
+
+    @property
+    def repo(self) -> Repo:  # type: ignore[override]
+        """The source's repository (None for a ``StringKey`` source without one)."""
+        return self.source.repo
+
+    def format_key(self) -> str:
+        return f"{self.source.format_key()}{SELECTED}{self.selection}"
+
+    def to_dict(self) -> dict:
+        return {"source": self.source.to_dict(), "selection": self.selection}

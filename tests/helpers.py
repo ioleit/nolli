@@ -22,10 +22,10 @@ from nolli.store.maps import Maps
 
 def open_dataset(ds: Path) -> tuple[MemoryStore, ModelKey]:
     """Import the dataset directory ``ds`` (``nolli build -o``) into memory and return the store and the key."""
-    from nolli import datasets
+    from nolli import cli
 
     store = MemoryStore()
-    return store, datasets.import_dataset(store, ds)
+    return store, cli.import_dataset(store, ds)
 
 
 def open_dir(path: Path, key: str = "test@0") -> Scene:

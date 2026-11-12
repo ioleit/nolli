@@ -71,7 +71,7 @@ repository its token can read (nolli/server/serve.py).
 
 --data holds the store (nolli/store/: what is built, by repository, in a layout of its own
 that nothing else reads), a review agent's files (.agent/) and clones (.repos/). Files go in
-and out of it only as dataset directories (nolli/datasets.py): build -o writes one, and view
+and out of it only as dataset directories (nolli/logic/formats/dataset.py): build -o writes one, and view
 and agent check take one, importing it first. A dataset holds a commit's key.json,
 model.json (its structure) and overlays/ (what each extractor said); for a change also
 change.json, base/ and head/ (its commits) and its own overlays/ (git's hunks, a review's
@@ -136,20 +136,19 @@ def make_sources(args: argparse.Namespace):
     return github.Checkout(find_local(getattr(args, "repo", ".")), find_data_dir(getattr(args, "data", None)) / ".repos")
 
 
-def import_dataset(text: str | None, cmd: str, stores: RepoStoreProvider):
-    """Import the dataset directory ``text`` names (``nolli/datasets.py``) into its repository's
+def import_named(text: str | None, cmd: str, stores: RepoStoreProvider):
+    """Import the dataset directory ``text`` names (``import_dataset``) into its repository's
     store and return the store and the key, to use as it is. Return None if ``text`` names no
     dataset directory, and False, after printing why, for one this nolli cannot read."""
-    from nolli import datasets
+    from nolli.logic.formats import dataset
 
-    if not text or not datasets.is_dataset(Path(text).expanduser()):
+    if not text or not dataset.is_dataset(Path(text).expanduser()):
         return None
     d = Path(text).expanduser().resolve()
     try:
-        key = datasets.read_key(d)
-        store = stores.open(key.repo)
-        return store, datasets.import_dataset(store, d)
-    except datasets.DatasetError as exc:
+        store = stores.open(dataset.read_key(d).repo)
+        return store, import_dataset(store, d)
+    except dataset.DatasetError as exc:
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return False
 
@@ -161,7 +160,7 @@ def pin(args: argparse.Namespace, cmd: str, review: bool = False):
     refused. Print what it names on stderr; print why and return None if it names nothing."""
     from nolli import operations
 
-    found = None if review else import_dataset(args.target, cmd, open_stores(args))
+    found = None if review else import_named(args.target, cmd, open_stores(args))
     if found is False:
         return None
     if found:
@@ -250,7 +249,7 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
     """Build the target (as ``build``), then export it to the directory -o names as a dataset with
-    what is made from it (``datasets.write_extras``). Return what it says about itself and its
+    what is made from it (``write_extras``). Return what it says about itself and its
     report; print why and return None if it cannot be built."""
     b = build(args, cmd)
     return None if b is None else export_into(b.store, b.key, Path(args.out), args.budget)
@@ -259,12 +258,96 @@ def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
 def export_into(store: ModelStore, key: ModelKey, out: Path, budget: int | None) -> tuple[dict, dict]:
     """Export the model of ``key`` to the dataset directory ``out`` with what is made from it, and
     return what it says about itself (a change's record, else nothing) and its report."""
-    from nolli import datasets
-
     out.mkdir(parents=True, exist_ok=True)
-    datasets.export_dataset(store, key, out)
-    report = datasets.write_extras(store, key, out, budget)
+    export_dataset(store, key, out)
+    report = write_extras(store, key, out, budget)
     return (store.load_change(key) if isinstance(key, ChangeKey) else None) or {}, report
+
+
+# -- dataset directories in and out of a store (nolli/logic/formats/dataset.py) -------------
+
+
+def _read_dataset(store: ModelStore, key: ModelKey):
+    """Return the model ``store`` keeps under ``key`` as a ``Dataset``, every map with its
+    ``about``: for a change, what it says about itself, its merged model if one is kept and its
+    two commits. Raise KeyError if the store does not have it."""
+    from nolli.logic.formats.dataset import Dataset
+
+    text = key.format_key()
+    maps = {n: (dict(store.open_maps(n).load(text)), store.open_maps(n).load_about(text)) for n in store.list_map_names(text)}
+    if isinstance(key, ChangeKey):
+        about = store.load_change(key)
+        if about is None:
+            raise KeyError(f"no change {text} to export")
+        sides = {side: _read_dataset(store, c) for side, c in zip(("base", "head"), key.list_sides(), strict=True)}
+        return Dataset(key, store.load_model(key), maps, about, sides)
+    model = store.load_model(key)
+    if model is None:
+        raise KeyError(f"no model {text} to export")
+    return Dataset(key, model, maps)
+
+
+def export_dataset(store: ModelStore, key: ModelKey, out: Path) -> None:
+    """Write the model ``store`` keeps under ``key`` to the dataset directory ``out``, in place of
+    a model written there before. Raise KeyError if the store does not have it."""
+    from nolli.logic.formats import dataset
+
+    dataset.write_dataset(_read_dataset(store, key), out)
+
+
+def import_dataset(store: ModelStore, d: Path) -> ModelKey:
+    """Keep the model of the dataset directory ``d`` in ``store``, in place of what the store kept
+    under its key, and return the key. Maps that say where they came from (``about``, a review's
+    verdicts) are kept as they say it; the others go in with the model, as extraction's do.
+    Raise DatasetError for a directory that is no dataset of this version, and NotAllowed if the
+    store does not keep models of its repository."""
+    from nolli.logic.formats import dataset
+
+    ds = dataset.read_dataset(d)
+
+    def plain(x) -> dict:
+        return {n: values for n, (values, about) in x.maps.items() if about is None}
+
+    if isinstance(ds.key, ChangeKey):
+        store.save_change(ds.key, ds.change or {}, {s: (x.model, plain(x)) for s, x in ds.sides.items()}, plain(ds), ds.model)
+    else:
+        store.save_model(ds.key, ds.model, plain(ds))  # type: ignore[arg-type]  # a commit's dataset has a model
+    for x in (ds, *ds.sides.values()):
+        for name, (values, about) in x.maps.items():
+            if about is not None:
+                store.open_maps(name).save(x.key.format_key(), values, about)
+    return ds.key
+
+
+def write_extras(store: ModelStore, key: ModelKey, out: Path, budget: int | None = None) -> dict:
+    """Write the files a dataset directory gets beside the model: report.json, and for a change what
+    a review agent reads (changes.json, review.mmd, review.md). ``budget`` is the size of the
+    default projection when the model does not say it. Extras written there before go. Return
+    the report."""
+    from nolli import operations
+    from nolli.logic import transformations
+    from nolli.logic.formats import dataset
+    from nolli.logic.formats import report as report_format
+    from nolli.logic.transformations import merge, projection
+    from nolli.logic.transformations.merge import items
+    from nolli.review import brief
+
+    scene = operations.open_scene(store, key)
+    if scene is None:
+        raise KeyError(f"no model {key.format_key()} to describe")
+    meta = scene.model.meta
+    budget = (meta.get("change") or {}).get("budget") or meta.get("budget") or budget or projection.DEFAULT_BUDGET
+    default = transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=projection.AtMost(budget))))
+    report = report_format.make_report(scene, default)
+    out = Path(out)
+    dataset.remove(out, dataset.EXTRAS)
+    (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
+    if merge.is_change(scene):
+        (out / "changes.json").write_text(json.dumps(items.list_changes(scene), indent=1))
+        mmd = brief.make_review_diagram(scene)
+        (out / "review.mmd").write_text(mmd)
+        (out / "review.md").write_text(brief.make_brief(scene, mmd))
+    return report
 
 
 def cmd_view(args: argparse.Namespace) -> int:
@@ -283,7 +366,7 @@ def cmd_view(args: argparse.Namespace) -> int:
     data = find_data_dir(args.data)
     local = find_local(args.repo)
     text = args.target
-    found = import_dataset(text, "view", RepoStoreProvider(data))
+    found = import_named(text, "view", RepoStoreProvider(data))
     if found is False:
         return 2
     if found:  # a dataset directory, imported into the data directory: its key is the target
@@ -428,14 +511,14 @@ def find_checked(args: argparse.Namespace) -> tuple[ModelStore, ModelKey, Path |
     directory (imported), the agent's work directory (``find_agent_dir``) or a verdicts file in
     either. Return the change's store and key, the verdicts file named (or None) and the dataset
     directory named (or None); print why and return None if it names no change."""
-    from nolli import datasets
+    from nolli.logic.formats import dataset
 
     stores = open_stores(args)
     p = Path(args.dataset).expanduser()
     vf = p.resolve() if p.is_file() else None
     d = vf.parent if vf else p.resolve()
-    if datasets.is_dataset(d):
-        found = import_dataset(str(d), "agent check", stores)
+    if dataset.is_dataset(d):
+        found = import_named(str(d), "agent check", stores)
         if not found:
             return None
         return found[0], found[1], vf, d
