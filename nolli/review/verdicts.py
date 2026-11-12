@@ -162,11 +162,8 @@ def save_verdicts(maps: MapStore, key, verdicts: list[dict], by: dict) -> None:
 
     They are kept in the change's ``verdicts`` map (``StoredMaps``), by target (a node's
     address, or ``"<a> --> <b>"``), with who made them as its ``about``
-    (``{"by": "agent" | "upload", …}``)."""
-    import time
-
-    at = by.get("at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    maps.open_maps("verdicts").save(key.format_key(), _dump_verdicts(verdicts), {**by, "at": at})
+    (``{"by": "agent" | "upload", …}``); ``save`` adds when."""
+    maps.open_maps("verdicts").save(key.format_key(), _dump_verdicts(verdicts), by)
 
 
 def _keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) -> list[dict]:
