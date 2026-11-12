@@ -91,7 +91,7 @@ def test_structure_and_content(repo):
     s = change_of(sc, "repo:app/store.py#Store")
     assert s["status"] == "same" and s["added"] == 1 and s["removed"] == 1 and s["added_lines"] == [3]
     # edges: a new reference api -> Index
-    added = {(e.key.src, e.key.dst) for e in sc.list_edges() if (e.get("change") or {}).get("status") == "added"}
+    added = {(e.relation.src, e.relation.dst) for e in sc.list_edges() if (e.get("change") or {}).get("status") == "added"}
     assert ("repo:app/api.py", "repo:app/store.py#Index") in added
     # links need both commits and the change count
     d = sc.model.meta["change"]

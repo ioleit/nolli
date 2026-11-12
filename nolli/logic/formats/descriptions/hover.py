@@ -83,7 +83,7 @@ class Source:
     def list_relations(self):
         references = vocabulary.read_all_references(self.scene)
         for e in self.model.list_edges():
-            yield e, sum(r["count"] for r in references.get(e, ()))
+            yield e, sum(r["count"] for r in references.get(e.id, ()))
 
 @dataclass
 class NodeView:
@@ -169,7 +169,7 @@ def _by_use(ctx: Ctx, file_id: str, names: list[str]) -> list[str]:
     for e in ctx.g.model.list_in(file_id):
         if e.subkind != "ref":
             continue
-        for f in vocabulary.read_references(ctx.g.element(e)):
+        for f in vocabulary.read_references(ctx.g.element(e.id)):
             n = f.get("name")
             if n in wanted:
                 uses[n] = uses.get(n, 0) + f["count"]
@@ -527,6 +527,6 @@ class Hover(Overlay):
         for e in scene.model.list_edges():
             if not (known(e.src) and known(e.dst)):
                 continue
-            p = scene.find_element(e).get("projection") or {}
-            out[e] = {"text": _edge_info(ctx, EdgeFacts(e, p))}
+            p = scene.find_element(e.id).get("projection") or {}
+            out[e.id] = {"text": _edge_info(ctx, EdgeFacts(e, p))}
         return out

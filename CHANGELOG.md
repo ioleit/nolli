@@ -6,13 +6,40 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **A projection spec has one text form, and a projected model is keyed by it**:
+  - `ProjectionSpec.to_query()` / `from_query(q, presets)` write and read it as the viewer's URL
+    parameters, defaults left out and lists sorted; `format()` / `parse()` as text
+    (`p=default`, `x=repo:,repo:nolli&nu=1`). The server's `parse_spec` is `from_query` with the
+    viewer's presets.
+  - A projected model's key is a `ProjectionKey(source, spec)`, written
+    `<source key>~project:<spec>` and read back by `ModelKey.parse` (was an opaque
+    `StringKey("project:<hash>")` of what the projection drew). `projection.make_key(source, spec)`
+    makes it without projecting. Two specs that happen to draw the same are now two keys.
+    Values kept under the old keys (in memory only) are not found.
+  - `Where(predicate)` is gone: a function has no text form. `Dirs(under="")` unfolds every
+    directory (at or below ``under``), the cut the examples used it for; a fixed list is `Ids`.
+- **Values for a model are kept with `open_maps(name).save(model_key, values, about)`**, whether an
+  overlay computed them or they were handed in (`KeptMaps`, `nolli/store/precomputed.py`). `save`
+  adds when they were kept to `about` (`at`, `precomputed.stamp`), in memory as on disk.
+  `precompute_overlay_values` and `save_scene` take `about=` (was `by=`, which nothing passed).
+- **An edge is keyed by its id, a `RelationId`, as a node is by its address**
+  (`nolli/model/schema.py`). A `RelationId` is a `str`, `kind|src|dst|subkind`, checked when
+  made from text and made from its parts with `RelationId.from_parts`; `Relation.id` gives an
+  edge's. Overlays, kept maps, refs and `Scene.find_element` take ids, never `Relation` objects
+  (passing one raises `TypeError`); the `Relation` an id names is the model's
+  (`Model.find_relation`, `Element.relation`). `Relation.format()` and `Relation.parse()` are
+  gone. `schema.parse_key` reads either kind of id back from text. Kept maps and the viewer's
+  JSON are unchanged: they already named edges this way.
 - **`nolli/logic/` holds what nolli computes between a repository and what it shows**:
   `extractors`, `sources`, `transformations` and `formats` moved under it from `nolli/`
   (`dev/examples/logic.py` had proposed the directory; `propose_package.py` now proposes the next one
   the same way). Imports change accordingly: `nolli.logic.transformations`, and so on.
 - **`projection` is a package**: `reading`, `rollup` and `unfold`, used by the projection
-  only, moved into `nolli/logic/transformations/projection/`. `projection.fold` and
-  `ProjectionSpec` are imported as before.
+  only, moved into `nolli/logic/transformations/projection/`. What a projection is asked for
+  (`ProjectionSpec`, the expansions, its text form, `make_key`) is in `spec`, the projection
+  itself in `_core`; `__init__` re-exports what callers use, so `projection.fold` and
+  `projection.ProjectionSpec` are as before. A package's `__init__` may re-export its own
+  modules' functions and constants (`tests/test_imports.py`).
 - **`nolli/operations.py`: what the command line and the server share** (was `build.py`,
   `scenes.py` and `datasets.py`). High-level operations that tie the store and the logic
   together:
@@ -43,7 +70,7 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   `review.brief.make_review_diagram`; `review.brief.make_brief(scene)` makes the diagram and reads
   the description itself; `review.verdicts.load_verdicts` reads a change's verdicts.
 - **`ProjectionSpec.expand` says which containers unfold**, one rule instead of `expanded`,
-  `unfold`, `preset`, `focus` and `budget`: `Ids`, `Where` (was `ProjectionSpec.expanded_if`),
+  `unfold`, `preset`, `focus` and `budget`: `Ids`, `Where` (was `ProjectionSpec.expanded_if`; since gone),
   `Root` (the `folded` preset), `All` (`unfolded`), `AtMost(budget)` (`default`), and
   `nolli.review.changes.Changes` (`changes`), which computes the change's cut itself. The viewer's
   URL is unchanged; the state it gets back has a `budget` only for the default cut.
@@ -65,6 +92,12 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   them.
 - **`Target.pin(adds=True)`** (was `review=True`): a single revision R means what R adds. It no
   longer refuses a snapshot; `nolli agent brief` does, and `Target.is_change` says which it is.
+
+### Added
+
+- **`dev/examples/annotations.py`**: annotations handed in as JSON (element id → value), kept as
+  the `annotations` map of a projection, some on lines that only the projection draws, and read
+  back on the same projection drawn again.
 
 ## 0.9.0
 

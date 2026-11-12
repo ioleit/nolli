@@ -95,7 +95,8 @@ def test_directory_store_keeps_models_changes_and_verdicts(tmp_path):
     kept = {"repo:x": {"verdicts": [{"id": "V1", "target": "n_x", "verdict": "good", "reason": "ok"}]}}
     verdicts.save(change.format_key(), kept, {"by": "upload"})
     store.save_change(change, {"title": "rebuilt"}, sides, {"content": {}})  # the verdicts stay with the change they answer
-    assert verdicts.load(change.format_key()) == kept and verdicts.load_about(change.format_key()) == {"by": "upload"}
+    about = verdicts.load_about(change.format_key())
+    assert verdicts.load(change.format_key()) == kept and about == {"by": "upload", "at": about["at"]}  # save says when
     assert store.load_change(change) == {"title": "rebuilt"}
     assert not [p for p in store.root.iterdir() if p.name.startswith(".")]  # no work left over
     with pytest.raises(KeyError):
@@ -242,16 +243,16 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
 
 def test_maps_read_back_from_json_are_keyed_by_addresses_and_relations():
     """A map kept as JSON reads back as it was given: nodes keyed by ``EntityId`` (so their
-    methods work on keys read from disk), edges by ``Relation``."""
+    methods work on keys read from disk), edges by ``RelationId``, also when given as plain text."""
     from nolli.model.model import Relation
-    from nolli.model.schema import EntityId, RelationKind
+    from nolli.model.schema import EntityId, RelationId, RelationKind
     from nolli.store.maps import dump_map, parse_map
 
     a, b = EntityId.from_path("a.py"), EntityId.from_path("b.py", "B")
-    e = Relation(RelationKind.USE, a, b, "import")
-    values, about = parse_map(json.loads(json.dumps(dump_map("m", {a: {"x": 1}, a.own_code(): {}, e: {"y": 2}}, {"by": "t"}))))
+    e = Relation(RelationKind.USE, a, b, "import").id
+    values, about = parse_map(json.loads(json.dumps(dump_map("m", {a: {"x": 1}, a.own_code(): {}, str(e): {"y": 2}}, {"by": "t"}))))
     assert values == {a: {"x": 1}, a.own_code(): {}, e: {"y": 2}} and about == {"by": "t"}
-    assert all(type(k) is (Relation if isinstance(k, Relation) else EntityId) for k in values)
+    assert all(type(k) is (RelationId if k == e else EntityId) for k in values)
     assert next(k for k in values if k == a).path == "a.py"
 
 

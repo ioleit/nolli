@@ -42,7 +42,7 @@ def scene(tmp_path: Path):
     return open_dir(tmp_path, key="test@precomputed")
 
 
-MODULES = ProjectionSpec(expand=projection.Where(lambda el: el.key == "repo:" or el.kind == "directory"), groups=[], utilities=0)
+MODULES = ProjectionSpec(expand=projection.Dirs(), groups=[], utilities=0)
 
 
 def fold(scene):
@@ -81,7 +81,7 @@ def test_what_extraction_said_holds_for_a_namesake(scene):
     assert src.get("files") is None and src.get("symbols") is None  # no namesake: nothing was said
     assert set(proposal.read_all("files")) == set(scene.read_all("files"))
     edge = next(e for e in proposal.model.list_edges() if e.src == "repo:pkg/a.py")
-    assert proposal.find_element(edge).get("references") == scene.find_element(edge).get("references")
+    assert proposal.find_element(edge.id).get("references") == scene.find_element(edge.id).get("references")
     assert src.get("hover") is None and "a" in a.get("hover")["text"]  # nothing to say about what the source does not have
     # the proposal folds like any scene: roles, modules and references are read off it
     projection = fold(proposal)
@@ -103,7 +103,7 @@ def test_caching_overlay_reads_what_is_kept_and_computes_the_rest(scene):
     assert folded["kind"] == "file" and folded["inside"] >= 1  # the class folded into the file's box
     assert behind.asked == ["repo:pkg/a.py"]
     assert projection.read_all("counting") == fold(scene.with_overlays(Counting())).read_all("counting")  # as computed live
-    assert all(k in projection.model.entities or k in projection.model.edges for k in behind.asked)  # never asked about the source's elements
+    assert all(projection.model.has(k) for k in behind.asked)  # never asked about the source's elements
 
 def test_values_of_another_version_are_not_read(scene):
     store = MemoryMaps()

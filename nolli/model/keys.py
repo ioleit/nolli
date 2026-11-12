@@ -47,9 +47,13 @@ class Repo:
         return self.url.rstrip("/").split("/")[-1]
 
 
+PROJECTED = "~project:"  # between a projected model's source key and which projection it is
+
+
 class ModelKey:
     """What a model is the model of: a repository at one commit (``CommitKey``), the change
-    between two of its commits (``ChangeKey``), or anything else, by name (``StringKey``)."""
+    between two of its commits (``ChangeKey``), a projection of another model
+    (``ProjectionKey``), or anything else, by name (``StringKey``)."""
 
     repo: Repo
 
@@ -60,8 +64,12 @@ class ModelKey:
 
     @classmethod
     def parse(cls, text: str) -> ModelKey:
-        """Parse ``text`` as ``format_key()`` writes it: ``<repo>@<sha>`` gives a CommitKey,
-        ``<repo>@<base>..<head>`` a ChangeKey, and anything else a StringKey."""
+        """Parse ``text`` as ``format_key()`` writes it: ``<source>~project:<spec>`` gives a
+        ProjectionKey, ``<repo>@<sha>`` a CommitKey, ``<repo>@<base>..<head>`` a ChangeKey, and
+        anything else a StringKey."""
+        source, projected, spec = text.rpartition(PROJECTED)
+        if projected and spec:
+            return ProjectionKey(ModelKey.parse(source), spec)
         repo, at, rest = text.rpartition("@")
         if not at or not repo or not rest:
             return StringKey(text)
@@ -74,6 +82,8 @@ class ModelKey:
 
     @classmethod
     def from_dict(cls, d: dict) -> ModelKey:
+        if "projection" in d:
+            return ProjectionKey(ModelKey.from_dict(d["source"]), d["projection"])
         if "key" in d:
             return StringKey(d["key"])
         repo = Repo(d["repo"])
@@ -127,3 +137,25 @@ class StringKey(ModelKey):
 
     def to_dict(self) -> dict:
         return {"key": self.text}
+
+
+@dataclass(frozen=True)
+class ProjectionKey(ModelKey):
+    """A projection of another model: the source's key and which projection it is, the
+    projection's spec as text (``ProjectionSpec.format``, e.g. ``p=default``). The same spec of
+    the same model always draws the same, so the key is known before projecting
+    (``projection.make_key``), and what is kept for it is found again when it is drawn again."""
+
+    source: ModelKey
+    spec: str  # ProjectionSpec.format()
+
+    @property
+    def repo(self) -> Repo:  # type: ignore[override]
+        """The source's repository (a ``StringKey`` source has none)."""
+        return self.source.repo
+
+    def format_key(self) -> str:
+        return f"{self.source.format_key()}{PROJECTED}{self.spec}"
+
+    def to_dict(self) -> dict:
+        return {"source": self.source.to_dict(), "projection": self.spec}

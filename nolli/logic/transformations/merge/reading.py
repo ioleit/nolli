@@ -14,25 +14,25 @@ from nolli.model.schema import RelationKind
 
 @dataclass
 class ChangedEdge:
-    key: Relation
+    relation: Relation
     count: int
     diff: dict | None
 
     @property
     def kind(self) -> str:
-        return self.key.kind
+        return self.relation.kind
 
     @property
     def src(self) -> str:
-        return self.key.src
+        return self.relation.src
 
     @property
     def dst(self) -> str:
-        return self.key.dst
+        return self.relation.dst
 
     @property
     def subkind(self) -> str:
-        return self.key.subkind
+        return self.relation.subkind
 
 
 class Reader:
@@ -101,7 +101,7 @@ class Reader:
         for e in self.model.edges:
             if e.kind == RelationKind.CONTAIN:
                 continue
-            d = self.changes.get(e)
-            out.append(ChangedEdge(e, sum(r["count"] for r in references.get(e, ())),
+            d = self.changes.get(e.id)
+            out.append(ChangedEdge(e, sum(r["count"] for r in references.get(e.id, ())),
                                    d if d and d.get("status") in ("added", "removed", "changed") else None))
         return out

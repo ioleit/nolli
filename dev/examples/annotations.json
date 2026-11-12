@@ -1,0 +1,5 @@
+{
+  "repo:nolli/model": {"text": "the schema: entities, relations, scenes"},
+  "use|repo:nolli/server|repo:nolli/logic|import": {"text": "the server reaches into logic directly, not through operations"},
+  "use|repo:nolli/operations.py|repo:nolli/store|import": {"text": "operations owns the store"}
+}

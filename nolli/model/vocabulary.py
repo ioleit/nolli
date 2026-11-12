@@ -9,7 +9,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
-from nolli.model.model import Relation
+from nolli.model.model import Key
+from nolli.model.schema import RelationId
 
 if TYPE_CHECKING:
     from nolli.model.scene import Element, Scene
@@ -25,12 +26,12 @@ EXTERNALS = "externals"  # a node outside the repository: how it is called, its 
 SHAPES = (FILES, SYMBOLS, REFERENCES, EXTERNALS)
 
 
-def shape_of(key: str | Relation, speaker: str) -> str:
+def shape_of(key: Key, speaker: str) -> str:
     """Return the overlay a fact belongs in, given what it is about and who said it. An edge's
     facts go in references. A repository node's go in files when the file tree (``fs``) said
     them and in symbols when a language did. Facts about anything outside the repository go in
     externals."""
-    if isinstance(key, Relation):
+    if isinstance(key, RelationId):
         return REFERENCES
     if key.is_repo:
         return FILES if speaker == "fs" else SYMBOLS
@@ -113,7 +114,7 @@ def read_all_files(scene: Scene) -> Mapping[str, FileFacts]:
     return scene.read_all(FILES)  # type: ignore[return-value]
 
 
-def read_all_references(scene: Scene) -> Mapping[Relation, list[Reference]]:
+def read_all_references(scene: Scene) -> Mapping[RelationId, list[Reference]]:
     """Return the references every edge of a scene stands for, by edge, as ``read_references``
     reads them one by one. Edges no extractor found references for are left out."""
     return {k: v["references"] for k, v in scene.read_all(REFERENCES).items()}  # type: ignore[misc]
@@ -122,3 +123,26 @@ def read_all_references(scene: Scene) -> Mapping[Relation, list[Reference]]:
 def read_all_symbols(scene: Scene) -> Mapping[str, ModuleFacts | SymbolFacts]:
     """Return what every module, class or type of a scene defines, by address."""
     return scene.read_all(SYMBOLS)  # type: ignore[return-value]
+
+# -- the other well-known overlays --------------------------------------------------------
+#
+# This module is the right pattern for an overlay that code other than its producer relies
+# on: one declaration of its name (a constant), of the shape of its value (a TypedDict) and
+# of a reader (``read_*``), and consumers that import the reader rather than spell the name.
+# We should use it for all well-known overlays. Today only extraction's four follow it; the
+# others are a ``name = "..."`` on the class that produces them, spelled again as a string
+# by each consumer (``viewer.SHOWN`` lists the viewer's once more), and the shape of their
+# value is written down, if at all, only for the viewer, in TypeScript
+# (``viewer/types/nolli.d.ts``). As of this writing:
+#
+# | Overlay      | Produced by                                  | Named as a string in                                   | Value (where known)                                    |
+# |--------------|----------------------------------------------|--------------------------------------------------------|--------------------------------------------------------|
+# | ``projection`` | ``projection.fold`` (a ``FixedOverlay``)     | merge, viewer, hover, mermaid                          | box: ``BoxProjection`` / ``AnchorProjection``; edge: ``EdgeProjection`` (nolli.d.ts) |
+# | ``label``      | ``logic/formats/descriptions/label.py``      | viewer, mermaid, hover                                 | ``{text, icons, prose}`` (``Label``, nolli.d.ts)        |
+# | ``names``      | ``logic/formats/descriptions/names.py``      | merge/reading, hover, label, review/card               | node: ``{name, icons}``                                 |
+# | ``hover``      | ``logic/formats/descriptions/hover.py``      | viewer                                                 | ``{text}``, ``text`` an ``Info`` (nolli.d.ts)           |
+# | ``change``     | ``merge.Change``                             | cli, merge/reading, merge/items, projection/reading, viewer, mermaid, report, review/card | drawn: ``NodeDiff`` / ``EdgeDiff``; on the change: a node's record, an edge's ``{status, base, head, fact}`` (``FactChange``) |
+# | ``items``      | ``merge/items.ChangeItems``                  | viewer; review/card through ``ChangeItems.name``       | drawn: ``{items}`` (``Items``); on the change: ``{items, about}`` |
+# | ``verdicts``   | ``review/verdicts.Verdicts``                 | viewer, review/card                                    | drawn: ``{verdicts, verdict, own, inside}`` (``Verdicts``, in part) |
+# | ``review``     | ``review/card.Review``                       | viewer (``SHOWN``)                                     | ``{card}`` (``Review``)                                 |
+# | ``content``    | a kept map (git's per file), no overlay class | operations, merge/items                                | a file: ``{git, added, removed, hunks}``, ``old_path`` when renamed (``logic/sources/git.py``) |

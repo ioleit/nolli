@@ -17,9 +17,9 @@ from nolli.logic.transformations.merge import Links
 from nolli.logic.transformations.merge.reading import Reader
 from nolli.logic.transformations.projection.reading import Reading
 from nolli.model import schema
-from nolli.model.model import Key, Relation
+from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene
-from nolli.model.schema import EntityId
+from nolli.model.schema import EntityId, RelationId
 
 # ---------- the numbered changes a reviewer (person or agent) goes through ----------
 
@@ -146,7 +146,7 @@ def _number_changes(scene: Scene) -> list[dict]:
         deps.append({"category": "dependency", "status": st, "title": f"{format_name(g, a)} → {format_name(g, b)}: {word}",
                      "area": _find_area(g, a), "role": role if role != "source" else _find_role(g, b),
                      "kind": kind, "subkind": sub, "base": base, "head": head,
-                     "targets": targets[:12], "entities": [a, b], "facts": [r.key.format() for r in rs],
+                     "targets": targets[:12], "entities": [a, b], "facts": [r.relation.id for r in rs],
                      "reveal": sorted(set(list_ancestors_to_unfold(g, a)) | set(list_ancestors_to_unfold(g, b))), "focus": [a, b],
                      "link": first["link"], "changes": changes[:12], "more": max(0, len(changes) - 12)})
     for x in sorted(g.nodes):
@@ -211,7 +211,7 @@ def _index_items(scene: Scene) -> dict[Key, dict]:
         for x in it["focus"]:
             about.setdefault(x, {})[it["id"]] = what
         for f in it["facts"]:
-            about.setdefault(Relation.parse(f), {})[it["id"]] = what
+            about.setdefault(RelationId(f), {})[it["id"]] = what
         listed.setdefault(it["focus"][0], []).append(it)
     out = {k: {"items": sorted(v, key=lambda i: int(i[1:])), "about": v} for k, v in about.items()}
     for k, its in listed.items():
@@ -233,8 +233,9 @@ def _place_box_items(scene: Scene, about: Mapping[Key, dict], on_edges: Mapping[
     lines' ends."""
     ends: dict[str, set[str]] = defaultdict(set)  # item -> the drawn boxes at the ends of the lines carrying it
     for e, items in on_edges.items():
+        r = scene.model.find_relation(e)
         for i in items:
-            ends[i].update((e.src, e.dst))
+            ends[i].update((r.src, r.dst))
     above: dict[str, set[str]] = {}  # a box and the boxes around it
 
     def around(x: str) -> set[str]:
@@ -279,7 +280,7 @@ class ChangeItems(Overlay):
         if "source" not in scene.sources:
             return _index_items(scene)
         about = scene.sources["source"].read_all(self.name)
-        on_edges = {e: _place_edge_items(scene.find_element(e), about) for e in scene.model.list_edges()}
+        on_edges = {e.id: _place_edge_items(scene.find_element(e.id), about) for e in scene.model.list_edges()}
         on_boxes = _place_box_items(scene, about, on_edges)
         return {**{e: {"items": items} for e, items in on_edges.items()}, **{x: {"items": items} for x, items in on_boxes.items()}}
 

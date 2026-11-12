@@ -29,7 +29,7 @@ class RelationKind(StrEnum):
 class EntityKind(StrEnum):
     """Entity kinds by UML metaclass. ``group`` is a synthetic container with no counterpart
     in the repository (each scheme's root but ``repo:``); ``anchor`` is drawn only, in a
-    projection (``nolli/logic/transformations/projection/__init__.py``)."""
+    projection (``nolli/logic/transformations/projection/_core.py``)."""
 
     DIRECTORY = "directory"
     FILE = "file"
@@ -286,3 +286,36 @@ class EntityId(str):
 
 
 EntityId.REPO_ROOT = EntityId.root(Scheme.REPO)
+
+
+_RELATION_KINDS = frozenset(RelationKind)
+
+
+class RelationId(str):
+    """A relation's id: ``kind|src|dst|subkind``, a ``str`` that is checked when made to have
+    four parts, a known kind and two addresses. Models, kept maps and the viewer name an edge by
+    it. Make one with ``from_parts`` (or ``RelationId(text)`` for one read back from JSON); the
+    relation it names is found in a model (``Model.find_relation``), not parsed from the text.
+
+    An address with a ``|`` in it makes an id that reads back wrong; none is made today."""
+
+    __slots__ = ()
+
+    def __new__(cls, value: str) -> RelationId:
+        if type(value) is cls:
+            return value
+        parts = value.split("|", 3)
+        if len(parts) != 4 or parts[0] not in _RELATION_KINDS:
+            raise ValueError(f"not a relation id (kind|src|dst|subkind): {value!r}")
+        EntityId(parts[1]), EntityId(parts[2])  # raise unless both are addresses
+        return super().__new__(cls, value)
+
+    @classmethod
+    def from_parts(cls, kind: str, src: str, dst: str, subkind: str = "") -> RelationId:
+        """Make the id of the relation of ``kind`` from ``src`` to ``dst`` (and ``subkind``)."""
+        return str.__new__(cls, f"{kind}|{src}|{dst}|{subkind}")
+
+
+def parse_key(text: str) -> EntityId | RelationId:
+    """Return an element's id as read back from text: a relation's (``use|…``) or else an address."""
+    return RelationId(text) if text.partition("|")[0] in _RELATION_KINDS else EntityId(text)

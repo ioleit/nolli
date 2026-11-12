@@ -84,7 +84,7 @@ export interface AnchorProjection {
   utilities_used: string[];  // ids of the utilities whose edges from it became badges
 }
 
-/** What the projection decided about a drawn box (nolli/logic/transformations/projection/__init__.py). */
+/** What the projection decided about a drawn box (nolli/logic/transformations/projection/_core.py). */
 export interface BoxProjection {
   container: boolean;  // unfolded with drawn children
   foldable: boolean;  // has children: clicking unfolds (or − folds)

@@ -162,11 +162,8 @@ def save_verdicts(maps: MapStore, key, verdicts: list[dict], by: dict) -> None:
 
     They are kept in the change's ``verdicts`` map (``StoredMaps``), by target (a node's
     address, or ``"<a> --> <b>"``), with who made them as its ``about``
-    (``{"by": "agent" | "upload", …}``)."""
-    import time
-
-    at = by.get("at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    maps.open_maps("verdicts").save(key.format_key(), _dump_verdicts(verdicts), {**by, "at": at})
+    (``{"by": "agent" | "upload", …}``); ``save`` adds when."""
+    maps.open_maps("verdicts").save(key.format_key(), _dump_verdicts(verdicts), by)
 
 
 def _keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) -> list[dict]:
@@ -225,7 +222,7 @@ class Verdicts(Overlay):
         vs.sort(key=lambda v: int(v["id"][1:]))
         if not vs:
             return {"verdicts": [], "verdict": None, "own": [], "inside": []}
-        ends = [el.key.src, el.key.dst] if el.is_edge else [el.key]
+        ends = [el.relation.src, el.relation.dst] if el.is_edge else [el.key]
         own = [v for v in vs if [x.owner for x in v["ends"]] == ends]
         return {"verdicts": [v["id"] for v in vs], "verdict": max((v["verdict"] for v in vs), key=VERDICT_RANK.get),
                 "own": own, "inside": [v for v in vs if v not in own]}
@@ -269,5 +266,5 @@ def _find_carrier(scene: Scene, a: str, b: str):
         found = [(i + j, e) for i, x in enumerate(around(s)) for j, y in enumerate(around(d))
                  for e in scene.model.list_out(x) if e.dst == y]
         if found:
-            return min(found, key=lambda f: f[0])[1]
+            return min(found, key=lambda f: f[0])[1].id
     return None

@@ -36,7 +36,7 @@ found = defaultdict(lambda: defaultdict(set))  # file above -> file below -> {(n
 for e in scene.model.list_edges([RelationKind.USE]):
     src, dst = find_file(e.src), find_file(e.dst)
     if src and src.startswith(TOP) and is_skipped_to(dst):
-        for r in vocabulary.read_references(scene.find_element(e)):
+        for r in vocabulary.read_references(scene.find_element(e.id)):
             found[src][dst].add((r.get("name") or f"(the module, {e.subkind})", r.get("line")))
 
 for src, dsts in sorted(found.items()):

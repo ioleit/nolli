@@ -13,6 +13,7 @@ from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo, StringKey
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.scene import Scene
 from nolli.store import maps as maps_lib
+from nolli.store import precomputed
 from nolli.store.precomputed import OverlayStore
 
 FORMAT = 1  # of key.json and change.json (nolli.store.FORMAT)
@@ -201,7 +202,7 @@ class DirectoryStore(OverlayStore):
         d = self.places.get(model_key)
         return sorted(f.stem for f in (d / "overlays").glob("*.json")) if d is not None and (d / "overlays").is_dir() else []
 
-    def save_scene(self, scene: Scene, by: dict | None = None) -> None:
+    def save_scene(self, scene: Scene, about: dict | None = None) -> None:
         """Not yet: this store keeps models under commit and change keys only (``save_model``,
         ``save_change``). What an overlay says about one it holds is kept with
         ``precompute_overlay_values``."""
@@ -219,9 +220,9 @@ class DirectoryStore(OverlayStore):
 
 def _is_kept_here(model_key: str) -> bool:
     """Whether this store can hold maps for ``model_key``: a commit's or a change's
-    (``<repo>@…``). For any other key (the ``StringKey`` of the scene a projection returns)
+    (``<repo>@…``). For any other key (a projection's ``ProjectionKey``, a ``StringKey``)
     nothing is kept here, so nothing is read: the answer is "none kept", without a lookup."""
-    return "@" in model_key
+    return "@" in model_key and keys.PROJECTED not in model_key
 
 
 class DirectoryMaps:
@@ -246,7 +247,7 @@ class DirectoryMaps:
             raise KeyError(f"no model {model_key} to keep {self.name} for")
         f.parent.mkdir(exist_ok=True)
         tmp = f.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
-        tmp.write_text(json.dumps(maps_lib.dump_map(model_key, values, about), indent=1))
+        tmp.write_text(json.dumps(maps_lib.dump_map(model_key, values, precomputed.stamp(about)), indent=1))
         tmp.replace(f)
 
 

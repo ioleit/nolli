@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
+from nolli.model import schema
 from nolli.model.keys import ModelKey
-from nolli.model.model import Key, Model, Relation
-from nolli.model.schema import EntityId
+from nolli.model.model import Key, Model
+from nolli.model.schema import EntityId, RelationId
+from nolli.store import precomputed
 from nolli.store.precomputed import KeptMaps, OverlayStore
 
 FORMAT = 2  # of a map as JSON (2: an edge is {"references": [...]})
@@ -62,8 +64,7 @@ class MemoryHandle:
 
     def save(self, model_key: str, values: Mapping[Key, dict], about: dict | None = None) -> None:
         self.store.maps.setdefault(self.name, {})[model_key] = dict(values)
-        if about is not None:
-            self.store.about[(self.name, model_key)] = about
+        self.store.about[(self.name, model_key)] = precomputed.stamp(about)
 
     def load_about(self, model_key: str) -> dict | None:
         return self.store.about.get((self.name, model_key))
@@ -72,19 +73,20 @@ class MemoryHandle:
 
 
 def dump_map(model_key: str, values: Mapping[Key, dict], about: dict | None) -> dict:
-    nodes = {k: v for k, v in values.items() if not isinstance(k, Relation)}
-    edges = {k.format(): v for k, v in values.items() if isinstance(k, Relation)}
+    keys = {k: schema.parse_key(k) for k in values}  # ids given as plain text (read from JSON) are told apart by their text
+    nodes = {k: v for k, v in values.items() if not isinstance(keys[k], RelationId)}
+    edges = {k: v for k, v in values.items() if isinstance(keys[k], RelationId)}
     return {"format": FORMAT, "model": model_key, "about": about, "nodes": nodes, "edges": edges}
 
 
 def parse_map(d: dict) -> tuple[dict[Key, dict], dict | None]:
     """Parse a map as ``dump_map`` wrote it, returning its values and its ``about``. The values are
-    keyed as they were given, a node by its ``EntityId`` and an edge by its ``Relation``. Raise
+    keyed as they were given, a node by its ``EntityId`` and an edge by its ``RelationId``. Raise
     ``FormatError`` for another format and ``ValueError`` for a node key that is no address."""
     if d.get("format") != FORMAT:
         raise FormatError(f"a map of format {d.get('format')!r}, this nolli reads {FORMAT}")
     values: dict[Key, dict] = {EntityId(k): v for k, v in (d.get("nodes") or {}).items()}
-    values.update({Relation.parse(k): v for k, v in (d.get("edges") or {}).items()})
+    values.update({RelationId(k): v for k, v in (d.get("edges") or {}).items()})
     return values, d.get("about")
 
 
