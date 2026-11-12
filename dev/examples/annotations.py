@@ -1,5 +1,5 @@
 """Annotations, given as data and kept as an overlay on a projection:
-python dev/examples/annotations.py <nolli checkout> <annotations.json>
+python dev/examples/annotations.py <nolli checkout> <annotations.json> [<data directory>]
 
 An example of nolli as a library. Where custom_overlay.py defines an overlay in code, this one
 is handed its values: a JSON object from element ids to what is said about each. It opens a
@@ -11,27 +11,36 @@ key: the key of the model it was projected from plus which projection it is.
 Element ids are the model's own: an entity's address (an ``EntityId``, ``repo:nolli/model``)
 or a relation's ``kind|src|dst|subkind`` (a ``RelationId``,
 ``use|repo:nolli/server|repo:nolli/logic|import``). Both are text, so the JSON's keys are the
-store's keys as they are."""
+store's keys as they are.
+
+Everything is kept in a ``RepoDirectoryStore`` under the data directory (a new temporary one
+unless one is given), so the files can be looked at afterwards; the script prints where.
+The model is keyed as ``nolli extract`` keys a working tree, ``<path>@worktree``, so the
+projection's key has a repository and the repository's store can keep it."""
 
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 from nolli import operations
 from nolli.logic import transformations
 from nolli.logic.transformations import projection
-from nolli.model.keys import StringKey
-from nolli.store import MemoryStore
+from nolli.model.keys import Repo
+from nolli.store import RepoStoreProvider
 
-repo, given = Path(sys.argv[1]), Path(sys.argv[2])
-store = MemoryStore()                                               # the model and every map kept for it, in one store
-scene = operations.open_scene(store, operations.build_files(store, repo, StringKey("nolli@worktree")))
+repo, given = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+data = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(tempfile.mkdtemp(prefix="nolli-annotations-"))
+stores = RepoStoreProvider(data)                                    # decides once per repository whether it may be read
+source = Repo(str(repo)).make_commit("worktree")                    # the files as they are, as `nolli extract` keys them
+store = stores.open(source.repo)                                    # the model and every map kept for it, this repository only
+scene = operations.open_scene(store, operations.build_files(store, repo, source))
 
 # nolli/ unfolded, its directories folded: lines between them stand for many edges of the scene
 modules = projection.ProjectionSpec(expand=projection.Ids(("repo:", "repo:nolli")), groups=[], utilities=0)
 
 key = projection.make_key(scene.model.key, modules)                 # a ProjectionKey, known before projecting
-print("projected model:", key.format_key())                         # nolli@worktree~project:x=repo:,repo:nolli&g=&nu=1
+print("projected model:", key.format_key())                         # <path>@worktree~project:x=repo:,repo:nolli&g=&nu=1
 print("projected from: ", key.source.format_key())                  # the source's key, read back
 print("projected as:   ", projection.ProjectionSpec.parse(key.spec).format())   # the spec, read back
 
@@ -49,7 +58,9 @@ assert not missing, f"not in the projected model: {missing}"
 
 store.open_maps("annotations").save(key.format_key(), values, about={"source": given.name})
 # keys are ids (EntityId | RelationId, both str); save adds when to about ("at")
-print("kept for:", list(store.maps["annotations"]), "about:", store.open_maps("annotations").load_about(key.format_key()))
+print("maps kept:", store.list_map_names(key.format_key()), "about:", store.open_maps("annotations").load_about(key.format_key()))
+print("the model is in:     ", stores.locate(source))
+print("the projection is in:", stores.locate(key))                  # its own directory, though no model was saved for it
 
 # -- read them back on the same projection, made afresh ------------------------------------
 

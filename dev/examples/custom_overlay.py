@@ -1,26 +1,29 @@
 """A custom overlay on every node and edge of a checkout, kept so it is not computed twice:
-python dev/examples/custom_overlay.py <nolli checkout>
+python dev/examples/custom_overlay.py <nolli checkout> [<data directory>]
 
 An example of nolli as a library. It opens a scene of the files as they are and defines an
 overlay of its own, which says something about each element and handles folded boxes. The
 overlay's values are kept in a store for the scene and for one projection of it, and the
 kept overlay is then used instead, both on those and on a projection whose values were not
-kept."""
+kept. Everything is kept in a ``RepoDirectoryStore`` under the data directory (a new temporary
+one unless one is given), and the script prints where."""
 
 import sys
+import tempfile
 from pathlib import Path
 
 from nolli import operations
 from nolli.logic import transformations
 from nolli.logic.transformations import projection
-from nolli.model.keys import StringKey
+from nolli.model.keys import Repo
 from nolli.model.scene import Element, Overlay, Scene
-from nolli.store import MemoryStore
-from nolli.store.maps import MemoryMaps
+from nolli.store import RepoStoreProvider
 
-repo = Path(sys.argv[1])
-files = MemoryStore()                                               # or a DirectoryStore
-scene = operations.open_scene(files, operations.build_files(files, repo, StringKey("nolli@worktree")))   # the files as they are, with nolli's overlays
+repo = Path(sys.argv[1]).resolve()
+data = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(tempfile.mkdtemp(prefix="nolli-custom-overlay-"))
+source = Repo(str(repo)).make_commit("worktree")                    # the files as they are, as `nolli extract` keys them
+store = RepoStoreProvider(data).open(source.repo)                   # or a MemoryStore, which keeps nothing on disk
+scene = operations.open_scene(store, operations.build_files(store, repo, source))   # with nolli's overlays
 
 
 class Cool(Overlay):                                                # the custom overlay
@@ -53,8 +56,6 @@ print(len(live.read_all("cool")), "elements have a remark")
 
 # -- keep what it says, use the kept answers instead ---------------------------------------
 
-store = MemoryMaps()                                                # or a DirectoryStore
-
 # module level: every directory unfolded, nothing else
 modules = projection.ProjectionSpec(expand=projection.Dirs(), groups=[], utilities=0)
 # one directory unfolded, a projection whose values are not kept
@@ -62,7 +63,9 @@ one_dir = projection.ProjectionSpec(expand=projection.Ids(("repo:", "repo:nolli"
 
 store.save_scene(live)                                              # the model, and what every overlay says about it
 store.precompute_overlay_values(transformations.apply(live, projection.fold(modules)), Cool())   # a projection, this overlay only
-print("kept:", store.list_map_names(scene.model.key.format_key()), "for the scene;", [k for k in store.maps["cool"]], "for cool")
+folded = transformations.apply(live, projection.fold(modules)).model.key
+print("kept for the scene:", store.list_map_names(scene.model.key.format_key()), "in", store.locate(scene.model.key))
+print("kept for the projection:", store.list_map_names(folded.format_key()), "in", store.locate(folded))
 
 cool = store.caching_overlay(Cool())                                # Cool, answered from its kept values where they exist
 
