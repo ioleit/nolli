@@ -16,7 +16,7 @@ from nolli.logic.transformations.projection import unfold as unfold_lib
 from nolli.logic.transformations.projection.reading import Reading
 from nolli.logic.transformations.projection.rollup import RolledUp
 from nolli.model import vocabulary
-from nolli.model.keys import StringKey
+from nolli.model.keys import ProjectionKey
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Scene
 from nolli.model.schema import EntityId, EntityKind, RelationKind, Scheme
@@ -338,6 +338,6 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tupl
                            "hidden": len(hidden), "hidden_nodes": sorted(hidden), "stats": {"nodes": drawn_count, "edges": len(keys)},
                            "internal": dict(rolled.internal), "hidden_relations": rolled.hidden_relations,
                            "unresolved": dict(rolled.unresolved)}}
-    key = StringKey("project:" + hashlib.sha1(f"{scene.model.key.format_key()}|{sorted(state.items())}".encode()).hexdigest()[:16])
+    key = ProjectionKey(scene.model.key, hashlib.sha1(f"{scene.model.key.format_key()}|{sorted(state.items())}".encode()).hexdigest()[:16])
     model = Model(key, entities, [*contain, *keys], meta=meta, check=False)
     return model, {k: tuple(v) for k, v in refs.items()}, FixedOverlay("projection", values)

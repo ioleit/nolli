@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -35,3 +36,14 @@ def test_custom_overlay_kept_and_read_back():
     assert "live: repo:nolli/model/scene.py: cool node, bro" in out
     assert "cool folded node comprising" in out and "cool edge, bro" in out
     assert out.rstrip().endswith("live and kept agree on the scene and the module-level projection")
+
+
+def test_annotations_kept_on_a_projection(tmp_path):
+    given = tmp_path / "notes.json"
+    given.write_text(json.dumps({"repo:nolli/model": {"text": "the schema"},
+                                 "use|repo:nolli/server|repo:nolli/logic|import": {"text": "a line between folded boxes"}}))
+    out = subprocess.run([sys.executable, str(ROOT / "dev/examples/annotations.py"), str(ROOT), str(given)], capture_output=True, text=True, check=True).stdout
+    assert "projected model: nolli@worktree~project:" in out and "projected from:  nolli@worktree\n" in out
+    assert "use|repo:nolli/server|repo:nolli/logic|import: a line between folded boxes   (only in the projection)" in out
+    assert "repo:nolli/model: the schema\n" in out
+    assert out.rstrip().endswith("the annotations were kept on the projected model and read back")

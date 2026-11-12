@@ -220,9 +220,9 @@ class DirectoryStore(OverlayStore):
 
 def _is_kept_here(model_key: str) -> bool:
     """Whether this store can hold maps for ``model_key``: a commit's or a change's
-    (``<repo>@…``). For any other key (the ``StringKey`` of the scene a projection returns)
+    (``<repo>@…``). For any other key (a projection's ``ProjectionKey``, a ``StringKey``)
     nothing is kept here, so nothing is read: the answer is "none kept", without a lookup."""
-    return "@" in model_key
+    return "@" in model_key and keys.PROJECTED not in model_key
 
 
 class DirectoryMaps:

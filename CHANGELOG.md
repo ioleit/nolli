@@ -6,6 +6,11 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **A projected model is keyed by its source's key and which projection it is**: a
+  `ProjectionKey(source, digest)`, written `<source key>~project:<digest>` and read back by
+  `ModelKey.parse` (was an opaque `StringKey("project:<hash>")`). The digest is of what the
+  projection drew, as before, so the same projection of the same model has the same key.
+  Values kept under the old keys (in memory only) are not found.
 - **Values for a model are kept with `open_maps(name).save(model_key, values, about)`**, whether an
   overlay computed them or they were handed in (`KeptMaps`, `nolli/store/precomputed.py`). `save`
   adds when they were kept to `about` (`at`, `precomputed.stamp`), in memory as on disk.
@@ -77,6 +82,12 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   them.
 - **`Target.pin(adds=True)`** (was `review=True`): a single revision R means what R adds. It no
   longer refuses a snapshot; `nolli agent brief` does, and `Target.is_change` says which it is.
+
+### Added
+
+- **`dev/examples/annotations.py`**: annotations handed in as JSON (element id → value), kept as
+  the `annotations` map of a projection, some on lines that only the projection draws, and read
+  back on the same projection drawn again.
 
 ## 0.9.0
 
