@@ -20,16 +20,18 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   - The timings are in a `Server-Timing` header instead of the viewer JSON's `stats.ms`.
 - **The list of changes is a table of the changes preset; the numbered changes are gone**
   (`nolli/logic/transformations/merge/presets.py`, `viewer/js/review.js`). The review panel lists the
-  changed nodes and edges of the changes preset
-  (`f=table&required_overlay=change&overlays=change&p=changes`): the top of each added or removed
-  subtree, each edited file and each changed edge, each named by its id instead of C1, C2, …
-  (`item=` in the viewer's link too). Its verdicts are a table of the change itself
+  changed entities and relations the changes preset draws
+  (`f=table&required_overlay=change&overlays=change&p=changes`), grouped as entities and
+  relations, each named by its id instead of C1, C2, … (`item=` in the viewer's link too). It
+  leaves out an entity whose change is only summed up from what is inside it
+  (`is_derived_change`). Its verdicts are a table of the change itself
   (`f=table&required_overlay=verdicts&overlays=verdicts&p=none`).
   - `/api/changes`, the `items` overlay (`merge.items`: `ChangeItems`, `list_changes`) and the C-ids
     are gone. `format_name`, `find_box` and `list_ancestors_to_unfold` moved to `merge.reading`;
     `Changes` and `PRESETS` to `merge.presets`.
   - The `change` overlay has a module of its own, `merge/change.py`, whose class docstring says
-    what its values hold. On a drawn node it now also gives its `role`, and for a file or class
+    what its values hold. On a drawn node it now also says whether its change is only summed up
+    from what is inside it (`is_derived_change`), and gives its `role`, and for a file or class
     the change touched itself a `link`, a file's `hunks` (with links) and the `classes` it
     changed. A drawn edge's has its `role` too.
   - On the change itself the `verdicts` overlay describes each verdict (`edge`, `reveal`, `label`).

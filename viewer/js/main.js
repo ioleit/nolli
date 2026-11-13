@@ -223,7 +223,7 @@ function pinItem(id) {
   const { ids, keys } = targets(id);
   const root = byId("root");
   const edge = scene.edges.find(e => e.key === keys[0]), node = scene.nodes.find(n => n.id === ids[0]);
-  const useEdge = edge && ("edge" in it ? it.edge : it.category === "dependency") || !node;
+  const useEdge = edge && ("edge" in it ? it.edge : it.category === "relation") || !node;
   const target = useEdge ? edge && root.querySelector(`.edge[data-key="${CSS.escape(edge.key)}"]`) : root.querySelector(`.node[data-id="${CSS.escape(node.id)}"]`);
   const shown = useEdge ? edge : node;
   if (target && shown) pinTip(shown, target);

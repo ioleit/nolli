@@ -21,6 +21,7 @@ export interface NodeDiff {
   files: number;  // changed files
   new: number; gone: number;  // entities added / removed
   internal: number;  // changed facts between its own children
+  is_derived_change: boolean;  // it did not change itself: its change is summed up from what is inside it
   git?: string; old_path?: string; renamed_to?: string;
   role?: string;  // of the file or directory it is in: source (or mixed), test, docs, …
   link?: string | null;  // a file or class the change touched itself: where to see it
@@ -53,7 +54,7 @@ export interface TableRow {
 /** A change in the review panel's list: a changed box or edge of the changes preset (TableRow). */
 export interface ReviewItem {
   id: string;  // the box's or edge's id
-  category: "component" | "dependency" | "content";
+  category: "entity" | "relation";
   status: Status;
   title: string;
   area: string;  // the top-level box it is in

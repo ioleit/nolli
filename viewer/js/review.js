@@ -30,7 +30,7 @@ const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 /** @param {string | null | undefined} href @param {string} text */
 const link = (href, text) => href ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>` : esc(text);
 const GLYPH = { added: "+", removed: "−", changed: "~" };
-const TITLES = { component: "Components added or removed", dependency: "Dependencies between modules", content: "Edited files" };
+const TITLES = { entity: "Entities", relation: "Relations" };
 
 /** @type {ReviewItem[]} in the panel's order */
 let items = [];
@@ -84,31 +84,24 @@ function around(id) {
   return out;
 }
 
-const WHAT = /** @type {Record<string, string>} */ ({ file: "module", directory: "package", package: "external package" });
-const CATEGORIES = ["component", "dependency", "content"];
+const CATEGORIES = ["entity", "relation"];
 
-/** What the panel lists of the changed boxes and edges: the top of each added or removed subtree, each
- * edited file and each changed edge, source first, then by category, role, area and title.
+/** List every entity and relation that changed itself, source first, then entities before relations, then by
+ * role, area and title. The server says which changed (required_overlay=change) and which only sum up a change
+ * inside them (is_derived_change); those are left out.
  * @param {TableRow[]} got @returns {ReviewItem[]} */
 function listChanges(got) {
   /** @type {ReviewItem[]} */
   const out = [];
   for (const r of got) {
     const c = r.change;
-    if (!c) continue;
-    const up = r.src ? [...new Set([...around(r.src), ...around(r.dst)])] : around(r.id);
-    const top = r.src ? around(r.src)[0] ?? r.src : up[0] ?? r.id, base = { id: r.id, status: c.status, role: c.role || "source", area: top, reveal: up, change: c };
-    if (r.src && r.dst) {
-      const e = /** @type {EdgeDiff} */ (c);
-      out.push({ ...base, category: "dependency", title: `${r.src} → ${r.dst}  ${e.base}→${e.head}` });
-      continue;
-    }
-    const n = /** @type {NodeDiff} */ (c), parent = r.parent ? rows.get(r.parent)?.change : null;
-    if ((n.status === "added" || n.status === "removed") && parent?.status !== n.status && r.kind !== "group" && r.kind !== "unresolved") {
-      const renamed = n.old_path ? ` (renamed from ${n.old_path})` : n.renamed_to ? ` (renamed to ${n.renamed_to})` : "";
-      out.push({ ...base, category: "component", title: `${WHAT[r.kind] || r.kind} ${r.id}${renamed}` });
-    } else if (r.kind === "file" && n.git && n.status === "changed")
-      out.push({ ...base, category: "content", title: `${r.id} (+${n.added} −${n.removed})` });
+    if (!c || ("is_derived_change" in c && c.is_derived_change)) continue;
+    const relation = !!(r.src && r.dst);
+    const top = relation ? around(r.src)[0] ?? r.src : around(r.id)[0] ?? r.id;
+    const reveal = relation ? [...new Set([...around(r.src), ...around(r.dst)])] : around(r.id);
+    const lines = !relation && "git" in c && c.git ? ` (+${c.added} −${/** @type {NodeDiff} */ (c).removed})` : "";
+    const title = relation ? `${r.src} → ${r.dst}  ${/** @type {EdgeDiff} */ (c).base}→${/** @type {EdgeDiff} */ (c).head}` : `${r.kind} ${r.id}${lines}`;
+    out.push({ id: r.id, category: relation ? "relation" : "entity", status: c.status, role: c.role || "source", area: top, reveal, change: c, title });
   }
   const order = (/** @type {ReviewItem} */ it) => [it.role !== "source", CATEGORIES.indexOf(it.category), it.role, it.area, it.title];
   return out.sort((a, b) => {
@@ -147,13 +140,13 @@ function factList(cs, more) {
 /** An item's details, shown under its row. @param {ReviewItem} it */
 function details(it) {
   let html = "";
-  if (it.category === "dependency") { const e = /** @type {EdgeDiff} */ (it.change); html += factList(e.changes || [], e.more || 0); }
+  if (it.category === "relation") { const e = /** @type {EdgeDiff} */ (it.change); html += factList(e.changes || [], e.more || 0); }
   const n = /** @type {NodeDiff} */ (it.change);
-  const classes = it.category === "dependency" ? [] : (n.classes || []).filter(c => it.category === "component" ? c.status === it.status : c.added || c.removed);
-  if (classes.length) html += `<div class="dt-sub">classes</div><ul class="facts">${classes.map(c => it.category === "component" ? `<li>${esc(c.name)}</li>`
-    : `<li>${esc(c.name)} <span class="plus">+${c.added}</span> <span class="minus">−${c.removed}</span></li>`).join("")}</ul>`;
-  if (it.category === "content" && n.hunks?.length) html += `<div class="hunks">${n.hunks.map(h => link(h.link, `L${h.new[0]}${h.new[1] > 1 ? "–" + (h.new[0] + h.new[1] - 1) : ""}`)).join(" ")}${n.more_hunks ? ` … ${n.more_hunks} more` : ""}</div>`;
-  const where = "link" in n && n.link ? n.link : it.category === "dependency" ? /** @type {EdgeDiff} */ (it.change).changes?.[0]?.link : null;
+  const classes = it.category === "relation" ? [] : n.classes || [];
+  if (classes.length) html += `<div class="dt-sub">classes</div><ul class="facts">${classes.map(c =>
+    `<li>${statusSpan(c.status)} ${esc(c.name)} <span class="plus">+${c.added}</span> <span class="minus">−${c.removed}</span></li>`).join("")}</ul>`;
+  if (n.hunks?.length) html += `<div class="hunks">${n.hunks.map(h => link(h.link, `L${h.new[0]}${h.new[1] > 1 ? "–" + (h.new[0] + h.new[1] - 1) : ""}`)).join(" ")}${n.more_hunks ? ` … ${n.more_hunks} more` : ""}</div>`;
+  const where = "link" in n && n.link ? n.link : it.category === "relation" ? /** @type {EdgeDiff} */ (it.change).changes?.[0]?.link : null;
   html += `<div class="muted">${where ? link(where, "↗ diff") + " · " : ""}${esc(it.role)} · in ${esc(it.area)}</div>`;
   return `<div class="rv-more">${html}</div>`;
 }

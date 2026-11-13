@@ -62,6 +62,8 @@ class Change(Overlay):
     - ``added``, ``removed``, ``files``, ``new``, ``gone``: the sums of ``totals`` over what the
       node stands for and the nodes drawn inside it, also under ``totals``. A class with
       changed lines of its own has its own ``added`` and ``removed``.
+    - ``is_derived_change``: true if the entity the node is did not change itself, and its
+      change is summed up from the entities inside it or the relations between them.
     - ``internal``: the number of changed edges the projection found between the nodes it holds.
     - ``git``, ``old_path``, ``renamed_to``: as on the node it is.
     - ``role``: the role of the file or directory it is in; ``source`` for ``mixed`` and for a
@@ -219,7 +221,7 @@ class Change(Overlay):
         status = own.get("status") if own.get("status") in ("added", "removed") else "changed" if seen or internal else None
         if status is None:
             return None
-        out = {"status": status, **totals, "totals": totals, "internal": internal}
+        out = {"status": status, "is_derived_change": not own, **totals, "totals": totals, "internal": internal}
         if el.kind in schema.SYMBOL_KINDS and own.get("status") == "same":
             out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)  # its own lines; files count them for the module
         for k in ("git", "old_path", "renamed_to"):
