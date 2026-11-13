@@ -70,7 +70,10 @@ class ModelKey:
         """Parse ``text`` as ``format_key()`` writes it: ``<source>~project:<spec>`` gives a
         ProjectionKey, ``<source>~select:<digest>`` a SelectionKey, ``<repo>@~<text>`` a StringKey
         of that repository, ``<repo>@<sha>`` a CommitKey, ``<repo>@<base>..<head>`` a ChangeKey,
-        and anything else a StringKey without one."""
+        and anything else a StringKey without one. Every key with a repository reads back as it
+        was (a StringKey's text never has ``~project:`` or ``~select:``); a StringKey without one
+        does only if its text has no ``@`` (it can be kept in memory only, where its text is not
+        read back)."""
         at = max(text.rfind(PROJECTED), text.rfind(SELECTED))  # the last step made it
         if at > 0:
             source, rest = ModelKey.parse(text[:at]), text[at:]
@@ -148,6 +151,10 @@ class StringKey(ModelKey):
 
     text: str = ""
     repo: Repo | None = None  # type: ignore[assignment]  # None: a model of no repository
+
+    def __post_init__(self) -> None:
+        if PROJECTED in self.text or SELECTED in self.text:
+            raise ValueError(f"a StringKey's text has no {PROJECTED} or {SELECTED}, which mark a step made on a model: {self.text!r}")
 
     def format_key(self) -> str:
         return f"{self.repo.url}{NAMED}{self.text}" if self.repo else self.text

@@ -218,6 +218,7 @@ def test_a_targets_page_builds_it_then_shows_it(served, src):
     assert f'content="{key.format_key()}"' in get(f"{url}/?t={quote(key.format_key())}")[1]  # a key: built, shown as it is
     assert get(f"{url}/?t={quote(_format_key_path(key).name)}")[0] == 404  # where the store keeps it names nothing
     assert get(f"{url}/api/list")[0] == 404  # the store is not listed
+    assert get(f"{url}/api/scene?k={quote('github.com/../../../tmp/x@' + 'a' * 40)}")[0] == 404  # no path out of the store
 
 
 def test_pages_that_show_nothing(served, tmp_path):

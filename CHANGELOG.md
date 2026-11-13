@@ -98,15 +98,14 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
     their values. It replaces `keep_commit_scene` and `keep_change_scene` and their `by`, which
     nothing read.
   - `datasets.parse_target`, `resolve_target`, `Asked` and the server's `Plan` are gone; the
-    extractor run is `extractors.facts.extract_facts`, `build.extract` is
-    `operations.extract_files`.
-- **`ModelStore.find_key(name)`**: `nolli view` shows a dataset of its store by its name
-  (`/?t=ledger-review`), asking the store, not the filesystem.
+    extractor run is `extractors.facts.extract_facts`.
+  - The extraction steps are private: `build.extract` and `extract_commit`, `list_content`,
+    `describe_change_meta` and `version` (now `operations._extract_files`, `_extract_commit`, …).
+    Build with `build_target` or `build_files`, which keep the result in a store.
 - **A model's key is a target**: `<repo>@<sha>` or `<repo>@<base>..<head>`, full shas. A pinned
   pull request, `<repo>@<base>...<head>`, is one too.
-- **A dataset directory is the command line's**: `nolli view <dir>` serves the store the
-  directory is in and opens the viewer on its key. The viewer's `?t=` no longer takes a path;
-  under `nolli view` it takes a dataset's name in the store.
+- **A dataset directory is the command line's**: `nolli view <dir>` imports it into the data
+  directory and opens the viewer on its key. The viewer's `?t=` no longer takes a path.
 - **`nolli/datasets.py` is gone**: the command line and the server call `nolli.operations`, the
   store, the formats and `nolli.review` directly. The review diagram is
   `review.brief.make_review_diagram`; `review.brief.make_brief(scene)` makes the diagram and reads

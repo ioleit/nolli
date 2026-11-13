@@ -132,9 +132,14 @@ def _write(d: Path, ds: Dataset) -> None:
 
 def write_dataset(ds: Dataset, out: Path) -> None:
     """Write ``ds`` to the dataset directory ``out``. A model written there before goes; the
-    directory's other files (the extras, a ``pr.md``) stay."""
+    directory's other files (the extras, a ``pr.md``) stay. Raise DatasetError, deleting nothing,
+    for a directory that is no dataset but has files of the names a dataset uses (``base/``,
+    ``overlays/``, …): they are someone else's."""
     out = Path(out)
-    remove(out, DATA)
+    if is_dataset(out):
+        remove(out, DATA)
+    elif taken := [n for n in (*DATA, *EXTRAS) if (out / n).exists()]:
+        raise DatasetError(f"{out} is no dataset directory, and it has {', '.join(taken)}: name an empty or new directory")
     _write(out, ds)
 
 
@@ -185,4 +190,6 @@ def read_dataset(d: Path) -> Dataset:
             raise DatasetError(f"{d / side} is not the {side} of {key.format_key()}")
         sides[side] = read_dataset(d / side)
     model, maps = _read(d, key, model_needed=False)
+    if not isinstance(change.get("about"), dict):
+        raise DatasetError(f"{d / 'change.json'} says nothing about the change; build it again")
     return Dataset(key, model, maps, change["about"], sides)

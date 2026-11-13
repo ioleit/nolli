@@ -118,6 +118,30 @@ def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
     assert store.load_model(C1).meta["repo"] == "before"
 
 
+def test_every_key_with_a_repository_reads_back_as_it_was():
+    """The grammar of key text and of key.json: each kind, and steps made on steps."""
+    projected, selected = ProjectionKey(CHANGE, "p=default"), SelectionKey(C1, "0123abcd")
+    for k in (C1, CHANGE, StringKey("files@worktree", REPO), StringKey("a@~b", REPO), projected, selected,
+              SelectionKey(projected, "0123abcd"), ProjectionKey(selected, "p=default"),
+              ProjectionKey(StringKey("picked", Repo("/home/me/shop")), "p=folded")):
+        assert ModelKey.parse(k.format_key()) == k and ModelKey.from_dict(k.to_dict()) == k
+    with pytest.raises(ValueError):
+        StringKey("a~select:b", REPO)  # would read back as a selection
+
+
+def test_a_repository_path_stays_under_the_root(tmp_path):
+    """A key's text comes from requests (``/api/scene?k=``): a GitHub URL that is no
+    ``github.com/<owner>/<repo>`` is refused before anything is read, and a local path's ``..``
+    is a name, not a step up."""
+    stores = RepoStoreProvider(tmp_path / "data")
+    for url in ("github.com/../x", "github.com/../../../tmp/x", "github.com/o/..", "github.com/o/r/extra", "github.com/o/r%2F"):
+        with pytest.raises(NotAllowed):
+            stores.open(Repo(url))
+    assert stores.open(Repo("github.com/O/R.js")).path == stores.root / "github.com" / "o" / "r.js"
+    local = stores.open(Repo("/home/me/../shop")).path
+    assert stores.root in local.resolve().parents and ".." not in local.parts
+
+
 def test_a_store_keeps_its_repository_only(tmp_path):
     """Another repository's key is refused, to read or to write, and so is a key of no repository."""
     store = RepoStoreProvider(tmp_path / "data").open(REPO)
@@ -246,3 +270,43 @@ def test_a_dataset_of_another_format_is_refused(tmp_path):
         cli.import_dataset(MemoryStore(), out)
     with pytest.raises(KeyError):
         cli.export_dataset(store, C2, tmp_path / "none")
+    change = tmp_path / "change"
+    store.save_change(CHANGE, {"title": "t"}, {"base": (model("b"), {}), "head": (model("h"), {})}, {})
+    cli.export_dataset(store, CHANGE, change)
+    (change / "change.json").write_text(json.dumps({"format": dataset.FORMAT}))  # says nothing about the change
+    with pytest.raises(dataset.DatasetError, match="says nothing"):
+        cli.import_dataset(MemoryStore(), change)
+
+
+def test_a_dataset_is_written_over_nothing_but_a_dataset(tmp_path, capsys):
+    """Writing a dataset replaces one written there before, but never deletes what is someone
+    else's: a directory that is no dataset and has a file or directory of a dataset's names is
+    refused, untouched. Its other files stay."""
+    store = RepoStoreProvider(tmp_path / "data").open(REPO)
+    store.save_model(C1, model("one"), {})
+    project = tmp_path / "project"
+    (project / "overlays").mkdir(parents=True)
+    (project / "overlays" / "mine.txt").write_text("keep me")
+    with pytest.raises(dataset.DatasetError, match="no dataset directory"):
+        cli.export_dataset(store, C1, project)
+    assert (project / "overlays" / "mine.txt").read_text() == "keep me" and not (project / "key.json").exists()
+    (project / "review.md").write_text("mine")
+    (project / "overlays" / "mine.txt").unlink()
+    (project / "overlays").rmdir()
+    assert cli.export_into(store, C1, project, None, "build") is None  # the command line says why
+    assert "no dataset directory, and it has review.md" in capsys.readouterr().err and (project / "review.md").read_text() == "mine"
+    out = tmp_path / "out"
+    (out / "pr.md").parent.mkdir()
+    (out / "pr.md").write_text("pr")
+    cli.export_dataset(store, C1, out)
+    cli.export_dataset(store, C1, out)  # over the dataset written before
+    assert dataset.read_key(out) == C1 and (out / "pr.md").read_text() == "pr"
+
+
+def test_a_dataset_of_no_repository_is_not_imported(tmp_path, capsys):
+    """The data directory keeps a repository's models only: a dataset of a key with none is
+    refused with a message, as one of another format is."""
+    ds = tmp_path / "ds"
+    dataset.write_dataset(dataset.Dataset(StringKey("picked"), Model(StringKey("picked"))), ds)
+    assert cli.import_named(str(ds), "view", RepoStoreProvider(tmp_path / "data")) is False
+    assert "a model of no repository" in capsys.readouterr().err

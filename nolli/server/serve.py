@@ -751,7 +751,7 @@ def make_local_server(data: Path, local: Path | None, host: str = "127.0.0.1", p
 def main(argv: list[str] | None = None, token: Token | None = None, handler: type[Handler] | None = None,
          reviewer=None, stores: RepoStoreProvider | None = None, sources: Sources | None = None,
          services: type[Services] = Services, **more: Any) -> int:
-    """``nolli serve``: its options from ``argv``; the rest as make_server() takes them. ``store``
+    """``nolli serve``: its options from ``argv``; the rest as make_server() takes them. ``stores``
     and ``sources`` default to directories under --cache (``data/``, ``repos/``)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cache", default=os.environ.get("NOLLI_CACHE") or str(Path.home() / ".cache" / "nolli-serve"))

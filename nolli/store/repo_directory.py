@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import threading
 from collections import OrderedDict
@@ -46,6 +47,7 @@ MODEL_FORMAT = 3  # of model.json; a model of another format reads as not kept, 
 MAP_FORMAT = 2  # of overlays/<name>.json; a map of another format reads as not kept
 SEGMENT = 200  # bytes in one name of a key's path, at most (file systems allow 255)
 CACHE_ENTRIES = 4096  # parsed files kept by a provider, at most
+_GITHUB_NAME = re.compile(r"[A-Za-z0-9._-]+")  # an owner's or a repository's name on GitHub
 _SAFE = frozenset("abcdefghijklmnopqrstuvwxyz0123456789._@=,+-")
 _MORE = "~"  # ends every name of a key's path but the last; never in an encoded name
 
@@ -108,10 +110,15 @@ def _split(encoded: str) -> list[str]:
 
 def _format_repo_path(repo: Repo) -> Path:
     """Return the directory of ``repo``'s models relative to the root: ``github.com/<owner>/<repo>``
-    for one on GitHub (lower-cased), else ``local/`` and the repository's path."""
+    for one on GitHub (lower-cased), else ``local/`` and the repository's path. Raise NotAllowed
+    for a GitHub URL that is no ``github.com/<owner>/<repo>`` (``..``, more parts): a key's text
+    comes from requests, and its path must stay under the root."""
     url = repo.url.rstrip("/")
     if repo.format_remote():
-        return Path(*url.lower().split("/"))
+        parts = url.lower().split("/")
+        if len(parts) != 3 or not all(_GITHUB_NAME.fullmatch(p) and p.strip(".") for p in parts[1:]):
+            raise NotAllowed(f"{repo.url} is no repository on GitHub")
+        return Path(*(_encode(p) for p in parts))
     return Path("local", *(_encode(p) for p in url.split("/") if p))
 
 
@@ -214,9 +221,13 @@ class RepoStoreProvider:
         overrides this, and nothing else."""
 
     def open(self, repo: Repo) -> RepoDirectoryStore:
-        """Return the store of ``repo``'s models, once the current request may read them (``allow``)."""
+        """Return the store of ``repo``'s models, once the current request may read them (``allow``).
+        Raise NotAllowed for a repository whose directory would not be under ``root``."""
+        path = self.root / _format_repo_path(repo)
+        if self.root not in path.resolve().parents:
+            raise NotAllowed(f"{repo.url} is no repository this store keeps")
         self.allow(repo)
-        return RepoDirectoryStore(self.root / _format_repo_path(repo), repo, self.cache)
+        return RepoDirectoryStore(path, repo, self.cache)
 
     def cleanup(self) -> None:
         """Keep what is stored under ``root`` within bounds. It deletes nothing for now: what is

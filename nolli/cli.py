@@ -141,14 +141,19 @@ def import_named(text: str | None, cmd: str, stores: RepoStoreProvider):
     store and return the store and the key, to use as it is. Return None if ``text`` names no
     dataset directory, and False, after printing why, for one this nolli cannot read."""
     from nolli.logic.formats import dataset
+    from nolli.model.keys import NotAllowed
 
     if not text or not dataset.is_dataset(Path(text).expanduser()):
         return None
     d = Path(text).expanduser().resolve()
     try:
-        store = stores.open(dataset.read_key(d).repo)
+        key = dataset.read_key(d)
+        if getattr(key, "repo", None) is None:
+            raise dataset.DatasetError(f"{d} is a model of no repository ({key.format_key()}); the data directory keeps "
+                                       "a repository's models only")
+        store = stores.open(key.repo)
         return store, import_dataset(store, d)
-    except dataset.DatasetError as exc:
+    except (dataset.DatasetError, NotAllowed) as exc:
         print(f"nolli {cmd}: {exc}", file=sys.stderr)
         return False
 
@@ -165,7 +170,7 @@ def pin(args: argparse.Namespace, cmd: str, review: bool = False):
         return None
     if found:
         return found
-    if review and args.target and (Path(args.target) / "key.json").is_file():
+    if review and args.target and (Path(args.target).expanduser() / "key.json").is_file():
         print(f"nolli {cmd}: {args.target} is a dataset built already; name the change to review, "
               f"or check verdicts: nolli agent check {args.target}", file=sys.stderr)
         return None
@@ -252,14 +257,21 @@ def build_into(args: argparse.Namespace, cmd: str) -> tuple[dict, dict] | None:
     what is made from it (``write_extras``). Return what it says about itself and its
     report; print why and return None if it cannot be built."""
     b = build(args, cmd)
-    return None if b is None else export_into(b.store, b.key, Path(args.out), args.budget)
+    return None if b is None else export_into(b.store, b.key, Path(args.out), args.budget, cmd)
 
 
-def export_into(store: ModelStore, key: ModelKey, out: Path, budget: int | None) -> tuple[dict, dict]:
+def export_into(store: ModelStore, key: ModelKey, out: Path, budget: int | None, cmd: str) -> tuple[dict, dict] | None:
     """Export the model of ``key`` to the dataset directory ``out`` with what is made from it, and
-    return what it says about itself (a change's record, else nothing) and its report."""
+    return what it says about itself (a change's record, else nothing) and its report. Print why
+    and return None if ``out`` is no directory a dataset may be written to."""
+    from nolli.logic.formats.dataset import DatasetError
+
     out.mkdir(parents=True, exist_ok=True)
-    export_dataset(store, key, out)
+    try:
+        export_dataset(store, key, out)
+    except DatasetError as exc:
+        print(f"nolli {cmd}: {exc}", file=sys.stderr)
+        return None
     report = write_extras(store, key, out, budget)
     return (store.load_change(key) if isinstance(key, ChangeKey) else None) or {}, report
 
@@ -408,7 +420,10 @@ def cmd_extract(args: argparse.Namespace) -> int:
         store = open_stores(args).open(key.repo)
         operations.build_files(store, repo, key)
         operations.precompute_scene(store, key)
-        report = export_into(store, key, Path(args.out), args.budget)[1]
+        exported = export_into(store, key, Path(args.out), args.budget, "extract")
+        if exported is None:
+            return 2
+        report = exported[1]
     else:
         written = build_into(argparse.Namespace(target=WORKTREE, repo=str(repo), data=getattr(args, "data", None), out=args.out,
                                                 budget=args.budget), "extract")
