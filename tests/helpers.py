@@ -28,13 +28,13 @@ def open_dataset(ds: Path) -> tuple[MemoryStore, ModelKey]:
     return store, cli.import_dataset(store, ds)
 
 
-def open_dir(path: Path, key: str = "test@0") -> Scene:
+def open_dir(path: Path, key: str = "test") -> Scene:
     """Build the files under ``path`` as they are into memory, and open them as a scene."""
     store = MemoryStore()
     return operations.open_scene(store, operations.build_files(store, path, StringKey(key)))
 
 
-def open_extracted(model: Model, maps: Maps, key: str = "test@0") -> Scene:
+def open_extracted(model: Model, maps: Maps, key: str = "test") -> Scene:
     """Keep a model and maps just extracted (``Facts.split``) in memory, and open them as a scene."""
     store = MemoryStore()
     store.save_model(StringKey(key), model, maps)

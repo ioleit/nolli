@@ -36,7 +36,7 @@ def test_a_key_is_kept_where_its_text_says():
     """Any key of a repository has a directory of its own, worked out from the key alone and
     back: case kept on a file system that ignores it, no name over 255 bytes."""
     keys = [C1, CHANGE, ProjectionKey(CHANGE, "p=default"), ProjectionKey(CHANGE, "x=repo:Shop/A.py,repo:shop/a.py" * 20),
-            StringKey("files@worktree", REPO), ProjectionKey(StringKey("picked", REPO), "p=folded"),
+            StringKey("files", REPO), ProjectionKey(StringKey("picked", REPO), "p=folded"),
             SelectionKey(ProjectionKey(CHANGE, "p=default"), "0123abcd"), ProjectionKey(SelectionKey(C1, "0123abcd"), "p=default")]
     paths = [_format_key_path(k) for k in keys]
     for k, p in zip(keys, paths, strict=True):
@@ -49,8 +49,8 @@ def test_a_key_is_kept_where_its_text_says():
 
 
 def test_string_keys_name_their_repository():
-    k = StringKey("files@worktree", REPO)
-    assert k.format_key() == "github.com/O/R@~files@worktree"
+    k = StringKey("files", REPO)
+    assert k.format_key() == "github.com/O/R@~files"
     assert ModelKey.parse(k.format_key()) == k and ModelKey.from_dict(k.to_dict()) == k
     assert ModelKey.parse("picked") == StringKey("picked") and StringKey("picked").repo is None
     assert ProjectionKey(k, "p=default").repo == REPO and ModelKey.parse(ProjectionKey(k, "p=default").format_key()).source == k
@@ -121,12 +121,16 @@ def test_a_model_is_stored_whole_or_not_at_all(tmp_path, monkeypatch):
 def test_every_key_with_a_repository_reads_back_as_it_was():
     """The grammar of key text and of key.json: each kind, and steps made on steps."""
     projected, selected = ProjectionKey(CHANGE, "p=default"), SelectionKey(C1, "0123abcd")
-    for k in (C1, CHANGE, StringKey("files@worktree", REPO), StringKey("a@~b", REPO), projected, selected,
+    for k in (C1, CHANGE, StringKey("files", REPO), StringKey("picked"), StringKey(), projected, selected,
               SelectionKey(projected, "0123abcd"), ProjectionKey(selected, "p=default"),
               ProjectionKey(StringKey("picked", Repo("/home/me/shop")), "p=folded")):
         assert ModelKey.parse(k.format_key()) == k and ModelKey.from_dict(k.to_dict()) == k
-    with pytest.raises(ValueError):
-        StringKey("a~select:b", REPO)  # would read back as a selection
+    for text in ("a~select:b", "a~project:b", "files@worktree", "a@~b"):  # would read back as another key
+        with pytest.raises(ValueError):
+            StringKey(text, REPO)
+    for text in ("x@", "@abc", "github.com/o/r@~a@b"):  # an @ that marks no commit, change or repository
+        with pytest.raises(ValueError):
+            ModelKey.parse(text)
 
 
 def test_a_repository_path_stays_under_the_root(tmp_path):

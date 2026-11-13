@@ -14,7 +14,7 @@ from nolli.logic import transformations
 from nolli.logic.formats import mermaid
 from nolli.logic.transformations import projection
 from nolli.logic.transformations.select import select
-from nolli.model.keys import StringKey
+from nolli.model.keys import Repo, StringKey
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Scene
 from nolli.model.schema import EntityId, RelationKind
@@ -26,7 +26,7 @@ MEMBERS = [EntityId.from_path(f"nolli/{p}") for p in ("cli.py", "server")]
 
 repo = Path(sys.argv[1])
 files = MemoryStore()
-scene = operations.open_scene(files, operations.build_files(files, repo))                     # the files as they are, with nolli's overlays
+scene = operations.open_scene(files, operations.build_files(files, repo, Repo(str(repo.resolve())).make_commit("worktree")))                     # the files as they are, with nolli's overlays
 
 
 def group_into_app(scene: Scene) -> Scene:                          # the custom transformation
@@ -40,7 +40,7 @@ def group_into_app(scene: Scene) -> Scene:                          # the custom
     edges = [e for e in m.edges if e not in moved]
     edges.append(Relation(RelationKind.CONTAIN, NOLLI, APP))
     edges.extend(Relation(RelationKind.CONTAIN, APP, x) for x in MEMBERS)
-    model = Model(StringKey(f"{m.key.format_key()}|app"), entities, edges)   # each entity and relation checked
+    model = Model(StringKey("app", m.key.repo), entities, edges)      # a model of the same repository; each entity and relation checked
     return Scene(model, [], {"source": scene}, {"source": None})     # each element its namesake in the source
 
 

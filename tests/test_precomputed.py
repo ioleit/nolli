@@ -39,7 +39,7 @@ def scene(tmp_path: Path):
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "a.py").write_text("from . import b\n\nclass A:\n    pass\n\ndef f():\n    return b.B()\n")
     (tmp_path / "pkg" / "b.py").write_text("class B:\n    pass\n")
-    return open_dir(tmp_path, key="test@precomputed")
+    return open_dir(tmp_path, key="test-precomputed")
 
 
 MODULES = ProjectionSpec(expand=projection.Dirs(), groups=[], utilities=0)
@@ -55,7 +55,7 @@ def propose(scene):
     entities = [*m.entities.values(), Entity("repo:src", "directory")]
     edges = [e for e in m.edges if e != Relation(RelationKind.CONTAIN, "repo:", "repo:pkg")]
     edges += [Relation(RelationKind.CONTAIN, "repo:", "repo:src"), Relation(RelationKind.CONTAIN, "repo:src", "repo:pkg")]
-    return Scene(Model(StringKey(f"{m.key.format_key()}|src"), entities, edges), [], {"source": scene}, {"source": None})
+    return Scene(Model(StringKey(f"{m.key.format_key()}-src"), entities, edges), [], {"source": scene}, {"source": None})
 
 
 def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):

@@ -559,7 +559,10 @@ class Handler(SimpleHTTPRequestHandler):
         """Open the scene of the model whose key is ``text`` and return it with the key and its
         repository's store, opened once for this request; return None if there is no such model or
         this request may not read its repository."""
-        key = ModelKey.parse(text or "")
+        try:
+            key = ModelKey.parse(text or "")
+        except ValueError:
+            return None
         if not isinstance(key, (CommitKey, ChangeKey)):
             return None
         try:

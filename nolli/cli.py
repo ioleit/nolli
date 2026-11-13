@@ -542,11 +542,14 @@ def find_checked(args: argparse.Namespace) -> tuple[ModelStore, ModelKey, Path |
         if not found:
             return None
         return found[0], found[1], vf, d
-    if (d / "key").is_file() and d.parent.name == ".agent":  # an agent's directory: in the data directory it was made in
-        key = ModelKey.parse((d / "key").read_text().strip())
-        stores = stores if getattr(args, "data", None) else RepoStoreProvider(d.parent.parent)
-    else:
-        key = ModelKey.parse(args.dataset)
+    try:
+        if (d / "key").is_file() and d.parent.name == ".agent":  # an agent's directory: in the data directory it was made in
+            key = ModelKey.parse((d / "key").read_text().strip())
+            stores = stores if getattr(args, "data", None) else RepoStoreProvider(d.parent.parent)
+        else:
+            key = ModelKey.parse(args.dataset)
+    except ValueError:
+        key = None
     if not isinstance(key, ChangeKey):
         print(f"nolli agent check: {args.dataset} names no change: give its key, its dataset directory or its verdicts file",
               file=sys.stderr)

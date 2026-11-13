@@ -27,7 +27,11 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
     read: they are built again, and review verdicts kept there are not carried over.
   - Every key a repository's store is asked about names that repository; one of another
     repository, or of none, raises `NotAllowed`. `StringKey` takes an optional `repo`
-    (`StringKey(text, repo)`, written `<repo>@~<text>`) for a model made in code, and `select`
+    (`StringKey(text, repo)`, written `<repo>@~<text>`) for a model made in code; its text has
+    no `@`, so every key's text reads back as the key it was (`ModelKey.parse` raises
+    `ValueError` for an `@` that marks no commit, change or repository).
+    `operations.build_files` has no default key: name what you build (`nolli extract` uses
+    `Repo(path).make_commit("worktree")`), and `select`
     keys the part it keeps with a `SelectionKey` (`<source>~select:<digest of the kept ids>`)
     in place of a `StringKey` of no repository.
   - The store's JSON forms of a model and a map are its own (`nolli/model/serialized.py` is

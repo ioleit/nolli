@@ -12,6 +12,7 @@ from pathlib import Path
 from nolli import operations
 from nolli.model import vocabulary
 from nolli.model.schema import RelationKind
+from nolli.model.keys import Repo
 from nolli.store import MemoryStore
 
 TOP = ("nolli/cli.py", "nolli/server/")
@@ -20,7 +21,7 @@ EVERYWHERE = ("nolli/model/",)
 
 repo = Path(sys.argv[1])
 files = MemoryStore()
-scene = operations.open_scene(files, operations.build_files(files, repo))
+scene = operations.open_scene(files, operations.build_files(files, repo, Repo(str(repo.resolve())).make_commit("worktree")))
 
 
 def find_file(x: str) -> str | None:

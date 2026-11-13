@@ -213,7 +213,7 @@ def build_target(store: ModelStore, target: Target, sources: Sources, *, about: 
     return key
 
 
-def build_files(store: ModelStore, path: Path, key: ModelKey = StringKey("files@worktree"), progress: Progress | None = None) -> ModelKey:
+def build_files(store: ModelStore, path: Path, key: ModelKey, progress: Progress | None = None) -> ModelKey:
     """Build the files under ``path`` as they are (a working tree, a checkout, a directory that is
     no git repository) into ``store`` under ``key``, and return the key. They are built every
     time: they are no commit, so nothing says a kept model of them is fresh."""

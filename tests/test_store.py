@@ -133,7 +133,7 @@ def test_extract_commit_names_the_root(src):
     m, maps = _extract_commit(path, shas[0], "shop", progress=Quiet())
     assert m.meta["commit"] == shas[0][:7] and m.meta["repo"] == "shop" and not m.has("repo:shop/cache.py")
     assert m.has("repo:shop/store.py")
-    m.key = StringKey("shop@0")
+    m.key = StringKey("shop")
     assert open_extracted(m, maps).find_element("repo:").get("files")["name"] == "shop"
 
 

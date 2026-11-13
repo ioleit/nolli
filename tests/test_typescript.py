@@ -73,7 +73,7 @@ def model(tmp_path_factory):
 
 
 def open_graph(m) -> Graph:
-    return Graph(open_extracted(*m.split(StringKey("test@0"))))
+    return Graph(open_extracted(*m.split(StringKey("test"))))
 
 
 def uses(m, subkind=None):
