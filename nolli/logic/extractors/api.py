@@ -215,16 +215,29 @@ def _http_suffix_matches(route: str, called: str) -> bool:
     return _http_path_matches("/" + "/".join(rs[len(rs) - len(cs):]), called)
 
 
+def _count_literal_segments(route: str) -> int:
+    return sum(1 for s in route.strip("/").split("/") if s and not s.startswith("{"))
+
+
+def _keep_most_specific(hits: list[EntityFact]) -> list[EntityFact]:
+    """Keep the routes with the most literal segments, as a router prefers ``/api/scene`` to a
+    catch-all ``/{path:path}`` that matches the same call."""
+    if not hits:
+        return hits
+    best = max(_count_literal_segments(e.attrs["path"]) for e in hits)
+    return [e for e in hits if _count_literal_segments(e.attrs["path"]) == best]
+
+
 def _match_http(endpoints: list[EntityFact], verb: str, pattern: str) -> tuple[list[EntityFact], str]:
     def verb_ok(e: EntityFact) -> bool:
         return verb == "?" or e.attrs["method"] in ("ANY", verb) or verb in e.attrs["method"].split(",")
 
     hits = [e for e in endpoints if verb_ok(e) and _http_path_matches(e.attrs["path"], pattern)]
     if hits or pattern.count("/") < 2:
-        return hits, "path"
+        return _keep_most_specific(hits), "path"
     # unknown base prefix on the caller's side (``${API_BASE}`` we could not fold):
     # accept routes whose path ends with the called pattern
-    return [e for e in endpoints if verb_ok(e) and _http_suffix_matches(e.attrs["path"], pattern)], "suffix"
+    return _keep_most_specific([e for e in endpoints if verb_ok(e) and _http_suffix_matches(e.attrs["path"], pattern)]), "suffix"
 
 
 def _match_exact(endpoints: list[EntityFact], verb: str, pattern: str) -> tuple[list[EntityFact], str]:
@@ -237,7 +250,8 @@ MATCHERS = {"http": _match_http}
 
 def resolve(ctx: Context) -> None:
     """Binds calls to endpoints with their protocol's matcher (``MATCHERS``, exact
-    match for other protocols): ``use(caller file, endpoint)``. Unmatched calls stay
+    match for other protocols): ``use(caller file, endpoint)``. Of the HTTP routes a call
+    matches, only the most specific count (``_keep_most_specific``). Unmatched calls stay
     ``unresolved:<protocol>:...``."""
     m = ctx.model
     endpoints: dict[str, list[EntityFact]] = defaultdict(list)
