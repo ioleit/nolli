@@ -1,7 +1,7 @@
 # Viewer
 
 `nolli/server/serve.py` is a small local server (standard library only): these static files,
-the datasets under `--data`, `/api/scene` and `/api/mermaid`. This directory is installed as
+the datasets under `--data`, and `/api/scene`, which answers a model's scene in a format (`f=`). This directory is installed as
 the package `nolli.viewer` (see `pyproject.toml`), and `nolli view` or `nolli serve` starts
 the server (`nolli/server/serve.py`). A page shows one model: the server puts its key in the
 page (`<meta name="nolli-key">`), and every call the viewer makes names it (`k=<key>`).
@@ -10,7 +10,7 @@ The viewer computes nothing itself: on every click it asks the server for the sc
 scene state (`/api/scene?k=<key>&x=<unfolded ids>&…`, or `p=<preset>` instead of `x`;
 the same keys as its location hash, so a URL is a picture). The tabs above the canvas show
 that one scene three ways: "Interactive" lays it out with ELK and draws it, "Mermaid" asks
-`/api/mermaid` for the same scene state and lets Mermaid draw it (the text a README, a PR
+for the same scene state as Mermaid (`f=mermaid`) and lets Mermaid draw it (the text a README, a PR
 comment or a review agent gets), and "JSON" shows the response itself. "Fade unchanged"
 applies to both drawings. The presets in the sidebar (default, folded, changes, unfolded)
 name a cut; clicking a box leaves them ("custom").

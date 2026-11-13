@@ -14,7 +14,7 @@ export function showRaw(scene) {
   const foldable = new Set(scene.nodes.filter(n => "foldable" in n.projection && n.projection.foldable).map(n => n.id));
   // node ids that can be unfolded or folded are clickable, as boxes are in the drawing
   const html = esc(JSON.stringify(scene, null, 1)).replace(/("id": )"([^"]*)"/g, (all, k, id) => foldable.has(id) ? `${k}"<span class="unfold" data-id="${id}">${id}</span>"` : all);
-  pane.innerHTML = `<div class="req">GET <a href="${esc(scene.url || "")}" target="_blank">${esc(scene.url || "")}</a> · ${scene.stats.nodes} nodes · ${scene.stats.edges} edges · scene ${scene.stats.ms.scene} ms · round trip ${scene.stats.ms.roundtrip} ms · click an id to unfold/fold it</div><pre>${html}</pre>`;
+  pane.innerHTML = `<div class="req">GET <a href="${esc(scene.url || "")}" target="_blank">${esc(scene.url || "")}</a> · ${scene.stats.nodes} nodes · ${scene.stats.edges} edges · scene ${scene.stats.ms?.scene} ms · round trip ${scene.stats.ms?.roundtrip} ms · click an id to unfold/fold it</div><pre>${html}</pre>`;
 }
 
 export function hideRaw() { pane.style.display = "none"; }

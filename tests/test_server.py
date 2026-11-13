@@ -222,6 +222,76 @@ def test_a_targets_page_builds_it_then_shows_it(served, src):
     assert get(f"{url}/api/scene?k={quote('x@')}")[0] == 404  # no model's key
 
 
+def build_change(url: str, src) -> Repo:
+    """Build the change ``...cache`` through its page and return its key."""
+    _r, _tip, base, head = src
+    get(f"{url}/?t={quote('...cache')}")
+    key = Repo(str(src[0].resolve())).make_change(base, head)
+    deadline = time.time() + 60
+    while json.loads(get(f"{url}/api/job?j={quote(key.format_key())}")[1])["state"] not in ("done", "error") and time.time() < deadline:
+        time.sleep(0.1)
+    return key
+
+
+def ask(url: str, key, query: str = "") -> tuple[int, dict]:
+    status, body = get(f"{url}/api/scene?k={quote(key.format_key())}{'&' if query else ''}{query}")
+    return status, json.loads(body)
+
+
+def test_a_scene_comes_in_every_format(served, src):
+    url, _ = served
+    change = build_change(url, src)
+    commit = Repo(str(src[0].resolve())).make_commit(src[2])
+    for key in (change, commit):
+        status, sc = ask(url, key)
+        assert status == 200 and sc["nodes"] and sc["dataset"]["key"] == key.format_key()  # f=viewer, the default
+        status, mmd = ask(url, key, "f=mermaid")
+        assert status == 200 and mmd["mermaid"].startswith("flowchart") and mmd["ids"]
+        status, rep = ask(url, key, "f=report")
+        assert status == 200 and rep["summary"]["entities"]
+        assert ask(url, key, "f=report&p=none")[0] == 400  # a report describes a projection
+        status, all_rows = ask(url, key, "f=table&overlays=label")
+        assert status == 200 and len(all_rows["rows"]) == len(sc["nodes"]) + len(sc["edges"])
+        assert all("label" in r for r in all_rows["rows"])
+    status, brief = ask(url, change, "f=brief&p=none")
+    assert status == 200 and brief["brief"].startswith("# Architecture review")
+    assert ask(url, commit, "f=brief&p=none")[0] == 400  # not a change
+
+
+def test_a_table_keeps_the_rows_an_overlay_has_a_value_for(served, src):
+    url, _ = served
+    change = build_change(url, src)
+    status, t = ask(url, change, "f=table&p=changes&required_overlay=change&overlays=label")
+    assert status == 200 and t["overlays"] == ["label"] and t["rows"]
+    assert all("change" not in r and "label" in r for r in t["rows"])  # it picks the rows, it is no column
+    _, full = ask(url, change, "f=table&p=changes&overlays=change,label")
+    changed = {r["id"] for r in full["rows"] if r["change"] is not None}
+    assert {r["id"] for r in t["rows"]} == changed and len(full["rows"]) > len(changed)
+    _, repeated = ask(url, change, "f=table&p=changes&overlays=change&overlays=label")
+    assert repeated["overlays"] == ["change", "label"]
+    assert ask(url, change, "f=table&overlays=nope")[0] == 400  # no such overlay
+
+
+def test_a_scene_request_says_what_is_wrong_with_it(served, src):
+    url, _ = served
+    change = build_change(url, src)
+    for query, field in (("f=nope", "f"), ("f=mermaid&fade=maybe", "fade"), ("colour=red", "colour"), ("b=many", "b")):
+        status, body = ask(url, change, query)
+        assert status == 422 and body["error"].startswith(field + ":"), (query, body)
+    status, plain = ask(url, change, "f=mermaid&fade=false")
+    assert status == 200 and plain["mermaid"] != ask(url, change, "f=mermaid")[1]["mermaid"]  # unchanged boxes not faded
+    assert ask(url, change, "fade=false")[0] == 200  # another format's option is ignored
+    status, raw = ask(url, change, "p=none")
+    assert status == 200 and raw["state"] is None  # not projected
+    assert get(f"{url}/api/scene")[0] == 404  # no model named
+
+
+def test_the_scene_request_names_each_parameter_once():
+    from nolli.server.serve import FormatSceneRequest
+    names = [n for m in FormatSceneRequest.__bases__ for n in m.model_fields] + ["k", "f"]
+    assert len(names) == len(set(names)), names
+
+
 def test_pages_that_show_nothing(served, tmp_path):
     url, _ = served
     status, body = get(f"{url}/?t=nope")

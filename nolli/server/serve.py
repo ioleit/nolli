@@ -25,12 +25,13 @@ used longest ago are deleted (nolli/server/retention.py). What is extracted is t
 keep in bounds (``RepoStoreProvider.cleanup``, which keeps everything for now).
 
 The viewer's page asks the API about the model it shows by its key (``k=<key>``,
-``ModelKey.format_key()``): ``/api/scene?k=…&…`` the scene a scene state projects
-(``parse_spec`` reads the viewer's location-hash keys; nolli/logic/transformations/projection/spec.py),
-as JSON with every overlay (nolli/logic/formats/viewer.py); ``/api/mermaid`` the same scene as
-Mermaid (``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid, ids}``);
-``/api/changes`` a change's numbered changes and the review's verdicts; ``/api/brief`` what a
-review agent gets (Markdown); ``POST /api/verdicts`` stores a review's verdicts (``nolli view``
+``ModelKey.format_key()``): ``/api/scene?k=…&f=<format>&…`` the model projected as a scene
+state says (``ProjectionParams``, the viewer's location-hash keys;
+nolli/logic/transformations/projection/spec.py; ``p=none``: not projected), in a format
+(``FORMATS``: ``viewer`` by default, the viewer's JSON with every overlay; ``table``, rows of the
+overlays named; ``mermaid``; ``brief``, what a review agent gets; ``report``) with that format's
+options (``FormatSceneRequest``, nolli/logic/formats/options.py);
+``/api/changes`` a change's numbered changes and the review's verdicts; ``POST /api/verdicts`` stores a review's verdicts (``nolli view``
 only); ``/api/review`` says where the verdicts came from and whether a review agent can run
 here, ``POST /api/review`` starts one (it needs ANTHROPIC_API_KEY, reviews.py) and ``POST
 /api/review/cancel`` stops it. ``/api/job?j=`` is a build's progress.
@@ -74,11 +75,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 
 import uvicorn
-from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi import APIRouter, FastAPI, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
 
 import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
@@ -86,7 +90,8 @@ import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 HERE = Path(nolli.viewer.__file__).resolve().parent  # the viewer's files
 
 from nolli import operations  # noqa: E402
-from nolli.logic.formats import mermaid, viewer  # noqa: E402
+from nolli.logic.formats import formatters  # noqa: E402
+from nolli.logic.formats.options import MermaidFormatOptions, TableFormatOptions  # noqa: E402
 
 from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github  # noqa: E402
 from ..logic.sources.git import ChangeError, GitError  # noqa: E402
@@ -455,6 +460,50 @@ def parse_spec(q: dict[str, str]) -> ProjectionSpec:
     return ProjectionSpec.from_query(q, items.PRESETS)
 
 
+# ---------- the scene request ----------
+
+FORMATS: dict[str, formatters.Formatter] = {**formatters.FORMATS, "brief": brief.format_brief}
+FormatName = Literal[tuple(FORMATS)]  # type: ignore[valid-type]
+
+
+class ProjectionParams(BaseModel):
+    """The projection a scene request asks for, under the viewer's location-hash keys
+    (``ProjectionSpec.from_query`` reads them). None of them gives the default cut; ``p=none``
+    no projection at all."""
+
+    x: str | None = None  # the unfolded containers, comma-separated
+    p: str | None = None  # a preset (items.PRESETS, the named expansions), or "none"
+    d: str | None = None  # p=dirs: the directory under which
+    b: int | None = None  # the default cut's budget
+    r: str | None = None  # the roles shown, comma-separated ("" for none)
+    g: str | None = None  # the groups shown, comma-separated
+    nu: bool = False  # no utilities
+    ut: int | None = None  # utilities: used by at least this many
+    s: Literal["base", "head"] | None = None  # one side of a change
+    ml: int | None = None  # the most lines of a box
+
+    def to_spec(self) -> ProjectionSpec | None:
+        """Return the projection asked for, or None for none (``p=none``)."""
+        if self.p == "none":
+            return None
+        q = {}
+        for name in ProjectionParams.model_fields:
+            v = getattr(self, name)
+            if v is not None and v is not False:
+                q[name] = "1" if v is True else str(v)
+        return parse_spec(q)
+
+
+class FormatSceneRequest(ProjectionParams, MermaidFormatOptions, TableFormatOptions):
+    """A scene request: the model ``k``, projected, in the format ``f``. A formatter with options of
+    its own adds its options model to the bases (no field may be in two of them); options of a
+    formatter other than ``f`` are ignored, any other parameter is an error."""
+
+    model_config = ConfigDict(extra="forbid")
+    k: str | None = None  # the model's key (ModelKey.format_key)
+    f: FormatName = "viewer"  # type: ignore[valid-type]
+
+
 @dataclass
 class Services:
     """What a server works with, and what its routes ask of it. A service built on it passes its
@@ -589,38 +638,28 @@ def job_status(request: Request) -> Response:
 
 
 @router.get("/api/scene")
-def scene(request: Request) -> Response:
-    """Answer the scene a scene state projects (``parse_spec``), as the viewer's JSON with every overlay."""
-    q, t0 = query_of(request), time.perf_counter()
-    found = services_of(request).open_model(q.get("k"))
+def scene(request: Request, q: Annotated[FormatSceneRequest, Query()]) -> Response:
+    """Answer the model ``k``, projected as asked (``p=none``: not at all), in the format ``f``
+    (FORMATS; the viewer's JSON by default). Server-Timing says how long loading, projecting and
+    formatting took."""
+    t0 = time.perf_counter()
+    found = services_of(request).open_model(q.k)
     if found is None:
-        return no_model(q)
-    _key, sc, _store = found
+        return json_response({"error": f"no model {q.k!r}"}, 404)
+    sc = found[1]
     t1 = time.perf_counter()
     try:
-        out = viewer.export_scene(transformations.apply(sc, projection.fold(parse_spec(q))))
+        spec = q.to_spec()
+        drawn = sc if spec is None else transformations.apply(sc, projection.fold(spec))
+        t2 = time.perf_counter()
+        out = FORMATS[q.f](drawn, q)
     except (ValueError, KeyError) as exc:
         return json_response({"error": f"{type(exc).__name__}: {exc}"}, 400)
-    meta = sc.model.meta or {}
-    out["dataset"] = {"key": q["k"], "repo": meta.get("repo"), "commit": meta.get("commit"), "files": meta.get("files"),
-                      "entities": len(sc.model.entities), "relations": len(sc.model.edges)}
-    out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
-    return json_response(out)
-
-
-@router.get("/api/mermaid")
-def mermaid_text(request: Request) -> Response:
-    """Answer the scene as Mermaid; ``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid, ids}``."""
-    q = query_of(request)
-    found = services_of(request).open_model(q.get("k"))
-    if found is None:
-        return no_model(q)
-    try:
-        drawn = transformations.apply(found[1], projection.fold(parse_spec(q)))
-        text, ids = mermaid.render(drawn, fade=q.get("nodim") != "1"), mermaid.list_ids(drawn)
-    except (ValueError, KeyError) as exc:
-        return json_response({"error": f"{type(exc).__name__}: {exc}"}, 400)
-    return json_response({"mermaid": text, "ids": ids}) if q.get("format") == "json" else text_response(text)
+    t3 = time.perf_counter()
+    response = json_response(out)
+    response.headers["Server-Timing"] = ", ".join(f"{name};dur={(b - a) * 1000:.0f}" for name, a, b in
+                                                  (("load", t0, t1), ("project", t1, t2), ("format", t2, t3)))
+    return response
 
 
 @router.get("/api/changes")
@@ -634,18 +673,6 @@ def changes(request: Request) -> Response:
     is_change = merge.is_change(sc)
     return json_response({"items": items.list_changes(sc) if is_change else [],
                           "verdicts": verdicts.describe_verdicts(sc, verdicts.load_verdicts(store, key)) if is_change else []})
-
-
-@router.get("/api/brief")
-def review_brief(request: Request) -> Response:
-    """Answer what a review agent gets for a change, as Markdown."""
-    q = query_of(request)
-    found = services_of(request).open_model(q.get("k"))
-    if found is None:
-        return no_model(q)
-    if not isinstance(found[0], ChangeKey):
-        return json_response({"error": "not a change"}, 404)
-    return text_response(brief.make_brief(found[1]), "text/markdown; charset=utf-8")
 
 
 @router.get("/api/review")
@@ -726,6 +753,14 @@ def make_app(services: Services, routes: APIRouter | None = None) -> FastAPI:
     nolli's), then nolli's. No response is cached by the browser."""
     app = FastAPI(title="nolli", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.services = services
+
+    @app.exception_handler(RequestValidationError)
+    async def bad_request(_request: Request, exc: RequestValidationError) -> Response:
+        """Answer a request whose parameters are wrong with 422, saying which and why in ``error``
+        as every other error does (``detail``: FastAPI's own list)."""
+        errors = jsonable_encoder(exc.errors())
+        said = "; ".join(f"{'.'.join(str(x) for x in e.get('loc', ())[1:]) or 'request'}: {e.get('msg')}" for e in errors)
+        return json_response({"error": said, "detail": errors}, 422)
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):

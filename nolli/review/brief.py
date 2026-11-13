@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 
 from nolli.logic import transformations
+from nolli.logic.formats import formatters
 from nolli.logic.formats import mermaid as mermaid_format
 from nolli.logic.transformations import projection
+from nolli.logic.transformations import merge
 from nolli.logic.transformations.merge import Links, items
 from nolli.model.scene import Scene
 
@@ -111,3 +113,12 @@ ids of an edge drawn in the diagram:
         description = re.sub(r"^(#{1,4}) ", r"##\1 ", description.strip(), flags=re.MULTILINE)
     desc = f"\n## The description\n\nRead this after the diagram (step 2).\n\n{description}\n" if description else ""
     return head + howto + diagram + desc
+
+
+def format_brief(scene: Scene, _options: object = None) -> dict:
+    """Write the brief (``make_brief``) of the change a scene shows, or was drawn from, as the
+    ``brief`` formatter's JSON. Raise ValueError for a scene of no change."""
+    source = formatters.source_of(scene)
+    if not merge.is_change(source):
+        raise ValueError("not a change")
+    return {"brief": make_brief(source)}

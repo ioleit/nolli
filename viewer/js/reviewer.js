@@ -125,7 +125,7 @@ function waysHTML() {
       then ask, in a clone of the repository:${code(agentPrompt())}
       The agent builds this same picture on your machine and opens its verdicts in a viewer there.</li>`;
   const hand = st?.uploads
-    ? `<li><b>By hand:</b> give any agent <a href="/api/brief?k=${encodeURIComponent(key)}" target="_blank">review.md</a> (the diagram and how to answer),
+    ? `<li><b>By hand:</b> give any agent <a href="#" id="rv-brief">review.md</a> (the diagram and how to answer),
         save its answer as a .json file and <label class="file">load it here…<input type="file" id="rv-file" accept=".json,application/json"></label></li>`
     : "";
   return `<ol class="rr-ways">${keyStep}${own}${hand}</ol>`;
@@ -181,6 +181,20 @@ export function draw() {
   }));
   const file = /** @type {HTMLInputElement | null} */ (box.querySelector("#rv-file"));
   file?.addEventListener("change", () => upload(file));
+  box.querySelector("#rv-brief")?.addEventListener("click", ev => { ev.preventDefault(); saveBrief(); });
+}
+
+/** Save the brief a review agent gets (/api/scene?f=brief) as review.md. */
+async function saveBrief() {
+  if (!key) return;
+  const res = await fetch("/api/scene?f=brief&p=none&k=" + encodeURIComponent(key));
+  const body = await res.json();
+  if (!res.ok) { alert("no brief: " + body.error); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([body.brief], { type: "text/markdown" }));
+  a.download = "review.md";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 /** The change the panel shows, for the prompts. @param {SceneDiff} d */

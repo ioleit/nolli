@@ -87,7 +87,9 @@ test("the Mermaid tab draws the scene, and a click there unfolds as in the drawi
   await expect(page.locator("#mmdpane .mmd-svg svg")).toBeVisible();
   const scene = await page.evaluate(async () => {
     const key = document.querySelector('meta[name="nolli-key"]')?.getAttribute("content") || "";
-    return (await fetch(`/api/scene?k=${encodeURIComponent(key)}&` + location.hash.slice(1).replace(/&?v=mermaid/, ""))).json();
+    const p = new URLSearchParams(location.hash.slice(1));
+    for (const k of ["v", "th", "item", "nodim"]) p.delete(k);  // the page's own, not the API's
+    return (await fetch(`/api/scene?k=${encodeURIComponent(key)}&` + p)).json();
   });
   const nid = (/** @type {string} */ id) => "n_" + id.replace(/[^A-Za-z0-9]/g, "_");
   expect(await mermaidIds(page)).toEqual(scene.nodes.map((/** @type {{ id: string }} */ n) => nid(n.id)).sort());

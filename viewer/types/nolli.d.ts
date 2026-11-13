@@ -190,7 +190,7 @@ export interface Scene {
   groups: { id: string; namespace: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
   roles: { id: string; files: number; dirs: number }[];  // files and directories per role, for the Show filter
   residue: string[];
-  stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
+  stats: { nodes: number; edges: number; ms?: { load: number; scene: number; roundtrip: number } };  // ms: added by the viewer, from Server-Timing
   dataset: { key: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
   url?: string;  // added by the viewer: the request that produced it
   diff?: SceneDiff;  // a diff dataset: the review mode

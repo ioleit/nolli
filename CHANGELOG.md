@@ -6,6 +6,18 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **One scene endpoint, many formats** (`nolli/server/serve.py`, `nolli/logic/formats/formatters.py`):
+  `GET /api/scene?k=…&f=<format>&<projection>&<options>` renders a model's scene with a formatter,
+  a function from a scene to a JSON body. The formats are `viewer` (the default, as before),
+  `table` (new: one row per drawn box or edge with the values of the overlays in `overlays`;
+  `required_overlay` keeps only the elements that overlay has a value for), `mermaid`
+  (`{mermaid, ids}`; `fade=false` instead of `nodim=1`), `brief` (`{brief}`) and `report`.
+  `p=none` asks for the scene unprojected.
+  - The request is typed (`FormatSceneRequest`: the projection's parameters plus each formatter's
+    options model, `nolli/logic/formats/options.py`). A parameter of the wrong type or one it does
+    not know is answered 422, saying which in `error`.
+  - `/api/mermaid` and `/api/brief` are gone. The viewer's "review.md" saves the brief as a file.
+  - The timings are in a `Server-Timing` header instead of the viewer JSON's `stats.ms`.
 - **More HTTP calls are read from TypeScript and JavaScript** (`nolli/logic/extractors/typescript/fetch.py`):
   a URL held in a local `const` (`const url = "/api/scene?" + query(); fetch(url)`), returned by a
   function of the same file (`showMermaid(scene, mermaidURL())`, through a helper), and a

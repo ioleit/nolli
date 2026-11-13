@@ -66,6 +66,20 @@ let focusNext = false;
 let itemsFor = null;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
+/**
+ * How long the server took: Server-Timing's load, and its projecting and formatting together as scene.
+ * @param {Response} res @returns {{ load: number, scene: number }}
+ */
+function readTimings(res) {
+  /** @type {Record<string, number>} */
+  const ms = {};
+  for (const part of (res.headers.get("Server-Timing") || "").split(",")) {
+    const m = /^\s*(\w+);dur=([\d.]+)/.exec(part);
+    if (m) ms[m[1]] = +m[2];
+  }
+  return { load: ms.load || 0, scene: (ms.project || 0) + (ms.format || 0) };
+}
+
 async function refresh(keepZoom = false) {
   const my = ++seq, url = "/api/scene?" + query(), t0 = performance.now();
   // the server reads the model on the first request and works out the picture on each; a
@@ -78,7 +92,7 @@ async function refresh(keepZoom = false) {
   if (my !== seq) return;  // a newer request is under way
   document.body.classList.remove("busy");
   if (!res.ok) { showError(body.error || res.status); return; }
-  body.stats.ms.roundtrip = Math.round(performance.now() - t0);
+  body.stats.ms = { ...readTimings(res), roundtrip: Math.round(performance.now() - t0) };
   /** @type {Scene} */
   const sc = body; sc.url = url; scene = sc;
   // adopt the server's normalised state (default cut resolved, folded descendants dropped)
@@ -127,8 +141,8 @@ async function show(keepZoom = false) {
   else await render(keepZoom);
 }
 
-/** /api/mermaid for the scene state shown, faded as the drawing is. */
-const mermaidURL = () => "/api/mermaid?" + query() + (scene?.diff && !state.dim ? "&nodim=1" : "");
+/** The scene state shown as Mermaid (/api/scene?f=mermaid), faded as the drawing is. */
+const mermaidURL = () => "/api/scene?f=mermaid&" + query() + (scene?.diff && !state.dim ? "&fade=false" : "");
 
 // ---------- review: going to an item ----------
 
@@ -260,7 +274,7 @@ async function render(keepZoom = false) {
   fitted = true;
   pointAtItem(keepZoom && !!prev && !reducedMotion.matches);
   const s = byId("status"); s.style.color = "";
-  s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms.scene} ms, round trip ${scene.stats.ms.roundtrip} ms`;
+  s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms?.scene} ms, round trip ${scene.stats.ms?.roundtrip} ms`;
 }
 
 function showRawPane() { if (scene) showRaw(scene); byId("status").textContent = ""; }

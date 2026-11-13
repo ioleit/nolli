@@ -19,6 +19,7 @@ dependencies = [
     "pyyaml>=6",
     # the viewer's server (nolli view, nolli serve)
     "fastapi>=0.115",
+    "pydantic>=2",  # the formatters' options (nolli/logic/formats/options.py)
     "uvicorn>=0.30",
 ]
 
