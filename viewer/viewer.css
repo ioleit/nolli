@@ -272,7 +272,7 @@ body.dim .edge.d-same { opacity: .18; }
 .rr-tally { text-transform: none; letter-spacing: 0; display: inline-flex; gap: 6px; align-items: center; color: var(--ink); }
 .rr-tally .vd { margin-right: 2px; }
 .rr-head { text-transform: none; letter-spacing: 0; display: contents; }
-.rr-head a { color: var(--muted); text-decoration: none; } .rr-head a:hover { color: var(--e-http); text-decoration: underline; }
+.rr-head a { color: var(--e-http); text-decoration: none; } .rr-head a:hover { color: var(--e-http); text-decoration: underline; }
 .rr-tools { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; }
 .rr-again, .rr-link { font: inherit; font-size: 11px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 1px 5px; cursor: pointer;
   display: inline-flex; gap: 4px; align-items: center; }
