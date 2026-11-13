@@ -229,6 +229,13 @@ class RepoStoreProvider:
         self.allow(repo)
         return RepoDirectoryStore(path, repo, self.cache)
 
+    def delete(self, repo: Repo) -> None:
+        """Delete everything kept of ``repo``. Nothing is asked of ``allow``: the service deletes
+        what it kept, say when it may no longer keep it."""
+        path = self.root / _format_repo_path(repo)
+        if self.root in path.resolve().parents:
+            shutil.rmtree(path, ignore_errors=True)
+
     def cleanup(self) -> None:
         """Keep what is stored under ``root`` within bounds. It deletes nothing for now: what is
         extracted is small and goes stale with every version of nolli. The server calls it after

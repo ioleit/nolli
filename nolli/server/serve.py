@@ -334,11 +334,12 @@ class Site:
 
     def find_built(self, target: operations.Target) -> tuple[ModelKey, Scene] | None:
         """Return the key and scene that the pinned ``target`` names if it is built, else None. Raise
-        NotAllowed if this request may not read its repository."""
+        NotAllowed if this request may not read its repository, also when nothing is built yet: a
+        page asks before it starts a build."""
+        store = self.stores.open(target.key.repo if target.key else target.repo)
         key = target.key or self.built.get(target.format())
         if key is None:
             return None
-        store = self.stores.open(key.repo)
         kept = store.load_change(key) if isinstance(key, ChangeKey) else store.load_model(key)
         sc = operations.open_scene(store, key) if operations.is_fresh(kept) else None
         return (key, sc) if sc is not None else None

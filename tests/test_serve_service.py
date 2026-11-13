@@ -11,6 +11,7 @@ import urllib.request
 from contextvars import ContextVar
 from dataclasses import dataclass
 
+import pytest
 from fastapi import Request, Response
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -90,3 +91,36 @@ def test_a_build_is_unknown_to_whoever_may_not_read_its_repository(tmp_path):
         site.built[secret] = Repo("github.com/o/secret").make_commit("a" * 40)
         assert get(f"{url}/api/job?j={secret}")[1]["state"] == "unknown"
         assert get(f"{url}/api/job?j={secret}", "alice")[1]["state"] == "done"
+
+
+def test_a_page_asks_before_it_starts_a_build(tmp_path):
+    """A pinned target (a pull request GitHub merges) is not built yet, and its key not known: the
+    store provider is asked about its repository all the same, before a build could start."""
+    with run_server(tmp_path) as (srv, _url):
+        site = srv.services.site
+        target = operations.Target("pinned", repo=Repo("github.com/o/secret"), base="a" * 40, head="b" * 40)
+        with pytest.raises(NotAllowed):
+            site.find_built(target)
+        token = WHO.set("alice")
+        try:
+            assert site.find_built(target) is None
+        finally:
+            WHO.reset(token)
+
+
+def test_the_provider_deletes_what_it_kept_of_a_repository(tmp_path):
+    stores = Mine(tmp_path / "data")
+    kept, other = Repo("github.com/O/Secret"), Repo("github.com/o/open")
+    token = WHO.set("alice")
+    try:
+        for repo in (kept, other):
+            stores.open(repo).save_comments(repo.make_commit("a" * 40), [{"id": "c-1"}])
+    finally:
+        WHO.reset(token)
+    stores.delete(Repo("github.com/o/secret"))  # as GitHub spells it in an event, any case; nobody asking
+    token = WHO.set("alice")
+    try:
+        assert stores.open(kept).load_comments(kept.make_commit("a" * 40)) == []
+        assert stores.open(other).load_comments(other.make_commit("a" * 40)) == [{"id": "c-1"}]
+    finally:
+        WHO.reset(token)
