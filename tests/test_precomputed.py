@@ -85,7 +85,7 @@ def test_what_extraction_said_holds_for_a_namesake(scene):
     assert src.get("hover") is None and "a" in a.get("hover")["text"]  # nothing to say about what the source does not have
     # the proposal folds like any scene: roles, modules and references are read off it
     projection = fold(proposal)
-    assert not projection.model.has("repo:src") and projection.model.has("repo:pkg")  # a folder holding one folder is drawn as that one
+    assert projection.model.has("repo:src") and projection.model.has("repo:pkg")  # a folder holding one folder is drawn, and the folder inside it
     assert projection.find_element("repo:pkg/a.py").get("label")["text"] == "a"
     assert projection.find_element("repo:pkg/a.py").get("files")["module"]  # a box that is a node of its source
     assert projection.find_element("repo:pkg").get("projection")["container"]

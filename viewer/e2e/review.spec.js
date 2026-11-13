@@ -59,8 +59,8 @@ test("every verdict is marked in the diagram, with its chess annotation", async 
   await expect(page.locator("#root g.edge.http g.verdict.question")).toHaveCount(1);
   await expect(boxMark(page, "repo:ledger/storage/cache.py").locator("text")).toHaveText("?!");
   await expect(boxMark(page, "repo:ledger/services/legacy_export.py").locator("path")).toHaveCount(1);
-  // the good one is on views/alerts, inside web/src/, which is folded at first and shows it
-  await expect(boxMark(page, "repo:web/src").locator("path")).toHaveCount(1);  // a thumbs up, not a glyph
+  // the good one is on views/alerts, inside web/, which is folded at first and shows it
+  await expect(boxMark(page, "repo:web").locator("path")).toHaveCount(1);  // a thumbs up, not a glyph
   await expect(boxMark(page, "repo:ledger/api").locator("text")).toHaveText("✓");  // fine, on api/routes.py
   // the glyph stays white on a changed or added edge, whose labels take the change's colour
   for (const t of await marks.locator("text, path").all()) await expect(t).toHaveCSS("fill", "rgb(255, 255, 255)");

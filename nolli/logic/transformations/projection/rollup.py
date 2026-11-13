@@ -83,23 +83,13 @@ class RolledUp:
     annotations: dict[str, dict[str, int]]  # node -> folded group -> count
     allocations: dict[str, list[str]]  # code node -> drawn services it is copied into (chips, not edges)
     hidden_relations: int
-    unresolved: dict[str, int]
     internal_changes: dict[str, dict[str, str]] = field(default_factory=dict)  # box -> changed facts inside it
     annotation_changes: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)  # node -> group -> changed facts
 
     def to_dict(self) -> dict:
         return {"visible": self.visible, "edges": [e.to_dict() for e in self.edges], "internal": self.internal,
                 "annotations": self.annotations, "allocations": self.allocations,
-                "hidden_relations": self.hidden_relations, "unresolved": self.unresolved}
-
-
-def image_aliases(g: Reading) -> dict[str, str]:
-    """image -> service, for images that run as exactly one service (drawn as that service)."""
-    runs: dict[str, list[str]] = defaultdict(list)
-    for r in g.relations:
-        if r.kind == RelationKind.ALLOCATE and r.subkind == "runs_as":
-            runs[r.src].append(r.dst)
-    return {img: svcs[0] for img, svcs in runs.items() if len(svcs) == 1}
+                "hidden_relations": self.hidden_relations}
 
 
 def hidden_by_role(g: Reading, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
@@ -116,21 +106,6 @@ def hidden_by_role(g: Reading, roles=HIDDEN_ROLES_DEFAULT) -> set[str]:
                 p = g.parent(p)
     return {n.id for n in g.nodes.values() if n.kind in ("file", "directory") and g.file(n.id).get("role") in rs
             and not g.file(n.id).get("root") and n.id not in keep}
-
-
-def chain_end(g: Reading, n: str, hidden: set[str]) -> str:
-    """Follow single-child directory chains (``frontend/playground/src``) to their end.
-
-    A directory whose only non-hidden content is one subdirectory adds a level without
-    adding structure; the chain is drawn as one node labelled with the joined path.
-    """
-    while g.kind(n) == "directory":
-        kids = [c for c in g.children(n) if c not in hidden and not is_init(g, c)]
-        if len(kids) == 1 and g.kind(kids[0]) == "directory":
-            n = kids[0]
-        else:
-            break
-    return n
 
 
 def _is_file(g: Reading, x: str) -> bool:
@@ -201,8 +176,7 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
 
     An unfolded container shows *all* its non-hidden children (a partially opened
     container hides problems); children that are unfolded themselves are walked. An
-    unfolded module also gets ``<module>#`` (``EntityId.own_code``), the anchor for its own code. Single-child
-    directory chains are compressed to their end, so ``expanded`` should name chain ends.
+    unfolded module also gets ``<module>#`` (``EntityId.own_code``), the anchor for its own code.
     A package's ``__init__`` is not a node: its classes are children of the package and its
     body is the package's anchor ``<dir>#``, present only if it has edges.
     ``show_files`` and ``degree`` are accepted for compatibility and ignored. ``walked``,
@@ -227,8 +201,6 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
             if kind == "directory" and is_init(g, c):
                 visible.update(cc for cc in g.children(c) if cc not in hidden)  # the package's own classes
                 continue
-            if kind == "directory" and g.kind(c) == "directory":
-                c = chain_end(g, c, hidden)
             if c in expanded and g.children(c):
                 walk(c)
             else:
@@ -244,17 +216,16 @@ def visible_from_expanded(g: Reading, expanded: set[str], hidden: set[str], show
     return visible
 
 
-def representative(g: Reading, visible: set[str], hidden: set[str], alias: dict[str, str] | None = None):
+def representative(g: Reading, visible: set[str], hidden: set[str]):
     """Return a function that maps a node to the node standing for it. That is the node itself if
     visible, else its nearest visible ancestor (or the own code of its unfolded module or
     package), else None when it is hidden."""
     cache: dict[str, str | None] = {}
-    alias = alias or {}
 
     def rep(x: str) -> str | None:
         if x in cache:
             return cache[x]
-        cur: str | None = alias.get(x, x)
+        cur: str | None = x
         result: str | None = None
         while cur is not None:
             if cur in hidden:
@@ -338,7 +309,6 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
     when C's files node is opened. Relations touching hidden entities, or crossing
     between roots (code to an interface), do not count.
     """
-    alias = image_aliases(g)
     lca: dict[str, int] = defaultdict(int)
     loose: dict[str, int] = defaultdict(int)
     anc_cache: dict[str, list[str] | None] = {}
@@ -363,7 +333,7 @@ def reveal_scores(g: Reading, hidden: set[str]) -> tuple[dict[str, int], dict[st
     for r in g.relations:
         if r.kind not in (RelationKind.USE, RelationKind.PROVIDE, RelationKind.ALLOCATE) or _default_init_edge(g, r):
             continue
-        s, d = alias.get(r.src, r.src), alias.get(r.dst, r.dst)
+        s, d = r.src, r.dst
         if s == d or not g.has(s) or not g.has(d):
             continue
         cs, cd = chain(s), chain(d)
@@ -484,12 +454,10 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
     the caller or reader when it is not.
     ``side`` is "base" or "head" to draw one commit of a change, or "both" to draw the
     merged model, where removed facts are counted on their base side."""
-    alias = image_aliases(g)
-    rep = representative(g, visible, hidden, alias)
+    rep = representative(g, visible, hidden)
     edges: dict[tuple, RolledEdge] = {}
     internal: dict[str, int] = defaultdict(int)
     hidden_count = 0
-    unresolved: dict[str, int] = defaultdict(int)
 
     internal_changes: dict[str, dict[str, str]] = defaultdict(dict)
 
@@ -529,12 +497,6 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
 
     for r in g.relations:
         if r.kind not in (RelationKind.USE, RelationKind.PROVIDE, RelationKind.ALLOCATE) or _default_init_edge(g, r) or not on_side(r):
-            continue
-        if g.kind(r.dst) == "unresolved":
-            if rep(r.src) is not None:
-                unresolved[g.find_unresolved_language(r.dst)] += r.count
-            continue
-        if r.subkind == "runs_as" and r.src in alias:
             continue
         a, b = rep(r.src), rep(r.dst)
         if a is None or b is None:
@@ -576,6 +538,6 @@ def rollup(g: Reading, visible: set[str], hidden: set[str] = frozenset(),
 
     return RolledUp(sorted(visible), sorted(kept, key=lambda e: (e.src, e.dst, e.kind, e.subkind)),
                   dict(internal), {k: dict(v) for k, v in annotations.items()},
-                  {k: sorted(v) for k, v in allocations.items()}, hidden_count, dict(unresolved),
+                  {k: sorted(v) for k, v in allocations.items()}, hidden_count,
                   {k: dict(v) for k, v in internal_changes.items()},
                   {k: {g: dict(c) for g, c in v.items()} for k, v in annotation_changes.items()})

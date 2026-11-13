@@ -69,17 +69,6 @@ class Source:
         (``__init__.py``, ``index.ts``)."""
         return self.has(x) and self.kind(x) == "file" and bool(self.attrs(x).get("body"))
 
-    def chain_end(self, x: str, hidden: set[str]) -> str:
-        """Follow ``x`` down a run of folders that each hold one folder, which is drawn as one box, and
-        return the run's last folder. Hidden children and package bodies are not counted."""
-        while self.kind(x) == "directory":
-            kids = [c for c in self.children(x) if c not in hidden and not self.is_init(c)]
-            if len(kids) == 1 and self.kind(kids[0]) == "directory":
-                x = kids[0]
-            else:
-                break
-        return x
-
     def list_relations(self):
         references = vocabulary.read_all_references(self.scene)
         for e in self.model.list_edges():
@@ -134,7 +123,7 @@ class Ctx:
 
     def shown_children(self, x: str) -> list[str]:
         """List what unfolding x draws: the children that are not hidden, with a package's __init__
-        replaced by its classes and single-child folder chains collapsed (rollup.visible_from_expanded)."""
+        replaced by its classes (rollup.visible_from_expanded)."""
         g, out = self.g, []
         kind = g.kind(x)
         for c in g.children(x):
@@ -143,7 +132,7 @@ class Ctx:
             if kind == "directory" and g.is_init(c):
                 out.extend(cc for cc in g.children(c) if cc not in self.hidden)
                 continue
-            out.append(g.chain_end(c, self.hidden) if kind == "directory" and g.kind(c) == "directory" else c)
+            out.append(c)
         return out
 
     def files_below(self, x: str) -> list[str]:

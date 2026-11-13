@@ -20,7 +20,7 @@ from nolli.logic.sources import git
 from nolli.logic.transformations import projection
 from nolli.logic.transformations.projection import ProjectionSpec
 from nolli.logic.transformations.projection.reading import Reading as Graph
-from nolli.logic.transformations.projection.rollup import hidden_by_role, image_aliases, lift, rollup
+from nolli.logic.transformations.projection.rollup import hidden_by_role, lift, rollup
 from nolli.logic.transformations.projection.unfold import find_default_cut
 from nolli.model.keys import StringKey
 
@@ -114,7 +114,7 @@ def test_model_binds_the_seams(repo: Path):
 def test_default_cut_lifts_frontend_to_backend(repo: Path):
     g = Graph(open_dir(repo))
     view = find_default_cut(g, budget=12)
-    hidden = hidden_by_role(g) | set(image_aliases(g))
+    hidden = hidden_by_role(g)
     rolled = rollup(g, set(view["visible"]), hidden, shown_groups={"api:"})
     rolled.edges = lift(g, rolled.edges, set(view["expanded"]))
     calls = [e for e in rolled.edges if e.subkind == "http"]
@@ -191,7 +191,7 @@ def test_hover_descriptions(repo: Path):
     http = next(e for e in sc["edges"] if e["projection"]["style"] == "http")
     assert "to endpoints served by" in text(info(http))
     # with the APIs group hidden, calls are in the caller's hover text, not edges
-    folded = draw(scene, budget=12, groups=[])
+    folded = draw(scene, expanded=["repo:", "repo:frontend", "repo:frontend/src"], groups=[])
     assert not any(e["projection"]["style"] == "http" for e in folded["edges"])
     app = find_node(folded, "repo:frontend/src/App.tsx")
     assert "Calls 1 HTTP endpoint" in text(info(app)).split("\n\n")
