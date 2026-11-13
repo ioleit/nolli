@@ -51,33 +51,115 @@ def _module_constants(root) -> dict[str, str]:
     return consts
 
 
-def _url_pattern(node, consts: dict[str, str] | None = None) -> str | None:
-    """Return the static shape of a URL expression, e.g. '/api/x/*', or None if nothing is static.
-    Substitutions of known module constants are folded in; others become \\x00."""
+MAX_SHAPES = 8  # shapes one URL expression may have; past that, the alternatives are not followed
+MAX_DEPTH = 6  # names and calls followed for one URL expression
+
+
+def _url_shapes(node, consts: dict[str, str] | None = None, depth: int = 0) -> list[str]:
+    """Return the static shapes a URL expression can have, e.g. ``['/api/x/\x00']``; empty if nothing
+    in it is static. A part that cannot be read becomes \x00. Module constants (``consts``) are
+    folded in; an identifier is also read from the nearest enclosing ``const`` that declares it, a
+    call to a function of the same file from the one expression it returns, and a conditional
+    (``c ? "/a" : ""``) gives a shape for each branch."""
     consts = consts or {}
-    if node is None:
-        return None
-    if node.type == "string":
-        return b"".join(c.text for c in node.children if c.type == "string_fragment").decode("utf-8", "replace")
-    if node.type == "identifier":
-        return consts.get(node.text.decode())
-    if node.type == "template_string":
-        parts = []
+    if node is None or depth > MAX_DEPTH:
+        return []
+    t = node.type
+    if t == "string":
+        return [b"".join(c.text for c in node.children if c.type == "string_fragment").decode("utf-8", "replace")]
+    if t == "identifier":
+        name = node.text.decode()
+        if name in consts:
+            return [consts[name]]
+        value = _find_const(node, name)
+        return _url_shapes(value, consts, depth + 1) if value is not None else []
+    if t == "template_string":
+        parts: list[list[str]] = []
         for c in node.children:
             if c.type == "string_fragment":
-                parts.append(c.text.decode("utf-8", "replace"))
+                parts.append([c.text.decode("utf-8", "replace")])
             elif c.type == "template_substitution":
                 inner = c.named_children[0] if c.named_children else None
-                v = consts.get(inner.text.decode()) if inner is not None and inner.type == "identifier" else None
-                parts.append(v if v is not None else "\x00")
-        s = "".join(parts)
-        return s if s.strip("\x00") else None
-    if node.type == "binary_expression":
+                parts.append(_url_shapes(inner, consts, depth + 1) or ["\x00"])
+        return [x for x in _combine(parts) if x.strip("\x00")]
+    if t == "binary_expression":
         left, right = node.child_by_field_name("left"), node.child_by_field_name("right")
-        lp, rp = _url_pattern(left, consts), _url_pattern(right, consts)
-        return (lp or "\x00") + (rp or "\x00")
-    if node.type == "parenthesized_expression" and node.named_children:
-        return _url_pattern(node.named_children[0], consts)
+        return _combine([_url_shapes(left, consts, depth + 1) or ["\x00"], _url_shapes(right, consts, depth + 1) or ["\x00"]])
+    if t == "parenthesized_expression" and node.named_children:
+        return _url_shapes(node.named_children[0], consts, depth + 1)
+    if t == "ternary_expression":
+        branches = [_url_shapes(node.child_by_field_name(f), consts, depth + 1) or ["\x00"] for f in ("consequence", "alternative")]
+        return list(dict.fromkeys(branches[0] + branches[1]))[:MAX_SHAPES]
+    if t == "call_expression":
+        fn = node.child_by_field_name("function")
+        if fn is not None and fn.type == "identifier":
+            returned = _find_returned(node, fn.text.decode())
+            return _url_shapes(returned, consts, depth + 1) if returned is not None else []
+    return []
+
+
+def _url_pattern(node, consts: dict[str, str] | None = None) -> str | None:
+    """Return the first static shape of a URL expression (``_url_shapes``), or None if nothing is static."""
+    shapes = _url_shapes(node, consts)
+    return shapes[0] if shapes else None
+
+
+def _combine(parts: list[list[str]]) -> list[str]:
+    """Concatenate one alternative of each part, every way, at most MAX_SHAPES of them."""
+    out = [""]
+    for alts in parts:
+        out = list(dict.fromkeys(a + b for a in out for b in alts))[:MAX_SHAPES]
+    return out
+
+
+def _scopes(node):
+    """Yield the blocks around ``node``, innermost first: function bodies, blocks, the module."""
+    n = node.parent
+    while n is not None:
+        if n.type in ("statement_block", "program"):
+            yield n
+        n = n.parent
+
+
+def _declarations(block):
+    """Yield (name, value) of the ``const`` declarations directly in ``block``, exported ones too."""
+    for n in block.named_children:
+        decl = n.child_by_field_name("declaration") if n.type == "export_statement" else n
+        if decl is None or decl.type != "lexical_declaration" or not decl.children or decl.children[0].type != "const":
+            continue
+        for d in decl.named_children:
+            if d.type == "variable_declarator":
+                name = d.child_by_field_name("name")
+                if name is not None and name.type == "identifier":
+                    yield name.text.decode(), d.child_by_field_name("value")
+
+
+def _find_const(node, name: str):
+    """Return the value of the nearest enclosing ``const <name> = …``, or None."""
+    for block in _scopes(node):
+        for n, value in _declarations(block):
+            if n == name:
+                return value
+    return None
+
+
+def _find_returned(node, name: str):
+    """Return the one expression that the function ``name``, declared around ``node``, returns: an
+    arrow function's expression body, or a body whose only ``return`` it is. None for anything else."""
+    for block in _scopes(node):
+        fns = [value for n, value in _declarations(block) if n == name]
+        fns += [c for c in block.named_children if c.type == "function_declaration"
+                and c.child_by_field_name("name") is not None and c.child_by_field_name("name").text.decode() == name]
+        for fn in fns:
+            if fn is None or fn.type not in ("arrow_function", "function_expression", "function", "function_declaration"):
+                continue
+            body = fn.child_by_field_name("body")
+            if body is None:
+                return None
+            if body.type != "statement_block":
+                return body
+            returns = [n for n in imports.walk(body) if n.type == "return_statement"]
+            return returns[0].named_children[0] if len(returns) == 1 and returns[0].named_children else None
     return None
 
 
@@ -182,8 +264,9 @@ def run(ctx: Context) -> None:
 
     1. Direct calls: ``fetch(<url>)``, ``axios.<method>(<url>)``,
        ``new EventSource(<url>)``, ``new WebSocket(<url>)``. The URL's static
-       shape is kept (template substitutions become ``*`` segments; a leading
-       substitution such as ``${API_BASE}`` is dropped).
+       shapes are kept (``_url_shapes``: template substitutions become ``*`` segments,
+       a leading substitution such as ``${API_BASE}`` is dropped, local constants and
+       same-file functions returning a URL are read, a conditional gives a call per branch).
     2. One level of indirection: a function whose body passes one of its
        parameters into such a URL is a *helper*; every call to a function of that
        name elsewhere contributes its argument as a URL.
@@ -222,7 +305,8 @@ def run(ctx: Context) -> None:
             if not is_call or url_node is None:
                 continue
             fn_node, fn_name = _enclosing_function(n)
-            raw = _url_pattern(url_node, consts)
+            shapes = _url_shapes(url_node, consts)
+            raw = shapes[0] if shapes else None
             # Helper detection: a parameter of the enclosing function flows into the URL.
             # A helper whose parameter is the whole tail (``${API_BASE}${path}``) describes no
             # endpoint itself; one with a parameter inside the path (``/worlds/${world}/seed``)
@@ -237,9 +321,10 @@ def run(ctx: Context) -> None:
                         helpers[fn_name] = (i, prefix)
                         tail_only = url_node.type == "identifier" or (raw is not None and raw == prefix + "\x00")
                         break
-            pat = _normalize(raw) if raw else None
-            if pat and pat != "/" and pat != "*" and not tail_only:
-                calls.append(Call(rel, n.start_point[0] + 1, default_method, pat, "direct"))
+            if not tail_only:
+                for pat in dict.fromkeys(_normalize(x) for x in shapes):
+                    if pat and pat != "/" and pat != "*":
+                        calls.append(Call(rel, n.start_point[0] + 1, default_method, pat, "direct"))
 
     for rel, tree in trees.items():
         for n in imports.walk(tree.root_node):
@@ -255,10 +340,9 @@ def run(ctx: Context) -> None:
             idx, prefix = helpers[name]
             if idx >= len(args.named_children):
                 continue
-            raw = _url_pattern(args.named_children[idx], consts_by_file[rel])
-            pat = _normalize(prefix + raw) if raw else None
-            if pat and pat != "/" and pat != "*":
-                calls.append(Call(rel, n.start_point[0] + 1, _method_of(n, "?"), pat, name))
+            for pat in dict.fromkeys(_normalize(prefix + x) for x in _url_shapes(args.named_children[idx], consts_by_file[rel])):
+                if pat and pat != "/" and pat != "*":
+                    calls.append(Call(rel, n.start_point[0] + 1, _method_of(n, "?"), pat, name))
 
     ctx.notes["http-helpers"] = helpers
     ctx.notes["http-calls"] = [c.__dict__ for c in calls]

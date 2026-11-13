@@ -6,6 +6,11 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **More HTTP calls are read from TypeScript and JavaScript** (`nolli/logic/extractors/typescript/fetch.py`):
+  a URL held in a local `const` (`const url = "/api/scene?" + query(); fetch(url)`), returned by a
+  function of the same file (`showMermaid(scene, mermaidURL())`, through a helper), and a
+  conditional in it (`` `/api/review${cancel ? "/cancel" : ""}` ``), which gives a call per branch
+  instead of one to `/api/*`. Inline `<script>`s in HTML are still not read.
 - **The viewer's server runs on FastAPI and uvicorn** (`nolli/server/serve.py`), which are now
   dependencies. Its routes are FastAPI routes, so nolli drawing itself shows its own API and
   binds the viewer's calls to it instead of leaving them unresolved.
