@@ -183,26 +183,11 @@ def _name(g: reading.Reader, x: EntityId) -> str:
 # -- finding and showing them -----------------------------------------------------------
 
 
-def _list_base_keys(scene: Scene) -> list[ModelKey]:
-    """List the keys of the models whose comments ``scene`` shows: those it was drawn from, itself
-    included, that are no view of another (``keys.find_base_key``). A projection of a change
-    shows the change's comments and its two commits'."""
-    out: list[ModelKey] = []
-    todo = [scene]
-    while todo:
-        s = todo.pop(0)
-        k = s.model.key
-        if k is not None and keys.find_base_key(k) == k and k not in out:
-            out.append(k)
-        todo += list(s.sources.values())
-    return out
-
-
 class Comments(Overlay):
     """The comments that show on each drawn node and edge, as ``{"own": [...], "inside": [...]}``:
     ``own`` those about it, ``inside`` those rolled up onto it from what it holds or carries. It
     reads the comments with ``load`` (a store's ``load_comments``), from every model the scene was
-    drawn from (``_list_base_keys``)."""
+    drawn from that is no view of another, and shows each by the rules of the module's docstring."""
 
     name = "comments"
     cache_version = "1"
@@ -213,7 +198,21 @@ class Comments(Overlay):
     def list_all(self, scene: Scene) -> list[dict]:
         """Return every comment kept on the models ``scene`` was drawn from, whether it shows on
         ``scene`` or not."""
-        return [c for k in _list_base_keys(scene) for c in self.load(k)]
+        return [c for k in self._list_base_keys(scene) for c in self.load(k)]
+
+    def _list_base_keys(self, scene: Scene) -> list[ModelKey]:
+        """List the keys of the models whose comments ``scene`` shows: those it was drawn from, itself
+        included, that are no view of another (``keys.find_base_key``). A projection of a change
+        shows the change's comments and its two commits'."""
+        out: list[ModelKey] = []
+        todo = [scene]
+        while todo:
+            s = todo.pop(0)
+            k = s.model.key
+            if k is not None and keys.find_base_key(k) == k and k not in out:
+                out.append(k)
+            todo += list(s.sources.values())
+        return out
 
     def compute(self, el: Element) -> dict | None:
         return el.scene.read_all(self.name).get(el.key)  # computed for the whole scene in compute_all
@@ -221,52 +220,50 @@ class Comments(Overlay):
     def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
         out: dict[Key, dict] = {}
         for c in self.list_all(scene):
-            placed = _place(scene, c)
+            placed = self._place(scene, c)
             if placed is not None:
                 key, own = placed
                 out.setdefault(key, {"own": [], "inside": []})["own" if own else "inside"].append(c)
         return out
 
-
-def _place(scene: Scene, comment: dict) -> tuple[Key, bool] | None:
-    """Find the drawn node or edge a comment shows on, and whether it is its own target; return
-    None if it does not show. See the module's docstring for the rules."""
-    try:
-        t = schema.parse_key(comment.get("target") or "")
-    except ValueError:
-        return None
-    if scene.has(t):
-        return t, True
-    if isinstance(t, RelationId):
-        kind, src, dst, subkind = t.split("|", 3)
-        a, b = reading.find_box(scene, src), reading.find_box(scene, dst)
-        if a is None or b is None:
+    def _place(self, scene: Scene, comment: dict) -> tuple[Key, bool] | None:
+        """Find the drawn node or edge a comment shows on, and whether it is its own target; return
+        None if it does not show. See the module's docstring for the rules."""
+        try:
+            t = schema.parse_key(comment.get("target") or "")
+        except ValueError:
             return None
-        if a == b:
-            return a, False
-        e = _find_carrier(scene, a, b, kind, subkind)
-        return (e, False) if e is not None else None
-    x = reading.find_box(scene, t)
-    return (x, False) if x is not None else None
+        if scene.has(t):
+            return t, True
+        if isinstance(t, RelationId):
+            kind, src, dst, subkind = t.split("|", 3)
+            a, b = reading.find_box(scene, src), reading.find_box(scene, dst)
+            if a is None or b is None:
+                return None
+            if a == b:
+                return a, False
+            e = self._find_carrier(scene, a, b, kind, subkind)
+            return (e, False) if e is not None else None
+        x = reading.find_box(scene, t)
+        return (x, False) if x is not None else None
 
+    def _find_carrier(self, scene: Scene, a: str, b: str, kind: str, subkind: str) -> Key | None:
+        """Find the drawn edge of ``kind`` and ``subkind`` between the drawn nodes ``a`` and ``b``, or
+        the nodes that hold them, either way round; the closest one, or None. Roll-up and fan bundling
+        draw an edge between nodes that hold its ends. Only the nodes around ``a`` and ``b`` are
+        searched, never those inside: an edge split up into edges to what an end holds has no carrier."""
+        def around(x: str) -> list[str]:
+            out = [x]
+            while (p := scene.model.find_parent(out[-1])) is not None:
+                out.append(p)
+            return out
 
-def _find_carrier(scene: Scene, a: str, b: str, kind: str, subkind: str) -> Key | None:
-    """Find the drawn edge of ``kind`` and ``subkind`` between the drawn nodes ``a`` and ``b``, or
-    the nodes that hold them, either way round; the closest one, or None. Roll-up and fan bundling
-    draw an edge between nodes that hold its ends. Only the nodes around ``a`` and ``b`` are
-    searched, never those inside: an edge split up into edges to what an end holds has no carrier."""
-    def around(x: str) -> list[str]:
-        out = [x]
-        while (p := scene.model.find_parent(out[-1])) is not None:
-            out.append(p)
-        return out
-
-    for s, d in ((a, b), (b, a)):
-        found = [(i + j, e) for i, x in enumerate(around(s)) for j, y in enumerate(around(d))
-                 for e in scene.model.list_out(x) if e.dst == y and e.kind == kind and e.subkind == subkind]
-        if found:
-            return min(found, key=lambda f: f[0])[1].id
-    return None
+        for s, d in ((a, b), (b, a)):
+            found = [(i + j, e) for i, x in enumerate(around(s)) for j, y in enumerate(around(d))
+                     for e in scene.model.list_out(x) if e.dst == y and e.kind == kind and e.subkind == subkind]
+            if found:
+                return min(found, key=lambda f: f[0])[1].id
+        return None
 
 
 def describe_comments(scene: Scene, comments: list[dict]) -> list[dict]:
