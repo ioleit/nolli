@@ -1,11 +1,12 @@
 """Builds the test fixtures (tests/fixtures/: review_repo.py, nav_repo.py) in a temporary
-directory and serves the viewer on their datasets, for the Playwright tests:
-python e2e/serve_fixture.py <port>. A page opens one by its directory's name, the server running
-in the data directory: /?t=ledger-review, /?t=tasks."""
+directory, imports their datasets into the viewer's store, as nolli view does with a dataset
+directory, and serves the viewer on them, for the Playwright tests:
+python e2e/serve_fixture.py <port> <keys file>. The keys file maps each dataset directory's
+name to its model's key (e2e/fixtures.js), and a page opens a fixture by that key: /?t=<key>."""
 
 from __future__ import annotations
 
-import os
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -15,14 +16,22 @@ sys.path[:0] = [str(ROOT), str(ROOT / "tests" / "fixtures")]
 
 import nav_repo  # noqa: E402
 import review_repo  # noqa: E402
+from nolli.cli import import_dataset  # noqa: E402
+from nolli.logic.formats.dataset import read_key  # noqa: E402
 from nolli.server.serve import make_local_server  # noqa: E402
+from nolli.store.repo_directory import RepoStoreProvider  # noqa: E402
 
+port, keys_file = int(sys.argv[1]), Path(sys.argv[2])
 with tempfile.TemporaryDirectory(prefix="nolli-e2e-") as tmp:
-    data = review_repo.build(Path(tmp)).parent
-    nav_repo.build(Path(tmp))
-    os.chdir(data)  # a dataset directory named relative to it
-    srv = make_local_server(data, None, port=int(sys.argv[1]))
-    print(f"serving {', '.join(sorted(d.name for d in data.iterdir()))} on http://127.0.0.1:{sys.argv[1]}/", flush=True)
+    datasets = [review_repo.build(Path(tmp)), nav_repo.build(Path(tmp))]
+    data = Path(tmp) / "store"
+    stores = RepoStoreProvider(data)
+    keys = {}
+    for d in datasets:
+        keys[d.name] = import_dataset(stores.open(read_key(d).repo), d).format_key()
+    keys_file.write_text(json.dumps(keys, indent=2))
+    srv = make_local_server(data, None, port=port)
+    print(f"serving {', '.join(sorted(keys))} on http://127.0.0.1:{port}/ (keys in {keys_file})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
