@@ -63,3 +63,7 @@ committing it. Python comes from `$NOLLI_PYTHON`, else `../.venv`, else `python3
 nolli's dependencies installed); Chromium from `$NOLLI_CHROMIUM`, else `/usr/bin/chromium`,
 else Playwright's own (`npx playwright install chromium`).
 
+When screenshots differ, `node e2e/diff_page.mjs` writes `test-results/screenshot-diffs.html`:
+expected, actual and diff of each, in one page. CI uploads that page unzipped when the
+browser tests fail, and the job summary links to it.
+
