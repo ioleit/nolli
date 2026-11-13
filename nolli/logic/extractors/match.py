@@ -9,8 +9,8 @@ from nolli.model.schema import RelationKind, Scheme
 
 
 def _prune_unresolved(ctx: Context) -> None:
-    """Drop placeholders nothing refers to; park the rest under one group so they are
-    counted as residue, never drawn as top-level nodes."""
+    """Drop placeholders nothing refers to; park the rest under one group, so they are drawn
+    in it when it is shown and are a badge on what refers to them when it is not."""
     m = ctx.model
     referenced = {r.dst for r in m.relations} | {r.src for r in m.relations}
     for eid in [e for e, ent in m.entities.items() if ent.kind == "unresolved" and e not in referenced]:
