@@ -5,8 +5,8 @@ A target (what a user names: a key, a branch, a pull request, …) is built into
 (``build_target``): taken from the store when it holds one built by this version, else extracted
 from the repository's commits and kept there. A stored model is opened as a scene
 (``open_scene``), with what extraction said and nolli's overlays; the values of the overlays
-that cost the most are computed when the model is built and kept with it. Nothing here knows
-about reviews: a caller that shows one adds its overlays when it opens a scene.
+that cost the most are computed when the model is built and kept with it. Comments on a model
+(``add_comments``) are kept on the model it is a view of and shown on every scene of that one.
 """
 
 from __future__ import annotations
@@ -18,19 +18,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from nolli.logic import comments as comments_lib
 from nolli.logic import transformations
 from nolli.logic.extractors import facts
 from nolli.logic.sources import LocalRepository, Sources, git, github
-from nolli.logic.transformations import merge
+from nolli.logic.transformations import merge, projection
+from nolli.logic.transformations.merge import presets
 from nolli.logic.transformations.merge.change import Change
 from nolli.model import vocabulary
-from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo, StringKey
+from nolli.model import keys
+from nolli.model.keys import ChangeKey, CommitKey, ModelKey, ProjectionKey, Repo, SelectionKey, StringKey
 from nolli.model.model import Key, Model
 from nolli.model.scene import Overlay, Scene
 from nolli.model.schema import EntityId
 from nolli.progress import Progress, Quiet
 from nolli.store import ModelStore
-from nolli.store.maps import Maps, MapStore
+from nolli.store import precomputed
+from nolli.store.maps import Maps
 
 
 # -- targets, and building them ---------------------------------------------------------
@@ -234,39 +238,40 @@ def _make_derived_overlays() -> list[Overlay]:
     return [Names()]
 
 
-def _make_kept_overlays(maps: MapStore, key: ModelKey) -> list[Overlay]:
+def _make_kept_overlays(store: ModelStore, key: ModelKey) -> list[Overlay]:
     """Make the overlays a stored model keeps the values of (``precompute_scene``) and answers from
     when it is opened: what nolli derives from any model's facts, and for a change what it says
     about itself."""
-    return [*_make_derived_overlays(), *(_make_change_overlays(maps) if isinstance(key, ChangeKey) else [])]
+    return [*_make_derived_overlays(), *(_make_change_overlays(store) if isinstance(key, ChangeKey) else [])]
 
 
-def _make_change_overlays(maps: MapStore) -> list[Overlay]:
+def _make_change_overlays(store: ModelStore) -> list[Overlay]:
     """Make the overlays that compute what a change says about itself from its sides: what changed
     (``change``). Its values are kept with the change at diff time (``precompute_scene``) and
     read back from there (``_open_change_scene``)."""
-    return [Change(maps.open_maps("content"))]
+    return [Change(store.open_maps("content"))]
 
 
 def _describe_scene_meta(base: Model, head: Model, about: dict, content: Mapping[Key, dict]) -> dict:
     return {**_describe_change_meta(base, head, about), "change": merge.describe_change(about, content)}
 
 
-def _make_overlays(maps: MapStore) -> list[Overlay]:
-    """Make the overlays nolli shows on any scene, on top of what extraction said."""
+def _make_overlays(store: ModelStore) -> list[Overlay]:
+    """Make the overlays nolli shows on any scene, on top of what extraction said: among them the
+    comments kept in ``store``."""
     from nolli.logic.formats.descriptions.hover import Hover
     from nolli.logic.formats.descriptions.label import Label
 
-    derived = [maps.caching_overlay(o) for o in _make_derived_overlays()]
-    return [*derived, Change(maps.open_maps("content")), Label(), Hover()]
+    derived = [precomputed.caching_overlay(store, o) for o in _make_derived_overlays()]
+    return [*derived, Change(store.open_maps("content")), comments_lib.Comments(store.load_comments), Label(), Hover()]
 
 
-def _open_scene(model: Model, maps: MapStore) -> Scene:
+def _open_scene(model: Model, store: ModelStore) -> Scene:
     """Open a model as a scene with overlays for what extraction said, by shape and read by
     address, followed by nolli's own overlays. A shape never extracted for this model says
     nothing; a model made from this one answers for a namesake with the same values."""
-    said = [maps.precomputed_overlay(n) for n in vocabulary.SHAPES]
-    return Scene(model, [*said, *_make_overlays(maps)])
+    said = [precomputed.precomputed_overlay(store, n) for n in vocabulary.SHAPES]
+    return Scene(model, [*said, *_make_overlays(store)])
 
 
 def _open_commit_scene(store: ModelStore, commit: CommitKey) -> Scene | None:
@@ -288,23 +293,57 @@ def _open_change_scene(store: ModelStore, change: ChangeKey) -> Scene | None:
         return None
     meta = _describe_scene_meta(base.model, head.model, about, store.open_maps("content").load(change.format_key()))
     scene = transformations.apply({"base": base, "head": head}, merge.union(change, meta, store.load_model(change)))
-    return scene.with_overlays(*[store.caching_overlay(o) for o in _make_kept_overlays(store, change)])
+    return scene.with_overlays(*[precomputed.caching_overlay(store, o) for o in _make_kept_overlays(store, change)])
 
 
 def open_scene(store: ModelStore, key: ModelKey, overlays: Sequence[Overlay] = ()) -> Scene | None:
-    """Open the scene of a stored model, either a change merged from its commits or a single
-    commit, with what extraction said and nolli's own overlays, and ``overlays`` on top (one of the
-    same name replaces nolli's): what a caller adds that nolli's logic does not know, such as a
-    review's verdicts and cards (``nolli.review.card.make_overlays``). Return None if the store
-    does not have it; raise NotAllowed as the store does."""
-    scene = _open_change_scene(store, key) if isinstance(key, ChangeKey) else _open_commit_scene(store, key)
+    """Open the scene of a stored model with what extraction said and nolli's own overlays, and
+    ``overlays`` on top (one of the same name replaces nolli's). The model is a change merged from
+    its commits, a single commit or a model kept under a name, or a projection of any of these,
+    drawn again from its key. Return None if the store does not have it, or for a key nolli cannot
+    draw again (a selection's); raise NotAllowed as the store does."""
+    if isinstance(key, ProjectionKey):
+        source = open_scene(store, key.source)
+        if source is None:
+            return None
+        scene = transformations.apply(source, projection.fold(projection.ProjectionSpec.parse(key.spec, presets.PRESETS)))
+    elif isinstance(key, ChangeKey):
+        scene = _open_change_scene(store, key)
+    elif isinstance(key, SelectionKey):
+        scene = None
+    else:
+        scene = _open_commit_scene(store, key)  # a commit's, or one kept under a name
     return scene.with_overlays(*overlays) if scene is not None and overlays else scene
+
+
+def make_review_key(change: ModelKey) -> ProjectionKey:
+    """Return the key of the projection a review of ``change`` is made on (``brief.make_review_spec``)."""
+    from nolli.logic.formats import brief
+
+    return projection.make_key(change, brief.make_review_spec())
+
+
+def add_comments(store: ModelStore, observed: ModelKey, raw: str, by: str, *, verdict_needed: bool = False,
+                 dry_run: bool = False) -> tuple[list[dict], list[str]]:
+    """Read comments made on the model of ``observed`` from the JSON text ``raw``
+    (``comments.make_comments``) and keep them on the model it is a view of
+    (``keys.find_base_key``), in place of those ``by`` made on ``observed`` before. Keep nothing
+    if any of them is wrong, or with ``dry_run``. Return the comments read and the problems found.
+    Raise KeyError if the store cannot open ``observed``."""
+    scene = open_scene(store, observed)
+    if scene is None:
+        raise KeyError(f"no model {observed.format_key()} here to comment on")
+    made, errors = comments_lib.make_comments(scene, raw, by, verdict_needed=verdict_needed)
+    if not errors and not dry_run:
+        base = keys.find_base_key(observed)
+        store.save_comments(base, comments_lib.merge_comments(store.load_comments(base), made))
+    return made, errors
 
 
 # -- from the store, or built --------------------------------------------------------------
 
 
-def _load_maps(store: MapStore, m: Model) -> Maps:
+def _load_maps(store: ModelStore, m: Model) -> Maps:
     return {n: dict(store.open_maps(n).load(m.key.format_key())) for n in store.list_map_names(m.key.format_key())}
 
 
@@ -412,4 +451,4 @@ def precompute_scene(store: ModelStore, key: ModelKey) -> None:
     if scene is None:
         raise KeyError(f"no model {key.format_key()} to precompute")
     for o in _make_kept_overlays(store, key):
-        store.precompute_overlay_values(scene, o)
+        precomputed.precompute_overlay_values(store, scene, o)

@@ -27,7 +27,7 @@ from nolli import operations
 from nolli.logic import transformations
 from nolli.logic.transformations import projection
 from nolli.model.keys import Repo
-from nolli.store import RepoStoreProvider
+from nolli.store import RepoStoreProvider, precomputed
 
 repo, given = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
 data = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(tempfile.mkdtemp(prefix="nolli-annotations-"))
@@ -65,7 +65,7 @@ print("maps kept:", store.list_map_names(key.format_key()), "about:", store.open
 
 again = transformations.apply(scene, projection.fold(modules))
 assert again.model.key == key                                       # the same projection of the same model: the same key
-read = again.with_overlays(store.strictly_precomputed_overlay("annotations"))
+read = again.with_overlays(precomputed.strictly_precomputed_overlay(store, "annotations"))
 for k, v in read.read_all("annotations").items():
     el = read.find_element(k)
     only_here = not scene.model.has(k)                              # an element only the projection has, such as a line between folded boxes

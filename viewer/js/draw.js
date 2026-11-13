@@ -4,7 +4,7 @@
 import { showTip, hideTip, pinTip } from "./tip.js";
 import { HEADER_H, ICON_GAP, ICON_H, changedLines, iconW, iconsW, isAnchor, statsText } from "./layout.js";
 import { wasDrag } from "./panzoom.js";
-import { ICON, glyph } from "./verdicts.js";
+import { ICON, glyph, worst } from "./verdicts.js";
 
 /**
  * @typedef {import("../types/nolli").Scene} Scene
@@ -64,7 +64,7 @@ const at = b => `translate(${b.x},${b.y})`;
 /** @param {SceneEdge} e @param {boolean} review */
 function edgeClass(e, review) {
   return ["edge", e.projection.local && "local", e.projection.single && "single", e.projection.weak && "weak", e.projection.style, e.projection.heuristic && "heuristic", e.projection.types && "types",
-    e.change ? "d-" + e.change.status : review && "d-same", e.verdicts?.verdict && "v-" + e.verdicts?.verdict].filter(Boolean).join(" ");
+    e.change ? "d-" + e.change.status : review && "d-same", worst(e.comments) && "v-" + worst(e.comments)].filter(Boolean).join(" ");
 }
 
 /**
@@ -107,7 +107,7 @@ function buildBox(n, p, h) {
   const onToggle = h ? h.toggle : null;
   const isC = n.projection.container;
   const grp = el("g", { class: ["node", isC ? "container" : "folded", n.kind,
-    n.change ? "d-" + n.change.status : h && h.review ? "d-same" : "", n.verdicts?.verdict ? "v-" + n.verdicts?.verdict : ""].join(" "), transform: at(p), "data-id": n.id });
+    n.change ? "d-" + n.change.status : h && h.review ? "d-same" : "", worst(n.comments) ? "v-" + worst(n.comments) : ""].join(" "), transform: at(p), "data-id": n.id });
   const rect = el("rect", { width: p.w, height: p.h }); grp.appendChild(rect);
   const icons = n.label.icons;
   const centred = !isC && !icons.length;
@@ -171,7 +171,8 @@ function buildBox(n, p, h) {
   // the review's verdict on what this box contains, on its top-right corner
   /** @type {SVGElement | null} */
   let mark = null;
-  if (n.verdicts?.verdict) { mark = verdictMark(n.verdicts?.verdict, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
+  const v = worst(n.comments);
+  if (v) { mark = verdictMark(v, p.w - 1, 1); if (h) cardOnMark(mark, n, grp); }
   n.projection.chips.forEach((c, i) => { const ch = el("circle", { class: "chip", cx: 9 + i * 11, cy: isC ? 14 : 32, r: 4, fill: color(c.color), "stroke-width": 1 }); ch.appendChild(el("title")).textContent = "deployed in " + c.name; grp.appendChild(ch); });
   if (n.projection.service_color !== null && n.projection.service_color !== undefined) rect.setAttribute("stroke", color(n.projection.service_color));
   if (onToggle && !isC && n.projection.foldable) grp.addEventListener("click", ev => { if (wasDrag()) return; ev.stopPropagation(); onToggle(n.id); });
@@ -246,7 +247,8 @@ export function draw(g, scene, laid, handlers) {
       if (pts.length > 1) ge.appendChild(el("polygon", { class: "head", points: head(pts) }));
       ge.appendChild(el("path", { d, style: "stroke:transparent;stroke-width:9px;fill:none" }));
     }
-    if (e.verdicts?.verdict && mark) { const vm = verdictMark(e.verdicts?.verdict, mark.x, mark.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
+    const v = worst(e.comments);
+    if (v && mark) { const vm = verdictMark(v, mark.x, mark.y); cardOnMark(vm, e, ge); ge.appendChild(vm); }
     // the card goes beside the pointer, off the edge's line and its two ends (lit, see interestOf)
     ge.addEventListener("mouseenter", ev => focus(ge, e, /** @type {MouseEvent} */ (ev)));
     ge.addEventListener("mousemove", ev => { if (!lit.has(ge)) focus(ge, e, /** @type {MouseEvent} */ (ev)); });  // back from its mark

@@ -1,5 +1,5 @@
 // The review view on a made-up change (tests/fixtures/review_repo.py): where the agent's
-// verdicts are drawn, what their hover cards say, and how they look. One screenshot per
+// verdicts (its comments, nolli/logic/comments.py) are drawn, what their hover cards say, and how they look. One screenshot per
 // thing to look at, cropped to it; `npm run e2e:update` remakes them after a deliberate change.
 
 import { readFileSync } from "node:fs";
@@ -76,7 +76,8 @@ test("every verdict is marked in the diagram, with its chess annotation", async 
 
 test("a review opens on its worst verdict, a blunder, with the card that explains it", async ({ page }) => {
   await open(page);
-  await expect(page).toHaveURL(/item=V1/);
+  await expect(page).toHaveURL(/item=c-/);
+  await expect(page.locator("#review .rv-verdict.current .vd")).toHaveClass("vd blunder");
   await expect(tip(page)).toBeVisible();
   await expect(tip(page)).toContainText("New cycle");
   // #status ends in timings, different on every run
@@ -143,17 +144,31 @@ test("hovering a good on a box shows its reason", async ({ page }) => {
 
 test("the review panel lists every verdict, most attention first", async ({ page }) => {
   await open(page);
-  await expect(page.locator("#rr-head .rr-link")).toBeVisible();  // the review heading: fetched after the panel
+  await expect(page.locator("#review .rv-verdict")).toHaveCount(8);
   await expect(page.locator("#review")).toHaveScreenshot("verdict-list.png");
 });
 
 test("a fine verdict goes to its box from the panel, with a grey mark on it", async ({ page }) => {
   await open(page);
   await page.locator("#review .rv-verdict", { hasText: "the one box that assembles" }).click();
-  await expect(page).toHaveURL(/item=V8/);
+  await expect(page).toHaveURL(/item=c-/);
+  await expect(page.locator("#review .rv-verdict.current .vd")).toHaveClass("vd fine");
   const id = "repo:ledger/api/routes.py";
   await expect(node(page, id)).toHaveClass(/\blit\b/);
   await expect(boxMark(page, id).locator("text")).toHaveText("✓");
   await expect(tip(page)).toContainText("the one box that assembles");
   await expect(page).toHaveScreenshot("fine-on-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
+});
+
+test("going to a comment on an edge between folded boxes folds them again", async ({ page }) => {
+  // storage/ unfolded and up to 8 lines between two boxes: billing's imports go to the stores one by one,
+  // and the question on billing → storage (made where storage/ was one box) shows nowhere
+  await open(page, "x=repo:,repo:ledger,repo:ledger/services,repo:ledger/storage&ml=8");
+  await expect(page.locator("#root g.edge g.verdict.question")).toHaveCount(1);  // only client.ts ==> the API's
+  await page.locator("#review .rv-verdict", { hasText: "Tied to the wrapper" }).click();
+  await expect(tip(page)).toContainText("Tied to the wrapper");  // its card, pinned on its mark
+  await expect(page.locator("#root g.edge g.verdict.question")).toHaveCount(2);
+  const unfolded = await page.evaluate(() => (new URLSearchParams(location.hash.slice(1)).get("x") || "").split(","));
+  expect(unfolded).not.toContain("repo:ledger/storage");
+  expect(unfolded).toContain("repo:ledger/services");
 });

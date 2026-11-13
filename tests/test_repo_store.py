@@ -17,10 +17,10 @@ from nolli.logic.formats import dataset
 from nolli.logic.sources import LocalRepository
 from nolli.model.keys import ModelKey, NotAllowed, ProjectionKey, Repo, SelectionKey, StringKey
 from nolli.model.model import Model
-from nolli.model.scene import FixedOverlay
+from nolli.model.scene import FixedOverlay, Scene
 from nolli.operations import open_scene
 from nolli.server import serve
-from nolli.store import MemoryStore, RepoStoreProvider, repo_directory
+from nolli.store import MemoryStore, RepoStoreProvider, precomputed, repo_directory
 from nolli.store.repo_directory import _format_key_path, _format_repo_path, _parse_key_path
 
 REPO = Repo("github.com/O/R")
@@ -71,7 +71,7 @@ def test_a_selection_is_keyed_by_its_source_and_its_part():
     assert ModelKey.parse(part.format_key()) == part and ModelKey.from_dict(part.to_dict()) == part
 
 
-def test_a_store_keeps_models_changes_and_verdicts(tmp_path):
+def test_a_store_keeps_models_changes_and_comments(tmp_path):
     store = RepoStoreProvider(tmp_path / "data").open(REPO)
     assert store.load_change(CHANGE) is None and store.load_model(C1) is None
     store.save_model(C1, model("one"), {"fs": {"repo:": {"name": "one"}}})
@@ -85,13 +85,12 @@ def test_a_store_keeps_models_changes_and_verdicts(tmp_path):
     assert store.open_maps("content").load(CHANGE.format_key()) == {"repo:a.py": {"status": "added"}}
     assert sorted(f.name for f in store._locate(CHANGE).iterdir()) == ["change.json", "key.json", "overlays"]  # no copies of its sides
 
-    verdicts = store.open_maps("verdicts")
-    assert verdicts.load(CHANGE.format_key()) == {} and verdicts.load_about(CHANGE.format_key()) is None
-    kept = {"repo:x": {"verdicts": [{"id": "V1", "target": "n_x", "verdict": "good", "reason": "ok"}]}}
-    verdicts.save(CHANGE.format_key(), kept, {"by": "upload"})
-    store.save_change(CHANGE, {"title": "rebuilt"}, sides, {"content": {}})  # the verdicts stay with the change they answer
-    about = verdicts.load_about(CHANGE.format_key())
-    assert verdicts.load(CHANGE.format_key()) == kept and about == {"by": "upload", "at": about["at"]}  # save says when
+    assert store.load_comments(CHANGE) == []
+    said = [{"id": "c-1", "observed": CHANGE.format_key(), "target": "repo:x", "by": "ana", "text": "ok"}]
+    store.save_comments(CHANGE, said)
+    store.save_comments(C1, said)
+    store.save_change(CHANGE, {"title": "rebuilt"}, sides, {"content": {}})  # comments stay with the model they are about
+    assert store.load_comments(CHANGE) == said and store.load_comments(C1) == said
     assert store.load_change(CHANGE) == {"title": "rebuilt"}
     assert not [p for p in store.path.rglob(".*")]  # no work left over
 
@@ -171,10 +170,10 @@ def test_a_scene_is_saved_and_opened_whole(tmp_path):
     built = MemoryStore()
     scene = open_scene(built, operations.build_files(built, Path(__file__).parent / "fixtures", key))
     store = RepoStoreProvider(tmp_path / "data").open(REPO)
-    store.save_scene(scene.with_overlays(FixedOverlay("mine", {"repo:": {"n": 1}})), {"by": "test"})
+    precomputed.save_scene(store, scene.with_overlays(FixedOverlay("mine", {"repo:": {"n": 1}})), {"by": "test"})
     assert store.load_model(key).entities.keys() == scene.model.entities.keys()
     assert {"mine", "files"} <= set(store.list_map_names(key.format_key()))
-    opened = store.open_scene(key)
+    opened = Scene(store.load_model(key), [precomputed.strictly_precomputed_overlay(store, n) for n in store.list_map_names(key.format_key())])
     assert opened.find_element("repo:").get("mine") == {"n": 1}
     assert opened.read_all("files") == scene.read_all("files") and opened.read_all("files")
 
@@ -235,18 +234,21 @@ def test_a_refused_repository_is_not_found(tmp_path):
 
 def test_a_dataset_goes_out_and_back_in_whole(tmp_path):
     """A change exported from one store and imported into another (of another kind) opens the
-    same, with its maps and where they came from (a review's verdicts)."""
+    same, with its maps, where they came from, and its comments."""
     store = RepoStoreProvider(tmp_path / "data").open(REPO)
     sides = {"base": (model("base"), {"fs": {"repo:": {"name": "base"}}}), "head": (model("head"), {})}
     store.save_change(CHANGE, {"title": "a change"}, sides, {"content": {"repo:a.py": {"status": "added"}}}, model("merged"))
-    kept = {"repo:x": {"verdicts": [{"id": "V1", "target": "n_x", "verdict": "good", "reason": "ok"}]}}
-    store.open_maps("verdicts").save(CHANGE.format_key(), kept, {"by": "agent", "at": "2026-11-12T00:00:00Z"})
+    kept = {"repo:x": {"note": "ok"}}
+    store.open_maps("notes").save(CHANGE.format_key(), kept, {"by": "agent", "at": "2026-11-12T00:00:00Z"})
+    said = [{"id": "c-1", "observed": CHANGE.format_key(), "target": "repo:x", "by": "ana", "text": "ok"}]
+    store.save_comments(CHANGE, said)
 
     out = tmp_path / "out"
     out.mkdir()
     (out / "pr.md").write_text("mine")
     cli.export_dataset(store, CHANGE, out)
-    assert sorted(f.name for f in out.iterdir()) == ["base", "change.json", "head", "key.json", "model.json", "overlays", "pr.md"]
+    assert sorted(f.name for f in out.iterdir()) == ["base", "change.json", "comments.json", "head", "key.json", "model.json", "overlays",
+                                                     "pr.md"]
     assert dataset.is_dataset(out) and dataset.read_key(out) == CHANGE
 
     into = MemoryStore()
@@ -254,13 +256,15 @@ def test_a_dataset_goes_out_and_back_in_whole(tmp_path):
     assert into.load_change(CHANGE) == {"title": "a change"} and into.load_model(CHANGE).meta["repo"] == "merged"
     assert into.load_model(C1).meta["repo"] == "base" and into.open_maps("fs").load(C1.format_key()) == {"repo:": {"name": "base"}}
     assert into.open_maps("content").load(CHANGE.format_key()) == {"repo:a.py": {"status": "added"}}
-    assert into.open_maps("verdicts").load(CHANGE.format_key()) == kept
-    assert into.open_maps("verdicts").load_about(CHANGE.format_key()) == {"by": "agent", "at": "2026-11-12T00:00:00Z"}
+    assert into.open_maps("notes").load(CHANGE.format_key()) == kept
+    assert into.open_maps("notes").load_about(CHANGE.format_key()) == {"by": "agent", "at": "2026-11-12T00:00:00Z"}
+    assert into.load_comments(CHANGE) == said
 
     again = RepoStoreProvider(tmp_path / "again").open(REPO)  # and into a store on disk, twice
     cli.import_dataset(again, out)
     cli.import_dataset(again, out)
-    assert again.load_change(CHANGE) == {"title": "a change"} and again.open_maps("verdicts").load(CHANGE.format_key()) == kept
+    assert again.load_change(CHANGE) == {"title": "a change"} and again.open_maps("notes").load(CHANGE.format_key()) == kept
+    assert again.load_comments(CHANGE) == said
     assert open_scene(again, CHANGE) is not None
 
 

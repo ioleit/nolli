@@ -11,6 +11,7 @@ import urllib.request
 from fastapi import APIRouter, Request
 
 from nolli.logic.sources import CloneCache, github
+from nolli.model.keys import Repo
 from nolli.server import serve
 from nolli.store import RepoStoreProvider
 
@@ -50,7 +51,7 @@ def test_serve_shows_what_its_token_reads_and_asks_again_as_nobody(tmp_path, mon
 
     monkeypatch.setattr(serve.github, "api", api)
     site = make_site(tmp_path, token=serve.Fixed("tok"))
-    assert site.plan("https://github.com/me/secret").key == serve.Repo("github.com/me/secret").make_commit("a" * 40)
+    assert site.plan("https://github.com/me/secret").key == Repo("github.com/me/secret").make_commit("a" * 40)
     assert site.ask("repos/o/pub")["full_name"] == "o/pub"
     assert asked[-2:] == [("repos/o/pub", "tok"), ("repos/o/pub", None)]  # the token does not see it
 

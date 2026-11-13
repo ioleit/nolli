@@ -21,8 +21,9 @@ from nolli.logic.transformations import projection
 from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.progress import Quiet
 from nolli.logic.transformations.merge import presets as changes
-from nolli.review import brief
-from nolli.review import verdicts as review_verdicts
+from nolli import operations
+from nolli.logic import comments
+from nolli.logic.formats import brief
 from nolli.operations import _open_change_scene, open_scene
 from nolli.store import RepoStoreProvider
 
@@ -224,8 +225,8 @@ def renaming(tmp_path: Path) -> tuple[Path, str, str]:
 def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renaming, tmp_path):
     """What ``nolli view`` does with a change: build it into a store, then, in a store opened
     afresh on the same directory (so every map is read back from JSON), draw it in every
-    preset and side, list its changes, describe every box, brief the agent, and keep and
-    describe verdicts. A rename is what git's per-file content says the most about."""
+    preset and side, list its changes, describe every box, brief the agent, and keep its
+    verdicts and list them. A rename is what git's per-file content says the most about."""
     from helpers import spec
 
     from nolli.model.schema import EntityId
@@ -253,16 +254,15 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
 
     told = brief.make_brief(sc)
     assert "helpers" in told
-    review_ids = [i for i in re.findall(r"\bn_\w+", brief.make_review_diagram(sc)) if not i.endswith("_g")]
+    review_ids = [i for i in re.findall(r"\bn_\w+", mermaid.render(brief.project_for_review(sc))) if not i.endswith("_g")]
     verdicts = [{"target": t, "verdict": "good", "reason": "fine"} for t in dict.fromkeys(review_ids)]
-    kept, problems = review_verdicts.check_verdicts(sc, brief.make_review_diagram(sc), json.dumps(verdicts))
+    kept, problems = operations.add_comments(store, operations.make_review_key(change), json.dumps(verdicts), "test")
     assert kept and not problems, problems
-    review_verdicts.save_verdicts(store, change, kept, {"by": "test"})
 
-    again = open_store(tmp_path, change.repo)  # the verdicts read back from JSON too
+    again = open_store(tmp_path, change.repo)  # the comments read back from JSON too
     sc2 = open_scene(again, change)
-    described = review_verdicts._describe_verdicts(sc2, review_verdicts._load_verdicts(again, change))
-    assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
+    listed = comments.describe_comments(sc2, sc2.overlays["comments"].list_all(sc2))
+    assert len(listed) == len(kept) and all(type(x) is EntityId for c in listed for x in c["ends"])
     assert viewer.export_scene(_draw(sc2, spec(preset="changes")))["nodes"]
 
 

@@ -17,7 +17,7 @@ from nolli.logic import transformations
 from nolli.logic.transformations import projection
 from nolli.model.keys import Repo
 from nolli.model.scene import Element, Overlay, Scene
-from nolli.store import RepoStoreProvider
+from nolli.store import RepoStoreProvider, precomputed
 
 repo = Path(sys.argv[1]).resolve()
 data = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(tempfile.mkdtemp(prefix="nolli-custom-overlay-"))
@@ -62,13 +62,13 @@ modules = projection.ProjectionSpec(expand=projection.Dirs(), groups=[], utiliti
 # one directory unfolded, a projection whose values are not kept
 one_dir = projection.ProjectionSpec(expand=projection.Ids(("repo:", "repo:nolli", "repo:nolli/model")), groups=[], utilities=0)
 
-store.save_scene(live)                                              # the model, and what every overlay says about it
-store.precompute_overlay_values(transformations.apply(live, projection.fold(modules)), Cool())   # a projection, this overlay only
+precomputed.save_scene(store, live)                                              # the model, and what every overlay says about it
+precomputed.precompute_overlay_values(store, transformations.apply(live, projection.fold(modules)), Cool())   # a projection, this overlay only
 folded = transformations.apply(live, projection.fold(modules)).model.key
 print("kept for the scene:", store.list_map_names(scene.model.key.format_key()))
 print("kept for the projection:", store.list_map_names(folded.format_key()))
 
-cool = store.caching_overlay(Cool())                                # Cool, answered from its kept values where they exist
+cool = precomputed.caching_overlay(store, Cool())                                # Cool, answered from its kept values where they exist
 
 kept = scene.with_overlays(cool)                                    # read from the store
 kept_modules = transformations.apply(kept, projection.fold(modules))   # read from the store

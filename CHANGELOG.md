@@ -6,6 +6,43 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **Comments instead of a review package** (`nolli/logic/comments.py`). A review agent's verdicts
+  are now comments: statements made on one model (`observed`, any model by its key, a projection's
+  too) about one of its nodes or edges (`target`, that model's id), with a `verdict` if they judge
+  it. They are kept on the model `observed` is a view of (`keys.find_base_key`: a projection's or a
+  selection's source, down to a commit's, a change's or a named model; a change is not a view of
+  its commits), in storage of their own (`ModelStore.load_comments` / `save_comments`,
+  `comments.json` in the store and in dataset directories), and survive building the model again.
+  The `comments` overlay shows them on every scene drawn from that model and its sources: on the
+  node or edge with the same id, rolled up onto the box that holds it or the edge that carries it,
+  and not at all where the scene draws it finer than it was commented on.
+  - `nolli comments add <model> <file> [--by NAME] [--dry-run]` and `nolli comments list <model>`.
+    `add` takes a target as an id, a Mermaid node id or `a --> b`, keeps nothing if any comment is
+    wrong, and replaces the comments the same author made on the same model before.
+  - `nolli agent check` keeps the agent's verdicts as its comments on the projection its brief
+    draws (`operations.make_review_key`); `nolli agent brief` prints that key as `observed`. A
+    failing check keeps nothing, as before.
+  - `operations.open_scene` opens a projection by its key too, drawing it again from its source.
+  - Hover cards: the `review` overlay is gone; the card's second part (what the change did, and the
+    comments) is `hover.notes` (`logic/formats/descriptions/notes.py`). The viewer's comment list is
+    `f=comments&p=none`, replacing the table of the `verdicts` overlay, which is gone with its map.
+    Comment ids are `c-…` (`item=` in the viewer's link) instead of V1, V2, ….
+  - The brief is a formatter of the logic (`logic/formats/brief.py`), its text a template beside the
+    skill (`nolli/skill/review.md`).
+- **A store is its persistence only** (`nolli/store/`). `ModelStore` is one flat protocol: models,
+  changes, maps (`open_maps`, `list_map_names`) and comments. `MapStore`, the `OverlayStore` base
+  class and `MemoryMaps` are gone (use `MemoryStore`). What was built on a store's maps is now
+  functions in `nolli/store/precomputed.py` that take any store: `caching_overlay(store, overlay)`,
+  `precomputed_overlay(store, name)`, `strictly_precomputed_overlay(store, name)`,
+  `precompute_overlay_values(store, scene, overlay)` and `save_scene(store, scene)`, which also works
+  on a `MemoryStore` now. The store's generic `open_scene` is gone: open a kept model with
+  `operations.open_scene`, or make a `Scene` of `store.load_model(key)` and the overlays you want.
+- **The review agent in the viewer is gone**: "Review structural changes", its runs
+  (`nolli/server/reviews.py`, `nolli/review/agent.py`, `viewer/js/reviewer.js`), `GET`/`POST
+  /api/review`, `POST /api/review/cancel`, `POST /api/verdicts` (uploads), `make_server`'s and
+  `serve.main`'s `reviewer` and `uploads`, and the `api` and `serve` extras. Reviews come from your
+  own agent with the skill (`nolli agent skill`). `nolli/review` is gone; verdicts kept in the old
+  `verdicts` map are not read: review the change again.
 - **One scene endpoint, many formats** (`nolli/server/serve.py`, `nolli/logic/formats/formatters.py`):
   `GET /api/scene?k=…&f=<format>&<projection>&<options>` renders a model's scene with a formatter,
   a function from a scene to a JSON body. The formats are `viewer` (the default, as before),

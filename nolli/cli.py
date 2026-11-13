@@ -3,6 +3,7 @@
     nolli build [<target>] [--repo DIR] [--data DIR] [--rebuild] [-o DIR] [--pr N] [--title T] [--description FILE]
     nolli view [<target>] [--repo DIR] [--data DIR] [--rebuild] [--host H] [--port N] [--no-open]
     nolli agent brief [<target>] | agent check <dataset> | agent skill [--install DIR]
+    nolli comments add <model> <file> [--by NAME] [--dry-run] | comments list <model>
     nolli serve [--cache DIR] [--keep SIZE] [--builds N] [--timeout S] [--max-repo SIZE] [--host H] [--port N]
     nolli extract <repo> -o <dir>                  (older shorthand: build WORKTREE --repo <repo> -o <dir>)
     nolli diff <repo> <base> <head> -o <dir> ...   (older shorthand: build <base>..<head> --repo <repo> -o <dir> ...)
@@ -63,7 +64,13 @@ files give the same commit, so a build of them is reused.
 agent is for a review agent (the skill, nolli agent skill): brief builds the change and
 prints where review.md (what to do) is and where verdicts.json goes (both in a directory of
 the agent's own under <data>/.agent/); check validates the verdicts against the diagram they
-answer and, when they pass, makes them the change's review.
+answer and, when they pass, keeps them as the agent's comments on the change, which the
+viewer shows.
+
+comments adds comments made on a model, any model (a projection's too, by its key), from a
+JSON file, and lists them. They are kept on the model it is a view of: comments on a
+projection of a change are kept on the change, and every view of it shows them where they
+still mean what they said (nolli/logic/comments.py).
 
 serve is the same server for GitHub repositories, for everyone who can reach it: a target on
 GitHub is its URL with this host (/<owner>/<repo>/pull/<n> shows that PR), for every
@@ -74,8 +81,8 @@ that nothing else reads), a review agent's files (.agent/) and clones (.repos/).
 and out of it only as dataset directories (nolli/logic/formats/dataset.py): build -o writes one, and view
 and agent check take one, importing it first. A dataset holds a commit's key.json,
 model.json (its structure) and overlays/ (what each extractor said); for a change also
-change.json, base/ and head/ (its commits) and its own overlays/ (git's hunks, a review's
-verdicts, which the viewer shows). Beside them, what is made from the model: report.json
+change.json, base/ and head/ (its commits) and its own overlays/ (git's hunks); and
+comments.json, the comments on it, if there are any. Beside them, what is made from the model: report.json
 (counts, unresolved references, extractor notes, nolli/logic/formats/report.py); for a change
 also changes.json (the changed boxes and edges of the changes preset, as a table), review.mmd (Mermaid with every change in source
 code unfolded) and review.md (what a review agent gets: that diagram, how to answer, and the
@@ -292,11 +299,11 @@ def _read_dataset(store: ModelStore, key: ModelKey):
         if about is None:
             raise KeyError(f"no change {text} to export")
         sides = {side: _read_dataset(store, c) for side, c in zip(("base", "head"), key.list_sides(), strict=True)}
-        return Dataset(key, store.load_model(key), maps, about, sides)
+        return Dataset(key, store.load_model(key), maps, about, sides, store.load_comments(key))
     model = store.load_model(key)
     if model is None:
         raise KeyError(f"no model {text} to export")
-    return Dataset(key, model, maps)
+    return Dataset(key, model, maps, comments=store.load_comments(key))
 
 
 def export_dataset(store: ModelStore, key: ModelKey, out: Path) -> None:
@@ -309,8 +316,9 @@ def export_dataset(store: ModelStore, key: ModelKey, out: Path) -> None:
 
 def import_dataset(store: ModelStore, d: Path) -> ModelKey:
     """Keep the model of the dataset directory ``d`` in ``store``, in place of what the store kept
-    under its key, and return the key. Maps that say where they came from (``about``, a review's
-    verdicts) are kept as they say it; the others go in with the model, as extraction's do.
+    under its key, and return the key. Maps that say where they came from (``about``) are kept as
+    they say it; the others go in with the model, as extraction's do. Comments in it replace those
+    kept on the model, and on its commits.
     Raise DatasetError for a directory that is no dataset of this version, and NotAllowed if the
     store does not keep models of its repository."""
     from nolli.logic.formats import dataset
@@ -328,6 +336,8 @@ def import_dataset(store: ModelStore, d: Path) -> ModelKey:
         for name, (values, about) in x.maps.items():
             if about is not None:
                 store.open_maps(name).save(x.key.format_key(), values, about)
+        if x.comments:
+            store.save_comments(x.key, x.comments)
     return ds.key
 
 
@@ -344,7 +354,7 @@ def write_extras(store: ModelStore, key: ModelKey, out: Path, budget: int | None
     from nolli.logic.formats import table
     from nolli.logic.formats.options import TableFormatOptions
     from nolli.logic.transformations.merge import presets
-    from nolli.review import brief
+    from nolli.logic.formats import brief
 
     scene = operations.open_scene(store, key)
     if scene is None:
@@ -360,7 +370,9 @@ def write_extras(store: ModelStore, key: ModelKey, out: Path, budget: int | None
         changed = transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=presets.Changes())))
         rows = table.export_table(changed, TableFormatOptions(overlays=["change", "label"], required_overlay="change"))
         (out / "changes.json").write_text(json.dumps(rows, indent=1, default=str))
-        mmd = brief.make_review_diagram(scene)
+        from nolli.logic.formats import mermaid
+
+        mmd = mermaid.render(brief.project_for_review(scene))
         (out / "review.mmd").write_text(mmd)
         (out / "review.md").write_text(brief.make_brief(scene, mmd))
     return report
@@ -499,11 +511,11 @@ def format_command(args: argparse.Namespace, *words: str) -> str:
 
 
 def cmd_brief(args: argparse.Namespace) -> int:
-    """nolli agent brief: build the change and say, as JSON on stdout, where the brief is, where
-    the verdicts go and how to check them."""
+    """Build the change a review agent is to review, write its brief, and print as JSON where the
+    brief is, where the verdicts go, which model they are about and how to check them."""
 
     from nolli import operations
-    from nolli.review import brief, verdicts
+    from nolli.logic.formats import brief
 
     b = build(args, "agent brief", review=True)
     if b is None:
@@ -513,11 +525,12 @@ def cmd_brief(args: argparse.Namespace) -> int:
         pass
     work = find_agent_dir(args, key)
     (work / "review.md").write_text(brief.make_brief(operations.open_scene(b.store, b.key)))
-    answer = work / "verdicts.json"
+    answer, observed = work / "verdicts.json", operations.make_review_key(key)
+    made = any(c.get("by") == "agent" and c.get("observed") == observed.format_key() for c in b.store.load_comments(key))
     print(json.dumps({
         "repository": str(repo), "base": key.base, "head": key.head, "title": title, "key": key.format_key(),
-        "brief": str(work / "review.md"), "verdicts": str(answer),
-        "has_verdicts": answer.is_file() or verdicts.find_provenance(b.store, b.key) is not None,
+        "brief": str(work / "review.md"), "verdicts": str(answer), "observed": observed.format_key(),
+        "has_verdicts": answer.is_file() or made,
         "inspect": f"git -C {repo} diff {key.base[:12]} {key.head[:12]}",
         "check": format_command(args, "agent", "check", key.format_key()),
         "view": format_command(args, "view", key.format_key()),
@@ -562,20 +575,16 @@ def find_checked(args: argparse.Namespace) -> tuple[ModelStore, ModelKey, Path |
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    """nolli agent check: the verdicts against the diagram they answer; problems on stderr. Verdicts
-    that pass become the change's review, in the data directory's store."""
+    """Check a review agent's verdicts. If they pass, keep them as comments by "agent" on the
+    projection the brief drew, which ``operations.make_review_key`` names. Print the problems on
+    stderr, and the verdicts' counts as JSON."""
     from nolli import operations
-
-    from nolli.review import brief, verdicts
+    from nolli.logic import comments
 
     found = find_checked(args)
     if found is None:
         return 2
     store, key, vf, ds = found
-    scene = operations.open_scene(store, key) if isinstance(key, ChangeKey) else None
-    if scene is None:
-        print(f"nolli agent check: {args.dataset} is not a change built here (nolli agent brief builds it)", file=sys.stderr)
-        return 2
     if vf is None:
         vf = find_agent_dir(args, key) / "verdicts.json"
         if not vf.is_file() and ds is not None and (ds / "verdicts.json").is_file():  # written into the dataset's directory by hand
@@ -583,14 +592,69 @@ def cmd_check(args: argparse.Namespace) -> int:
     if not vf.is_file():
         print(f"nolli agent check: no {vf}", file=sys.stderr)
         return 1
-    kept, errors = verdicts.check_verdicts(scene, brief.make_review_diagram(scene), vf.read_text())
+    try:
+        made, errors = operations.add_comments(store, operations.make_review_key(key), vf.read_text(), "agent", verdict_needed=True)
+    except KeyError:
+        print(f"nolli agent check: {args.dataset} is not a change built here (nolli agent brief builds it)", file=sys.stderr)
+        return 2
     for e in errors:
         print(e, file=sys.stderr)
-    counts = {v: sum(x["verdict"] == v for x in kept) for v in reversed(verdicts.VERDICTS)}
-    print(json.dumps({"ok": not errors, "verdicts": len(kept), **counts, "errors": len(errors)}))
-    if errors:
-        return 1
-    verdicts.save_verdicts(store, key, kept, {"by": "agent"})
+    counts = {v: sum(c.get("verdict") == v for c in made) for v in reversed(comments.VERDICTS)}
+    print(json.dumps({"ok": not errors, "verdicts": len(made), **counts, "errors": len(errors)}))
+    return 1 if errors else 0
+
+
+def find_commented(args: argparse.Namespace, cmd: str) -> tuple[ModelStore, ModelKey] | None:
+    """Return the store and key of the model ``args.model`` names, a model's key or a dataset
+    directory, which is imported first. Print why and return None if it names none."""
+    from nolli.model.keys import NotAllowed
+
+    stores = open_stores(args)
+    found = import_named(args.model, cmd, stores)
+    if found is False:
+        return None
+    if found:
+        return found
+    try:
+        key = ModelKey.parse(args.model)
+        return stores.open(key.repo), key
+    except (ValueError, NotAllowed, AttributeError):
+        print(f"nolli {cmd}: {args.model} names no model: give its key (nolli build prints it) or a dataset directory",
+              file=sys.stderr)
+        return None
+
+
+def cmd_comments_add(args: argparse.Namespace) -> int:
+    """Add the comments in a JSON file to a model. Keep them on the model it is a view of, in
+    place of those the same author made on it before. Keep nothing if any of them is wrong, and
+    print the problems on stderr; print what was kept as JSON."""
+    from nolli import operations
+
+    found = find_commented(args, "comments add")
+    if found is None:
+        return 2
+    store, key = found
+    try:
+        made, errors = operations.add_comments(store, key, Path(args.file).read_text(), args.by, dry_run=args.dry_run)
+    except KeyError as exc:
+        print(f"nolli comments add: {exc.args[0]}", file=sys.stderr)
+        return 2
+    for e in errors:
+        print(e, file=sys.stderr)
+    print(json.dumps({"ok": not errors, "comments": len(made), "kept": not errors and not args.dry_run}))
+    return 1 if errors else 0
+
+
+def cmd_comments_list(args: argparse.Namespace) -> int:
+    """Print the comments kept on the model a key or dataset directory names, or on the model it
+    is a view of, as JSON."""
+    from nolli.model import keys
+
+    found = find_commented(args, "comments list")
+    if found is None:
+        return 2
+    store, key = found
+    print(json.dumps(store.load_comments(keys.find_base_key(key)), indent=1))
     return 0
 
 
@@ -652,6 +716,22 @@ def main(argv: list[str] | None = None) -> int:
     sk.add_argument("--install", metavar="DIR", help="a skills directory, e.g. ~/.claude/skills or .claude/skills; "
                     "writes DIR/nolli-review/SKILL.md")
     sk.set_defaults(fn=cmd_skill)
+    cm = sub.add_parser("comments", help="comments on a model: add them from a file, list them")
+    cmsub = cm.add_subparsers(dest="comments_cmd", required=True)
+    ca = cmsub.add_parser("add", help="add comments made on a model; nothing is kept if any of them is wrong",
+                          description=cmd_comments_add.__doc__)
+    ca.add_argument("model", help="the model the comments were made on: its key (a projection's too) or a dataset directory")
+    ca.add_argument("file", help='a JSON list of {"target", "text", "verdict"}: target a node or edge of the model, by id, '
+                    "Mermaid id or as 'a --> b'; verdict optional (fine, good, question, problem, …)")
+    ca.add_argument("--by", default="me", help="who made them: a new batch replaces the last one from the same author "
+                    "on the same model (default: me)")
+    ca.add_argument("--dry-run", action="store_true", help="check them, keep nothing")
+    ca.add_argument("--data")
+    ca.set_defaults(fn=cmd_comments_add)
+    cl = cmsub.add_parser("list", help="print the comments kept on a model (on the model it is a view of) as JSON")
+    cl.add_argument("model", help="a model's key or a dataset directory")
+    cl.add_argument("--data")
+    cl.set_defaults(fn=cmd_comments_list)
     sv = sub.add_parser("serve", help="the viewer as a service: GitHub's paths (/<owner>/<repo>/pull/<n>) on this host, "
                         "for every repository $NOLLI_GITHUB_TOKEN can read (without it, public ones), "
                         "to everyone who can reach the host")

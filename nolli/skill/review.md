@@ -1,42 +1,4 @@
-"""Writes the brief a review agent gets for a change."""
-
-from __future__ import annotations
-
-import re
-
-from nolli.logic import transformations
-from nolli.logic.formats import mermaid as mermaid_format
-from nolli.logic.transformations import projection
-from nolli.logic.transformations import merge
-from nolli.logic.transformations.merge import Links, presets
-from nolli.model.scene import Scene
-
-
-def make_review_diagram(scene: Scene) -> str:
-    """Render the review diagram (``review.mmd``) as Mermaid: the change with every area that
-    changed in source code unfolded (``presets.Changes``), the rest of the projection as it is by
-    default. It is the same for the same change and version of nolli, so verdicts on its ids stay
-    valid."""
-    return mermaid_format.render(transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=presets.Changes()))))
-
-
-def make_brief(scene: Scene, mermaid: str | None = None, description: str | None = None) -> str:
-    """Write the brief a review agent gets for a change. It holds the change's title, the diagram
-    of everything that changed (the reviewer looks at the same picture), how to answer, and the
-    PR's description. Verdicts come back as JSON on the diagram's nodes and edges and are shown
-    in the viewer.
-
-    ``mermaid`` is the review diagram (made with ``make_review_diagram`` if it is not given);
-    ``description`` is the change's (what it says about itself if it is not given)."""
-    d = scene.model.meta["change"]
-    mermaid = make_review_diagram(scene) if mermaid is None else mermaid
-    description = d.get("description") if description is None else description
-    links = Links(d)
-    head = f"# Architecture review: {d.get('title') or 'change'}\n\n"
-    head += (f"{d['base_short']} → {d['head_short']}" + (f", PR #{d['pr']}" if d.get("pr") else "")
-             + f": {d['files_changed']} files, +{d['added']} −{d['removed']} lines"
-             + (f"\n{links.change()}" if links.change() else "") + "\n")
-    howto = """
+{head}
 ## What to do
 
 The diagram below is the change: the repository with every area that changed in source code
@@ -106,19 +68,9 @@ ids of an edge drawn in the diagram:
 ```json
 [{"target": "n_fs_src_app_py --> n_fs_src_db_py", "verdict": "question", "reason": "…"}]
 ```
-"""
-    diagram = "\n## The diagram\n\n```mermaid\n" + mermaid + "```\n"
-    if description:  # its headings go two levels down, under this one
-        description = re.sub(r"^(#{1,4}) ", r"##\1 ", description.strip(), flags=re.MULTILINE)
-    desc = f"\n## The description\n\nRead this after the diagram (step 2).\n\n{description}\n" if description else ""
-    return head + howto + diagram + desc
 
+## The diagram
 
-def format_brief(scene: Scene, _options: object = None) -> dict:
-    """Write the brief of the change a scene shows or was drawn from, and return it as JSON.
-    Raise ValueError if the scene is not of a change. The brief draws its own diagram of the
-    change, so it ignores any projection the scene was drawn with."""
-    source = scene.sources.get("source", scene)
-    if not merge.is_change(source):
-        raise ValueError("not a change")
-    return {"brief": make_brief(source)}
+```mermaid
+{diagram}```
+{description}

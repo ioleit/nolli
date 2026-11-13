@@ -5,15 +5,15 @@ their options model (nolli/logic/formats/options.py); the others ignore the seco
 Which scene a formatter gets is its caller's choice (the server projects one unless asked not
 to). A formatter that cannot format the scene it gets raises ValueError.
 
-A formatter outside the logic (the review's brief, nolli/review/brief.py) is added by whoever
-serves them (nolli/server/serve.py)."""
+A server may add formatters of its own (nolli/server/serve.py)."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
 
-from nolli.logic.formats import mermaid, report, table, viewer
+from nolli.logic import comments as comments_lib
+from nolli.logic.formats import brief, mermaid, report, table, viewer
 from nolli.logic.formats.options import MermaidFormatOptions, TableFormatOptions
 from nolli.model.scene import Scene
 
@@ -50,5 +50,13 @@ def _format_report(scene: Scene, _options: object = None) -> dict:
     return report.make_report(scene.sources["source"], scene)
 
 
+def _format_comments(scene: Scene, _options: object = None) -> dict:
+    """List every comment kept on the models the scene was drawn from, whether it shows on the
+    scene or not, each with what it takes to go to it (``comments.describe_comments``)."""
+    o = scene.overlays.get(comments_lib.Comments.name)
+    found = o.list_all(scene) if isinstance(o, comments_lib.Comments) else []
+    return {"comments": comments_lib.describe_comments(scene, found)}
+
+
 FORMATS: dict[str, Formatter] = {"viewer": _format_viewer, "table": _format_table, "mermaid": _format_mermaid,
-                                 "report": _format_report}
+                                 "report": _format_report, "comments": _format_comments, "brief": brief.format_brief}

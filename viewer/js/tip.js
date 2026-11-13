@@ -5,7 +5,7 @@
 // is lit or a verdict mark: what it describes glows with what goes with it (draw.js,
 // interestOf), and the rest of the picture may lie under the card.
 //
-// A card can also be kept open (pinTip): clicking a verdict mark, or going to a review item.
+// A card can also be kept open (pinTip): clicking a comment's mark, or going to a review item.
 // It stays when the pointer leaves, until Esc, a click on the canvas, a pan or zoom, or
 // another card replaces it.
 
@@ -15,7 +15,7 @@ import { render as paragraphs } from "./md.js";
 
 /**
  * @typedef {import("../types/nolli").Info} Info
- * @typedef {{ hover?: { text: Info }, review?: { card: Info } }} Card what a card says: about the box or edge (its hover overlay), and in a review, about the change (its own part, under a line)
+ * @typedef {{ hover?: import("../types/nolli").Hover }} Card what a card says (its hover overlay): about the box or edge, and under a line what the change did to it and the comments on it
  */
 
 const tipEl = byId("tip");
@@ -24,10 +24,10 @@ const GAP = 12;  // the least room between the text and what it describes
 
 /** @param {Card} card */
 function render(card) {
-  if (!card.review?.card) return paragraphs(card.hover?.text ?? "");
+  if (!card.hover?.notes) return paragraphs(card.hover?.text ?? "");
   const cols = document.createElement("div"); cols.className = "parts";
   const main = document.createElement("div"); main.className = "main"; main.appendChild(paragraphs(card.hover?.text ?? ""));
-  const rev = document.createElement("div"); rev.className = "rev"; rev.appendChild(paragraphs(card.review.card));
+  const rev = document.createElement("div"); rev.className = "rev"; rev.appendChild(paragraphs(card.hover.notes));
   cols.append(main, rev);
   return cols;
 }
@@ -158,7 +158,7 @@ let pinned = false;
  */
 function put(card, arounds, self) {
   tipEl.replaceChildren(render(card)); shown = card;
-  tipEl.classList.toggle("two", !!card.review?.card);
+  tipEl.classList.toggle("two", !!card.hover?.notes);
   tipEl.style.display = "block";
   const canvas = svg.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
   const t = place(arounds, w, h, canvas, obstacles(self));

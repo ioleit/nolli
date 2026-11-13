@@ -16,7 +16,7 @@ from nolli.model.keys import StringKey
 from nolli.model.model import Entity, Model, Relation
 from nolli.model.scene import Element, FixedOverlay, Overlay, Scene
 from nolli.model.schema import RelationKind
-from nolli.store import MemoryMaps, SourceElementOverlay
+from nolli.store import MemoryStore, SourceElementOverlay, precomputed
 
 
 class Counting(Overlay):
@@ -59,13 +59,13 @@ def propose(scene):
 
 
 def test_precomputed_values_come_back_as_kept_and_nothing_else(scene):
-    store = MemoryMaps()
-    values = store.precompute_overlay_values(scene, Counting())
+    store = MemoryStore()
+    values = precomputed.precompute_overlay_values(store, scene, Counting())
     assert values["repo:pkg/a.py"] == {"kind": "file", "inside": 0} and len(values) == len(scene.model.entities) + len(scene.model.edges)
     about = store.open_maps("counting").load_about(scene.model.key.format_key())
     assert about["overlay"] == "counting" and about["cache_version"] == "1" and about["at"]
 
-    kept = scene.with_overlays(store.strictly_precomputed_overlay("counting"))
+    kept = scene.with_overlays(precomputed.strictly_precomputed_overlay(store, "counting"))
     assert kept.find_element("repo:pkg/a.py").get("counting") == {"kind": "file", "inside": 0}
     assert kept.read_all("counting") == values
     projection = fold(kept)
@@ -91,10 +91,10 @@ def test_what_extraction_said_holds_for_a_namesake(scene):
     assert projection.find_element("repo:pkg").get("projection")["container"]
 
 def test_caching_overlay_reads_what_is_kept_and_computes_the_rest(scene):
-    store = MemoryMaps()
-    store.precompute_overlay_values(scene, Counting())
+    store = MemoryStore()
+    precomputed.precompute_overlay_values(store, scene, Counting())
     behind = Counting()
-    kept = scene.with_overlays(store.caching_overlay(behind))
+    kept = scene.with_overlays(precomputed.caching_overlay(store, behind))
     assert kept.find_element("repo:pkg/a.py").get("counting") == {"kind": "file", "inside": 0}
     assert behind.asked == []  # answered from the store
 
@@ -106,31 +106,31 @@ def test_caching_overlay_reads_what_is_kept_and_computes_the_rest(scene):
     assert all(projection.model.has(k) for k in behind.asked)  # never asked about the source's elements
 
 def test_values_of_another_version_are_not_read(scene):
-    store = MemoryMaps()
-    store.precompute_overlay_values(scene, Counting())
+    store = MemoryStore()
+    precomputed.precompute_overlay_values(store, scene, Counting())
 
     class Counting2(Counting):
         cache_version = "2"
 
     behind = Counting2()
-    kept = scene.with_overlays(store.caching_overlay(behind))
+    kept = scene.with_overlays(precomputed.caching_overlay(store, behind))
     assert kept.find_element("repo:pkg/a.py").get("counting") == {"kind": "file", "inside": 0}
     assert behind.asked == ["repo:pkg/a.py"]  # computed: what was kept is version 1's
-    assert kept.read_all("counting") == store.precompute_overlay_values(scene, Counting2())  # kept again, this version's
+    assert kept.read_all("counting") == precomputed.precompute_overlay_values(store, scene, Counting2())  # kept again, this version's
     assert store.open_maps("counting").load_about(scene.model.key.format_key())["cache_version"] == "2"
 
 
 def test_an_overlay_without_a_version_reads_whatever_was_kept(scene):
-    store = MemoryMaps()
+    store = MemoryStore()
     store.open_maps("files").save(scene.model.key.format_key(), {"repo:pkg/a.py": {"role": "kept"}}, {"cache_version": "fs-9"})
-    assert store.precomputed_overlay("files").compute(scene.find_element("repo:pkg/a.py")) == {"role": "kept"}
+    assert precomputed.precomputed_overlay(store, "files").compute(scene.find_element("repo:pkg/a.py")) == {"role": "kept"}
 
 
 def test_values_kept_without_a_version_are_read(scene):
-    store = MemoryMaps()
+    store = MemoryStore()
     store.open_maps("counting").save(scene.model.key.format_key(), {"repo:pkg/a.py": {"kind": "from outside"}})  # as an extractor's map is
     behind = Counting()
-    kept = scene.with_overlays(store.caching_overlay(behind))
+    kept = scene.with_overlays(precomputed.caching_overlay(store, behind))
     assert kept.find_element("repo:pkg/a.py").get("counting") == {"kind": "from outside"}
     assert kept.find_element("repo:pkg/b.py").get("counting") is None  # the map has nothing for it: not a miss
     assert behind.asked == []
@@ -155,15 +155,14 @@ def test_the_default_cache_version_is_the_class_source(scene):
 
 
 def test_a_scene_is_saved_and_opened_whole(scene):
-    store = MemoryMaps()
+    store = MemoryStore()
     live = scene.with_overlays(Counting())
-    store.save_scene(live)
+    precomputed.save_scene(store, live)
     assert store.load_model(scene.model.key) is scene.model
     assert "counting" in store.list_map_names(scene.model.key.format_key()) and "files" in store.list_map_names(scene.model.key.format_key())
 
     behind = Counting()
-    opened = store.open_scene(scene.model.key, [behind])
-    assert opened.overlays["counting"].fallback is behind and opened.overlays["files"].fallback is None
+    opened = Scene(store.load_model(scene.model.key), [precomputed.strictly_precomputed_overlay(store, "files"),
+                                                      precomputed.caching_overlay(store, behind)])
     assert opened.find_element("repo:pkg/a.py").get("counting") == {"kind": "file", "inside": 0} and behind.asked == []
     assert opened.find_element("repo:pkg/a.py").get("files")["module"]
-    assert store.open_scene("nobody@0") is None

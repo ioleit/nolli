@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
 
-from nolli.logic.formats.descriptions import label, prose
+from nolli.logic.formats.descriptions import label, notes, prose
 from nolli.logic.formats.descriptions import names as names_lib
 from nolli.model import schema, vocabulary
 from nolli.model.model import Key, Relation
@@ -480,7 +480,9 @@ def _make_ctx(scene: Scene) -> tuple[Ctx, Dependencies]:
 
 
 class Hover(Overlay):
-    """A Markdown description of each drawn box and edge, as ``{"text": ...}``.
+    """A Markdown description of each drawn box and edge, as ``{"text": ...}``, and, where a change
+    or a comment has something to say about it, ``{"notes": ...}``: the card's second part, under
+    a line (``notes``).
 
     Each sentence is its own paragraph, the data in it is in code spans ("`api-mock`
     references `1 name` in `lib/`"), and a docstring is a quoted paragraph (see ``prose``).
@@ -518,4 +520,24 @@ class Hover(Overlay):
                 continue
             p = scene.find_element(e.id).get("projection") or {}
             out[e.id] = {"text": _edge_info(ctx, EdgeFacts(e, p))}
+        _add_notes(scene, out)
         return out
+
+
+def _add_notes(scene: Scene, out: dict[Key, dict]) -> None:
+    """Add to ``out`` the second part of each drawn node's and edge's card: what the change did to
+    it and the comments that show on it, where there is any."""
+    changed, placed = scene.read_all("change"), scene.read_all("comments")
+    named = scene.sources["source"].read_all("names")
+    for e in scene.model.list_edges():
+        v, ed = placed.get(e.id) or {}, changed.get(e.id)
+        names = {s.relation.dst: named[s.relation.dst]["name"] for s in scene.find_element(e.id).sources.get("source", ())
+                 if s.is_edge and s.relation.dst in named} if ed else {}
+        said = notes.describe_edge(ed, v.get("own", []), v.get("inside", []), names)
+        if said:
+            out.setdefault(e.id, {})["notes"] = said
+    for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
+        v = placed.get(x) or {}
+        said = notes.describe_node(changed.get(x), v.get("own", []), v.get("inside", []), kind.replace("_", " "))
+        if said:
+            out.setdefault(x, {})["notes"] = said
