@@ -74,10 +74,13 @@ def _resolve_target(model: Model, text: str, ids: Mapping[str, EntityId] | None 
     text = text.strip()
     try:
         key = schema.parse_key(text)
-        if model.has(key):
-            return key, None
     except ValueError:
-        pass
+        key = None
+    if key is not None and model.has(key):
+        return key, None
+    if isinstance(key, RelationId):
+        return None, (f"{text} is no edge of this model ({model.key.format_key()}): comment on the model that draws it, "
+                      "such as the projection it was seen in")
     m = ARROW.match(text)
     if m:
         a, b = _resolve_node(model, m[1], ids), _resolve_node(model, m[3], ids)
