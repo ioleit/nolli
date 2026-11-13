@@ -161,7 +161,7 @@ def test_changes_comments_and_brief(repo):
         {"target": "n_repo_nowhere_py", "verdict": "fine", "reason": "z"},
         {"target": "n_repo_app_api_py", "verdict": "maybe", "reason": ""},
     ]), "agent", verdict_needed=True)
-    assert len(errors) == 4 and "the other way round" in errors[0] and "is not a node" in errors[1]
+    assert len(errors) == 4 and "the other way round" in errors[0] and "is not an element of the model" in errors[1]
     assert "must be one of" in errors[2] and "needs a reason" in errors[3] and store.load_comments(key) == []
     made, errors = operations.add_comments(store, observed, json.dumps([
         {"target": "n_repo_app_api_py --> n_repo_app_store_py_Index", "verdict": "problem", "reason": "x"},

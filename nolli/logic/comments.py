@@ -71,7 +71,7 @@ def _resolve_target(model: Model, text: str, ids: Mapping[str, EntityId] | None 
     ``_map_identifiers``), and an edge written as ``a --> b`` (or ``==>``, ``-.->``) with either kind
     of node name on both sides."""
     ids = _map_identifiers(model) if ids is None else ids
-    text = text.strip()
+    text, where = text.strip(), f"the model {model.key.format_key()}"
     try:
         key = schema.parse_key(text)
     except ValueError:
@@ -79,23 +79,22 @@ def _resolve_target(model: Model, text: str, ids: Mapping[str, EntityId] | None 
     if key is not None and model.has(key):
         return key, None
     if isinstance(key, RelationId):
-        return None, (f"{text} is no edge of this model ({model.key.format_key()}): comment on the model that draws it, "
-                      "such as the projection it was seen in")
+        return None, f"{text} is not an edge of {where}: comment on the model that draws it, such as the projection it was seen in"
     m = ARROW.match(text)
     if m:
         a, b = _resolve_node(model, m[1], ids), _resolve_node(model, m[3], ids)
         missing = [t for t, x in ((m[1], a), (m[3], b)) if x is None]
         if missing:
-            return None, f"{', '.join(missing)} is not a node of the diagram"
+            return None, f"{', '.join(missing)} is not a node of {where}"
         edges = [e for e in model.list_out(a) if e.dst == b and e.kind != schema.RelationKind.CONTAIN]
         if not edges:
             back = any(e.dst == a for e in model.list_out(b))
-            return None, f"the diagram draws no edge from {m[1]} to {m[3]}" + (" (it has it the other way round)" if back else "")
+            return None, f"{where} has no edge from {m[1]} to {m[3]}" + (" (it has it the other way round)" if back else "")
         styled = [e for e in edges if e.subkind in ARROW_SUBKINDS[m[2]]]
         return (styled or edges)[0].id, None
     x = _resolve_node(model, text, ids)
     if x is None:
-        return None, f"{text} is not a node of the diagram (give a node's id, or an edge as 'a --> b')"
+        return None, f"{text} is not an element of {where} (give a node's or an edge's id, or an edge as 'a --> b')"
     return x, None
 
 

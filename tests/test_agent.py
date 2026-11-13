@@ -74,7 +74,7 @@ def test_check(change, capsys):
     Path(change["verdicts"]).write_text(json.dumps(bad))
     assert main(["agent", "check", change["verdicts"]]) == 1
     err = capsys.readouterr().err
-    assert "draws no edge" in err and "is not a node" in err and "must be one of" in err and "needs a reason" in err
+    assert "has no edge from" in err and "is not an element of the model" in err and "must be one of" in err and "needs a reason" in err
     assert len(store.load_comments(key)) == 2  # failing verdicts replace no review
 
 
@@ -98,9 +98,9 @@ def test_comments(change, tmp_path, capsys):
     assert [(c["by"], c["observed"]) for c in store.load_comments(key)] == [("ana", change["key"]), ("ana", change["observed"])]
     mine.write_text(json.dumps([{"target": "repo:shop/nope.py", "text": "x"}]))
     assert main(["comments", "add", change["key"], str(mine), "--by", "ana", "--data", str(data)]) == 1
-    assert "is not a node" in capsys.readouterr().err and len(store.load_comments(key)) == 2  # nothing kept
+    assert "is not an element of the model" in capsys.readouterr().err and len(store.load_comments(key)) == 2  # nothing kept
     mine.write_text(json.dumps([{"target": "provide|api:|repo:shop|route", "text": "x"}]))  # an edge only a projection draws
     assert main(["comments", "add", change["key"], str(mine), "--data", str(data)]) == 1
-    assert "is no edge of this model" in capsys.readouterr().err
+    assert "is not an edge of the model" in capsys.readouterr().err
     assert main(["comments", "list", change["observed"], "--data", str(data)]) == 0
     assert [c["text"] for c in json.loads(capsys.readouterr().out)] == ["Why a module of its own?"] * 2
