@@ -23,6 +23,15 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **An HTTP call binds to the most specific routes it matches** (`nolli/logic/extractors/api.py`):
   of the routes that match, those with the most literal segments, as a router would choose.
   `GET /api/scene` no longer also binds to a catch-all `GET /{path:path}`.
+- **Three projection special cases are gone** (`nolli/logic/transformations/projection/`):
+  - References into an `unresolved` placeholder are rolled up like any other edge: drawn when the
+    unresolved group is shown, a badge on the referrer when it is not. The residue line
+    "N unresolved <language> references" and `meta.projection.unresolved` (and the report's
+    `view.unresolved`) are gone.
+  - A run of directories that each hold one directory is no longer drawn as one box: each
+    directory is its own box (`rollup.chain_end` is gone).
+  - An image that runs as one service is no longer drawn as that service: it is its own box,
+    with its `runs_as` edge (`rollup.image_aliases` is gone).
 - **`nolli serve --keep` limits the clones only.** Models in the store are no longer deleted to
   make room: one size for both let a large clone push out extracted models, and the models'
   "used" time was really when they were built. What the store keeps is

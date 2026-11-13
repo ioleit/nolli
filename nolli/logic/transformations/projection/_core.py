@@ -30,14 +30,14 @@ class Cut:
 
 
 def _hide_for(g: Reading, roles, side: str = "both") -> set[str]:
-    """Files and directories whose role is not shown, plus images drawn as their service; in a
-    change drawn for one side, what does not exist on that side."""
+    """Files and directories whose role is not shown; in a change drawn for one side, what does
+    not exist on that side."""
     shown = set(roles)
     out = rollup.hidden_by_role(g, {g.file(x)["role"] for x in g.nodes if g.file(x).get("role")} - shown)
     if side in ("base", "head"):
         gone = "added" if side == "base" else "removed"
         out |= {x for x in g.nodes if g.diff(x).get("status") == gone}
-    return out | set(rollup.image_aliases(g))
+    return out
 
 
 def _is_root_group(g: Reading, x: str) -> bool:
@@ -169,7 +169,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tupl
                 if g.kind(x) == "directory" and rollup.is_init(g, kid):
                     ch.extend(g.children(kid))  # a package's __init__ classes are its children
                     continue
-                ch.append(rollup.chain_end(g, kid, hidden) if g.kind(x) == "directory" and g.kind(kid) == "directory" else kid)
+                ch.append(kid)
             n = 0
             if x.own_code() in visible:
                 node(x.own_code(), me or parent, False)
@@ -193,7 +193,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tupl
     # what each drawn box stands for, each node by exactly one box: the innermost drawn box
     # holding it (a container itself, what is inside belongs to what is drawn inside), a
     # package's own code what its package body holds
-    rep = rollup.representative(g, visible, hidden, rollup.image_aliases(g))
+    rep = rollup.representative(g, visible, hidden)
     refs: dict[Key, list[Key]] = defaultdict(list)
     for x in sorted(g.nodes):
         if x in hidden:
@@ -233,7 +233,6 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tupl
     entities = [Entity(x, EntityKind.ANCHOR if x.is_own_code else g.kind(x)) for x in order]
     contain = [Relation(RelationKind.CONTAIN, p, x) for x, p in parent_of.items() if p is not None]
     residue = [f"{len(hidden)} entities hidden by role", f"{rolled.hidden_relations} relations touch hidden entities"]
-    residue += [f"{v} unresolved {k} references" for k, v in sorted(rolled.unresolved.items())]
     groups = [{"id": r, "namespace": r.scheme, "name": vocabulary.read_external(g.scene.find_element(r)).get("name") or r, "size": len(g.children(r)), "shown": r in shown_groups}
               for r in g.roots() if g.kind(r) == "group" and g.children(r)]
     by_role: dict[str, dict[str, int]] = {r: {"files": 0, "dirs": 0} for r in spec_lib.ALL_ROLES}  # for the Show filter ("mixed" is a directory role only)
@@ -247,8 +246,7 @@ def _fold_model(scene: Scene, st: ProjectionSpec) -> tuple[Model, dict[Key, tupl
     meta = {"projection": {"state": state, "order": order, "groups": groups, "roles": [{"id": r, **n} for r, n in by_role.items()],
                            "residue": residue, "utilities": sorted(utilities), "expanded": sorted(expanded),
                            "hidden": len(hidden), "hidden_nodes": sorted(hidden), "stats": {"nodes": drawn_count, "edges": len(keys)},
-                           "internal": dict(rolled.internal), "hidden_relations": rolled.hidden_relations,
-                           "unresolved": dict(rolled.unresolved)}}
+                           "internal": dict(rolled.internal), "hidden_relations": rolled.hidden_relations}}
     key = spec_lib.make_key(scene.model.key, st)
     model = Model(key, entities, [*contain, *keys], meta=meta, check=False)
     return model, {k: tuple(v) for k, v in refs.items()}, FixedOverlay("projection", values)

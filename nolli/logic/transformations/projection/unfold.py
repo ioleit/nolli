@@ -41,7 +41,7 @@ def find_default_cut(g: Reading, budget: int = 34, hidden_roles=None, always_exp
 
     roles = tuple(hidden_roles) if hidden_roles is not None else rollup.hidden_by_role.__defaults__[0]
     if hidden is None:
-        hidden = rollup.hidden_by_role(g, roles) | set(rollup.image_aliases(g))
+        hidden = rollup.hidden_by_role(g, roles)
     lca, _loose = rollup.reveal_scores(g, hidden)
     anchors = rollup.init_anchor_dirs(g, hidden)
     expanded: set[str] = {e for e in always_expand if g.has(e)}

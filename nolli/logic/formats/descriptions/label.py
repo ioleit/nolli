@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nolli.logic.formats.descriptions import names
-from nolli.model import vocabulary
 from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene
 
@@ -16,26 +15,12 @@ def _module_stem(file_name: str) -> str:
     return stem[:-2] if stem.endswith(".d") and file_name.endswith(("ts", "mts", "cts")) else stem
 
 
-def _format_path(el: Element, drawn: Element) -> str:
-    """Return the directory's path relative to the directory box it is drawn in. A chain of
-    directories folded into one box shows the whole chain."""
-    path = el.key.path
-    parent = drawn.parent
-    if parent is not None and parent.key.is_repo and not parent.key.is_own_code:
-        above = parent.key.path
-        if above != "." and path.startswith(above + "/"):
-            return path[len(above) + 1:]
-    return path
-
-
-def _format_label(el: Element, named: dict, drawn: Element | None = None) -> str:
+def _format_label(el: Element, named: dict) -> str:
     """Return the name shown after the icons. ``named`` is the node's entry in the ``names``
-    overlay, ``drawn`` the box the node is drawn as, if any."""
+    overlay."""
     if el.key.is_own_code:
         return ""
     kind = el.kind
-    if kind == "directory":
-        return named["name"] if vocabulary.read_file(el).get("root") or drawn is None else _format_path(el, drawn)
     if names.is_module(el):
         return _module_stem(named["name"])  # a module is named by its file
     if kind == "image":
@@ -45,19 +30,19 @@ def _format_label(el: Element, named: dict, drawn: Element | None = None) -> str
     return named["name"]
 
 
-def format_prose(el: Element, named: dict, drawn: Element | None = None) -> str:
+def format_prose(el: Element, named: dict) -> str:
     """Return the name as used in a sentence. Icons that read as words stay in front of it, as in
     "svc api" or "GET health"."""
     if el.kind == "endpoint":
         return named["name"]
     icons = [i for i in named["icons"] if i not in ("D", "m", "/", *names.SYMBOL_ICON.values())]
-    name = _format_label(el, named, drawn)
+    name = _format_label(el, named)
     return " ".join(icons + ([name] if name else []))
 
 
-def _describe(s: Element, drawn: Element, named: dict) -> dict:
-    """Build the label of the box ``drawn``, which stands for the node ``s``."""
-    return {"text": _format_label(s, named, drawn), "icons": named["icons"], "prose": format_prose(s, named, drawn)}
+def _describe(s: Element, named: dict) -> dict:
+    """Build the label of a box that stands for the node ``s``."""
+    return {"text": _format_label(s, named), "icons": named["icons"], "prose": format_prose(s, named)}
 
 
 class Label(Overlay):
@@ -88,5 +73,5 @@ class Label(Overlay):
             el = scene.find_element(x)
             s = el.find_same("source")
             if s is not None and s.key in named:
-                out[x] = _describe(s, el, named[s.key])
+                out[x] = _describe(s, named[s.key])
         return out

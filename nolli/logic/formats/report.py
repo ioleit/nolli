@@ -26,7 +26,7 @@ def make_report(scene: Scene, drawn: Scene) -> dict:
     p = drawn.model.meta["projection"]
     report = {"meta": meta, "summary": _summarize(scene),
               "view": {"visible": p["stats"]["nodes"], "edges": p["stats"]["edges"], "internal": p["internal"],
-                       "hidden_relations": p["hidden_relations"], "unresolved": p["unresolved"]},
+                       "hidden_relations": p["hidden_relations"]},
               "unresolved": sorted(x.id for x in scene.model.entities.values() if x.kind == "unresolved"),
               "notes": meta.get("notes", {})}
     if "change" in meta:
