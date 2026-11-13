@@ -4,6 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { pathOf } from "./fixtures.js";
 import { expect, test } from "./guard.js";
 
 // The page loads ELK from a CDN; the tests serve the same version from node_modules, so they
@@ -14,7 +15,7 @@ const ELK = readFileSync(createRequire(import.meta.url).resolve("elkjs/lib/elk.b
 async function open(page, hash = "") {
   await page.route("https://cdn.jsdelivr.net/npm/elkjs@*/lib/elk.bundled.js",
     r => r.fulfill({ body: ELK, contentType: "application/javascript" }));
-  await page.goto("/?t=ledger-review#" + hash.replace(/^&/, ""));
+  await page.goto(pathOf("ledger-review") + "#" + hash.replace(/^&/, ""));
   await expect(page.locator("#root g.verdict").first()).toBeVisible();
   await page.waitForLoadState("networkidle");
 }

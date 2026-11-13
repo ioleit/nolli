@@ -1,12 +1,12 @@
 // Browser tests of the review view (e2e/): a made-up repository with a reviewed change
-// (tests/fixtures/review_repo.py), served by e2e/serve_fixture.py. Python comes from
+// (tests/fixtures/review_repo.py), served by e2e/serve_fixture.py, which names each model's key in KEYS (e2e/fixtures.js). Python comes from
 // $NOLLI_PYTHON, else the clone's .venv, else python3 (it needs nolli's dependencies);
 // Chromium from $NOLLI_CHROMIUM, else /usr/bin/chromium if there is one, else Playwright's own.
 
 import { existsSync } from "node:fs";
 import { defineConfig } from "@playwright/test";
+import { KEYS, PORT } from "./e2e/fixtures.js";
 
-const PORT = 8799;
 const python = process.env.NOLLI_PYTHON || (existsSync("../.venv/bin/python") ? "../.venv/bin/python" : "python3");
 const chromium = process.env.NOLLI_CHROMIUM || (existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined);
 
@@ -26,5 +26,5 @@ export default defineConfig({
     colorScheme: "light",
     launchOptions: chromium ? { executablePath: chromium } : {},
   },
-  webServer: { command: `${python} e2e/serve_fixture.py ${PORT}`, url: `http://127.0.0.1:${PORT}/`, timeout: 60_000 },
+  webServer: { command: `${python} e2e/serve_fixture.py ${PORT} ${KEYS}`, url: `http://127.0.0.1:${PORT}/`, timeout: 60_000 },
 });
