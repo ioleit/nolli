@@ -169,15 +169,24 @@ function targets(id) {
   return { ids: standIns(id, new Set(scene.nodes.map(n => n.id))), keys: [] };
 }
 
-/** Go to an item: unfold what it needs, then (once drawn) centre on it and flash it. @param {string} id */
+/** Go to an item: unfold what it needs, then (once drawn) centre on it and flash it. A comment made on
+ * an edge between folded boxes shows only where they are folded: unless it shows already, fold its ends
+ * and what is unfolded inside them too. @param {string} id */
 function jump(id) {
   const it = itemById(id);
   if (!it) return;
   state.item = id;
   const have = new Set(state.expanded || scene?.state.expanded || []);
+  const t = targets(id), shown = t.ids.length + t.keys.length > 0;
+  const fold = new Set("fold" in it && !shown ? it.fold : []);
+  const parent = new Map((scene?.nodes || []).map(n => [n.id, n.parent]));
+  /** @param {string} x */
+  const inFold = x => { for (let p = /** @type {string | null | undefined} */ (x); p; p = parent.get(p)) if (fold.has(p)) return true; return false; };
+  const folded = [...have].filter(inFold);
+  for (const x of folded) have.delete(x);
   const missing = it.reveal.filter(x => !have.has(x));
   focusNext = true;
-  if (missing.length) { state.expanded = [...have, ...missing]; state.preset = null; refresh(true); return; }
+  if (missing.length || folded.length) { state.expanded = [...have, ...missing]; state.preset = null; refresh(true); return; }
   if (scene) renderPanel(scene, reviewHandlers);
   pointAtItem();
   writeHash();

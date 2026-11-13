@@ -82,6 +82,7 @@ export interface ListedComment extends Comment {
   ends: string[];  // what it is about: one entity (a box) or two (an edge), those the model has
   edge: boolean;
   reveal: string[];  // boxes to unfold so its ends are drawn
+  fold: string[];  // boxes to draw folded: an edge's ends, which split it up when unfolded
 }
 
 /**

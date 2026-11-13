@@ -1,0 +1,5 @@
+[
+  {"target": "repo:nolli/logic/comments.py", "verdict": "good", "text": "Hello!"},
+  {"target": "repo:nolli/server/serve.py", "verdict": "question", "text": "Hello?"},
+  {"target": "repo:nolli/cli.py", "text": "Nothing to say here."}
+]

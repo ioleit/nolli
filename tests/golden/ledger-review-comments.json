@@ -8,6 +8,10 @@
     "repo:ledger/storage/db.py",
     "repo:ledger/services/alerts.py"
    ],
+   "fold": [
+    "repo:ledger/storage/db.py",
+    "repo:ledger/services/alerts.py"
+   ],
    "id": "c-a76f9526dc",
    "label": "ledger/storage/db.py \u2192 ledger/services/alerts.py",
    "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
@@ -26,6 +30,10 @@
    "by": "agent",
    "edge": true,
    "ends": [
+    "repo:ledger/services/alerts.py",
+    "repo:ledger/storage"
+   ],
+   "fold": [
     "repo:ledger/services/alerts.py",
     "repo:ledger/storage"
    ],
@@ -48,6 +56,7 @@
    "ends": [
     "repo:ledger/storage/cache.py"
    ],
+   "fold": [],
    "id": "c-6e7cf3b288",
    "label": "ledger/storage/cache.py",
    "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
@@ -68,6 +77,10 @@
     "repo:ledger/services/billing.py",
     "repo:ledger/storage"
    ],
+   "fold": [
+    "repo:ledger/services/billing.py",
+    "repo:ledger/storage"
+   ],
    "id": "c-954d0db24e",
    "label": "ledger/services/billing.py \u2192 ledger/storage",
    "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
@@ -85,6 +98,10 @@
    "by": "agent",
    "edge": true,
    "ends": [
+    "repo:web/src/client.ts",
+    "api:http:ledger/api/app.py:app/alerts/overdue#GET"
+   ],
+   "fold": [
     "repo:web/src/client.ts",
     "api:http:ledger/api/app.py:app/alerts/overdue#GET"
    ],
@@ -109,6 +126,7 @@
    "ends": [
     "repo:ledger/services/legacy_export.py"
    ],
+   "fold": [],
    "id": "c-7c7ad35424",
    "label": "ledger/services/legacy_export.py",
    "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
@@ -128,6 +146,7 @@
    "ends": [
     "repo:web/src/views/alerts.ts"
    ],
+   "fold": [],
    "id": "c-2dd184fd0d",
    "label": "web/src/views/alerts.ts",
    "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
@@ -148,6 +167,7 @@
    "ends": [
     "repo:ledger/api/routes.py"
    ],
+   "fold": [],
    "id": "c-613780aa5e",
    "label": "ledger/api/routes.py",
    "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",

@@ -175,6 +175,7 @@ def test_changes_comments_and_brief(repo):
     listed = comments.describe_comments(sc, sc.overlays["comments"].list_all(sc))
     assert listed[0]["edge"] and listed[0]["label"] == "app/api.py → app/store.py#Index"
     assert listed[0]["reveal"] == ["repo:", "repo:app", "repo:app/store.py"]
+    assert listed[0]["fold"] == ["repo:app/api.py", "repo:app/store.py#Index"] and listed[1]["fold"] == listed[2]["fold"] == []
     # each shows on what stands for it in a view: on itself, or rolled up into a folded box or onto the edge that carries it
     ids = lambda x: [c["id"] for k in ("own", "inside") for c in (x.get("comments") or {}).get(k, [])]  # noqa: E731
     d = draw(sc, expanded=["repo:", "repo:app", "repo:app/store.py"])

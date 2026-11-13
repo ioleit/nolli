@@ -272,14 +272,16 @@ def _find_carrier(scene: Scene, a: str, b: str, kind: str, subkind: str) -> Key 
 def describe_comments(scene: Scene, comments: list[dict]) -> list[dict]:
     """Return each comment with what it takes to go to it in ``scene``. ``ends`` are the addresses
     it is about that ``scene`` has, ``edge`` says whether it is about an edge, and ``reveal`` lists
-    the nodes to unfold, outermost first, so that its ends are drawn."""
+    the nodes to unfold, outermost first, so that its ends are drawn. ``fold`` lists the nodes to
+    draw folded: the ends of an edge, which a view that unfolds them splits into edges to what
+    they hold, so that the comment does not show there. A module's own code is no node to fold."""
     g = reading.Reader(_find_root(scene))
     out = []
     for c in comments:
         try:
             t = schema.parse_key(c.get("target") or "")
         except ValueError:
-            out.append({**c, "ends": [], "edge": False, "reveal": []})
+            out.append({**c, "ends": [], "edge": False, "reveal": [], "fold": []})
             continue
         ends = [EntityId(p) for p in t.split("|", 3)[1:3]] if isinstance(t, RelationId) else [EntityId(t)]
         reveal: list[str] = []
@@ -289,5 +291,8 @@ def describe_comments(scene: Scene, comments: list[dict]) -> list[dict]:
             for a in reading.list_ancestors_to_unfold(g, x.owner) + ([x.owner] if x.is_own_code else []):
                 if a not in reveal:
                     reveal.append(a)
-        out.append({**c, "ends": [x for x in ends if g.has(x.owner)], "edge": isinstance(t, RelationId), "reveal": reveal})
+        edge = isinstance(t, RelationId)
+        fold = [x for x in ends if edge and not x.is_own_code and g.has(x)]
+        out.append({**c, "ends": [x for x in ends if g.has(x.owner)], "edge": edge,
+                    "reveal": [x for x in reveal if x not in fold], "fold": fold})
     return out

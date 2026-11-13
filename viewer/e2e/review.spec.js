@@ -159,3 +159,16 @@ test("a fine verdict goes to its box from the panel, with a grey mark on it", as
   await expect(tip(page)).toContainText("the one box that assembles");
   await expect(page).toHaveScreenshot("fine-on-box.png", { clip: await around(page, [node(page, id), tip(page)]) });
 });
+
+test("going to a comment on an edge between folded boxes folds them again", async ({ page }) => {
+  // storage/ unfolded and up to 8 lines between two boxes: billing's imports go to the stores one by one,
+  // and the question on billing → storage (made where storage/ was one box) shows nowhere
+  await open(page, "x=repo:,repo:ledger,repo:ledger/services,repo:ledger/storage&ml=8");
+  await expect(page.locator("#root g.edge g.verdict.question")).toHaveCount(1);  // only client.ts ==> the API's
+  await page.locator("#review .rv-verdict", { hasText: "Tied to the wrapper" }).click();
+  await expect(tip(page)).toContainText("Tied to the wrapper");  // its card, pinned on its mark
+  await expect(page.locator("#root g.edge g.verdict.question")).toHaveCount(2);
+  const unfolded = await page.evaluate(() => (new URLSearchParams(location.hash.slice(1)).get("x") || "").split(","));
+  expect(unfolded).not.toContain("repo:ledger/storage");
+  expect(unfolded).toContain("repo:ledger/services");
+});
