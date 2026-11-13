@@ -12,6 +12,7 @@ from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 from nolli.model.schema import EntityId, RelationId
 
 TOTALS = ("added", "removed", "files", "new", "gone")  # what a node of a change counts, and a drawn node sums up
+OWN = ("status", "git", "added", "removed", "old_path", "renamed_to")  # what a drawn node's ``own`` keeps of its entity's value
 MAX_HUNKS = 30  # a drawn file lists at most this many hunks
 MAX_CHANGES = 40  # a drawn edge lists at most this many changed edges
 
@@ -58,21 +59,19 @@ class Change(Overlay):
 
     On a node of a drawn scene (``NodeDiff`` in nolli.d.ts):
 
-    - ``status``: ``added`` or ``removed`` if the node it is had that status, else ``changed``.
-    - ``added``, ``removed``, ``files``, ``new``, ``gone``: the sums of ``totals`` over what the
-      node stands for and the nodes drawn inside it, also under ``totals``. A class with
-      changed lines of its own has its own ``added`` and ``removed``.
-    - ``is_derived_change``: true if the entity the node is did not change itself, and its
-      change is summed up from the entities inside it or the relations between them.
+    - ``status``: ``added`` or ``removed`` if the entity it is was added or removed, else
+      ``changed``.
+    - ``totals``: the sums of ``totals`` over what the node stands for and the nodes drawn
+      inside it. A class's own lines are not in them (its file counts them); they are in ``own``.
     - ``internal``: the number of changed edges the projection found between the nodes it holds.
-    - ``git``, ``old_path``, ``renamed_to``: as on the node it is.
     - ``role``: the role of the file or directory it is in; ``source`` for ``mixed`` and for a
       node outside the file tree.
-    - ``link``: for a file or class the change touched, where to see its change on GitHub.
-    - ``hunks``: for a file, its hunks as on the change, each with a ``link``; at most
-      ``MAX_HUNKS``, and ``more_hunks`` counts the rest.
-    - ``classes``: for a file, the classes in it the change touched, each
-      ``{name, status, added, removed}``.
+    - ``own``: only if the entity the node is changed itself, what the change did to it: its
+      ``status``, ``git``, ``added`` and ``removed`` lines, ``old_path`` and ``renamed_to`` as on
+      the change. For a file or class also a ``link`` to where its change shows on GitHub. For a
+      file also its ``hunks``, each with a ``link`` (at most ``MAX_HUNKS``; ``more_hunks`` counts
+      the rest), and the ``classes`` in it the change touched, each
+      ``{name, status, added, removed}``. A node without ``own`` changed only inside.
 
     On an edge of a drawn scene (``EdgeDiff`` in nolli.d.ts):
 
@@ -217,42 +216,38 @@ class Change(Overlay):
                 for k in TOTALS:
                     totals[k] += (rec.get("totals") or {}).get(k, 0)
         internal = (el.get("projection") or {}).get("internal_changes", 0)
-        own = own or {}
-        status = own.get("status") if own.get("status") in ("added", "removed") else "changed" if seen or internal else None
+        status = own["status"] if own and own["status"] in ("added", "removed") else "changed" if seen or internal else None
         if status is None:
             return None
-        out = {"status": status, "is_derived_change": not own, **totals, "totals": totals, "internal": internal}
-        if el.kind in schema.SYMBOL_KINDS and own.get("status") == "same":
-            out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)  # its own lines; files count them for the module
-        for k in ("git", "old_path", "renamed_to"):
-            if own.get(k):
-                out[k] = own[k]
+        out = {"status": status, "totals": totals, "internal": internal}
         same = el.find_same("source")
         if same is not None:
             out["role"] = self._find_role(same)
-            if own:
-                out.update(self._link_own_change(same, own))
+        if own:
+            out["own"] = self._describe_own(same, own) if same is not None else {k: own[k] for k in OWN if k in own}
         return out
 
-    def _link_own_change(self, el: Element, own: dict) -> dict:
-        """Link a file or class of the change to where its change shows on GitHub, and for a file
-        list its hunks, each linked, and the classes in it the change touched. ``own`` is what
-        the change did to it. Return nothing for any other node."""
+    def _describe_own(self, el: Element, own: dict) -> dict:
+        """Describe what the change did to an entity itself, from ``own``, its value on the change:
+        its ``OWN`` fields, and for a file or class a link to where its change shows on GitHub.
+        For a file, also list its hunks, each linked, and the classes in it the change touched."""
+        out = {k: own[k] for k in OWN if k in own}
         if not el.key.is_repo or el.kind not in ("file", *schema.SYMBOL_KINDS):
-            return {}
+            return out
         links = Links(el.scene.model.meta.get("change") or {})
         path, st = el.key.path, own.get("status")
         if el.kind != "file":
             a = el.get(vocabulary.SYMBOLS) or {}
-            return {"link": links.blob(path, "base" if st == "removed" else "head", a.get("line"), a.get("end_line"))
-                    if st in ("added", "removed") else links.diff(path)}
+            return out | {"link": links.blob(path, "base" if st == "removed" else "head", a.get("line"), a.get("end_line"))
+                          if st in ("added", "removed") else links.diff(path)}
         hunks = [{"new": h["new"], "old": h["old"], "added": len(h["added"]), "removed": len(h["removed"]),
                   "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0], "head" if h["added"] else "base")}
                  for h in own.get("hunks", [])]
         classes = [{"name": (c.get("names") or {}).get("name", c.key), "status": rec["status"], "added": rec.get("added", 0),
                     "removed": rec.get("removed", 0)}
                    for c in el.children if c.kind in schema.SYMBOL_KINDS and (rec := c.get(self.name))]
-        return {"link": links.diff(path), "hunks": hunks[:MAX_HUNKS], "more_hunks": max(0, len(hunks) - MAX_HUNKS), "classes": classes}
+        return out | {"link": links.diff(path), "hunks": hunks[:MAX_HUNKS], "more_hunks": max(0, len(hunks) - MAX_HUNKS),
+                      "classes": classes}
 
     @staticmethod
     def _find_role(el: Element) -> str:

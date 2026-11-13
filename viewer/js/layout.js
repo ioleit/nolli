@@ -28,11 +28,18 @@ export const iconsW = icons => icons.reduce((w, i) => w + iconW(i) + ICON_GAP, 0
 /** @param {string} s @param {string[]} icons */
 const textW = (s, icons) => Math.max(icons.length && !s ? 20 : 56, s.length * 6.4 + 22 + iconsW(icons));
 
+/** The lines changed in what a box stands for: its totals, or a class's own lines (its file counts them, not it).
+ * @param {import("../types/nolli").NodeDiff | null | undefined} d */
+export function changedLines(d) {
+  if (!d) return { added: 0, removed: 0 };
+  const t = d.totals;
+  return t.added || t.removed ? { added: t.added, removed: t.removed } : { added: d.own?.added || 0, removed: d.own?.removed || 0 };
+}
+
 /** "+12 −3" for a box whose lines changed, "" otherwise. @param {import("../types/nolli").BoxNode} n */
 export function statsText(n) {
-  const d = n.change;
-  if (!d || (!d.added && !d.removed)) return "";
-  return `+${d.added} −${d.removed}`;
+  const { added, removed } = changedLines(n.change);
+  return added || removed ? `+${added} −${removed}` : "";
 }
 
 /** The size a folded node needs for its label, badge, chips and changed lines. @param {SceneNode} n */

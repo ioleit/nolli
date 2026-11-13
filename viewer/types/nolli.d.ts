@@ -17,14 +17,17 @@ export type Verdict = "blunder" | "problem" | "question" | "fine" | "good" | "br
 /** A box's change: its own status, and totals in its subtree. */
 export interface NodeDiff {
   status: Status;
-  added: number; removed: number;  // changed lines
-  files: number;  // changed files
-  new: number; gone: number;  // entities added / removed
+  totals: { added: number; removed: number; files: number; new: number; gone: number };  // summed over what it stands for and holds
   internal: number;  // changed facts between its own children
-  is_derived_change: boolean;  // it did not change itself: its change is summed up from what is inside it
-  git?: string; old_path?: string; renamed_to?: string;
   role?: string;  // of the file or directory it is in: source (or mixed), test, docs, …
-  link?: string | null;  // a file or class the change touched itself: where to see it
+  own?: OwnChange;  // only if the entity itself changed, not just what is inside it
+}
+
+/** What a change did to an entity itself (nolli/logic/transformations/merge/change.py). */
+export interface OwnChange {
+  status: Status | "same";  // same: on both sides, with changed lines
+  git?: string; added?: number; removed?: number; old_path?: string; renamed_to?: string;
+  link?: string | null;  // a file or class: where to see its change
   hunks?: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[]; more_hunks?: number;  // a file's
   classes?: { name: string; status: Status | "same"; added: number; removed: number }[];  // a file's classes the change touched
 }

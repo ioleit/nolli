@@ -36,23 +36,25 @@ def _describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = ()
     those on what it holds (``inside``, summed up when there are several)."""
     lines: list[str] = []
     if nd:
-        lines_changed = nd["added"] or nd["removed"]
-        where = f" in {prose.count(nd['files'], 'file')}" if nd["files"] > 1 else ""
+        t, own = nd["totals"], nd.get("own") or {}
+        added, removed = (t["added"], t["removed"]) if t["added"] or t["removed"] else (own.get("added", 0), own.get("removed", 0))
+        lines_changed = added or removed  # a class's own lines are not in its totals: its file counts them
+        where = f" in {prose.count(t['files'], 'file')}" if t["files"] > 1 else ""
         if nd["status"] == "added":
-            lines.append(prose.say("New in this change" + (", {} lines" if lines_changed else ""), *([f"+{nd['added']}"] if lines_changed else [])))
+            lines.append(prose.say("New in this change" + (", {} lines" if lines_changed else ""), *([f"+{added}"] if lines_changed else [])))
         elif nd["status"] == "removed":
-            lines.append(prose.say("Removed in this change" + (", {} lines" if lines_changed else ""), *([f"−{nd['removed']}"] if lines_changed else [])))
+            lines.append(prose.say("Removed in this change" + (", {} lines" if lines_changed else ""), *([f"−{removed}"] if lines_changed else [])))
         elif lines_changed:
-            lines.append(prose.say("Changed: {} {} lines" + where, f"+{nd['added']}", f"−{nd['removed']}"))
-        elif not (nd.get("new") or nd.get("gone")) and nd.get("internal"):
+            lines.append(prose.say("Changed: {} {} lines" + where, f"+{added}", f"−{removed}"))
+        elif not (t["new"] or t["gone"]) and nd.get("internal"):
             lines.append(prose.say("Changed: {} between what it holds", prose.count(nd["internal"], "dependency", "dependencies")))
-        if (nd.get("new") or nd.get("gone")) and nd["status"] == "changed":
-            bits = ([prose.count(nd["new"], "new entity")] if nd.get("new") else []) + ([prose.count(nd["gone"], "removed entity")] if nd.get("gone") else [])
+        if (t["new"] or t["gone"]) and nd["status"] == "changed":
+            bits = ([prose.count(t["new"], "new entity")] if t["new"] else []) + ([prose.count(t["gone"], "removed entity")] if t["gone"] else [])
             lines.append(prose.say("Inside: " + " and ".join("{}" for _ in bits), *bits))
-        if nd.get("old_path"):
-            lines.append(prose.say("Renamed from {}", nd["old_path"]))
-        if nd.get("renamed_to"):
-            lines.append(prose.say("Renamed to {}", nd["renamed_to"]))
+        if own.get("old_path"):
+            lines.append(prose.say("Renamed from {}", own["old_path"]))
+        if own.get("renamed_to"):
+            lines.append(prose.say("Renamed to {}", own["renamed_to"]))
     return prose.paragraphs(lines + _list_verdict_lines(verdicts, inside, f"in this {kind}"))
 
 

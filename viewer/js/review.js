@@ -87,19 +87,20 @@ function around(id) {
 const CATEGORIES = ["entity", "relation"];
 
 /** List every entity and relation that changed itself, source first, then entities before relations, then by
- * role, area and title. The server says which changed (required_overlay=change) and which only sum up a change
- * inside them (is_derived_change); those are left out.
+ * role, area and title. The server says which changed (required_overlay=change), and which changed themselves
+ * (an entity's change has ``own``); those that changed only inside are left out.
  * @param {TableRow[]} got @returns {ReviewItem[]} */
 function listChanges(got) {
   /** @type {ReviewItem[]} */
   const out = [];
   for (const r of got) {
     const c = r.change;
-    if (!c || ("is_derived_change" in c && c.is_derived_change)) continue;
+    if (!c || (!r.src && !("own" in c))) continue;
     const relation = !!(r.src && r.dst);
     const top = relation ? around(r.src)[0] ?? r.src : around(r.id)[0] ?? r.id;
     const reveal = relation ? [...new Set([...around(r.src), ...around(r.dst)])] : around(r.id);
-    const lines = !relation && "git" in c && c.git ? ` (+${c.added} −${/** @type {NodeDiff} */ (c).removed})` : "";
+    const own = relation ? undefined : /** @type {NodeDiff} */ (c).own;
+    const lines = own?.git ? ` (+${own.added || 0} −${own.removed || 0})` : "";
     const title = relation ? `${r.src} → ${r.dst}  ${/** @type {EdgeDiff} */ (c).base}→${/** @type {EdgeDiff} */ (c).head}` : `${r.kind} ${r.id}${lines}`;
     out.push({ id: r.id, category: relation ? "relation" : "entity", status: c.status, role: c.role || "source", area: top, reveal, change: c, title });
   }
@@ -141,12 +142,13 @@ function factList(cs, more) {
 function details(it) {
   let html = "";
   if (it.category === "relation") { const e = /** @type {EdgeDiff} */ (it.change); html += factList(e.changes || [], e.more || 0); }
-  const n = /** @type {NodeDiff} */ (it.change);
-  const classes = it.category === "relation" ? [] : n.classes || [];
+  /** @type {import("../types/nolli").OwnChange | Record<string, never>} */
+  const n = it.category === "relation" ? {} : /** @type {NodeDiff} */ (it.change).own || {};
+  const classes = n.classes || [];
   if (classes.length) html += `<div class="dt-sub">classes</div><ul class="facts">${classes.map(c =>
     `<li>${statusSpan(c.status)} ${esc(c.name)} <span class="plus">+${c.added}</span> <span class="minus">−${c.removed}</span></li>`).join("")}</ul>`;
   if (n.hunks?.length) html += `<div class="hunks">${n.hunks.map(h => link(h.link, `L${h.new[0]}${h.new[1] > 1 ? "–" + (h.new[0] + h.new[1] - 1) : ""}`)).join(" ")}${n.more_hunks ? ` … ${n.more_hunks} more` : ""}</div>`;
-  const where = "link" in n && n.link ? n.link : it.category === "relation" ? /** @type {EdgeDiff} */ (it.change).changes?.[0]?.link : null;
+  const where = n.link ? n.link : it.category === "relation" ? /** @type {EdgeDiff} */ (it.change).changes?.[0]?.link : null;
   html += `<div class="muted">${where ? link(where, "↗ diff") + " · " : ""}${esc(it.role)} · in ${esc(it.area)}</div>`;
   return `<div class="rv-more">${html}</div>`;
 }

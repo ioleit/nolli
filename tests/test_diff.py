@@ -116,7 +116,10 @@ def test_scene_review(repo):
     d = draw(sc, expanded=unfolded)
     nodes = {n["id"]: n for n in d["nodes"]}
     assert nodes["repo:app/store.py#Index"]["change"]["status"] == "added"
-    assert nodes["repo:app/store.py#Store"]["change"] == nodes["repo:app/store.py#Store"]["change"] | {"status": "changed", "added": 1, "removed": 1}
+    store_class = nodes["repo:app/store.py#Store"]["change"]
+    assert store_class["status"] == "changed" and store_class["own"] == store_class["own"] | {"status": "same", "added": 1, "removed": 1}
+    assert store_class["totals"]["added"] == 0  # a class's own lines count for its file
+    assert "own" not in nodes["repo:app"]["change"]  # changed only inside
     assert nodes["repo:app/old.py"]["change"]["status"] == "removed"
     assert "change" not in nodes["repo:app/store.py#Cache"]
     edges = {(e["src"], e["dst"]): e for e in d["edges"]}
@@ -130,8 +133,8 @@ def test_scene_review(repo):
     # the default view unfolds towards the change
     assert "repo:app" in draw(sc)["state"]["expanded"]
     # the list of changes: an edited file with hunks and links into the PR's files view
-    store = next(r for r in list_changes(sc) if r["id"] == "repo:app/store.py")["change"]
-    assert store["git"] == "M" and store["role"] == "source"
+    store = next(r for r in list_changes(sc) if r["id"] == "repo:app/store.py")["change"]["own"]
+    assert store["git"] == "M"
     assert store["link"] == f"https://github.com/acme/demo/pull/7/files#{Links.anchor('app/store.py')}"
     assert store["hunks"] and store["hunks"][0]["link"].startswith(store["link"] + "R")
     assert {c["name"]: c["status"] for c in store["classes"]} == {"Index": "added", "Store": "same"}
@@ -150,7 +153,7 @@ def test_changes_verdicts_and_export(repo):
     # the changes preset draws every change as a box or edge of its own, and lists them
     rows = {r["id"]: r for r in list_changes(sc)}
     assert rows["repo:app/store.py#Index"]["change"]["status"] == "added" and rows["repo:app/store.py#Index"]["parent"] == "repo:app/store.py"
-    assert rows["repo:app/old.py"]["change"]["status"] == "removed" and rows["repo:app/api.py"]["change"]["git"] == "M"
+    assert rows["repo:app/old.py"]["change"]["status"] == "removed" and rows["repo:app/api.py"]["change"]["own"]["git"] == "M"
     dep = next(r for r in rows.values() if r.get("src") == "repo:app/api.py")
     assert dep["dst"] == "repo:app/store.py#Index" and dep["change"]["status"] == "added"
     assert any(f.endswith("repo:app/store.py#Index|ref") for f in dep["change"]["facts"])
