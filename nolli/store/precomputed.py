@@ -26,7 +26,7 @@ from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 
 if TYPE_CHECKING:
-    from nolli.store import ModelStore
+    from nolli.store.model_store import ModelStore
 
 
 class KeptMaps(StoredMaps, Protocol):
