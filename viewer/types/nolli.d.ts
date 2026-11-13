@@ -105,7 +105,6 @@ export interface Label {
   text: string;
   icons: string[];  // what it is, drawn before the label: "D", "m", "C", "svc", "img", "API", "/", verbs ("GET", "WS")
   prose: string;
-  path: string | null;  // where in the repository: a file's or directory's path, a class as path#Name; null outside the file tree
 }
 
 /** The review's verdicts that land on a box or edge (nolli/review/verdicts.py). */

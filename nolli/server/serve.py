@@ -31,11 +31,11 @@ nolli/logic/transformations/projection/spec.py; ``p=none``: not projected), in a
 (``FORMATS``: ``viewer`` by default, the viewer's JSON with every overlay; ``table``, rows of the
 overlays named; ``mermaid``; ``brief``, what a review agent gets; ``report``) with that format's
 options (``FormatSceneRequest``, nolli/logic/formats/options.py). A change's list of changes is
-read off a table of the changes preset (``f=table&overlays=change,label&p=changes``), its
-verdicts off a table of the change itself (``f=table&required_overlay=verdicts&p=none``).
+a table of the changes preset (``f=table&required_overlay=change&overlays=change&p=changes``),
+its verdicts a table of the change itself (``f=table&required_overlay=verdicts&p=none``).
 ``POST /api/verdicts`` stores a review's verdicts (``nolli view`` only); ``/api/review`` says
-where the verdicts came from and whether a review agent can run here, ``POST /api/review`` starts one (it needs ANTHROPIC_API_KEY, reviews.py) and ``POST
-/api/review/cancel`` stops it. ``/api/job?j=`` is a build's progress.
+where the verdicts came from and whether a review agent can run here, ``POST /api/review``
+starts one (it needs ANTHROPIC_API_KEY, reviews.py) and ``POST /api/review/cancel`` stops it. ``/api/job?j=`` is a build's progress.
 
 GitHub's API is asked with a token (``Token``): for ``nolli serve`` ``NOLLI_GITHUB_TOKEN`` if
 it is set (5,000 requests an hour instead of 60), else as nobody; ``nolli view`` uses yours
@@ -640,9 +640,9 @@ def job_status(request: Request) -> Response:
 
 @router.get("/api/scene")
 def scene(request: Request, q: Annotated[FormatSceneRequest, Query()]) -> Response:
-    """Answer the model ``k``, projected as asked (``p=none``: not at all), in the format ``f``
-    (FORMATS; the viewer's JSON by default). Server-Timing says how long loading, projecting and
-    formatting took."""
+    """Answer the model ``k``, projected as asked, in the format ``f``, which is the viewer's JSON
+    unless it says otherwise. ``p=none`` asks for no projection. The Server-Timing header says
+    how long loading, projecting and formatting took."""
     t0 = time.perf_counter()
     found = services_of(request).open_model(q.k)
     if found is None:
@@ -744,8 +744,8 @@ def make_app(services: Services, routes: APIRouter | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def bad_request(_request: Request, exc: RequestValidationError) -> Response:
-        """Answer a request whose parameters are wrong with 422, saying which and why in ``error``
-        as every other error does (``detail``: FastAPI's own list)."""
+        """Answer a request whose parameters are wrong with 422. Say which are wrong and why in
+        ``error``, as every other error does, and give FastAPI's own list in ``detail``."""
         errors = jsonable_encoder(exc.errors())
         said = "; ".join(f"{'.'.join(str(x) for x in e.get('loc', ())[1:]) or 'request'}: {e.get('msg')}" for e in errors)
         return json_response({"error": said, "detail": errors}, 422)

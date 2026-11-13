@@ -131,13 +131,14 @@ def format_name(g: Reader, x: str) -> str:
 
 
 def list_ancestors_to_unfold(g: Reader, x: str) -> list[str]:
-    """List the boxes to unfold so that x itself is drawn, outermost first."""
+    """List the nodes to unfold so that x itself is drawn, outermost first."""
     return list(g.ancestors(x))[::-1]
 
 
 def find_box(scene: Scene, x: str) -> str | None:
-    """Find the drawn box that stands for ``x``: ``x`` itself if it is drawn (a module's own code
-    too), else the box holding it (or its owner), or None. ``x`` may be text (an address)."""
+    """Find the drawn node that stands for ``x``, which may be an address as text. Return ``x``
+    itself if it is drawn (a module's own code too), else the drawn node that holds it or its
+    owner, or None if there is none."""
     x = EntityId(x)
     if scene.has(x):
         return x

@@ -1,7 +1,7 @@
 // The review panel, for diff datasets (nolli diff): the change as a whole, a before /
 // changes / after switch, the review agent's verdicts (verdicts.json; where they came from
 // and running a review: reviewer.js), and the changes: the changed boxes and edges of the
-// changes preset, read off a table of it (GET /api/scene?f=table). A verdict is on a node or
+// changes preset, a table of it (GET /api/scene?f=table), each named by its id. A verdict is on a node or
 // edge of the review diagram; its row shows the reason. A change's row expands in place to
 // show its links into the PR. Hovering a row lights what it is about in the drawing; clicking
 // it (or j / k) goes there: unfold what it needs, centre on it, flash it and open its card.
@@ -65,10 +65,9 @@ export async function fetchVerdicts(key) {
 }
 
 /** Fetch the model's changes (in every role: the panel shows those in the roles shown) and verdicts; empty for
- * a snapshot. Every box of the changes preset comes, changed or not, so the panel can name both ends of a
- * changed edge. @param {string} key the model's key */
+ * a snapshot. @param {string} key the model's key */
 export async function loadItems(key) {
-  const changed = "overlays=change,label&p=changes&r=" + ALL_ROLES.join(",");
+  const changed = "required_overlay=change&overlays=change&p=changes&r=" + ALL_ROLES.join(",");
   const [got, vs] = await Promise.all([fetchTable(key, changed), fetchVerdicts(key)]);
   rows = new Map(got.map(r => [r.id, r]));
   items = listChanges(got);
@@ -85,9 +84,6 @@ function around(id) {
   return out;
 }
 
-/** How the panel names a box: a file or directory by its path, a class as path#Name, anything else (an
- * endpoint, a service) as a sentence would (its label's prose). @param {string} x */
-const nameOf = x => { const l = rows.get(x)?.label; return l?.path || l?.prose || x; };
 const WHAT = /** @type {Record<string, string>} */ ({ file: "module", directory: "package", package: "external package" });
 const CATEGORIES = ["component", "dependency", "content"];
 
@@ -101,18 +97,18 @@ function listChanges(got) {
     const c = r.change;
     if (!c) continue;
     const up = r.src ? [...new Set([...around(r.src), ...around(r.dst)])] : around(r.id);
-    const top = r.src ? around(r.src)[0] ?? r.src : up[0] ?? r.id, base = { id: r.id, status: c.status, role: c.role || "source", area: nameOf(top), reveal: up, change: c };
+    const top = r.src ? around(r.src)[0] ?? r.src : up[0] ?? r.id, base = { id: r.id, status: c.status, role: c.role || "source", area: top, reveal: up, change: c };
     if (r.src && r.dst) {
       const e = /** @type {EdgeDiff} */ (c);
-      out.push({ ...base, category: "dependency", title: `${nameOf(r.src)} → ${nameOf(r.dst)}  ${e.base}→${e.head}` });
+      out.push({ ...base, category: "dependency", title: `${r.src} → ${r.dst}  ${e.base}→${e.head}` });
       continue;
     }
     const n = /** @type {NodeDiff} */ (c), parent = r.parent ? rows.get(r.parent)?.change : null;
     if ((n.status === "added" || n.status === "removed") && parent?.status !== n.status && r.kind !== "group" && r.kind !== "unresolved") {
       const renamed = n.old_path ? ` (renamed from ${n.old_path})` : n.renamed_to ? ` (renamed to ${n.renamed_to})` : "";
-      out.push({ ...base, category: "component", title: `${WHAT[r.kind] || r.kind} ${nameOf(r.id)}${renamed}` });
+      out.push({ ...base, category: "component", title: `${WHAT[r.kind] || r.kind} ${r.id}${renamed}` });
     } else if (r.kind === "file" && n.git && n.status === "changed")
-      out.push({ ...base, category: "content", title: `${nameOf(r.id)} (+${n.added} −${n.removed})` });
+      out.push({ ...base, category: "content", title: `${r.id} (+${n.added} −${n.removed})` });
   }
   const order = (/** @type {ReviewItem} */ it) => [it.role !== "source", CATEGORIES.indexOf(it.category), it.role, it.area, it.title];
   return out.sort((a, b) => {

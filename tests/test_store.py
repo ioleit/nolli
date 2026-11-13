@@ -148,7 +148,7 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     time and read back; a change kept without them (an older nolli) is computed on every read."""
     from helpers import spec
 
-    from nolli.logic.transformations.merge import Change
+    from nolli.logic.transformations.merge.change import Change
 
     path, shas = src
     change = Repo(str(path)).make_change(shas[0], shas[2])

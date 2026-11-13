@@ -1,4 +1,4 @@
-"""Exports a scene as a table: one row per drawn box or edge, one column per overlay."""
+"""Exports a scene as a table, with a row for each node and edge and a column for each overlay."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from nolli.model.scene import Scene
 
 
 def export_table(scene: Scene, options: TableFormatOptions) -> dict:
-    """Export the scene's boxes (in drawing order) and edges as rows. Each row carries the value
+    """Export the scene's nodes (in drawing order) and edges as rows. Each row carries the value
     of each overlay in ``options.overlays`` under the overlay's name, None where the overlay says
     nothing about it. With ``options.required_overlay``, only the elements that overlay has a value
     for are rows; it is a column only if it is also in ``overlays``. Raise ValueError for an

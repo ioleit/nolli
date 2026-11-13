@@ -20,23 +20,26 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   - The timings are in a `Server-Timing` header instead of the viewer JSON's `stats.ms`.
 - **The list of changes is a table of the changes preset; the numbered changes are gone**
   (`nolli/logic/transformations/merge/presets.py`, `viewer/js/review.js`). The review panel lists the
-  changed boxes and edges of the changes preset, read off a table of it (`f=table&overlays=change,label&p=changes`;
-  every row, so that both ends of a changed edge have their names): the top of each added or removed subtree, each edited file and each changed edge, named by the
-  element's id instead of C1, C2, … (`item=` in the viewer's link too). Its verdicts are a table of
-  the change itself (`f=table&required_overlay=verdicts&overlays=verdicts&p=none`).
+  changed nodes and edges of the changes preset
+  (`f=table&required_overlay=change&overlays=change&p=changes`): the top of each added or removed
+  subtree, each edited file and each changed edge, each named by its id instead of C1, C2, …
+  (`item=` in the viewer's link too). Its verdicts are a table of the change itself
+  (`f=table&required_overlay=verdicts&overlays=verdicts&p=none`).
   - `/api/changes`, the `items` overlay (`merge.items`: `ChangeItems`, `list_changes`) and the C-ids
     are gone. `format_name`, `find_box` and `list_ancestors_to_unfold` moved to `merge.reading`;
     `Changes` and `PRESETS` to `merge.presets`.
-  - The `change` overlay on a drawn box says what the list shows: its `role`, and for a file or
-    class the change touched itself a `link`, a file's `hunks` (with links) and the `classes` it
+  - The `change` overlay has a module of its own, `merge/change.py`, whose class docstring says
+    what its values hold. On a drawn node it now also gives its `role`, and for a file or class
+    the change touched itself a `link`, a file's `hunks` (with links) and the `classes` it
     changed. A drawn edge's has its `role` too.
   - On the change itself the `verdicts` overlay describes each verdict (`edge`, `reveal`, `label`).
   - The changes preset unfolds towards every change in the roles shown (`r=`), not only those in
     source code, and draws a dependency the way the projection does: changes between modules
     bundled into one edge to an unfolded box are one row.
-  - The `label` overlay gives a box's `path` (a class as `path#Name`), how the list names it.
   - A hover card counts the verdicts from inside a box without the number of changes there.
   - `changes.json` beside a change's dataset is that table.
+  - The `brief`, `viewer` and `report` formatters say where they read the model a projection was
+    drawn from; `formatters.source_of` is gone.
 - **More HTTP calls are read from TypeScript and JavaScript** (`nolli/logic/extractors/typescript/fetch.py`):
   a URL held in a local `const` (`const url = "/api/scene?" + query(); fetch(url)`), returned by a
   function of the same file (`showMermaid(scene, mermaidURL())`, through a helper), and a

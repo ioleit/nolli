@@ -194,8 +194,7 @@ class Verdicts(Overlay):
         return self.stored.load_about(scene.model.key.format_key())
 
     def group(self, scene: Scene) -> dict[str, list[dict]]:
-        """Group a change's verdicts, each described (``_describe_verdicts``), by the node their
-        first end belongs to."""
+        """Describe a change's verdicts and group them by the node their first end belongs to."""
         out: dict[str, list[dict]] = defaultdict(list)
         for v in _describe_verdicts(scene, self.load(scene)):
             if v.get("ends"):

@@ -1,7 +1,7 @@
-"""The viewer's presets for a change: ``changes`` unfolds every box something changed in.
+"""Adds the viewer's ``changes`` preset, which unfolds every node something changed in.
 
-The changes preset is the review diagram's cut and what the review panel lists the changes of
-(a table of its changed boxes and edges, nolli/logic/formats/table.py).
+The review diagram is drawn with it, and the review panel lists the changed nodes and edges it
+draws, from a table of it (nolli/logic/formats/table.py).
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ from nolli.model.schema import EntityId
 
 
 def _find_changes_cut(scene: Scene, hidden: set[str]) -> set[str]:
-    """Find the boxes to unfold so that each change outside ``hidden`` is drawn: the top of an
-    added or removed subtree, an edited file, and both modules of a changed dependency between
-    modules. Each is drawn as a box of its own, folded."""
+    """Find the nodes to unfold so that every change outside ``hidden`` is drawn as a node or edge
+    of its own. The changes are the top node of each added or removed subtree, each edited file,
+    and the two modules of each changed dependency between modules; each is drawn folded."""
     g = reading.Reader(scene)
     shown = lambda x: x not in hidden and not any(a in hidden for a in g.ancestors(x))
     out = {EntityId.REPO_ROOT}
@@ -44,8 +44,8 @@ def _find_changes_cut(scene: Scene, hidden: set[str]) -> set[str]:
 
 @dataclass(frozen=True)
 class Changes(projection.Expansion):
-    """The viewer's "all changes", and the review diagram's cut: for a change, every box that
-    ``_find_changes_cut`` names is unfolded; for anything else, the default cut."""
+    """The viewer's "all changes" preset, with which the review diagram is drawn. On a change it
+    unfolds the nodes ``_find_changes_cut`` finds; on anything else it is the default cut."""
     name = "changes"
 
     def find(self, g: Reading, hidden: set[str], st: projection.ProjectionSpec) -> set[str]:

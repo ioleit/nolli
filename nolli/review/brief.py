@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 
 from nolli.logic import transformations
-from nolli.logic.formats import formatters
 from nolli.logic.formats import mermaid as mermaid_format
 from nolli.logic.transformations import projection
 from nolli.logic.transformations import merge
@@ -116,9 +115,10 @@ ids of an edge drawn in the diagram:
 
 
 def format_brief(scene: Scene, _options: object = None) -> dict:
-    """Write the brief (``make_brief``) of the change a scene shows, or was drawn from, as the
-    ``brief`` formatter's JSON. Raise ValueError for a scene of no change."""
-    source = formatters.source_of(scene)
+    """Write the brief of the change a scene shows or was drawn from, and return it as JSON.
+    Raise ValueError if the scene is not of a change. The brief draws its own diagram of the
+    change, so it ignores any projection the scene was drawn with."""
+    source = scene.sources.get("source", scene)
     if not merge.is_change(source):
         raise ValueError("not a change")
     return {"brief": make_brief(source)}

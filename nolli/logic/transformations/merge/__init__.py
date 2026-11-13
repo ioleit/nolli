@@ -1,8 +1,8 @@
 """Merges the models of two commits into the model of their change.
 
-It also says what the change did: per node and edge in the ``change`` overlay, and as a
-whole in the change's totals and its links on GitHub. ``reading`` reads a change's scene for
-it, and ``presets`` holds the viewer's preset that unfolds every change.
+It also says what the change did as a whole: its totals and its links on GitHub. ``change``
+holds the ``change`` overlay, which says what it did to each node and edge; ``reading`` reads a
+change's scene for it, and ``presets`` holds the viewer's preset that unfolds every change.
 """
 
 from __future__ import annotations
@@ -10,129 +10,15 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Mapping
 
-from nolli.model import schema, vocabulary
+from nolli.model import vocabulary
 from nolli.model.keys import ModelKey
-from nolli.model.model import Key, Model, Relation
-from nolli.model.scene import Element, Overlay, Scene, StoredMaps
-from nolli.model.schema import EntityId, RelationId, RelationKind
+from nolli.model.model import Key, Model
+from nolli.model.scene import Element, Overlay, Scene
+from nolli.model.schema import RelationKind
 
 
 def is_change(scene: Scene) -> bool:
     return "base" in scene.sources
-
-
-class Change(Overlay):
-    """The ``change`` overlay. It says what a change did to each node and edge.
-
-    On a change's own nodes and edges it compares the two sides: a node or edge on one side
-    only is ``added`` or ``removed``, an edge whose number of references differs is
-    ``changed``. What changed inside a file is git's word, kept with the change as its
-    ``content`` map: a file gets git's status and its added and removed lines, a class the
-    changed lines inside its line range. On a box or edge of a scene drawn from a change
-    (role ``source``) it sums up what changed in what that box or edge stands for."""
-
-    name = "change"
-
-    def __init__(self, content: StoredMaps) -> None:
-        self.content = content
-
-    def compute(self, el: Element) -> dict | None:
-        if is_change(el.scene):  # computed for the whole change in compute_all
-            return el.scene.read_all(self.name).get(el.key)
-        if "source" in el.scene.sources:  # a drawn scene sums up the changes of what each element stands for
-            return _sum_edge(el) if el.is_edge else _sum_box(el)
-        return None
-
-    def compute_all(self, scene: Scene) -> Mapping[Key, dict]:
-        """For a change, each node and edge compared between the maps of its two sides. A
-        scene drawn from a change sums those up element by element, and a scene of a single
-        commit has no changes."""
-        if not is_change(scene):
-            return Overlay.compute_all(self, scene) if "change" in scene.model.meta else {}
-        out: dict[Key, dict] = {}
-        sides = {role: _Side(scene.sources[role]) for role in ("base", "head")}
-        content = self.content.load(scene.model.key.format_key())
-        renames, by_old_path = _list_renames(content), _index_old_paths(content)
-        for x in scene.model.entities.values():
-            rec = _compare_node(x.id, x.kind, sides, content, renames, by_old_path)
-            if rec is not None:
-                out[x.id] = rec
-        for e in scene.model.edges:
-            rec = _compare_edge(e, scene.model.meta, {role: s.model.has(e.id) and s.references.get(e.id, []) for role, s in sides.items()})
-            if rec is not None:
-                out[e.id] = rec
-        return out
-
-
-class _Side:
-    """One side of a change as the comparison reads it: its model and its maps, all at once."""
-
-    def __init__(self, scene: Scene) -> None:
-        self.model = scene.model
-        self.references = vocabulary.read_all_references(scene)
-        self.symbols = vocabulary.read_all_symbols(scene)
-
-
-def _index_old_paths(content: Mapping[Key, dict]) -> dict[str, dict]:
-    """git's per-file content of a renamed file, by its old path."""
-    return {v["old_path"]: v for k, v in content.items() if not isinstance(k, RelationId) and v.get("old_path")}
-
-
-def _compare_node(x: str, kind: str, sides: Mapping[str, _Side], content: Mapping[Key, dict], renames: Mapping[str, str],
-                  by_old_path: Mapping[str, dict]) -> dict | None:
-    """Record what the change did to a node, or return None if it did nothing. The node is added
-    or removed when one side has no such node, and the record holds what git says changed inside
-    a file, or inside a class's lines."""
-    b, h = sides["base"].model.has(x), sides["head"].model.has(x)
-    rec: dict = {}
-    if not b:
-        rec["status"] = "added"
-    elif not h:
-        rec["status"] = "removed"
-    c = content.get(x)
-    if c is not None and kind == "file":
-        rec.setdefault("status", "same")
-        rec.update(c)
-    if kind == "file" and rec.get("status") == "removed":
-        gone = renames.get(x)
-        if gone:
-            rec["renamed_to"] = gone
-    if kind in schema.SYMBOL_KINDS:
-        lines = _list_class_lines(x, sides["base"].symbols.get(x, {}) if b else {}, sides["head"].symbols.get(x, {}) if h else {},
-                                  content, by_old_path)
-        if lines:
-            rec.setdefault("status", "same")
-            rec.update(lines)
-    if not rec:
-        return None
-    files = kind == "file" and "git" in rec  # lines are counted by files, so a class's are not counted twice
-    rec["totals"] = {"added": rec.get("added", 0) if files else 0, "removed": rec.get("removed", 0) if files else 0,
-                     "files": int(files), "new": int(rec["status"] == "added" and kind != "group"),
-                     "gone": int(rec["status"] == "removed" and kind != "group")}
-    return rec
-
-
-def _list_class_lines(x: str, bf: Mapping, hf: Mapping, content: Mapping[Key, dict], by_old_path: Mapping[str, dict]) -> dict | None:
-    """git's changed lines inside a class's line range, on each side (``bf``, ``hf``: what the
-    class's language says about it there)."""
-    f = x.file
-    c = content.get(f)
-    if c is None:  # a class of a renamed file, by its old path
-        c = by_old_path.get(f.path)
-    if c is None:
-        return None
-    old_path = c.get("old_path") or f.path
-    added = [n for hk in c.get("hunks", []) for n in hk["added"] if hf and hf.get("line", 0) <= n <= (hf.get("end_line") or 0)]
-    removed = [n for hk in c.get("hunks", []) for n in hk["removed"]
-               if bf and bf.get("path") == old_path and bf.get("line", 0) <= n <= (bf.get("end_line") or 0)]
-    if not (added or removed):
-        return None
-    return {"added": len(added), "removed": len(removed), "added_lines": added, "removed_lines": removed}
-
-
-def _list_renames(content: Mapping[Key, dict]) -> dict[str, str]:
-    """old file -> its new path, for the files git saw renamed (git's per-file content)."""
-    return {EntityId.from_path(v["old_path"]): k.path for k, v in content.items() if not isinstance(k, RelationId) and v.get("old_path")}
 
 
 # ---------- links ----------
@@ -187,131 +73,6 @@ def describe_change(about: dict, content: Mapping[Key, dict]) -> dict:
               "added": sum(c.get("added", 0) for c in content.values()), "removed": sum(c.get("removed", 0) for c in content.values())})
     d["link"] = Links(d).change()
     return d
-
-
-TOTALS = ("added", "removed", "files", "new", "gone")
-
-
-def _sum_box(el: Element) -> dict | None:
-    """Sum up what changed in a drawn box, or return None if nothing did. Give its own status, the
-    totals of what changed in what it stands for and in the boxes drawn inside it, and in
-    ``internal`` the number of changed dependencies the projection found between what it holds."""
-    if el.kind == "anchor":
-        return None
-    totals = dict.fromkeys(TOTALS, 0)
-    own, seen = None, False
-    for s in el.sources.get("source", ()):
-        rec = s.get("change")
-        if rec:
-            seen = True
-            own = rec if s.key == el.key else own
-            for k in TOTALS:
-                totals[k] += (rec.get("totals") or {}).get(k, 0)
-    for c in el.children:
-        rec = c.get("change")
-        if rec:
-            seen = True
-            for k in TOTALS:
-                totals[k] += (rec.get("totals") or {}).get(k, 0)
-    internal = (el.get("projection") or {}).get("internal_changes", 0)
-    own = own or {}
-    status = own.get("status") if own.get("status") in ("added", "removed") else "changed" if seen or internal else None
-    if status is None:
-        return None
-    out = {"status": status, **totals, "totals": totals, "internal": internal}
-    if el.kind in schema.SYMBOL_KINDS and own.get("status") == "same":
-        out["added"], out["removed"] = own.get("added", 0), own.get("removed", 0)  # its own lines; files count them for the module
-    for k in ("git", "old_path", "renamed_to"):
-        if own.get(k):
-            out[k] = own[k]
-    same = el.find_same("source")
-    if same is not None:
-        out["role"] = _find_role(same)
-        out.update(_describe_own_change(same, own))
-    return out
-
-
-MAX_HUNKS = 30  # a file's change lists this many hunks; ``more_hunks`` counts the rest
-
-
-def _find_role(el: Element) -> str:
-    """Return the role of the file or directory a change's node belongs to (source, test, docs,
-    …). Nodes outside the file tree (services, endpoints, packages) count as source, and so
-    does mixed."""
-    cur: Element | None = el
-    while cur is not None:
-        role = (cur.get(vocabulary.FILES) or {}).get("role")
-        if role and cur.kind in ("file", "directory"):
-            return "source" if role == "mixed" else role
-        cur = cur.parent
-    return "source"
-
-
-def _describe_own_change(el: Element, own: dict) -> dict:
-    """Describe what a change did to a node itself (``own``: its record), for its row in a list of
-    changes: where to see it (``link``), a file's hunks with their links and the lines changed in
-    each class it holds (``classes``). Empty for a directory or a node the change did not touch."""
-    if not own or not el.key.is_repo or el.kind not in ("file", *schema.SYMBOL_KINDS):
-        return {}
-    links = Links(el.scene.model.meta.get("change") or {})
-    path, st = el.key.path, own.get("status")
-    if el.kind != "file":
-        a = el.get(vocabulary.SYMBOLS) or {}
-        return {"link": links.blob(path, "base" if st == "removed" else "head", a.get("line"), a.get("end_line"))
-                if st in ("added", "removed") else links.diff(path)}
-    hunks = [{"new": h["new"], "old": h["old"], "added": len(h["added"]), "removed": len(h["removed"]),
-              "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0], "head" if h["added"] else "base")}
-             for h in own.get("hunks", [])]
-    classes = [{"name": (c.get("names") or {}).get("name", c.key), "status": rec["status"], "added": rec.get("added", 0), "removed": rec.get("removed", 0)}
-               for c in el.children if c.kind in schema.SYMBOL_KINDS and (rec := c.get("change"))]
-    return {"link": links.diff(path), "hunks": hunks[:MAX_HUNKS], "more_hunks": max(0, len(hunks) - MAX_HUNKS), "classes": classes}
-
-
-def _compare_edge(key: Relation, meta: dict, refs: Mapping[str, list | bool]) -> dict | None:
-    """Record what the change did to an edge, judged from the references on each side. ``refs``
-    maps each side to its references, or to False where that side has no such edge. The edge is
-    added, removed, or changed when the number of references differs; return None when it is the
-    same."""
-    b, h = refs["base"], refs["head"]
-    nb = sum(r["count"] for r in b) if b is not False else 0
-    nh = sum(r["count"] for r in h) if h is not False else 0
-    if b is False:
-        rec = {"status": "added", "base": 0, "head": nh}
-    elif h is False:
-        rec = {"status": "removed", "base": nb, "head": 0}
-    elif nb != nh:
-        rec = {"status": "changed", "base": nb, "head": nh}
-    else:
-        return None
-    return rec | {"fact": _describe_fact(key, meta, rec, b if rec["status"] == "removed" else h)}
-
-
-def _describe_fact(key: Relation, meta: dict, rec: dict, refs: list | bool) -> dict:
-    """Describe a changed edge of a change for a tooltip or details panel, with a link to where it changed."""
-    first = refs[0] if refs else {}
-    path = first.get("path")
-    line = first.get("line")
-    links = Links(meta.get("change") or {})
-    return {"fact": key.id, "status": rec["status"], "kind": key.kind, "subkind": key.subkind, "src": key.src, "dst": key.dst,
-            "base": rec.get("base", 0), "head": rec.get("head", 0), "path": path, "line": line,
-            "link": links.diff(path, line, "base" if rec["status"] == "removed" else "head") if path else None}
-
-
-def _sum_edge(el: Element) -> dict | None:
-    """Sum up how the references of a drawn edge changed (the projection counted them) and list the
-    changed edges it bundles; return None if it did not change."""
-    p = el.get("projection") or {}
-    if not p.get("status"):
-        return None
-    changes: list[dict] = []
-    for s in el.sources.get("source", ()):
-        rec = s.get("change")
-        if rec:
-            changes.extend(rec["changes"] if "changes" in rec else [rec["fact"]])
-    changes.sort(key=lambda c: c["fact"])
-    src = el.src.find_same("source")
-    return {"status": p["status"], "base": p.get("base", 0), "head": p.get("head", 0), "facts": [c["fact"] for c in changes],
-            "changes": changes[:40], "more": max(0, len(changes) - 40), "role": _find_role(src) if src is not None else "source"}
 
 
 class SidesSaid(Overlay):
