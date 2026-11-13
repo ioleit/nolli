@@ -6,6 +6,23 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **More HTTP calls are read from TypeScript and JavaScript** (`nolli/logic/extractors/typescript/fetch.py`):
+  a URL held in a local `const` (`const url = "/api/scene?" + query(); fetch(url)`), returned by a
+  function of the same file (`showMermaid(scene, mermaidURL())`, through a helper), and a
+  conditional in it (`` `/api/review${cancel ? "/cancel" : ""}` ``), which gives a call per branch
+  instead of one to `/api/*`. Inline `<script>`s in HTML are still not read.
+- **The viewer's server runs on FastAPI and uvicorn** (`nolli/server/serve.py`), which are now
+  dependencies. Its routes are FastAPI routes, so nolli drawing itself shows its own API and
+  binds the viewer's calls to it instead of leaving them unresolved.
+  - A service built on `nolli serve` passes its own routes as a FastAPI `APIRouter`
+    (`make_server(routes=…)`, `main(routes=…)`), tried before nolli's; `serve.services_of(request)`
+    is the server's `Services`. `Handler` and the `handler=` argument are gone.
+    `Services.open_model`, `find_sources` and `review_status` moved there from `Handler`.
+  - `make_server` still returns a server holding its port from the start, with `server_address`,
+    `serve_forever`, `shutdown` and `server_close`.
+- **An HTTP call binds to the most specific routes it matches** (`nolli/logic/extractors/api.py`):
+  of the routes that match, those with the most literal segments, as a router would choose.
+  `GET /api/scene` no longer also binds to a catch-all `GET /{path:path}`.
 - **Three projection special cases are gone** (`nolli/logic/transformations/projection/`):
   - References into an `unresolved` placeholder are rolled up like any other edge: drawn when the
     unresolved group is shown, a badge on the referrer when it is not. The residue line

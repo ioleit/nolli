@@ -47,8 +47,8 @@ another's by mistake.
 
 A service built on this one passes make_server() (and main()) parts of its own: a Token (one
 per repository, say a GitHub App's installation token for each installation), a store
-provider and sources (which may decide per request who may read what), a subclass of Handler for pages and
-routes of its own, a subclass of Services for what those need, and a reviewer for "Review
+provider and sources (which may decide per request who may read what), an ``APIRouter`` of
+pages and routes of its own (tried before nolli's), a subclass of Services for what those need, and a reviewer for "Review
 structural changes" (nolli.review.agent.Reviewer by default). A build runs in the context
 (contextvars) of the request that started it, so a provider that checks who asks sees that
 request when the build opens its repository's store. With ``ANTHROPIC_API_KEY`` set where the server runs, anyone who can open a page can
@@ -66,17 +66,20 @@ import json
 import multiprocessing
 import os
 import shutil
+import socket
 import sys
 import tempfile
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, unquote
+
+import uvicorn
+from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 
 import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
 
@@ -454,7 +457,8 @@ def parse_spec(q: dict[str, str]) -> ProjectionSpec:
 
 @dataclass
 class Services:
-    """What a server works with. A service built on it passes its own (a subclass, for more)."""
+    """What a server works with, and what its routes ask of it. A service built on it passes its
+    own (a subclass, for more)."""
 
     stores: RepoStoreProvider
     reviews: Reviews
@@ -464,96 +468,6 @@ class Services:
     @property
     def sources(self) -> Sources:
         return self.site.sources
-
-
-
-class Server(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], handler, services: Services):
-        super().__init__(address, handler)
-        self.services = services
-
-
-class Handler(SimpleHTTPRequestHandler):
-    server: Server
-
-    @property
-    def services(self) -> Services:
-        return self.server.services
-
-    @property
-    def site(self) -> Site:
-        return self.services.site
-
-    def query(self) -> dict:
-        return dict(parse_qsl(self.path.partition("?")[2], keep_blank_values=True))
-
-    # -- pages ---------------------------------------------------------------------
-
-    def do_GET(self) -> None:  # noqa: N802
-        path = unquote(self.path.split("?")[0])
-        if path == "/":
-            q = self.query()
-            if "t" in q:
-                self.show(q["t"] or None, q["t"])
-            else:
-                self.send_page(page("nolli", LANDING))
-            return
-        if path == "/api/job":
-            name = self.query().get("j", "")
-            job = self.site.jobs.get(name)
-            self.send_json(job.status() if job else {"state": "done" if name in self.site.built else "unknown"})
-            return
-        if path.startswith("/api/"):
-            self.answer_api(path)
-            return
-        if self.static(path):
-            super().do_GET()
-            return
-        if path.count("/") >= 2 and not path.startswith("//"):  # /<owner>/<repo>…: GitHub's path
-            self.show("https://github.com" + path.rstrip("/"), path.strip("/"))
-            return
-        self.send_page(page("Not a nolli page", NOT_A_PAGE), 404)
-
-    def static(self, path: str) -> bool:
-        """Tell whether ``path`` is a file of the viewer itself (its scripts and styles) rather than a
-        repository's path."""
-        f = (HERE / path.lstrip("/")).resolve()
-        return f.is_file() and f.is_relative_to(HERE) and f.suffix in (".js", ".css", ".html", ".svg", ".png")
-
-    def show(self, text: str | None, what: str) -> None:
-        """Send the page for the target ``text``: the viewer if it is built, else a page that follows
-        its build, or an error page saying why it cannot be shown."""
-        github_path = text is not None and text.startswith("https://github.com/")
-        try:
-            target = self.site.plan(text)
-            found = self.site.find_built(target)
-        except (github.NotFound, NotAllowed):
-            self.send_page(page("Not found, or private", PRIVATE.format(what=html.escape(what))), 404)
-            return
-        except TooLarge as exc:
-            self.send_page(page("Too large for this host", f"<h1>Too large for this host</h1><p>{html.escape(str(exc))}.</p>"), 413)
-            return
-        except (ChangeError, GitError, KeyError) as exc:
-            if github_path and "nolli builds" not in str(exc):
-                self.send_page(page("GitHub did not answer", f"<p>{html.escape(str(exc))}</p>"), 502)
-            else:
-                self.send_page(page("Nothing to show", NOTHING.format(what=html.escape(what), why=html.escape(str(exc)))), 404)
-            return
-        if found is not None:
-            self.send_page(viewer_page(found[0], describe(target)))
-            return
-        job = self.site.start(target)
-        self.send_page(page(describe(target), BUILDING.format(title=html.escape(describe(target))), job=job.name,
-                            status=html.escape(json.dumps(job.status()), quote=True)))
-
-    def send_page(self, body: bytes, status: int = 200) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    # -- the API -------------------------------------------------------------------
 
     def open_model(self, text: str | None) -> tuple[ModelKey, Scene, ModelStore] | None:
         """Open the scene of the model whose key is ``text`` and return it with the key and its
@@ -566,133 +480,299 @@ class Handler(SimpleHTTPRequestHandler):
         if not isinstance(key, (CommitKey, ChangeKey)):
             return None
         try:
-            store = self.services.stores.open(key.repo)
+            store = self.stores.open(key.repo)
             sc = operations.open_scene(store, key, card.make_overlays(store))
         except NotAllowed:
             return None
         return (key, sc, store) if sc is not None else None
 
     def find_sources(self, key: ModelKey) -> Sources | None:
-        """Where a review agent run on ``key`` gets the change's commits: None if this server
+        """Return where a review agent run on ``key`` gets the change's commits: None if this server
         cannot have them (a local repository's, on a server without it)."""
         local = self.site.local
-        return self.services.sources if key.repo.format_remote() or (local and key.repo == Repo(str(local.resolve()))) else None
+        return self.sources if key.repo.format_remote() or (local and key.repo == Repo(str(local.resolve()))) else None
 
     def review_status(self, key: ModelKey, store: ModelStore) -> dict:
         """Collect what the review panel shows: where the verdicts came from, the run under way or the
         last one, and whether a run can be started here, and if not, why not."""
-        reviews = self.services.reviews
-        why = reviews.reviewer.available()
+        why = self.reviews.reviewer.available()
         if why is None and not isinstance(key, ChangeKey):
             why = "dataset"
         if why is None and self.find_sources(key) is None:
             why = "repo"
-        job = reviews.job(key)
+        job = self.reviews.job(key)
         return {"verdicts": verdicts.find_provenance(store, key), "run": job.status() if job else None,
-                "can_run": why is None, "why_not": why, "uploads": self.services.uploads,
-                "model": reviews.reviewer.model(), "server": "view" if self.site.here else "serve"}
+                "can_run": why is None, "why_not": why, "uploads": self.uploads,
+                "model": self.reviews.reviewer.model(), "server": "view" if self.site.here else "serve"}
 
-    def answer_api(self, path: str) -> None:
-        q = self.query()
-        t0 = time.perf_counter()
-        found = self.open_model(q.get("k"))
-        if found is None:
-            self.send_json({"error": f"no model {q.get('k')!r}"}, 404)
-            return
-        key, sc, store = found
-        t1 = time.perf_counter()
-        if path == "/api/scene":
-            try:
-                out = viewer.export_scene(transformations.apply(sc, projection.fold(parse_spec(q))))
-            except (ValueError, KeyError) as exc:
-                self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
-                return
-            meta = sc.model.meta or {}
-            out["dataset"] = {"key": q["k"], "repo": meta.get("repo"), "commit": meta.get("commit"), "files": meta.get("files"),
-                              "entities": len(sc.model.entities), "relations": len(sc.model.edges)}
-            out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
-            self.send_json(out)
-        elif path == "/api/mermaid":
-            try:
-                drawn = transformations.apply(sc, projection.fold(parse_spec(q)))
-                text, ids = mermaid.render(drawn, fade=q.get("nodim") != "1"), mermaid.list_ids(drawn)
-            except (ValueError, KeyError) as exc:
-                self.send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
-                return
-            if q.get("format") == "json":
-                self.send_json({"mermaid": text, "ids": ids})
-            else:
-                self.send_text(text)
-        elif path == "/api/changes":
-            is_change = merge.is_change(sc)
-            self.send_json({"items": items.list_changes(sc) if is_change else [],
-                            "verdicts": verdicts.describe_verdicts(sc, verdicts.load_verdicts(store, key)) if is_change else []})
-        elif path == "/api/brief":
-            if not isinstance(key, ChangeKey):
-                self.send_json({"error": "not a change"}, 404)
-                return
-            self.send_text(brief.make_brief(sc), "text/markdown; charset=utf-8")
-        elif path == "/api/review":
-            self.send_json(self.review_status(key, store))
-        else:
-            self.send_json({"error": f"no {path}"}, 404)
 
-    def do_POST(self) -> None:  # noqa: N802
-        """POST /api/verdicts?k=<key>: store a review's verdicts (validated); /api/review?k=:
-        start a review agent; /api/review/cancel?k=: stop it."""
-        path = unquote(self.path.split("?")[0])
-        found = self.open_model(self.query().get("k"))
-        if path in ("/api/review", "/api/review/cancel") and found is not None:
-            key, _, store = found
-            st = self.review_status(key, store)
-            if path == "/api/review/cancel":
-                self.services.reviews.cancel(key)
-            elif not st["can_run"]:
-                self.send_json({"error": f"no review agent here ({st['why_not']})", **st}, 409)
-                return
-            else:
-                self.services.reviews.start(store, key, self.find_sources(key))  # type: ignore[arg-type]
-            self.send_json(self.review_status(key, store))
-            return
-        uploads = self.services.uploads
-        if path != "/api/verdicts" or found is None or not uploads:
-            self.send_json({"error": "POST /api/verdicts?k=<key> only" if uploads else "verdicts are not stored here"},
-                           404 if uploads else 405)
-            return
-        body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
-        if not isinstance(found[0], ChangeKey):
-            self.send_json({"error": "not a change"}, 400)
-            return
+# ---------- responses ----------
+
+def html_response(body: bytes, status: int = 200) -> Response:
+    return Response(body, status, media_type="text/html; charset=utf-8")
+
+
+def json_response(obj: Any, status: int = 200) -> Response:
+    """Answer ``obj`` as JSON, written as ``json.dumps`` writes it (NaN included, unlike FastAPI's own)."""
+    return Response(json.dumps(obj).encode(), status, media_type="application/json")
+
+
+def text_response(text: str, media_type: str = "text/plain; charset=utf-8") -> Response:
+    return Response(text.encode(), media_type=media_type)
+
+
+def services_of(request: Request) -> Services:
+    """Return the Services of the server ``request`` came to; a service's own routes use it too."""
+    return request.app.state.services
+
+
+def query_of(request: Request) -> dict[str, str]:
+    """Return the request's URL parameters, the last value of each, blank ones kept."""
+    return dict(request.query_params)
+
+
+def no_model(q: dict[str, str]) -> Response:
+    return json_response({"error": f"no model {q.get('k')!r}"}, 404)
+
+
+def static_file(path: str) -> Path | None:
+    """Return the viewer's own file (a script, a style, a page) that ``path`` names, or None for any
+    other path, a repository's say."""
+    f = (HERE / path.lstrip("/")).resolve()
+    return f if f.is_file() and f.is_relative_to(HERE) and f.suffix in (".js", ".css", ".html", ".svg", ".png") else None
+
+
+def show(site: Site, text: str | None, what: str) -> Response:
+    """Answer the page for the target ``text``: the viewer if it is built, else a page that follows
+    its build, or an error page saying why it cannot be shown."""
+    github_path = text is not None and text.startswith("https://github.com/")
+    try:
+        target = site.plan(text)
+        found = site.find_built(target)
+    except (github.NotFound, NotAllowed):
+        return html_response(page("Not found, or private", PRIVATE.format(what=html.escape(what))), 404)
+    except TooLarge as exc:
+        return html_response(page("Too large for this host", f"<h1>Too large for this host</h1><p>{html.escape(str(exc))}.</p>"), 413)
+    except (ChangeError, GitError, KeyError) as exc:
+        if github_path and "nolli builds" not in str(exc):
+            return html_response(page("GitHub did not answer", f"<p>{html.escape(str(exc))}</p>"), 502)
+        return html_response(page("Nothing to show", NOTHING.format(what=html.escape(what), why=html.escape(str(exc)))), 404)
+    if found is not None:
+        return html_response(viewer_page(found[0], describe(target)))
+    job = site.start(target)
+    return html_response(page(describe(target), BUILDING.format(title=html.escape(describe(target))), job=job.name,
+                              status=html.escape(json.dumps(job.status()), quote=True)))
+
+
+# ---------- the routes ----------
+# Plain ``def`` routes: FastAPI runs them in its thread pool, each in a copy of the request's
+# context (contextvars), so a store provider that checks who asks sees this request.
+
+router = APIRouter()
+
+
+@router.get("/")
+def landing(request: Request) -> Response:
+    """Answer the landing page, or with ``?t=<target>`` that target's page (nolli view)."""
+    q = query_of(request)
+    if "t" in q:
+        return show(services_of(request).site, q["t"] or None, q["t"])
+    return html_response(page("nolli", LANDING))
+
+
+@router.get("/api/job")
+def job_status(request: Request) -> Response:
+    """Answer a build's progress: ``?j=<build>``, the name a building page follows."""
+    site, name = services_of(request).site, query_of(request).get("j", "")
+    job = site.jobs.get(name)
+    return json_response(job.status() if job else {"state": "done" if name in site.built else "unknown"})
+
+
+@router.get("/api/scene")
+def scene(request: Request) -> Response:
+    """Answer the scene a scene state projects (``parse_spec``), as the viewer's JSON with every overlay."""
+    q, t0 = query_of(request), time.perf_counter()
+    found = services_of(request).open_model(q.get("k"))
+    if found is None:
+        return no_model(q)
+    _key, sc, _store = found
+    t1 = time.perf_counter()
+    try:
+        out = viewer.export_scene(transformations.apply(sc, projection.fold(parse_spec(q))))
+    except (ValueError, KeyError) as exc:
+        return json_response({"error": f"{type(exc).__name__}: {exc}"}, 400)
+    meta = sc.model.meta or {}
+    out["dataset"] = {"key": q["k"], "repo": meta.get("repo"), "commit": meta.get("commit"), "files": meta.get("files"),
+                      "entities": len(sc.model.entities), "relations": len(sc.model.edges)}
+    out["stats"]["ms"] = {"load": round((t1 - t0) * 1000), "scene": round((time.perf_counter() - t1) * 1000)}
+    return json_response(out)
+
+
+@router.get("/api/mermaid")
+def mermaid_text(request: Request) -> Response:
+    """Answer the scene as Mermaid; ``nodim=1``: unchanged not faded; ``format=json``: ``{mermaid, ids}``."""
+    q = query_of(request)
+    found = services_of(request).open_model(q.get("k"))
+    if found is None:
+        return no_model(q)
+    try:
+        drawn = transformations.apply(found[1], projection.fold(parse_spec(q)))
+        text, ids = mermaid.render(drawn, fade=q.get("nodim") != "1"), mermaid.list_ids(drawn)
+    except (ValueError, KeyError) as exc:
+        return json_response({"error": f"{type(exc).__name__}: {exc}"}, 400)
+    return json_response({"mermaid": text, "ids": ids}) if q.get("format") == "json" else text_response(text)
+
+
+@router.get("/api/changes")
+def changes(request: Request) -> Response:
+    """Answer a change's numbered changes and the review's verdicts on them; nothing for a snapshot."""
+    q = query_of(request)
+    found = services_of(request).open_model(q.get("k"))
+    if found is None:
+        return no_model(q)
+    key, sc, store = found
+    is_change = merge.is_change(sc)
+    return json_response({"items": items.list_changes(sc) if is_change else [],
+                          "verdicts": verdicts.describe_verdicts(sc, verdicts.load_verdicts(store, key)) if is_change else []})
+
+
+@router.get("/api/brief")
+def review_brief(request: Request) -> Response:
+    """Answer what a review agent gets for a change, as Markdown."""
+    q = query_of(request)
+    found = services_of(request).open_model(q.get("k"))
+    if found is None:
+        return no_model(q)
+    if not isinstance(found[0], ChangeKey):
+        return json_response({"error": "not a change"}, 404)
+    return text_response(brief.make_brief(found[1]), "text/markdown; charset=utf-8")
+
+
+@router.get("/api/review")
+def review_status(request: Request) -> Response:
+    """Answer where the verdicts came from, the review run, and whether one can be started here."""
+    q, svc = query_of(request), services_of(request)
+    found = svc.open_model(q.get("k"))
+    if found is None:
+        return no_model(q)
+    return json_response(svc.review_status(found[0], found[2]))
+
+
+@router.post("/api/review")
+def start_review(request: Request) -> Response:
+    """Start a review agent on the change (it needs ANTHROPIC_API_KEY where the server runs)."""
+    q, svc = query_of(request), services_of(request)
+    found = svc.open_model(q.get("k"))
+    if found is None:
+        return no_model(q)
+    key, _, store = found
+    st = svc.review_status(key, store)
+    if not st["can_run"]:
+        return json_response({"error": f"no review agent here ({st['why_not']})", **st}, 409)
+    svc.reviews.start(store, key, svc.find_sources(key))  # type: ignore[arg-type]
+    return json_response(svc.review_status(key, store))
+
+
+@router.post("/api/review/cancel")
+def cancel_review(request: Request) -> Response:
+    """Stop the review agent running on the change."""
+    q, svc = query_of(request), services_of(request)
+    found = svc.open_model(q.get("k"))
+    if found is None:
+        return no_model(q)
+    svc.reviews.cancel(found[0])
+    return json_response(svc.review_status(found[0], found[2]))
+
+
+@router.post("/api/verdicts")
+async def upload_verdicts(request: Request) -> Response:
+    """Store a review's verdicts on the change, validated against its diagram (nolli view only)."""
+    body = (await request.body()).decode("utf-8", "replace")
+    return await run_in_threadpool(save_uploaded_verdicts, services_of(request), query_of(request), body)
+
+
+def save_uploaded_verdicts(svc: Services, q: dict[str, str], body: str) -> Response:
+    if not svc.uploads:
+        return json_response({"error": "verdicts are not stored here"}, 405)
+    found = svc.open_model(q.get("k"))
+    if found is None:
+        return no_model(q)
+    key, sc, store = found
+    if not isinstance(key, ChangeKey):
+        return json_response({"error": "not a change"}, 400)
+    try:
+        v = verdicts.read_verdicts(body, verdicts.find_diagram_ids(sc))
+    except (ValueError, KeyError, TypeError) as exc:
+        return json_response({"error": str(exc)}, 400)
+    verdicts.save_verdicts(store, key, v, {"by": "upload"})
+    return json_response({"saved": len(v)})
+
+
+@router.get("/{path:path}")
+def any_path(path: str, request: Request) -> Response:
+    """Answer the viewer's own files, and GitHub's paths (``/<owner>/<repo>…``) as pages."""
+    if path.startswith("api/"):
+        return json_response({"error": f"no /{path}"}, 404)
+    f = static_file(path)
+    if f is not None:
+        return FileResponse(f)
+    if path.count("/") >= 1 and not path.startswith("/"):  # <owner>/<repo>…: GitHub's path
+        return show(services_of(request).site, "https://github.com/" + path.rstrip("/"), path.strip("/"))
+    return html_response(page("Not a nolli page", NOT_A_PAGE), 404)
+
+
+def make_app(services: Services, routes: APIRouter | None = None) -> FastAPI:
+    """Make the server's app on ``services``: a service's own ``routes`` first (they may stand in for
+    nolli's), then nolli's. No response is cached by the browser."""
+    app = FastAPI(title="nolli", docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.services = services
+
+    @app.middleware("http")
+    async def no_store(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    if routes is not None:
+        app.include_router(routes)
+    app.include_router(router)
+    return app
+
+
+class Server:
+    """A server on a port it holds from the start (port 0: a free one), not serving yet:
+    ``serve_forever`` serves until ``shutdown`` (from another thread) or Ctrl-C, ``server_close``
+    gives the port back."""
+
+    def __init__(self, app: FastAPI, host: str, port: int):
+        self.app = app
+        self.socket = socket.create_server((host, port))  # OSError if the port is taken
+        self.server_address = self.socket.getsockname()[:2]
+        self.uvicorn = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False, lifespan="off",
+                                                     timeout_graceful_shutdown=1))
+        self.running = threading.Event()
+        self.stopped = threading.Event()
+
+    @property
+    def services(self) -> Services:
+        return self.app.state.services
+
+    def serve_forever(self) -> None:
+        self.running.set()
         try:
-            v = verdicts.read_verdicts(body, verdicts.find_diagram_ids(found[1]))
-        except (ValueError, KeyError, TypeError) as exc:
-            self.send_json({"error": str(exc)}, 400)
-            return
-        verdicts.save_verdicts(found[2], found[0], v, {"by": "upload"})
-        self.send_json({"saved": len(v)})
+            self.uvicorn.run(sockets=[self.socket])
+        finally:
+            self.stopped.set()
 
-    def send_json(self, obj, status: int = 200) -> None:
-        body = json.dumps(obj).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def shutdown(self) -> None:
+        """Stop serving and wait until it has stopped."""
+        self.uvicorn.should_exit = True
+        if self.running.is_set():
+            self.stopped.wait(10)
 
-    def send_text(self, text: str, ctype: str = "text/plain; charset=utf-8") -> None:
-        body = text.encode()
-        self.send_response(200)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def server_close(self) -> None:
+        self.socket.close()
 
-    def end_headers(self) -> None:
-        self.send_header("Cache-Control", "no-store")
-        super().end_headers()
-
-    def log_message(self, fmt: str, *args: object) -> None:
-        pass
 
 
 LANDING = """<h1>nolli</h1>
@@ -727,18 +807,18 @@ NOT_A_PAGE = """<h1>Not a nolli page</h1>
 def make_server(stores: RepoStoreProvider, sources: Sources, work: Path, host: str = "127.0.0.1", port: int = 8730, *,
                 here: bool = False, local: Path | None = None, budget: int = 34, keep: int | None = None, builds: int = BUILDS,
                 timeout: float | None = TIMEOUT, max_repo: int | None = MAX_REPO, token: Token | None = None,
-                uploads: bool = False, handler: type[Handler] | None = None, reviewer=None,
+                uploads: bool = False, routes: APIRouter | None = None, reviewer=None,
                 services: type[Services] = Services, **more: Any) -> Server:
     """Make a server for the models of the stores ``stores`` opens, built from ``sources``, but do not start serving.
     Temporary files and review runs go under ``work``. Port 0 picks a free port. ``here`` and
-    ``local`` mean the same as for Site. ``handler`` is a subclass of Handler that adds a service's
-    own routes; ``reviewer`` runs reviews (default: nolli.review.agent.Reviewer); ``services`` is a
+    ``local`` mean the same as for Site. ``routes`` are a service's own routes (a FastAPI
+    ``APIRouter``; ``services_of(request)`` is the server's Services), tried before nolli's; ``reviewer`` runs reviews (default: nolli.review.agent.Reviewer); ``services`` is a
     subclass of Services, given ``more`` of its fields."""
     site = Site(stores, sources, work, here=here, local=local, budget=budget, keep=keep, builds=builds, timeout=timeout,
                 max_repo=max_repo, token=token)
     threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now
     svc = services(stores, Reviews(reviewer, work / ".reviews"), site, uploads=uploads, **more)
-    return Server((host, port), partial(handler or Handler, directory=str(HERE)), svc)
+    return Server(make_app(svc, routes), host, port)
 
 
 def make_local_server(data: Path, local: Path | None, host: str = "127.0.0.1", port: int = 8720, budget: int = 34) -> Server:
@@ -751,7 +831,7 @@ def make_local_server(data: Path, local: Path | None, host: str = "127.0.0.1", p
                        timeout=None, max_repo=None, token=Yours(), uploads=True)
 
 
-def main(argv: list[str] | None = None, token: Token | None = None, handler: type[Handler] | None = None,
+def main(argv: list[str] | None = None, token: Token | None = None, routes: APIRouter | None = None,
          reviewer=None, stores: RepoStoreProvider | None = None, sources: Sources | None = None,
          services: type[Services] = Services, **more: Any) -> int:
     """``nolli serve``: its options from ``argv``; the rest as make_server() takes them. ``stores``
@@ -779,7 +859,7 @@ def main(argv: list[str] | None = None, token: Token | None = None, handler: typ
     holder: list[Site] = []
     sources = sources or CloneCache(cache / "repos", lambda owner, name: holder[0].find_token(owner, name))
     srv = make_server(stores, sources, cache, args.host, args.port, budget=args.budget, keep=args.keep, builds=args.builds,
-                      timeout=args.timeout, max_repo=args.max_repo or None, token=token, handler=handler, reviewer=reviewer,
+                      timeout=args.timeout, max_repo=args.max_repo or None, token=token, routes=routes, reviewer=reviewer,
                       services=services, **more)
     holder.append(srv.services.site)
     print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {cache}; {token.describe()})",

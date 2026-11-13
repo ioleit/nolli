@@ -4,7 +4,11 @@ reads."""
 
 from __future__ import annotations
 
-import pytest
+import json
+import threading
+import urllib.request
+
+from fastapi import APIRouter, Request
 
 from nolli.logic.sources import CloneCache, github
 from nolli.server import serve
@@ -62,26 +66,32 @@ def test_a_token_that_cannot_be_had_falls_back_to_nobody(tmp_path, monkeypatch, 
     assert capsys.readouterr().err.count("asking as nobody") == 1
 
 
-def test_a_service_brings_its_handler_parts_and_store(tmp_path):
-    """make_server() takes a service's handler, a subclass of Services with its own fields, and
+def test_a_service_brings_its_routes_parts_and_store(tmp_path):
+    """make_server() takes a service's routes, a subclass of Services with its own fields, and
     its own store; nothing is kept on classes, so two servers in one process stay apart."""
     from dataclasses import dataclass
 
-    class Mine(serve.Handler):
-        pass
+    mine = APIRouter()
+
+    @mine.get("/hooks")
+    def hooks(request: Request) -> dict:
+        return {"hooks": serve.services_of(request).hooks}
 
     @dataclass
     class MyServices(serve.Services):
         hooks: str = ""
 
     stores = RepoStoreProvider(tmp_path / "elsewhere")
-    srv = serve.make_server(stores, CloneCache(tmp_path / "repos"), tmp_path, port=0, token=serve.Fixed("t"), handler=Mine,
+    srv = serve.make_server(stores, CloneCache(tmp_path / "repos"), tmp_path, port=0, token=serve.Fixed("t"), routes=mine,
                              services=MyServices, hooks="mine")
     other = serve.make_server(RepoStoreProvider(tmp_path / "other"), CloneCache(tmp_path / "repos2"), tmp_path / "w", port=0)
     try:
         assert srv.services.site.github.token("o", "r") == "t" and srv.services.stores is stores and srv.services.hooks == "mine"
-        assert srv.RequestHandlerClass.func is Mine  # type: ignore[attr-defined]
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        with urllib.request.urlopen(f"http://127.0.0.1:{srv.server_address[1]}/hooks", timeout=10) as res:
+            assert json.loads(res.read()) == {"hooks": "mine"}  # its own route, with its own Services
         assert other.services.stores is not stores and other.services.site.github.token("o", "r") is None
     finally:
+        srv.shutdown()
         srv.server_close()
         other.server_close()

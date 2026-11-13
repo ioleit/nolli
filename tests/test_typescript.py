@@ -173,3 +173,31 @@ def test_index_is_the_folders_own_code(model):
     m = model
     assert is_init(open_graph(m), "repo:app/src/model/index.ts")
     assert m.entities["repo:app/src/model/index.ts"].attrs["reexports"] == ["TaskStore"]
+
+
+def test_http_calls_read_through_constants_functions_and_conditionals(tmp_path):
+    """A URL read from a local ``const``, from a same-file function that returns it (passed to a
+    helper), and from a conditional, one call per branch."""
+    from helpers import open_dir
+
+    files = {
+        "web/api.js": (
+            "export async function show(scene, url) { return (await fetch(url + '&format=json')).json(); }\n"
+        ),
+        "web/main.js": (
+            "import { show } from './api.js';\n"
+            "const query = () => location.hash.slice(1);\n"
+            "const sceneURL = () => '/api/scene?' + query();\n"
+            "async function refresh() { const url = '/api/items?' + query(); return fetch(url); }\n"
+            "async function tab(scene) { return show(scene, sceneURL()); }\n"
+            "async function act(what, key) {\n"
+            "  return fetch(`/api/review${what === 'cancel' ? '/cancel' : ''}?k=` + key, { method: 'POST' });\n"
+            "}\n"
+        ),
+    }
+    for rel, text in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text)
+    calls = {(c["file"], c["method"], c["pattern"]) for c in open_dir(tmp_path).model.meta["notes"]["http-calls"]}
+    assert calls == {("web/main.js", "GET", "/api/items"), ("web/main.js", "?", "/api/scene"),
+                     ("web/main.js", "POST", "/api/review/cancel"), ("web/main.js", "POST", "/api/review")}
