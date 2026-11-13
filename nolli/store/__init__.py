@@ -20,8 +20,9 @@ class ModelStore(MapStore, Protocol):
 
     ``save_model`` keeps a model (a commit's) with the maps extraction made; ``save_change``
     keeps a change's own record (what it says about itself, its two sides and the maps kept
-    for the change, git's hunks and a review's verdicts among them); ``open_maps`` is the
-    handle on the maps of one name that the overlay methods share.
+    for the change, git's hunks among them); ``open_maps`` is the handle on the maps of one
+    name that the overlay methods share. ``save_comments`` keeps what people and agents said
+    about a model, which outlives building it again.
 
     Everything stored carries a format; data of another format is not read (a load returns
     None, as if nothing were kept). Who may read what is decided before a store is had: a store
@@ -45,8 +46,13 @@ class ModelStore(MapStore, Protocol):
         """Keep a change: what it says about itself, its two commits' models (``base``, ``head``:
         model and maps, kept with it), the maps kept for the
         change itself, and its merged model (``model``), so that it is not merged again on every
-        read. Maps saved for it since (a review's verdicts) stay."""
+        read. The comments on it stay."""
 
+    def load_comments(self, key: ModelKey) -> list[dict]:
+        """Return the comments kept on the model of ``key`` (``nolli/logic/comments.py``), or []."""
+
+    def save_comments(self, key: ModelKey, comments: list[dict]) -> None:
+        """Keep ``comments`` on the model of ``key``, in place of those kept before."""
 
 
 

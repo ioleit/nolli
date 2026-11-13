@@ -22,6 +22,10 @@ class MapStore(Protocol):
         the store itself."""
         ...
 
+    def load_comments(self, key: ModelKey) -> list[dict]:
+        """Return the comments kept on the model of ``key`` (``nolli/logic/comments.py``), or []."""
+        ...
+
 
 
 

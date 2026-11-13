@@ -51,12 +51,3 @@ def test_functions_and_constants_are_used_through_their_module():
                           if not is_type(a.name) and not is_module(f"{n.module}.{a.name}")]
     assert not found, f"import the module and call module.name: {found}"
 
-
-def test_operations_and_the_logic_know_nothing_of_reviews():
-    """``nolli/operations.py`` and ``nolli/logic/`` describe and show a change, reviewed or not:
-    a review's overlays (verdicts, cards) are added by whoever opens a scene to show one."""
-    checked = [ROOT / "nolli" / "operations.py", *sorted((ROOT / "nolli" / "logic").rglob("*.py"))]
-    found = [f"{p.relative_to(ROOT)}:{n.lineno}" for p in checked for n in ast.walk(ast.parse(p.read_text()))
-             if isinstance(n, ast.ImportFrom) and (n.module or "").startswith("nolli.review")
-             or isinstance(n, ast.Import) and any(a.name.startswith("nolli.review") for a in n.names)]
-    assert not found, f"imports nolli.review: {found}"

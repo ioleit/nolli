@@ -6,6 +6,7 @@ from a local repository standing in for its clone. Asking GitHub is faked: it ne
 from __future__ import annotations
 
 import json
+import re
 import os
 import subprocess
 import tempfile
@@ -322,7 +323,7 @@ GOLDEN_DIR = Path(__file__).parent / "golden"
 ALL_ROLES = "source,mixed,test,docs,config,markup,data,asset,other"
 GOLDEN = [  # (case, fixture, the /api/scene query after k=)
     ("ledger-review-changes", "ledger-review", f"f=table&required_overlay=change&overlays=change&p=changes&r={ALL_ROLES}"),
-    ("ledger-review-verdicts", "ledger-review", "f=table&required_overlay=verdicts&overlays=verdicts&p=none"),
+    ("ledger-review-comments", "ledger-review", "f=comments&p=none"),
 ]
 
 
@@ -357,6 +358,7 @@ def test_golden(fixtures_served, case, fixture, query):
     url, keys, tmp = fixtures_served
     status, body = get(f"{url}/api/scene?k={quote(keys[fixture])}&{query}")
     assert status == 200, body
+    body = re.sub(r'"at": "[^"]*"', '"at": "<when>"', body)  # when a comment was made
     answer = json.dumps(json.loads(body.replace(str(tmp.resolve()), "<tmp>").replace(str(tmp), "<tmp>")), indent=1, sort_keys=True) + "\n"
     golden = GOLDEN_DIR / f"{case}.json"
     if os.environ.get("NOLLI_UPDATE_GOLDEN"):

@@ -9,10 +9,9 @@ import sys
 from pathlib import Path
 
 from helpers import draw, find_node, open_dataset
-from nolli.operations import open_scene
-from nolli.review import card
 from nolli.cli import main
-from nolli.review.verdicts import _describe_verdicts
+from nolli.logic import comments
+from nolli.operations import open_scene
 
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
 import review_repo  # noqa: E402
@@ -32,11 +31,11 @@ def test_verdict_on_a_bundled_edge(tmp_path):
     box: the verdict goes on that edge, not on client.ts."""
     ds = review_repo.build(tmp_path)
     store, key = open_dataset(ds)
-    sc = open_scene(store, key, card.make_overlays(store))
-    verdicts = sc.overlays["verdicts"].load(sc)  # the review kept with the dataset
-    v = next(r for r in _describe_verdicts(sc, verdicts) if r["target"].startswith("n_repo_web_src_client_ts ==>"))
+    sc = open_scene(store, key)
+    listed = comments.describe_comments(sc, sc.overlays["comments"].list_all(sc))  # the review kept with the dataset
+    v = next(c for c in listed if c["target"].startswith("use|repo:web/src/client.ts|api:"))
     s = draw(sc, expanded=v["reveal"] + ["repo:", "repo:web/src"], groups=["api:"], max_lines=2)
     edge = next(e for e in s["edges"] if e["src"] == "repo:web/src/client.ts" and e["kind"] == "use" and e["subkind"] == "http")
     assert edge["dst"] == "api:http:ledger/api/app.py:app"
-    assert edge["verdicts"]["verdict"] == "question"
-    assert find_node(s, "repo:web/src/client.ts")["verdicts"]["verdict"] is None
+    assert [c["verdict"] for c in edge["comments"]["inside"]] == ["question"]
+    assert "comments" not in find_node(s, "repo:web/src/client.ts")

@@ -124,7 +124,7 @@ and there is an overdue-alerts endpoint with a small page; the database refreshe
 alerts after every write. The CSV export was unused and is gone.
 """
 
-# What a review agent might say about it, in the form the brief asks for (nolli/review.py):
+# What a review agent might say about it, in the form the brief asks for (nolli/skill/review.md):
 # a headline, how expected the change is given the title, what it does to the structure.
 # Targets are ids in review.mmd.
 VERDICTS = [
@@ -200,19 +200,20 @@ def build(out: Path) -> Path:
 
 
 def keep_verdicts(ds: Path) -> None:
-    """Make VERDICTS the dataset's review (verdicts.json beside it, as an agent leaves it): import
-    the dataset into memory, keep the verdicts there and write it back."""
-    from nolli import cli
-    from nolli.operations import _open_change_scene
-    from nolli.review.verdicts import _keep_verdicts_file
+    """Make VERDICTS the agent's comments on the dataset's change, made on the projection its
+    brief draws (verdicts.json beside it, as an agent leaves it): import the dataset into memory,
+    add them there and write it back."""
+    from nolli import cli, operations
     from nolli.store import MemoryStore
 
     (ds / "verdicts.json").write_text(json.dumps(VERDICTS, indent=1))
     store = MemoryStore()
     key = cli.import_dataset(store, ds)
-    _keep_verdicts_file(store, key, _open_change_scene(store, key), (ds / "verdicts.json").read_text(), {"by": "unknown"})
+    _, errors = operations.add_comments(store, operations.make_review_key(key), (ds / "verdicts.json").read_text(), "agent",
+                                        verdict_needed=True)
+    if errors:
+        raise RuntimeError(f"the fixture's verdicts fail the check: {errors}")
     cli.export_dataset(store, key, ds)
-
 
 if __name__ == "__main__":
     print(build(Path(sys.argv[1])))

@@ -6,7 +6,7 @@
 //   draw.js     scene + layout -> SVG, with a handle per node to move and fade it
 //   transition.js, animate.js: the step between two pictures (plan, then play)
 //   raw.js      scene -> the JSON tab;  mermaid.js: scene -> the Mermaid tab (nolli/mermaid.py)
-//   review.js   diff datasets: the review panel, its changes (a table of the changes preset), details, verdicts
+//   review.js   diff datasets: the review panel, its changes (a table of the changes preset), details, comments
 //   sidebar.js, help.js (explanations on hover), panzoom.js, tip.js, dom.js
 //   stability.js, bench.js (bench.html): how well layouts keep the picture across a step
 // Types: types/nolli.d.ts, checked with `npm run check`.
@@ -25,7 +25,8 @@ import { hideMermaid, onMermaidToggle, showMermaid } from "./mermaid.js";
 import "./help.js";
 import "./nav.js";
 import { applyTheme, chooseTheme, initialTheme, themeOptions } from "./theme.js";
-import { fetchVerdicts, itemById, loadItems, renderPanel, scrollToCurrent, showPanel, standIns, visibleItems } from "./review.js";
+import { fetchComments, itemById, loadItems, renderPanel, scrollToCurrent, showPanel, standIns, visibleItems } from "./review.js";
+import { carries } from "./verdicts.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
 
@@ -62,7 +63,7 @@ let shown = null;
 let clicked = null;
 /** after the next drawing, centre on the item gone to and flash it */
 let focusNext = false;
-/** @type {string | null} the dataset whose changes and verdicts the review panel has loaded */
+/** @type {string | null} the dataset whose changes and comments the review panel has loaded */
 let itemsFor = null;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -152,16 +153,15 @@ const reviewHandlers = {
   hover: id => { if (!scene || !shown) return; const t = id ? targets(id) : { ids: [], keys: [] }; light(byId("root"), t.ids, t.keys); },
   side: s => { state.side = s; refresh(true); },
   dim: on => { state.dim = on; document.body.classList.toggle("dim", on); writeHash(); if (state.view === "mermaid") show(); },
-  reload: () => { itemsFor = null; refresh(true); },
 };
 
-/** The drawn boxes and edges that show a change or carry a verdict. A verdict is on those whose
- * scene.nodes[].verdicts.verdicts (the same on edges) name it; a change is on its own box or edge, else on the
+/** The drawn boxes and edges that show a change or carry a comment. A comment is on those whose
+ * scene.nodes[].comments (the same on edges) hold it; a change is on its own box or edge, else on the
  * boxes the picture draws for it (standIns). @param {string} id */
 function targets(id) {
   if (!scene) return { ids: [], keys: [] };
-  if (/^V\d+$/.test(id)) {
-    const on = (/** @type {{ verdicts?: { verdicts: string[] } }} */ x) => x.verdicts?.verdicts?.includes(id);
+  if (id.startsWith("c-")) {
+    const on = (/** @type {{ comments?: import("../types/nolli").Placed }} */ x) => carries(x.comments, id);
     return { ids: scene.nodes.filter(on).map(n => n.id), keys: scene.edges.filter(on).map(e => e.key) };
   }
   if (scene.edges.some(e => e.key === id)) return { ids: [], keys: [id] };
@@ -213,8 +213,8 @@ function pointAtItem(moving = false) {
 let pinTimer = null;
 
 /**
- * Keep open the card of what shows a change or carries a verdict (an edge for a dependency
- * or a verdict on an edge, else a box), as it is: the card says the same wherever you come from.
+ * Keep open the card of what shows a change or carries a comment (an edge for a dependency
+ * or a comment on an edge, else a box), as it is: the card says the same wherever you come from.
  * @param {string} id
  */
 function pinItem(id) {
@@ -301,14 +301,14 @@ function choosePreset(p) { state.preset = p; state.expanded = null; refresh(); }
 select("theme").addEventListener("change", () => { state.theme = select("theme").value; chooseTheme(state.theme); writeHash(); });
 themeOptions();
 /**
- * Open the model the page shows (state.key). A review with verdicts starts folded and goes to the
- * first (worst) verdict: the picture as a whole, then the first thing to look at. Anything
+ * Open the model the page shows (state.key). A change with comments starts folded and goes to the
+ * first (worst) one: the picture as a whole, then the first thing to look at. Anything
  * else, or a link that says what to show, starts as it says.
  * @param {string | null} [item] an item named in the link
  */
 async function enter(item = null) {
   loadingDataset();
-  const first = state.expanded === null && state.preset === "default" && !item ? (await fetchVerdicts(state.key || "")).length > 0 : false;
+  const first = state.expanded === null && state.preset === "default" && !item ? (await fetchComments(state.key || "")).length > 0 : false;
   if (first) state.preset = "folded";
   await refresh();
   const loaded = /** @type {Scene | null} */ (scene);  // set by refresh(); TypeScript cannot see that through the await

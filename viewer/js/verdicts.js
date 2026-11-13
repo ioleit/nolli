@@ -1,9 +1,12 @@
-// The review agent's verdicts: their marks and their order. The marks are chess annotations:
-// ?? a blunder, ? a mistake, ?! a dubious move, !! a brilliant one; a good one is a thumbs up
-// (chess.com's "excellent"), and ✓, in grey, is fine: nothing to look at.
-// nolli/review.py has the same order (VERDICTS).
+// The verdicts comments carry (a review agent's): their marks and their order. The marks are
+// chess annotations: ?? a blunder, ? a mistake, ?! a dubious move, !! a brilliant one; a good one
+// is a thumbs up (chess.com's "excellent"), and ✓, in grey, is fine: nothing to look at. A
+// comment without a verdict is marked "•". nolli/logic/comments.py has the same order (VERDICTS).
 
-/** @typedef {import("../types/nolli").Verdict} Verdict */
+/**
+ * @typedef {import("../types/nolli").Verdict} Verdict
+ * @typedef {import("../types/nolli").Placed} Placed
+ */
 
 /** Most attention first: the panel's order, and which mark a box or edge with several verdicts shows. @type {Verdict[]} */
 export const ORDER = ["blunder", "problem", "question", "brilliant", "good", "fine"];
@@ -25,3 +28,15 @@ export const markHTML = v => {
   const d = ICON[/** @type {Verdict} */ (v)];
   return d ? `<svg class="icon" viewBox="0 0 16 16" aria-label="${v}"><path d="${d}"/></svg>` : glyph(v);
 };
+
+/** The mark a box or edge shows for the comments on it: the verdict that asks for the most attention, "comment"
+ * if none of them has one, null if there are none. @param {Placed | null | undefined} placed @returns {string | null} */
+export function worst(placed) {
+  const all = placed ? [...placed.own, ...placed.inside] : [];
+  if (!all.length) return null;
+  const vs = all.map(c => c.verdict).filter(/** @returns {v is Verdict} */ v => !!v && v in RANK);
+  return vs.length ? vs.reduce((a, b) => (RANK[b] > RANK[a] ? b : a)) : "comment";
+}
+
+/** Whether a comment is on a box or edge, its own or rolled up. @param {Placed | null | undefined} placed @param {string} id */
+export const carries = (placed, id) => !!placed && [...placed.own, ...placed.inside].some(c => c.id === id);

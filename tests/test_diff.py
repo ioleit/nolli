@@ -1,5 +1,5 @@
 """A change of a synthetic two-commit repository: structural and content changes, the
-numbered changes, details and links, verdicts on the drawn boxes and edges."""
+numbered changes, details and links, comments on the drawn boxes and edges."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import draw, find_node, list_changes, open_change
+from helpers import build_change, draw, find_node, list_changes, open_change
 
 BASE = {
     "app/__init__.py": "",
@@ -62,13 +62,6 @@ def change_of(sc, x):
 
 def status(sc, x):
     return (change_of(sc, x) or {}).get("status")
-
-
-def keep(sc, verdicts):
-    """Verdicts kept as the change's review, as save_verdicts keeps them in a store."""
-    from nolli.review.verdicts import _dump_verdicts
-
-    sc.overlays["verdicts"].stored.save(sc.model.key.format_key(), _dump_verdicts(verdicts), {"by": "test"})
 
 
 def test_structure_and_content(repo):
@@ -140,15 +133,17 @@ def test_scene_review(repo):
     assert {c["name"]: c["status"] for c in store["classes"]} == {"Index": "added", "Store": "same"}
 
 
-def test_changes_verdicts_and_export(repo):
+def test_changes_comments_and_brief(repo):
     import json
 
-    from nolli.review.brief import make_brief
+    from nolli import operations
+    from nolli.logic import comments
+    from nolli.logic.formats.brief import make_brief
     from nolli.logic.transformations.merge.presets import _find_changes_cut
-    from nolli.review.verdicts import find_diagram_ids, read_verdicts
 
     path, base, head = repo
-    sc = open_change(path, base, head)
+    store, key = build_change(path, base, head)
+    sc = operations.open_scene(store, key)
     assert sc.find_element("repo:").get("files")["name"] == path.name
     # the changes preset draws every change as a box or edge of its own, and lists them
     rows = {r["id"]: r for r in list_changes(sc)}
@@ -159,55 +154,55 @@ def test_changes_verdicts_and_export(repo):
     assert any(f.endswith("repo:app/store.py#Index|ref") for f in dep["change"]["facts"])
     assert all(r["change"] for r in rows.values()) and rows["repo:app"]["label"]["text"] == "app"
     assert {"repo:", "repo:app", "repo:app/store.py"} <= _find_changes_cut(sc, set())
-    # verdicts name the diagram's nodes and edges; each lands on what stands for it in the view
-    ids = find_diagram_ids(sc)
-    v = read_verdicts(json.dumps([
-        {"target": "n_repo_app_api_py --> n_repo_app_store_py", "verdict": "problem", "reason": "x"},
-        {"target": "n_repo_app_store_py_Index", "verdict": "question", "reason": "y"},
+    # comments on the review diagram name its nodes and edges, by the diagram's ids or the model's; a wrong one keeps nothing
+    observed = operations.make_review_key(key)
+    _, errors = operations.add_comments(store, observed, json.dumps([
+        {"target": "n_repo_app_store_py_Index --> n_repo_app_api_py", "verdict": "problem", "reason": "x"},
         {"target": "n_repo_nowhere_py", "verdict": "fine", "reason": "z"},
-        {"target": "n_repo_app_g --> n_repo_app_store_py", "verdict": "fine", "reason": "an unfolded box is a subgraph"},
-    ]), ids)
-    assert [x["id"] for x in v] == ["V1", "V2", "V3", "V4"]
-    assert v[3]["ends"] == ["repo:app", "repo:app/store.py"] and v[2]["ends"] == []
-    keep(sc, v)
-    # the review panel lists them from a table of the change itself, each described
-    from nolli.logic.formats import table
-    from nolli.logic.formats.options import TableFormatOptions
-
-    listed = [x for r in table.export_table(sc, TableFormatOptions(overlays=["verdicts"], required_overlay="verdicts"))["rows"]
-              for x in r["verdicts"]["starting"]]
-    assert sorted(x["id"] for x in listed) == ["V1", "V2", "V4"]  # V3 has no target, so it is not kept
-    first = next(x for x in listed if x["id"] == "V1")
-    assert first["edge"] and first["label"] == "app/api.py → app/store.py" and first["reveal"] == ["repo:", "repo:app"]
+        {"target": "n_repo_app_api_py", "verdict": "maybe", "reason": ""},
+    ]), "agent", verdict_needed=True)
+    assert len(errors) == 4 and "the other way round" in errors[0] and "is not a node" in errors[1]
+    assert "must be one of" in errors[2] and "needs a reason" in errors[3] and store.load_comments(key) == []
+    made, errors = operations.add_comments(store, observed, json.dumps([
+        {"target": "n_repo_app_api_py --> n_repo_app_store_py_Index", "verdict": "problem", "reason": "x"},
+        {"target": "n_repo_app_store_py_Index", "verdict": "question", "reason": "y"},
+        {"target": "repo:app/store.py#", "verdict": "fine", "reason": "a module's own code"},
+    ]), "agent", verdict_needed=True)
+    assert not errors and [c["target"] for c in made] == ["use|repo:app/api.py|repo:app/store.py#Index|import",
+                                                          "repo:app/store.py#Index", "repo:app/store.py#"]
+    assert [c["observed"] for c in store.load_comments(key)] == [observed.format_key()] * 3  # kept on the change
+    # the review panel lists them, each with what to unfold to go to it
+    listed = comments.describe_comments(sc, sc.overlays["comments"].list_all(sc))
+    assert listed[0]["edge"] and listed[0]["label"] == "app/api.py → app/store.py#Index"
+    assert listed[0]["reveal"] == ["repo:", "repo:app", "repo:app/store.py"]
+    # each shows on what stands for it in a view: on itself, or rolled up into a folded box or onto the edge that carries it
+    ids = lambda x: [c["id"] for k in ("own", "inside") for c in (x.get("comments") or {}).get(k, [])]  # noqa: E731
+    d = draw(sc, expanded=["repo:", "repo:app", "repo:app/store.py"])
+    assert ids(find_node(d, "repo:app/store.py#Index")) == [made[1]["id"]]
     d = draw(sc, expanded=["repo:", "repo:app"])
-    verdicts = lambda x: x.get("verdicts") or {}  # noqa: E731
-    marked = [e for e in d["edges"] if "V1" in verdicts(e).get("verdicts", [])]
-    assert len(marked) == 1 and marked[0]["verdicts"]["verdict"] == "problem"
-    assert (marked[0]["src"], marked[0]["dst"]) == ("repo:app/api.py", "repo:app/store.py")
-    store = find_node(d, "repo:app/store.py")  # Index is inside the folded store module
-    assert store["verdicts"]["verdicts"] == ["V2"] and store["verdicts"]["verdict"] == "question"
-    assert "[question](verdict:question)" in store["review"]["card"]
-    assert "verdict:" not in store["hover"]["text"]
-    assert not any("V3" in verdicts(x).get("verdicts", []) for x in d["nodes"] + d["edges"])  # an unknown target is not drawn
-    d = draw(sc, expanded=["repo:"])  # app folded: the edge falls inside it, so does the verdict
-    app = find_node(d, "repo:app")
-    assert set(app["verdicts"]["verdicts"]) == {"V1", "V2", "V4"} and app["verdicts"]["verdict"] == "problem"
-    with pytest.raises(ValueError):
-        read_verdicts('[{"target": "n_repo_app_api_py", "verdict": "maybe"}]', ids)
-    with pytest.raises(ValueError):
-        read_verdicts('[{"id": "C1", "verdict": "fine"}]', ids)
+    marked = [e for e in d["edges"] if made[0]["id"] in ids(e)]
+    assert [(e["src"], e["dst"]) for e in marked] == [("repo:app/api.py", "repo:app/store.py")]
+    store_box = find_node(d, "repo:app/store.py")  # Index and the module's own code are inside the folded store module
+    assert ids(store_box) == [made[1]["id"], made[2]["id"]] and not store_box["comments"]["own"]
+    assert "[question](verdict:question)" in store_box["hover"]["notes"] and "verdict:" not in store_box["hover"]["text"]
+    d = draw(sc, expanded=["repo:"])  # app folded: the edge falls inside it, so does its comment
+    assert sorted(ids(find_node(d, "repo:app"))) == sorted(c["id"] for c in made)
     md = make_brief(sc, "flowchart TD\n", "Why: speed.")
     assert "verdicts.json" in md and "source --> target" in md and "Why: speed." in md
 
 
-def test_rolled_up_verdicts_are_counted():
-    from nolli.review.card import _describe_box
+def test_rolled_up_comments_are_counted():
+    from nolli.logic.formats.descriptions.notes import describe_node
 
-    v = lambda i, verdict: {"id": f"V{i}", "verdict": verdict, "reason": f"reason {i}"}  # noqa: E731
-    # few verdicts: every reason in full, worst first
-    assert _describe_box(None, [v(1, "fine")], [v(2, "problem")]) == "[problem](verdict:problem) reason 2\n\n[fine](verdict:fine) reason 1"
+    v = lambda i, verdict: {"id": f"c-{i}", "verdict": verdict, "text": f"reason {i}"}  # noqa: E731
+    # few comments: every one in full, worst first
+    assert describe_node(None, [v(1, "fine")], [v(2, "problem")]) == "[problem](verdict:problem) reason 2\n\n[fine](verdict:fine) reason 1"
     # many from inside: one line counting them, like the review panel; the box's own in full
     inside = [v(2, "fine"), v(3, "blunder"), v(4, "fine"), v(5, "fine")]
-    lines = _describe_box(None, [v(1, "question")], inside, kind="directory").split("\n\n")
-    assert lines == ["Verdicts in this directory: [blunder](verdict:blunder) `1` [fine](verdict:fine) `3`",
+    lines = describe_node(None, [v(1, "question")], inside, kind="directory").split("\n\n")
+    assert lines == ["Comments in this directory: [blunder](verdict:blunder) `1` [fine](verdict:fine) `3`",
                      "[question](verdict:question) reason 1"]
+    # a comment without a verdict says what it says, and is counted on its own
+    assert describe_node(None, [{"id": "c-9", "text": "Why here?"}]) == "Why here?"
+    assert describe_node(None, [], [{"id": "c-8", "text": "a"}, v(3, "fine"), {"id": "c-7", "text": "b"}, v(4, "fine")],
+                         kind="directory") == "Comments in this directory: [fine](verdict:fine) `2`, `2` without a verdict"

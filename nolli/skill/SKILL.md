@@ -61,7 +61,9 @@ nolli agent check <key>
 
 Use the `check` command the brief printed. It prints one line per problem (a node id not in the diagram, an edge the diagram does not
 draw or draws the other way round, a missing reason, …) and exits 1. Fix each in
-`verdicts.json` and check again until it prints `"ok": true`.
+`verdicts.json` and check again until it prints `"ok": true`. Verdicts that pass are kept as
+your comments on the change, in place of those of an earlier review by an agent; comments
+others made stay.
 
 ## 5. Show it
 

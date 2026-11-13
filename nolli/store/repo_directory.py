@@ -15,7 +15,8 @@ Where a model is kept follows from its key alone, so nothing is scanned or index
 ``<rest of the key>`` is ``format_key()`` after the repository's URL (``@<sha>``,
 ``@<base>..<head>``, ``@<sha>~project:<spec>``, ``@<sha>~select:<digest>``, ``@~<text>``), escaped for any file system
 (``_encode``) and cut into names of at most 200 bytes. A model's directory holds
-``key.json``, ``model.json`` and ``overlays/<name>.json``, and for a change ``change.json``;
+``key.json``, ``model.json`` and ``overlays/<name>.json``, for a change ``change.json``, and
+``comments.json`` once something was said about the model (``save_comments``);
 a change's two commits are kept in their own directories beside it. The layout is this
 module's own, and so are the JSON forms of a model and a map in it (``_dump_model``,
 ``_dump_map``): nothing outside it reads these files, and they change with ``MODEL_FORMAT`` and
@@ -42,7 +43,8 @@ from nolli.model.scene import Scene
 from nolli.store import precomputed
 from nolli.store.precomputed import OverlayStore
 
-FORMAT = 1  # of key.json and change.json
+FORMAT = 1  # of key.json, change.json and comments.json
+COMMENTS = "comments.json"  # what was said about a model, in its directory
 MODEL_FORMAT = 3  # of model.json; a model of another format reads as not kept, and is built again
 MAP_FORMAT = 2  # of overlays/<name>.json; a map of another format reads as not kept
 SEGMENT = 200  # bytes in one name of a key's path, at most (file systems allow 255)
@@ -255,6 +257,13 @@ def _swap(out: Path, write: Callable[[Path], None]) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _keep_comments(out: Path, tmp: Path) -> None:
+    """Copy the comments kept in the directory ``out`` into ``tmp``, which is about to replace it:
+    a model built again keeps what was said about it."""
+    if (out / COMMENTS).is_file():
+        shutil.copy2(out / COMMENTS, tmp / COMMENTS)
+
+
 def _write_json(f: Path, value: dict, indent: int | None = None) -> None:
     """Write ``value`` to ``f`` through a file beside it, so a reader sees the old file or the new one."""
     f.parent.mkdir(parents=True, exist_ok=True)
@@ -289,9 +298,15 @@ class RepoDirectoryStore(OverlayStore):
         return self.cache.read(self._locate(key) / "model.json", lambda j: _parse_model(j, key), key.format_key())
 
     def save_model(self, key: ModelKey, model: Model, maps: Mapping[str, Mapping[Key, dict]]) -> None:
-        """Keep a model under ``key`` with the maps its extractors made, replacing what was kept."""
+        """Keep a model under ``key`` with the maps its extractors made, replacing what was kept
+        except the comments on it."""
         out = self._locate(key)
-        _swap(out, lambda tmp: self._write_model(tmp, key, model, maps))
+
+        def write(tmp: Path) -> None:
+            self._write_model(tmp, key, model, maps)
+            _keep_comments(out, tmp)
+
+        _swap(out, write)
 
     def load_change(self, key: ChangeKey) -> dict | None:
         """Return what a change says about itself, or None unless it and both its commits are kept."""
@@ -303,8 +318,7 @@ class RepoDirectoryStore(OverlayStore):
     def save_change(self, key: ChangeKey, about: dict, sides: Mapping[str, tuple[Model, Mapping[str, Mapping[Key, dict]]]],
                     maps: Mapping[str, Mapping[Key, dict]], model: Model | None = None) -> None:
         """Keep a change: its two commits (each in its own directory), what it says about itself,
-        the maps kept for it and its merged model. A review's verdicts kept for it stay unless
-        ``maps`` has new ones."""
+        the maps kept for it and its merged model. The comments on it stay."""
         for side, commit in zip(("base", "head"), key.list_sides(), strict=True):
             self.save_model(commit, *sides[side])
         out = self._locate(key)
@@ -316,9 +330,7 @@ class RepoDirectoryStore(OverlayStore):
                 self._write_key(tmp, key)
                 self._write_maps(tmp, key, maps)
             _write_json(tmp / "change.json", {"format": FORMAT, "about": about}, indent=1)
-            kept = out / "overlays" / "verdicts.json"  # a review stays with the change it answers
-            if kept.is_file() and "verdicts" not in maps:
-                shutil.copy2(kept, tmp / "overlays" / "verdicts.json")
+            _keep_comments(out, tmp)
 
         _swap(out, write)
 
@@ -341,6 +353,17 @@ class RepoDirectoryStore(OverlayStore):
         (d / "overlays").mkdir(exist_ok=True)
         for name, values in maps.items():
             _write_json(d / "overlays" / f"{_encode(name)}.json", _dump_map(values, None))
+
+    # -- comments
+
+    def load_comments(self, key: ModelKey) -> list[dict]:
+        """Return the comments kept on the model of ``key``, or [] if there are none."""
+        got = self.cache.read(self._locate(key) / COMMENTS, lambda j: j["comments"] if j.get("format") == FORMAT else None)
+        return list(got or [])
+
+    def save_comments(self, key: ModelKey, comments: list[dict]) -> None:
+        """Keep ``comments`` on the model of ``key``, in place of those kept before."""
+        _write_json(self._locate(key) / COMMENTS, {"format": FORMAT, "comments": comments}, indent=1)
 
     # -- maps
 

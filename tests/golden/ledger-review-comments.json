@@ -1,0 +1,164 @@
+{
+ "comments": [
+  {
+   "at": "<when>",
+   "by": "agent",
+   "edge": true,
+   "ends": [
+    "repo:ledger/storage/db.py",
+    "repo:ledger/services/alerts.py"
+   ],
+   "id": "c-a76f9526dc",
+   "label": "ledger/storage/db.py \u2192 ledger/services/alerts.py",
+   "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
+   "reveal": [
+    "repo:",
+    "repo:ledger",
+    "repo:ledger/storage",
+    "repo:ledger/services"
+   ],
+   "target": "use|repo:ledger/storage/db.py|repo:ledger/services/alerts.py|import",
+   "text": "New cycle: `storage/db` now imports `services/alerts`, which imports `storage/db`. The lowest box of the backend depends on a service, so every store sits in the cycle too; nothing in the title asks the database to know about alerts.",
+   "verdict": "blunder"
+  },
+  {
+   "at": "<when>",
+   "by": "agent",
+   "edge": true,
+   "ends": [
+    "repo:ledger/services/alerts.py",
+    "repo:ledger/storage"
+   ],
+   "id": "c-6d076f5189",
+   "label": "ledger/services/alerts.py \u2192 ledger/storage",
+   "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
+   "reveal": [
+    "repo:",
+    "repo:ledger",
+    "repo:ledger/services"
+   ],
+   "target": "use|repo:ledger/services/alerts.py|repo:ledger/storage|import",
+   "text": "Skips the store layer: `services/alerts` reads `storage/db` directly, while `billing` reaches it only through `invoices` and `customers`. The title asks for alerts, not for a second way into `db`, which now has callers in two layers.",
+   "verdict": "problem"
+  },
+  {
+   "at": "<when>",
+   "by": "agent",
+   "edge": false,
+   "ends": [
+    "repo:ledger/storage/cache.py"
+   ],
+   "id": "c-6e7cf3b288",
+   "label": "ledger/storage/cache.py",
+   "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
+   "reveal": [
+    "repo:",
+    "repo:ledger",
+    "repo:ledger/storage"
+   ],
+   "target": "repo:ledger/storage/cache.py",
+   "text": "A layer inside storage/: the cache is what the title promises, but `cache` sits beside the store it wraps and depends on `invoices`, so `storage/` now has a level of its own. Should it live between `services/` and `storage/` instead?",
+   "verdict": "question"
+  },
+  {
+   "at": "<when>",
+   "by": "agent",
+   "edge": true,
+   "ends": [
+    "repo:ledger/services/billing.py",
+    "repo:ledger/storage"
+   ],
+   "id": "c-954d0db24e",
+   "label": "ledger/services/billing.py \u2192 ledger/storage",
+   "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
+   "reveal": [
+    "repo:",
+    "repo:ledger",
+    "repo:ledger/services"
+   ],
+   "target": "use|repo:ledger/services/billing.py|repo:ledger/storage|import",
+   "text": "Tied to the wrapper: expected that `billing` reads through the cache, but it now imports `cache` by name, so the service depends on two levels of `storage/` at once.",
+   "verdict": "question"
+  },
+  {
+   "at": "<when>",
+   "by": "agent",
+   "edge": true,
+   "ends": [
+    "repo:web/src/client.ts",
+    "api:http:ledger/api/app.py:app/alerts/overdue#GET"
+   ],
+   "id": "c-5da9c5df45",
+   "label": "web/src/client.ts \u2192 GET alerts/overdue",
+   "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
+   "reveal": [
+    "repo:",
+    "repo:web",
+    "repo:web/src",
+    "api:",
+    "api:http:ledger/api/app.py:app"
+   ],
+   "target": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/alerts/overdue#GET|http",
+   "text": "Client becomes a hub: expected from the title, but `client` now serves both `/customers` and `/alerts`, and every view goes through it. Split it per area as more arrive?",
+   "verdict": "question"
+  },
+  {
+   "at": "<when>",
+   "by": "agent",
+   "edge": false,
+   "ends": [
+    "repo:ledger/services/legacy_export.py"
+   ],
+   "id": "c-7c7ad35424",
+   "label": "ledger/services/legacy_export.py",
+   "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
+   "reveal": [
+    "repo:",
+    "repo:ledger",
+    "repo:ledger/services"
+   ],
+   "target": "repo:ledger/services/legacy_export.py",
+   "text": "Orphan removed: not in the title, but `legacy_export` and its endpoint had no caller in `web/src/`. Removing them takes a box, two endpoints and an edge into `storage/invoices` out of the graph, and `api/routes` loses a dependency.",
+   "verdict": "good"
+  },
+  {
+   "at": "<when>",
+   "by": "agent",
+   "edge": false,
+   "ends": [
+    "repo:web/src/views/alerts.ts"
+   ],
+   "id": "c-2dd184fd0d",
+   "label": "web/src/views/alerts.ts",
+   "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
+   "reveal": [
+    "repo:",
+    "repo:web",
+    "repo:web/src",
+    "repo:web/src/views"
+   ],
+   "target": "repo:web/src/views/alerts.ts",
+   "text": "Follows the pattern: the new `views/alerts` reaches the backend only through `client`, like `views/account`; no view calls an endpoint of its own.",
+   "verdict": "good"
+  },
+  {
+   "at": "<when>",
+   "by": "agent",
+   "edge": false,
+   "ends": [
+    "repo:ledger/api/routes.py"
+   ],
+   "id": "c-613780aa5e",
+   "label": "ledger/api/routes.py",
+   "observed": "<tmp>/ledger@32fe9ac4acec79207549786e0dec51e3e585733f..5b4ae7d313f7283eb5a490e1c7eaabc242a3bf3d~project:p=changes",
+   "reveal": [
+    "repo:",
+    "repo:ledger",
+    "repo:ledger/api"
+   ],
+   "target": "repo:ledger/api/routes.py",
+   "text": "As intended: `api/routes` wires in `alerts` and the cache and drops the export; it stays the one box that assembles services and stores.",
+   "verdict": "fine"
+  }
+ ]
+}

@@ -206,3 +206,13 @@ class SelectionKey(ModelKey):
 
     def to_dict(self) -> dict:
         return {"source": self.source.to_dict(), "selection": self.selection}
+
+
+def find_base_key(key: ModelKey) -> ModelKey:
+    """Return the key of the model that ``key`` is a view of. Strip projections and selections,
+    which draw the same addresses as their source, until a key of a model of its own is left: a
+    commit's, a change's or a named one. A change is not a view of its two commits: what is said
+    about it, or about a projection of it, is about what changed."""
+    while isinstance(key, (ProjectionKey, SelectionKey)):
+        key = key.source
+    return key

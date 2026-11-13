@@ -176,6 +176,10 @@ class OverlayStore:
     def load_model(self, key) -> Model | None:  # the store's own, by its kind of key
         raise NotImplementedError
 
+    def load_comments(self, key) -> list[dict]:
+        """Return the comments kept on the model of ``key``: none, unless the store keeps them."""
+        return []
+
     def open_scene(self, key, overlays: Iterable[Overlay] = ()) -> Scene | None:
         """Open a kept model as a scene, or return None if the store does not have it. Each of
         ``overlays`` is attached as a caching overlay, and every other map kept for the model as

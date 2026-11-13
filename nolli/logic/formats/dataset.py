@@ -11,11 +11,12 @@ A dataset directory holds:
     key.json  model.json  overlays/<name>.json        a commit's model and its maps
     change.json  base/  head/                         for a change: what it says about itself, and its
                                                       two commits, each as above
+    comments.json                                     what was said about the model, if anything
+                                                      (nolli/logic/comments.py)
     report.json [changes.json review.mmd review.md]   made from the model, for readers without
                                                       nolli (``cli.write_extras``); never read back
 
-Each map keeps its ``about`` (who made it, when), so a review's verdicts keep where they came
-from. The forms here are frozen: a store changes its own files freely, and this module changes
+Each map keeps its ``about`` (who made it, when). The forms here are frozen: a store changes its own files freely, and this module changes
 only with ``FORMAT``.
 """
 
@@ -32,10 +33,10 @@ from nolli.model.keys import ChangeKey, ModelKey, StringKey
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.schema import EntityId, RelationId
 
-FORMAT = 1  # of key.json and change.json
+FORMAT = 1  # of key.json, change.json and comments.json
 MODEL_FORMAT = 3  # of model.json
 MAP_FORMAT = 2  # of overlays/<name>.json
-DATA = ("key.json", "model.json", "overlays", "change.json", "base", "head")  # the model (write_dataset)
+DATA = ("key.json", "model.json", "overlays", "change.json", "comments.json", "base", "head")  # the model (write_dataset)
 EXTRAS = ("report.json", "changes.json", "review.mmd", "review.md")  # what is made from it
 
 Maps = dict[str, tuple[dict[Key, dict], dict | None]]  # map name -> its values and ``about``
@@ -56,6 +57,7 @@ class Dataset:
     maps: Maps = field(default_factory=dict)
     change: dict | None = None  # a change's ``change.json``
     sides: dict[str, Dataset] = field(default_factory=dict)  # a change's "base" and "head"
+    comments: list[dict] = field(default_factory=list)  # ``comments.json``
 
 
 def remove(d: Path, names: tuple[str, ...]) -> None:
@@ -126,6 +128,8 @@ def _write(d: Path, ds: Dataset) -> None:
         (d / "overlays" / f"{name}.json").write_text(json.dumps(_dump_map(text, values, about)))
     if ds.change is not None:
         (d / "change.json").write_text(json.dumps({"format": FORMAT, "about": ds.change}, indent=1))
+    if ds.comments:
+        (d / "comments.json").write_text(json.dumps({"format": FORMAT, "comments": ds.comments}, indent=1))
     for side, sub in ds.sides.items():
         _write(d / side, sub)
 
@@ -173,6 +177,16 @@ def _read(d: Path, key: ModelKey, model_needed: bool) -> tuple[Model | None, Map
     return model, maps
 
 
+def _read_comments(d: Path) -> list[dict]:
+    f = d / "comments.json"
+    if not f.is_file():
+        return []
+    j = _read_json(f)
+    if j.get("format") != FORMAT or not isinstance(j.get("comments"), list):
+        raise DatasetError(f"{f} is of another nolli version; build it again")
+    return j["comments"]
+
+
 def read_dataset(d: Path) -> Dataset:
     """Read the dataset directory ``d``. Raise DatasetError for a directory that is no dataset of
     this version, or a change whose ``base/`` or ``head/`` is not its commit."""
@@ -180,7 +194,7 @@ def read_dataset(d: Path) -> Dataset:
     key = read_key(d)
     if not isinstance(key, ChangeKey):
         model, maps = _read(d, key, model_needed=True)
-        return Dataset(key, model, maps)
+        return Dataset(key, model, maps, comments=_read_comments(d))
     change = _read_json(d / "change.json")
     if change.get("format") != FORMAT:
         raise DatasetError(f"{d} is a dataset of another nolli version; build it again")
@@ -192,4 +206,4 @@ def read_dataset(d: Path) -> Dataset:
     model, maps = _read(d, key, model_needed=False)
     if not isinstance(change.get("about"), dict):
         raise DatasetError(f"{d / 'change.json'} says nothing about the change; build it again")
-    return Dataset(key, model, maps, change["about"], sides)
+    return Dataset(key, model, maps, change["about"], sides, _read_comments(d))

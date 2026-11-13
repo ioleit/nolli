@@ -1,4 +1,4 @@
-"""A ModelStore in memory: models, changes and their maps kept nowhere else (tests, examples,
+"""A ModelStore in memory: models, changes, their maps and comments kept nowhere else (tests, examples,
 anything built to be looked at once)."""
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ class MemoryStore(OverlayStore):
         self.about: dict[tuple[str, str], dict] = {}
         self.models: dict[ModelKey, Model] = {}
         self.changes: dict[ChangeKey, dict] = {}
+        self.comments: dict[ModelKey, list[dict]] = {}
 
     def open_maps(self, name: str) -> MemoryHandle:
         return MemoryHandle(self, name)  # type: ignore[arg-type]  # it reads and writes .maps and .about, as on MemoryMaps
@@ -50,3 +51,9 @@ class MemoryStore(OverlayStore):
         if model is not None:
             model.key = key
             self.models[key] = model
+
+    def load_comments(self, key: ModelKey) -> list[dict]:
+        return list(self.comments.get(key, []))
+
+    def save_comments(self, key: ModelKey, comments: list[dict]) -> None:
+        self.comments[key] = list(comments)

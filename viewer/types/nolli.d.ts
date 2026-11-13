@@ -9,7 +9,7 @@ export interface Chip { id: string; name: string; color: number }
  */
 export type Info = string;
 
-// ---------- review mode (a change: nolli/logic/transformations/merge/, nolli/review/verdicts.py, card.py) ----------
+// ---------- review mode (a change: nolli/logic/transformations/merge/; comments: nolli/logic/comments.py) ----------
 
 export type Status = "added" | "removed" | "changed";
 export type Verdict = "blunder" | "problem" | "question" | "fine" | "good" | "brilliant";
@@ -51,7 +51,7 @@ export interface SceneDiff {
  * (src, dst), with the value of each overlay asked for under its name. */
 export interface TableRow {
   id: string; kind: string; parent?: string | null; subkind?: string; src?: string; dst?: string;
-  change?: NodeDiff | EdgeDiff | null; label?: Label | null; verdicts?: { starting: ReviewVerdict[] } | null;
+  change?: NodeDiff | EdgeDiff | null; label?: Label | null;
 }
 
 /** A change in the review panel's list: a changed box or edge of the changes preset (TableRow). */
@@ -66,16 +66,22 @@ export interface ReviewItem {
   change: NodeDiff | EdgeDiff;
 }
 
-/** A review agent's verdict on a node or edge of the review diagram (review.mmd), resolved. */
-export interface ReviewVerdict {
-  id: string;  // V1, V2, … in file order
-  target: string;  // as written: a diagram node id, or "n_a --> n_b"
-  verdict: Verdict;
-  reason: string;
-  ends: string[];  // what it is about: one entity (a box) or two (an edge); empty if the diagram has no such target
-  edge: boolean;
-  reveal: string[];  // boxes to unfold so it can be seen
+/** A comment on a node or edge of the model it was made on (nolli/logic/comments.py). */
+export interface Comment {
+  id: string;  // c-…, unique among the comments of a model
+  observed: string;  // the key of the model it was made on (a projection's, say)
+  target: string;  // the id of its node or edge in that model
   label: string;  // how to name it: "path" or "a → b"
+  by: string; at: string;
+  text: string;  // Markdown
+  verdict?: Verdict;
+}
+
+/** A comment as the review panel lists it (GET /api/scene?f=comments). */
+export interface ListedComment extends Comment {
+  ends: string[];  // what it is about: one entity (a box) or two (an edge), those the model has
+  edge: boolean;
+  reveal: string[];  // boxes to unfold so its ends are drawn
 }
 
 /**
@@ -111,20 +117,17 @@ export interface Label {
   prose: string;
 }
 
-/** The review's verdicts that land on a box or edge (nolli/review/verdicts.py). */
-export interface Verdicts { verdicts: string[]; verdict: Verdict | null }
+/** The comments that show on a box or edge: those about it, and those rolled up onto it from inside. */
+export interface Placed { own: Comment[]; inside: Comment[] }
 
-/** What a review shows on a box or edge (nolli/review/card.py). */
-export interface Review {
-  card: Info;  // the card's second part, under a line: what the change did to it, and the verdicts on it
-}
+/** A box's or edge's hover card: what it is, and under a line what the change did to it and the comments on it. */
+export interface Hover { text?: Info; notes?: Info }
 
 interface Overlays {
   label: Label;
-  hover: { text: Info };
+  hover?: Hover;
   change?: NodeDiff | null;  // review mode only
-  verdicts?: Verdicts;
-  review?: Review;
+  comments?: Placed;
 }
 
 /** A module's own code: a small dot inside the module. */
@@ -165,10 +168,9 @@ export interface SceneEdge {
   src: string;
   dst: string;
   projection: EdgeProjection;
-  hover?: { text: Info };
+  hover?: Hover;
   change?: EdgeDiff | null;  // review mode only
-  verdicts?: Verdicts;
-  review?: Review;
+  comments?: Placed;
 }
 
 export interface ProjectionSpec {
@@ -206,27 +208,4 @@ export interface Laid {
   nodes: Map<string, Box>;
   /** mark: the centre of the edge's verdict mark, where ELK placed it as the edge's label */
   edges: { edge: SceneEdge; sections: Point[][]; mark?: Point | null }[];
-}
-
-/** Where a dataset's verdicts came from (review.json, nolli/server/reviews.py). */
-export interface ReviewOrigin {
-  by: "agent" | "upload" | "unknown"; at?: string;
-  model?: string; seconds?: number; turns?: number; cost?: number;  // agent
-}
-
-/** A review agent run started from the viewer. */
-export interface ReviewRun {
-  state: "queued" | "running" | "done" | "failed" | "cancelled";
-  step: string; steps: string[]; error: string; seconds: number; waiting: number; turns: number; cost: number;
-}
-
-/** GET /api/review: the review block's state. */
-export interface ReviewStatus {
-  verdicts: ReviewOrigin | null;
-  run: ReviewRun | null;
-  can_run: boolean;
-  why_not: "key" | "package" | "repo" | "dataset" | null;
-  uploads: boolean;
-  model: string;
-  server: "view" | "serve";
 }

@@ -16,7 +16,8 @@ changes, re-extracted every run), so a changed format is never read by the other
 
 ``--diff REPO BASE HEAD`` (repeatable) adds a change dataset, made by each version's own
 ``nolli diff``; the repository is cloned with its history. ``--compare`` asks both versions
-the presets and Mermaid, and for a change also its list of changes, its verdicts and the brief,
+the presets and Mermaid, and for a change also its list of changes, its verdicts (its comments
+after 0.9) and the brief,
 and prints each field that differs: how often, and one example. Each version is asked the way
 it answers: ``/api/scene?f=mermaid``, ``f=brief`` and ``f=table`` after 0.9, ``/api/mermaid``,
 ``/api/brief`` and ``/api/changes`` before. A version without numbered changes lists the
@@ -228,8 +229,11 @@ class Server:
         return ("items", old["items"]) if "items" in old else ("error", old)
 
     def ask_verdicts(self) -> list[dict] | dict:
-        """Ask for a change's verdicts, in their order: from a table of the change where this
-        version has tables, else from ``/api/changes``."""
+        """Ask for a change's verdicts, in their order: its comments where this version has them,
+        else from a table of the change where it has tables, else from ``/api/changes``."""
+        got = self.ask("/api/scene", {"f": "comments", "p": "none"})
+        if "comments" in got:
+            return got["comments"]
         got = self.ask("/api/scene", {"f": "table", "required_overlay": "verdicts", "overlays": "verdicts", "p": "none"})
         if "rows" in got:
             vs = [v for r in got["rows"] for v in (r.get("verdicts") or {}).get("starting", [])]

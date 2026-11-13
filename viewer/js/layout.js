@@ -6,6 +6,8 @@
 // is a Laid (types/nolli.d.ts): absolute boxes per node id and edge routes as point
 // lists; draw.js only needs that shape.
 
+import { worst } from "./verdicts.js";
+
 /**
  * @typedef {import("../types/nolli").Scene} Scene
  * @typedef {import("../types/nolli").SceneNode} SceneNode
@@ -112,8 +114,8 @@ function elkGraph(scene) {
   };
   // an edge's verdict mark is its label, inline: ELK makes room for it halfway along and routes
   // the edge through its middle (a label without text is left unplaced, so the verdict is its text)
-  const mark = /** @param {SceneEdge} e @param {number} i */ (e, i) => e.verdicts?.verdict
-    ? [{ id: "m" + i, text: e.verdicts?.verdict, width: MARK, height: MARK, layoutOptions: { "elk.edgeLabels.inline": "true" } }] : [];
+  const mark = /** @param {SceneEdge} e @param {number} i */ (e, i) => worst(e.comments)
+    ? [{ id: "m" + i, text: /** @type {string} */ (worst(e.comments)), width: MARK, height: MARK, layoutOptions: { "elk.edgeLabels.inline": "true" } }] : [];
   /** @type {ElkEdge[]} */
   const edges = scene.edges.map((e, i) => ({ id: "e" + i, sources: [e.src], targets: [e.dst], labels: mark(e, i), _e: e }));
   return { id: "ROOT", layoutOptions: GRAPH_OPTIONS, children: (kidsOf.get("ROOT") || []).map(build), edges };
