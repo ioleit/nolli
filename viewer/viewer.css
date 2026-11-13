@@ -280,7 +280,7 @@ body.dim .edge.d-same { opacity: .18; }
 .rr-again .ricon { width: 12px; height: 12px; }
 .rr-again:hover:not(:disabled), .rr-link:hover { background: var(--hover-bg); color: var(--ink); }
 .rr-link[aria-expanded="true"] { color: var(--ink); }
-#rr-ways { color: var(--e-http); }
+#rr-ways { color: #d00; font-weight: 700; }
 .rr { display: flex; flex-direction: column; gap: 5px; font-size: 12px; padding: 2px 12px 8px; border-bottom: 1px solid var(--line); }
 .rr:empty { display: none; }
 .rr a { color: var(--e-http); }
