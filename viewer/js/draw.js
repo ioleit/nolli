@@ -2,7 +2,7 @@
 // back a handle per drawn node so an animation can move it (update) and fade it.
 
 import { showTip, hideTip, pinTip } from "./tip.js";
-import { HEADER_H, ICON_GAP, ICON_H, iconW, iconsW, isAnchor, statsText } from "./layout.js";
+import { HEADER_H, ICON_GAP, ICON_H, changedLines, iconW, iconsW, isAnchor, statsText } from "./layout.js";
 import { wasDrag } from "./panzoom.js";
 import { ICON, glyph } from "./verdicts.js";
 
@@ -158,8 +158,9 @@ function buildBox(n, p, h) {
   let statsEl = null;
   if (stats && n.change) {
     statsEl = el("text", { class: "stats", x: isC ? titleW + 4 : 6 + n.projection.chips.length * 11, y: isC ? 18 : 33 });
-    const a = el("tspan", { class: "plus" }); a.textContent = `+${n.change.added}`; statsEl.appendChild(a);
-    const r = el("tspan", { class: "minus", dx: 4 }); r.textContent = `−${n.change.removed}`; statsEl.appendChild(r);
+    const lines = changedLines(n.change);
+    const a = el("tspan", { class: "plus" }); a.textContent = `+${lines.added}`; statsEl.appendChild(a);
+    const r = el("tspan", { class: "minus", dx: 4 }); r.textContent = `−${lines.removed}`; statsEl.appendChild(r);
     grp.appendChild(statsEl);
   }
   /** the badge text that fits a container w wide @param {number} w */

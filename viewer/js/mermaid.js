@@ -1,4 +1,4 @@
-// The Mermaid tab: the scene as Mermaid (/api/mermaid, nolli/mermaid.py), rendered by
+// The Mermaid tab: the scene as Mermaid (/api/scene?f=mermaid, nolli/logic/formats/mermaid.py), rendered by
 // Mermaid itself, and its source to copy. Clicking a box unfolds or folds it, as in the drawing.
 
 import { byId } from "./dom.js";
@@ -20,14 +20,14 @@ const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&
 
 /**
  * @param {Scene} scene the scene shown in the other tabs (for the ids that can be clicked)
- * @param {string} url /api/mermaid with the same scene state (the text; the tab asks for it with its ids)
+ * @param {string} url /api/scene?f=mermaid with the same scene state: the text and its ids
  */
 export async function showMermaid(scene, url) {
   pane.style.display = "block";
   if (rendered === url) return;
   rendered = url;
   const t0 = performance.now();
-  const res = await fetch(url + "&format=json");
+  const res = await fetch(url);
   /** @type {{ mermaid: string, ids: Record<string, string> } | { error: string }} */
   const body = await res.json();
   if (rendered !== url) return;  // a newer state asked for meanwhile
@@ -58,7 +58,7 @@ export async function showMermaid(scene, url) {
 /**
  * The scene id a drawn Mermaid node or subgraph stands for, if it can be unfolded or folded.
  * Mermaid ids the elements of a diagram rendered as <diagram>: a node "<diagram>-flowchart-<node id>-<n>",
- * a subgraph "<diagram>-<subgraph id>"; the node ids are the server's (/api/mermaid, format=json).
+ * a subgraph "<diagram>-<subgraph id>"; the node ids are the server's (/api/scene?f=mermaid, ids).
  * @param {Element} g
  */
 function sceneId(g) {

@@ -17,11 +17,19 @@ export type Verdict = "blunder" | "problem" | "question" | "fine" | "good" | "br
 /** A box's change: its own status, and totals in its subtree. */
 export interface NodeDiff {
   status: Status;
-  added: number; removed: number;  // changed lines
-  files: number;  // changed files
-  new: number; gone: number;  // entities added / removed
+  totals: { added: number; removed: number; files: number; new: number; gone: number };  // summed over what it stands for and holds
   internal: number;  // changed facts between its own children
-  git?: string; old_path?: string; renamed_to?: string;
+  role?: string;  // of the file or directory it is in: source (or mixed), test, docs, …
+  own?: OwnChange;  // only if the entity itself changed, not just what is inside it
+}
+
+/** What a change did to an entity itself (nolli/logic/transformations/merge/change.py). */
+export interface OwnChange {
+  status: Status | "same";  // same: on both sides, with changed lines
+  git?: string; added?: number; removed?: number; old_path?: string; renamed_to?: string;
+  link?: string | null;  // a file or class: where to see its change
+  hunks?: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[]; more_hunks?: number;  // a file's
+  classes?: { name: string; status: Status | "same"; added: number; removed: number }[];  // a file's classes the change touched
 }
 
 /** One stored fact that changed, with a link to where. */
@@ -30,7 +38,7 @@ export interface FactChange {
   base: number; head: number; path: string | null; line: number | null; link: string | null;
 }
 
-export interface EdgeDiff { status: Status; base: number; head: number; facts: string[]; changes: FactChange[]; more: number }
+export interface EdgeDiff { status: Status; base: number; head: number; facts: string[]; changes: FactChange[]; more: number; role?: string }
 
 /** The diff summary of a scene: the two commits and the change as a whole. */
 export interface SceneDiff {
@@ -39,25 +47,23 @@ export interface SceneDiff {
   drawn: Partial<Record<Status, number>>; changed_entities: number;
 }
 
-/** A numbered review item (GET /api/changes). */
+/** A row of a table of a scene (GET /api/scene?f=table, nolli/logic/formats/table.py): a box (parent) or an edge
+ * (src, dst), with the value of each overlay asked for under its name. */
+export interface TableRow {
+  id: string; kind: string; parent?: string | null; subkind?: string; src?: string; dst?: string;
+  change?: NodeDiff | EdgeDiff | null; label?: Label | null; verdicts?: { starting: ReviewVerdict[] } | null;
+}
+
+/** A change in the review panel's list: a changed box or edge of the changes preset (TableRow). */
 export interface ReviewItem {
-  id: string;
-  category: "component" | "dependency" | "content";
+  id: string;  // the box's or edge's id
+  category: "entity" | "relation";
   status: Status;
   title: string;
-  area: string;
+  area: string;  // the top-level box it is in
   role: string;
-  link: string | null;
-  entities: string[];
-  facts: string[];
   reveal: string[];  // boxes to unfold so it can be seen
-  focus: string[];
-  classes?: (string | { name: string; added: number; removed: number })[];
-  lines?: number;
-  added?: number; removed?: number;
-  base?: number; head?: number; targets?: string[];
-  changes?: FactChange[]; more?: number;  // dependency: the references that changed, with links
-  hunks?: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[]; more_hunks?: number;  // edited file
+  change: NodeDiff | EdgeDiff;
 }
 
 /** A review agent's verdict on a node or edge of the review diagram (review.mmd), resolved. */
@@ -108,11 +114,6 @@ export interface Label {
 /** The review's verdicts that land on a box or edge (nolli/review/verdicts.py). */
 export interface Verdicts { verdicts: string[]; verdict: Verdict | null }
 
-/** The numbered changes a box or edge shows (nolli/logic/transformations/merge/items.py). */
-export interface Items {
-  items: string[];  // ids of the numbered changes shown on it (C1, C2, …)
-}
-
 /** What a review shows on a box or edge (nolli/review/card.py). */
 export interface Review {
   card: Info;  // the card's second part, under a line: what the change did to it, and the verdicts on it
@@ -122,7 +123,6 @@ interface Overlays {
   label: Label;
   hover: { text: Info };
   change?: NodeDiff | null;  // review mode only
-  items?: Items;
   verdicts?: Verdicts;
   review?: Review;
 }
@@ -167,7 +167,6 @@ export interface SceneEdge {
   projection: EdgeProjection;
   hover?: { text: Info };
   change?: EdgeDiff | null;  // review mode only
-  items?: Items;
   verdicts?: Verdicts;
   review?: Review;
 }
@@ -190,7 +189,7 @@ export interface Scene {
   groups: { id: string; namespace: string; name: string; size: number; shown: boolean }[];  // root groups with children, for the Show filter
   roles: { id: string; files: number; dirs: number }[];  // files and directories per role, for the Show filter
   residue: string[];
-  stats: { nodes: number; edges: number; ms: { load: number; scene: number; roundtrip?: number } };
+  stats: { nodes: number; edges: number; ms?: { load: number; scene: number; roundtrip: number } };  // ms: added by the viewer, from Server-Timing
   dataset: { key: string; repo: string | null; commit: string | null; files: number | null; entities: number; relations: number };
   url?: string;  // added by the viewer: the request that produced it
   diff?: SceneDiff;  // a diff dataset: the review mode

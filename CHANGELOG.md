@@ -6,6 +6,42 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **One scene endpoint, many formats** (`nolli/server/serve.py`, `nolli/logic/formats/formatters.py`):
+  `GET /api/scene?k=…&f=<format>&<projection>&<options>` renders a model's scene with a formatter,
+  a function from a scene to a JSON body. The formats are `viewer` (the default, as before),
+  `table` (new: one row per drawn box or edge with the values of the overlays in `overlays`;
+  `required_overlay` keeps only the elements that overlay has a value for), `mermaid`
+  (`{mermaid, ids}`; `fade=false` instead of `nodim=1`), `brief` (`{brief}`) and `report`.
+  `p=none` asks for the scene unprojected.
+  - The request is typed (`FormatSceneRequest`: the projection's parameters plus each formatter's
+    options model, `nolli/logic/formats/options.py`). A parameter of the wrong type or one it does
+    not know is answered 422, saying which in `error`.
+  - `/api/mermaid` and `/api/brief` are gone. The viewer's "review.md" saves the brief as a file.
+  - The timings are in a `Server-Timing` header instead of the viewer JSON's `stats.ms`.
+- **The list of changes is a table of the changes preset; the numbered changes are gone**
+  (`nolli/logic/transformations/merge/presets.py`, `viewer/js/review.js`). The review panel lists the
+  changed entities and relations the changes preset draws
+  (`f=table&required_overlay=change&overlays=change&p=changes`), grouped as entities and
+  relations, each named by its id instead of C1, C2, … (`item=` in the viewer's link too). It
+  leaves out an entity that changed only inside (its change has no `own`). Its verdicts are a table of the change itself
+  (`f=table&required_overlay=verdicts&overlays=verdicts&p=none`).
+  - `/api/changes`, the `items` overlay (`merge.items`: `ChangeItems`, `list_changes`) and the C-ids
+    are gone. `format_name`, `find_box` and `list_ancestors_to_unfold` moved to `merge.reading`;
+    `Changes` and `PRESETS` to `merge.presets`.
+  - The `change` overlay has a module of its own, `merge/change.py`, whose class docstring says
+    what its values hold. A drawn node's value keeps apart what the change did to the entity
+    itself (`own`: its status, `git`, lines, renames, and for a file or class a `link`, a file's
+    `hunks` with links and the `classes` it changed) from the sums over what it holds (`totals`,
+    no longer also copied to the top level). It has a `role` too, as does a drawn edge's.
+  - On the change itself the `verdicts` overlay describes each verdict (`edge`, `reveal`, `label`).
+  - The changes preset unfolds towards every change in the roles shown (`r=`), not only those in
+    source code, and draws a dependency the way the projection does: changes between modules
+    bundled into one edge to an unfolded box are one row.
+  - A hover card counts the verdicts from inside a box without the number of changes there, and
+    says entities for what changed inside it ("Inside: 3 new entities") instead of parts.
+  - `changes.json` beside a change's dataset is that table.
+  - The `brief`, `viewer` and `report` formatters say where they read the model a projection was
+    drawn from; `formatters.source_of` is gone.
 - **More HTTP calls are read from TypeScript and JavaScript** (`nolli/logic/extractors/typescript/fetch.py`):
   a URL held in a local `const` (`const url = "/api/scene?" + query(); fetch(url)`), returned by a
   function of the same file (`showMermaid(scene, mermaidURL())`, through a helper), and a

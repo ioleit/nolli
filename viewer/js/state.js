@@ -8,7 +8,7 @@
  *             utilities: number | null, maxLines: number | null, side: "both" | "base" | "head" }} SceneQuery
  *   preset: the cut is the preset's (expanded is then what the server resolved it to); null: expanded as clicked
  * @typedef {SceneQuery & { key: string | null, theme: string, view: View, item: string | null, dim: boolean }} ViewState
- *   item: the review item last gone to ("C3"); dim: fade what did not change (diff datasets)
+ *   item: the change or verdict last gone to (a box's or edge's id, or "V3"); dim: fade what did not change (diff datasets)
  */
 
 // roles / groups / budget / utilities null: let the server choose (roles, groups, threshold)
@@ -23,7 +23,7 @@ export const VIEWS = ["interactive", "mermaid", "json"];
 export const PRESETS = ["default", "folded", "changes", "unfolded"];
 export const ALL_ROLES = ["source", "mixed", "test", "docs", "config", "markup", "data", "asset", "other"];
 
-// the /api/scene parameters (nolli/server/serve.py parse_spec)
+// the /api/scene parameters of a projection (nolli/server/serve.py ProjectionParams)
 export function query() {
   const p = new URLSearchParams();
   p.set("k", state.key || "");

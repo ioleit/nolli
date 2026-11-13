@@ -222,6 +222,76 @@ def test_a_targets_page_builds_it_then_shows_it(served, src):
     assert get(f"{url}/api/scene?k={quote('x@')}")[0] == 404  # no model's key
 
 
+def build_change(url: str, src) -> Repo:
+    """Build the change ``...cache`` through its page and return its key."""
+    _r, _tip, base, head = src
+    get(f"{url}/?t={quote('...cache')}")
+    key = Repo(str(src[0].resolve())).make_change(base, head)
+    deadline = time.time() + 60
+    while json.loads(get(f"{url}/api/job?j={quote(key.format_key())}")[1])["state"] not in ("done", "error") and time.time() < deadline:
+        time.sleep(0.1)
+    return key
+
+
+def ask(url: str, key, query: str = "") -> tuple[int, dict]:
+    status, body = get(f"{url}/api/scene?k={quote(key.format_key())}{'&' if query else ''}{query}")
+    return status, json.loads(body)
+
+
+def test_a_scene_comes_in_every_format(served, src):
+    url, _ = served
+    change = build_change(url, src)
+    commit = Repo(str(src[0].resolve())).make_commit(src[2])
+    for key in (change, commit):
+        status, sc = ask(url, key)
+        assert status == 200 and sc["nodes"] and sc["dataset"]["key"] == key.format_key()  # f=viewer, the default
+        status, mmd = ask(url, key, "f=mermaid")
+        assert status == 200 and mmd["mermaid"].startswith("flowchart") and mmd["ids"]
+        status, rep = ask(url, key, "f=report")
+        assert status == 200 and rep["summary"]["entities"]
+        assert ask(url, key, "f=report&p=none")[0] == 400  # a report describes a projection
+        status, all_rows = ask(url, key, "f=table&overlays=label")
+        assert status == 200 and len(all_rows["rows"]) == len(sc["nodes"]) + len(sc["edges"])
+        assert all("label" in r for r in all_rows["rows"])
+    status, brief = ask(url, change, "f=brief&p=none")
+    assert status == 200 and brief["brief"].startswith("# Architecture review")
+    assert ask(url, commit, "f=brief&p=none")[0] == 400  # not a change
+
+
+def test_a_table_keeps_the_rows_an_overlay_has_a_value_for(served, src):
+    url, _ = served
+    change = build_change(url, src)
+    status, t = ask(url, change, "f=table&p=changes&required_overlay=change&overlays=label")
+    assert status == 200 and t["overlays"] == ["label"] and t["rows"]
+    assert all("change" not in r and "label" in r for r in t["rows"])  # it picks the rows, it is no column
+    _, full = ask(url, change, "f=table&p=changes&overlays=change,label")
+    changed = {r["id"] for r in full["rows"] if r["change"] is not None}
+    assert {r["id"] for r in t["rows"]} == changed and len(full["rows"]) > len(changed)
+    _, repeated = ask(url, change, "f=table&p=changes&overlays=change&overlays=label")
+    assert repeated["overlays"] == ["change", "label"]
+    assert ask(url, change, "f=table&overlays=nope")[0] == 400  # no such overlay
+
+
+def test_a_scene_request_says_what_is_wrong_with_it(served, src):
+    url, _ = served
+    change = build_change(url, src)
+    for query, field in (("f=nope", "f"), ("f=mermaid&fade=maybe", "fade"), ("colour=red", "colour"), ("b=many", "b")):
+        status, body = ask(url, change, query)
+        assert status == 422 and body["error"].startswith(field + ":"), (query, body)
+    status, plain = ask(url, change, "f=mermaid&fade=false")
+    assert status == 200 and plain["mermaid"] != ask(url, change, "f=mermaid")[1]["mermaid"]  # unchanged boxes not faded
+    assert ask(url, change, "fade=false")[0] == 200  # another format's option is ignored
+    status, raw = ask(url, change, "p=none")
+    assert status == 200 and raw["state"] is None  # not projected
+    assert get(f"{url}/api/scene")[0] == 404  # no model named
+
+
+def test_the_scene_request_names_each_parameter_once():
+    from nolli.server.serve import FormatSceneRequest
+    names = [n for m in FormatSceneRequest.__bases__ for n in m.model_fields] + ["k", "f"]
+    assert len(names) == len(set(names)), names
+
+
 def test_pages_that_show_nothing(served, tmp_path):
     url, _ = served
     status, body = get(f"{url}/?t=nope")
@@ -239,3 +309,58 @@ def test_a_server_without_a_repository_shows_githubs_paths_only(tmp_path, src):
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+# ---------- golden answers on the browser tests' fixtures ----------
+#
+# Each case asks the server one question on a fixture (tests/fixtures/: ledger-review, tasks) and
+# compares the whole JSON answer with tests/golden/<case>.json. After a deliberate change, remake
+# them with NOLLI_UPDATE_GOLDEN=1 pytest tests/test_server.py -k golden, and read the diff before
+# committing it. To add a case, add a line to GOLDEN.
+
+GOLDEN_DIR = Path(__file__).parent / "golden"
+ALL_ROLES = "source,mixed,test,docs,config,markup,data,asset,other"
+GOLDEN = [  # (case, fixture, the /api/scene query after k=)
+    ("ledger-review-changes", "ledger-review", f"f=table&required_overlay=change&overlays=change&p=changes&r={ALL_ROLES}"),
+    ("ledger-review-verdicts", "ledger-review", "f=table&required_overlay=verdicts&overlays=verdicts&p=none"),
+]
+
+
+@pytest.fixture(scope="module")
+def fixtures_served(tmp_path_factory):
+    """Serve the browser tests' fixtures as serve_fixture.py does: build each dataset, import it
+    into a store and serve the viewer on it. Yield the server's URL, each fixture's model key by
+    its dataset's name, and the directory everything was built in."""
+    import sys
+
+    from nolli.cli import import_dataset
+    from nolli.logic.formats.dataset import read_key
+
+    sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
+    import nav_repo
+    import review_repo
+
+    tmp = tmp_path_factory.mktemp("fixtures")
+    stores = RepoStoreProvider(tmp / "store")
+    keys = {}
+    for ds in (review_repo.build(tmp), nav_repo.build(tmp)):
+        keys[ds.name] = import_dataset(stores.open(read_key(ds).repo), ds).format_key()
+    srv = make_local_server(tmp / "store", None, port=0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", keys, tmp
+    srv.shutdown()
+    srv.server_close()
+
+
+@pytest.mark.parametrize(("case", "fixture", "query"), GOLDEN, ids=[c for c, _, _ in GOLDEN])
+def test_golden(fixtures_served, case, fixture, query):
+    url, keys, tmp = fixtures_served
+    status, body = get(f"{url}/api/scene?k={quote(keys[fixture])}&{query}")
+    assert status == 200, body
+    answer = json.dumps(json.loads(body.replace(str(tmp.resolve()), "<tmp>").replace(str(tmp), "<tmp>")), indent=1, sort_keys=True) + "\n"
+    golden = GOLDEN_DIR / f"{case}.json"
+    if os.environ.get("NOLLI_UPDATE_GOLDEN"):
+        GOLDEN_DIR.mkdir(exist_ok=True)
+        golden.write_text(answer)
+    assert golden.exists(), f"no {golden.name}: make it with NOLLI_UPDATE_GOLDEN=1 pytest tests/test_server.py -k golden"
+    assert answer == golden.read_text(), f"{case} differs from {golden.name}; if that is intended, remake it with NOLLI_UPDATE_GOLDEN=1"

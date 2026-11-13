@@ -22,6 +22,7 @@ from nolli.logic import transformations
 from nolli.logic.extractors import facts
 from nolli.logic.sources import LocalRepository, Sources, git, github
 from nolli.logic.transformations import merge
+from nolli.logic.transformations.merge.change import Change
 from nolli.model import vocabulary
 from nolli.model.keys import ChangeKey, CommitKey, ModelKey, Repo, StringKey
 from nolli.model.model import Key, Model
@@ -242,12 +243,9 @@ def _make_kept_overlays(maps: MapStore, key: ModelKey) -> list[Overlay]:
 
 def _make_change_overlays(maps: MapStore) -> list[Overlay]:
     """Make the overlays that compute what a change says about itself from its sides: what changed
-    (``change``) and its numbered changes, with which of them each node and edge is about
-    (``items``). Their values are kept with the change at diff time (``precompute_scene``) and
+    (``change``). Its values are kept with the change at diff time (``precompute_scene``) and
     read back from there (``_open_change_scene``)."""
-    from nolli.logic.transformations.merge.items import ChangeItems
-
-    return [merge.Change(maps.open_maps("content")), ChangeItems()]
+    return [Change(maps.open_maps("content"))]
 
 
 def _describe_scene_meta(base: Model, head: Model, about: dict, content: Mapping[Key, dict]) -> dict:
@@ -260,7 +258,7 @@ def _make_overlays(maps: MapStore) -> list[Overlay]:
     from nolli.logic.formats.descriptions.label import Label
 
     derived = [maps.caching_overlay(o) for o in _make_derived_overlays()]
-    return [*derived, merge.Change(maps.open_maps("content")), Label(), Hover()]
+    return [*derived, Change(maps.open_maps("content")), Label(), Hover()]
 
 
 def _open_scene(model: Model, maps: MapStore) -> Scene:

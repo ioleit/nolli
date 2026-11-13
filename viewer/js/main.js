@@ -6,7 +6,7 @@
 //   draw.js     scene + layout -> SVG, with a handle per node to move and fade it
 //   transition.js, animate.js: the step between two pictures (plan, then play)
 //   raw.js      scene -> the JSON tab;  mermaid.js: scene -> the Mermaid tab (nolli/mermaid.py)
-//   review.js   diff datasets: the review panel, items, details, verdicts
+//   review.js   diff datasets: the review panel, its changes (a table of the changes preset), details, verdicts
 //   sidebar.js, help.js (explanations on hover), panzoom.js, tip.js, dom.js
 //   stability.js, bench.js (bench.html): how well layouts keep the picture across a step
 // Types: types/nolli.d.ts, checked with `npm run check`.
@@ -25,7 +25,7 @@ import { hideMermaid, onMermaidToggle, showMermaid } from "./mermaid.js";
 import "./help.js";
 import "./nav.js";
 import { applyTheme, chooseTheme, initialTheme, themeOptions } from "./theme.js";
-import { itemById, loadItems, renderPanel, scrollToCurrent, showPanel, visibleItems } from "./review.js";
+import { fetchVerdicts, itemById, loadItems, renderPanel, scrollToCurrent, showPanel, standIns, visibleItems } from "./review.js";
 
 /** @typedef {import("../types/nolli").Scene} Scene @typedef {import("../types/nolli").Laid} Laid */
 
@@ -62,9 +62,23 @@ let shown = null;
 let clicked = null;
 /** after the next drawing, centre on the item gone to and flash it */
 let focusNext = false;
-/** @type {string | null} the dataset whose review items are loaded */
+/** @type {string | null} the dataset whose changes and verdicts the review panel has loaded */
 let itemsFor = null;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
+/**
+ * How long the server took: Server-Timing's load, and its projecting and formatting together as scene.
+ * @param {Response} res @returns {{ load: number, scene: number }}
+ */
+function readTimings(res) {
+  /** @type {Record<string, number>} */
+  const ms = {};
+  for (const part of (res.headers.get("Server-Timing") || "").split(",")) {
+    const m = /^\s*(\w+);dur=([\d.]+)/.exec(part);
+    if (m) ms[m[1]] = +m[2];
+  }
+  return { load: ms.load || 0, scene: (ms.project || 0) + (ms.format || 0) };
+}
 
 async function refresh(keepZoom = false) {
   const my = ++seq, url = "/api/scene?" + query(), t0 = performance.now();
@@ -78,7 +92,7 @@ async function refresh(keepZoom = false) {
   if (my !== seq) return;  // a newer request is under way
   document.body.classList.remove("busy");
   if (!res.ok) { showError(body.error || res.status); return; }
-  body.stats.ms.roundtrip = Math.round(performance.now() - t0);
+  body.stats.ms = { ...readTimings(res), roundtrip: Math.round(performance.now() - t0) };
   /** @type {Scene} */
   const sc = body; sc.url = url; scene = sc;
   // adopt the server's normalised state (default cut resolved, folded descendants dropped)
@@ -127,8 +141,8 @@ async function show(keepZoom = false) {
   else await render(keepZoom);
 }
 
-/** /api/mermaid for the scene state shown, faded as the drawing is. */
-const mermaidURL = () => "/api/mermaid?" + query() + (scene?.diff && !state.dim ? "&nodim=1" : "");
+/** The scene state shown as Mermaid (/api/scene?f=mermaid), faded as the drawing is. */
+const mermaidURL = () => "/api/scene?f=mermaid&" + query() + (scene?.diff && !state.dim ? "&fade=false" : "");
 
 // ---------- review: going to an item ----------
 
@@ -141,12 +155,18 @@ const reviewHandlers = {
   reload: () => { itemsFor = null; refresh(true); },
 };
 
-/** The drawn boxes and edges that show a change or carry a verdict (scene.nodes[].items.items / .verdicts.verdicts,
- * the same on edges). @param {string} id */
+/** The drawn boxes and edges that show a change or carry a verdict. A verdict is on those whose
+ * scene.nodes[].verdicts.verdicts (the same on edges) name it; a change is on its own box or edge, else on the
+ * boxes the picture draws for it (standIns). @param {string} id */
 function targets(id) {
   if (!scene) return { ids: [], keys: [] };
-  const on = (/** @type {{ items?: { items: string[] }, verdicts?: { verdicts: string[] } }} */ x) => (id.startsWith("V") ? x.verdicts?.verdicts : x.items?.items)?.includes(id);
-  return { ids: scene.nodes.filter(on).map(n => n.id), keys: scene.edges.filter(on).map(e => e.key) };
+  if (/^V\d+$/.test(id)) {
+    const on = (/** @type {{ verdicts?: { verdicts: string[] } }} */ x) => x.verdicts?.verdicts?.includes(id);
+    return { ids: scene.nodes.filter(on).map(n => n.id), keys: scene.edges.filter(on).map(e => e.key) };
+  }
+  if (scene.edges.some(e => e.key === id)) return { ids: [], keys: [id] };
+  if (scene.nodes.some(n => n.id === id)) return { ids: [id], keys: [] };
+  return { ids: standIns(id, new Set(scene.nodes.map(n => n.id))), keys: [] };
 }
 
 /** Go to an item: unfold what it needs, then (once drawn) centre on it and flash it. @param {string} id */
@@ -154,7 +174,7 @@ function jump(id) {
   const it = itemById(id);
   if (!it) return;
   state.item = id;
-  const have = new Set(state.expanded || []);
+  const have = new Set(state.expanded || scene?.state.expanded || []);
   const missing = it.reveal.filter(x => !have.has(x));
   focusNext = true;
   if (missing.length) { state.expanded = [...have, ...missing]; state.preset = null; refresh(true); return; }
@@ -203,7 +223,7 @@ function pinItem(id) {
   const { ids, keys } = targets(id);
   const root = byId("root");
   const edge = scene.edges.find(e => e.key === keys[0]), node = scene.nodes.find(n => n.id === ids[0]);
-  const useEdge = edge && ("edge" in it ? it.edge : it.category === "dependency") || !node;
+  const useEdge = edge && ("edge" in it ? it.edge : it.category === "relation") || !node;
   const target = useEdge ? edge && root.querySelector(`.edge[data-key="${CSS.escape(edge.key)}"]`) : root.querySelector(`.node[data-id="${CSS.escape(node.id)}"]`);
   const shown = useEdge ? edge : node;
   if (target && shown) pinTip(shown, target);
@@ -260,7 +280,7 @@ async function render(keepZoom = false) {
   fitted = true;
   pointAtItem(keepZoom && !!prev && !reducedMotion.matches);
   const s = byId("status"); s.style.color = "";
-  s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms.scene} ms, round trip ${scene.stats.ms.roundtrip} ms`;
+  s.textContent = `${scene.stats.nodes} nodes · ${scene.stats.edges} edges · budget ${state.budget} · scene ${scene.stats.ms?.scene} ms, round trip ${scene.stats.ms?.roundtrip} ms`;
 }
 
 function showRawPane() { if (scene) showRaw(scene); byId("status").textContent = ""; }
@@ -288,8 +308,7 @@ themeOptions();
  */
 async function enter(item = null) {
   loadingDataset();
-  const res = state.expanded === null && state.preset === "default" && !item ? await fetch("/api/changes?k=" + encodeURIComponent(state.key || "")) : null;
-  const first = res && res.ok ? (await res.json()).verdicts.length > 0 : false;
+  const first = state.expanded === null && state.preset === "default" && !item ? (await fetchVerdicts(state.key || "")).length > 0 : false;
   if (first) state.preset = "folded";
   await refresh();
   const loaded = /** @type {Scene | null} */ (scene);  // set by refresh(); TypeScript cannot see that through the await

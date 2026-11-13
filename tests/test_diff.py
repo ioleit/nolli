@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import draw, find_node, open_change
+from helpers import draw, find_node, list_changes, open_change
 
 BASE = {
     "app/__init__.py": "",
@@ -108,7 +108,6 @@ def test_repository_untouched(repo):
 def test_scene_review(repo):
     from nolli.logic.sources import LocalRepository
     from nolli.logic.transformations.merge import Links
-    from nolli.logic.transformations.merge.items import list_changes
 
     path, base, head = repo
     git(path, "remote", "add", "origin", "git@github.com:acme/demo.git")
@@ -117,7 +116,10 @@ def test_scene_review(repo):
     d = draw(sc, expanded=unfolded)
     nodes = {n["id"]: n for n in d["nodes"]}
     assert nodes["repo:app/store.py#Index"]["change"]["status"] == "added"
-    assert nodes["repo:app/store.py#Store"]["change"] == nodes["repo:app/store.py#Store"]["change"] | {"status": "changed", "added": 1, "removed": 1}
+    store_class = nodes["repo:app/store.py#Store"]["change"]
+    assert store_class["status"] == "changed" and store_class["own"] == store_class["own"] | {"status": "same", "added": 1, "removed": 1}
+    assert store_class["totals"]["added"] == 0  # a class's own lines count for its file
+    assert "own" not in nodes["repo:app"]["change"]  # changed only inside
     assert nodes["repo:app/old.py"]["change"]["status"] == "removed"
     assert "change" not in nodes["repo:app/store.py#Cache"]
     edges = {(e["src"], e["dst"]): e for e in d["edges"]}
@@ -130,32 +132,33 @@ def test_scene_review(repo):
     assert "repo:app/store.py#Index" in ids("head") and "repo:app/old.py" not in ids("head")
     # the default view unfolds towards the change
     assert "repo:app" in draw(sc)["state"]["expanded"]
-    # the numbered changes: an edited file with hunks and links into the PR's files view
-    items = list_changes(sc)
-    store = next(it for it in items if it["category"] == "content" and it["focus"] == ["repo:app/store.py"])
+    # the list of changes: an edited file with hunks and links into the PR's files view
+    store = next(r for r in list_changes(sc) if r["id"] == "repo:app/store.py")["change"]["own"]
+    assert store["git"] == "M"
     assert store["link"] == f"https://github.com/acme/demo/pull/7/files#{Links.anchor('app/store.py')}"
     assert store["hunks"] and store["hunks"][0]["link"].startswith(store["link"] + "R")
-    assert any(c["name"] == "Store" for c in store["classes"])
+    assert {c["name"]: c["status"] for c in store["classes"]} == {"Index": "added", "Store": "same"}
 
 
-def test_items_verdicts_and_export(repo):
+def test_changes_verdicts_and_export(repo):
     import json
 
     from nolli.review.brief import make_brief
-    from nolli.logic.transformations.merge.items import _find_review_cut, list_changes
+    from nolli.logic.transformations.merge.presets import _find_changes_cut
     from nolli.review.verdicts import find_diagram_ids, read_verdicts
 
     path, base, head = repo
     sc = open_change(path, base, head)
     assert sc.find_element("repo:").get("files")["name"] == path.name
-    items = list_changes(sc)
-    by_title = {it["title"]: it for it in items}
-    assert [it["id"] for it in items] == [f"C{i}" for i in range(1, len(items) + 1)]
-    assert "new class app/store.py#Index" in by_title
-    dep = by_title["app/api.py → app/store.py: dependency changed"]
-    assert any(f.endswith("repo:app/store.py#Index|ref") for f in dep["facts"]) and dep["reveal"] == ["repo:", "repo:app"]
-    assert any(it["category"] == "content" and it["title"].startswith("edited app/store.py") for it in items)
-    assert "repo:app" in _find_review_cut(sc)
+    # the changes preset draws every change as a box or edge of its own, and lists them
+    rows = {r["id"]: r for r in list_changes(sc)}
+    assert rows["repo:app/store.py#Index"]["change"]["status"] == "added" and rows["repo:app/store.py#Index"]["parent"] == "repo:app/store.py"
+    assert rows["repo:app/old.py"]["change"]["status"] == "removed" and rows["repo:app/api.py"]["change"]["own"]["git"] == "M"
+    dep = next(r for r in rows.values() if r.get("src") == "repo:app/api.py")
+    assert dep["dst"] == "repo:app/store.py#Index" and dep["change"]["status"] == "added"
+    assert any(f.endswith("repo:app/store.py#Index|ref") for f in dep["change"]["facts"])
+    assert all(r["change"] for r in rows.values()) and rows["repo:app"]["label"]["text"] == "app"
+    assert {"repo:", "repo:app", "repo:app/store.py"} <= _find_changes_cut(sc, set())
     # verdicts name the diagram's nodes and edges; each lands on what stands for it in the view
     ids = find_diagram_ids(sc)
     v = read_verdicts(json.dumps([
@@ -167,6 +170,15 @@ def test_items_verdicts_and_export(repo):
     assert [x["id"] for x in v] == ["V1", "V2", "V3", "V4"]
     assert v[3]["ends"] == ["repo:app", "repo:app/store.py"] and v[2]["ends"] == []
     keep(sc, v)
+    # the review panel lists them from a table of the change itself, each described
+    from nolli.logic.formats import table
+    from nolli.logic.formats.options import TableFormatOptions
+
+    listed = [x for r in table.export_table(sc, TableFormatOptions(overlays=["verdicts"], required_overlay="verdicts"))["rows"]
+              for x in r["verdicts"]["starting"]]
+    assert sorted(x["id"] for x in listed) == ["V1", "V2", "V4"]  # V3 has no target, so it is not kept
+    first = next(x for x in listed if x["id"] == "V1")
+    assert first["edge"] and first["label"] == "app/api.py → app/store.py" and first["reveal"] == ["repo:", "repo:app"]
     d = draw(sc, expanded=["repo:", "repo:app"])
     verdicts = lambda x: x.get("verdicts") or {}  # noqa: E731
     marked = [e for e in d["edges"] if "V1" in verdicts(e).get("verdicts", [])]
@@ -196,6 +208,6 @@ def test_rolled_up_verdicts_are_counted():
     assert _describe_box(None, [v(1, "fine")], [v(2, "problem")]) == "[problem](verdict:problem) reason 2\n\n[fine](verdict:fine) reason 1"
     # many from inside: one line counting them, like the review panel; the box's own in full
     inside = [v(2, "fine"), v(3, "blunder"), v(4, "fine"), v(5, "fine")]
-    lines = _describe_box(None, [v(1, "question")], inside, items=13, kind="directory").split("\n\n")
-    assert lines == ["`13 changes` in this directory · verdicts: [blunder](verdict:blunder) `1` [fine](verdict:fine) `3`",
+    lines = _describe_box(None, [v(1, "question")], inside, kind="directory").split("\n\n")
+    assert lines == ["Verdicts in this directory: [blunder](verdict:blunder) `1` [fine](verdict:fine) `3`",
                      "[question](verdict:question) reason 1"]

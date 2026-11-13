@@ -16,8 +16,12 @@ changes, re-extracted every run), so a changed format is never read by the other
 
 ``--diff REPO BASE HEAD`` (repeatable) adds a change dataset, made by each version's own
 ``nolli diff``; the repository is cloned with its history. ``--compare`` asks both versions
-the presets and Mermaid, and for a change also ``/api/changes`` and the brief, and prints each
-field that differs: how often, and one example. The viewer JSON of format 1 (overlays under their names) is read back into the
+the presets and Mermaid, and for a change also its list of changes, its verdicts and the brief,
+and prints each field that differs: how often, and one example. Each version is asked the way
+it answers: ``/api/scene?f=mermaid``, ``f=brief`` and ``f=table`` after 0.9, ``/api/mermaid``,
+``/api/brief`` and ``/api/changes`` before. A version without numbered changes lists the
+changed nodes and edges of the changes preset instead, so when only one version numbers them
+the two lists are counted, not compared. The viewer JSON of format 1 (overlays under their names) is read back into the
 older flat fields first (``projection.*``, ``label.text`` as ``label``, ``hover.text`` as
 ``info``, ``change`` as ``diff``, ``review.card`` as ``review``, ``items.items`` (``review.items``
 until 0.9) as ``items``,
@@ -205,6 +209,37 @@ class Server:
             return {"error": "timed out"}
         return json.loads(body) if as_json else body.decode()
 
+    def ask_text(self, fmt: str, field: str, old_path: str, query: dict) -> str | dict:
+        """Ask for a text format: ``/api/scene?f=<fmt>`` and its ``field`` where this version has
+        formats, else ``old_path``. Return the text, or {"error": ...}."""
+        got = self.ask("/api/scene", {"f": fmt, **query})
+        if isinstance(got, dict) and field in got:
+            return got[field]
+        return self.ask(old_path, query, as_json=False)
+
+    def ask_changes(self) -> tuple[str, list[dict] | dict]:
+        """Ask for a change's list of changes. Return ``("table", rows)``, the changed nodes and
+        edges of the changes preset, where this version has tables, else ``("items", items)``,
+        its numbered changes from ``/api/changes``, or ``("error", {...})``."""
+        got = self.ask("/api/scene", {"f": "table", "required_overlay": "change", "overlays": "change", "p": "changes"})
+        if "rows" in got:
+            return "table", got["rows"]
+        old = self.ask("/api/changes", {})
+        return ("items", old["items"]) if "items" in old else ("error", old)
+
+    def ask_verdicts(self) -> list[dict] | dict:
+        """Ask for a change's verdicts, in their order: from a table of the change where this
+        version has tables, else from ``/api/changes``."""
+        got = self.ask("/api/scene", {"f": "table", "required_overlay": "verdicts", "overlays": "verdicts", "p": "none"})
+        if "rows" in got:
+            vs = [v for r in got["rows"] for v in (r.get("verdicts") or {}).get("starting", [])]
+        else:
+            old = self.ask("/api/changes", {})
+            if "verdicts" not in old:
+                return old
+            vs = old["verdicts"]
+        return sorted(vs, key=lambda v: int(v["id"][1:]))
+
     def fetch_scene(self, query: dict) -> tuple[dict, float]:
         t0 = time.perf_counter()
         body = self.get("/api/scene?" + urllib.parse.urlencode({**self.names, **query}))
@@ -368,11 +403,20 @@ def _compare(servers: dict[str, Server], ds: Dataset) -> list[str]:
     for p in presets:
         out += _report_json(f"`/api/scene p={p}`", _canonical_scene(a.ask("/api/scene", {"p": p})),
                             _canonical_scene(b.ask("/api/scene", {"p": p})), labels)
-    out += _report_text("`/api/mermaid`", a.ask("/api/mermaid", {}, as_json=False),
-                        b.ask("/api/mermaid", {}, as_json=False), labels)
+    out += _report_text("Mermaid", a.ask_text("mermaid", "mermaid", "/api/mermaid", {}),
+                        b.ask_text("mermaid", "mermaid", "/api/mermaid", {}), labels)
     if ds.is_change:
-        out += _report_json("`/api/changes`", a.ask("/api/changes", {}), b.ask("/api/changes", {}), labels)
-        out += _report_text("`/api/brief`", a.ask("/api/brief", {}, as_json=False), b.ask("/api/brief", {}, as_json=False), labels)
+        (kind_a, list_a), (kind_b, list_b) = a.ask_changes(), b.ask_changes()
+        if kind_a == kind_b:
+            keyed = (lambda rows: {r["id"]: r for r in rows}) if kind_a == "table" else (lambda rows: rows)
+            out += _report_json(f"the list of changes ({kind_a})", keyed(list_a), keyed(list_b), labels)
+        else:
+            count = lambda kind, got: f"{len(got)} {'changed nodes and edges' if kind == 'table' else kind}"  # noqa: E731
+            out.append(f"- the list of changes: not compared, {labels[0]} has {count(kind_a, list_a)}, "
+                       f"{labels[1]} {count(kind_b, list_b)}")
+        out += _report_json("the verdicts", a.ask_verdicts(), b.ask_verdicts(), labels)
+        out += _report_text("the brief", a.ask_text("brief", "brief", "/api/brief", {"p": "none"}),
+                            b.ask_text("brief", "brief", "/api/brief", {"p": "none"}), labels)
     return out + [""]
 
 

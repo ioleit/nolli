@@ -134,7 +134,7 @@ def test_projection_specs_have_one_text_form():
     """A spec is written as the viewer's URL parameters, lists sorted and defaults left out, and
     read back to the same spec; so the key of a projection is known before projecting."""
     from nolli.logic.transformations import projection
-    from nolli.logic.transformations.merge import items
+    from nolli.logic.transformations.merge import presets as items
     from nolli.model.keys import ModelKey, StringKey
     from nolli.server.serve import parse_spec
 

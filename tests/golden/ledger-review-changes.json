@@ -1,0 +1,1377 @@
+{
+ "overlays": [
+  "change"
+ ],
+ "rows": [
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 0,
+     "files": 0,
+     "gone": 3,
+     "new": 2,
+     "removed": 0
+    }
+   },
+   "id": "api:",
+   "kind": "group",
+   "parent": null
+  },
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 0,
+     "files": 0,
+     "gone": 3,
+     "new": 2,
+     "removed": 0
+    }
+   },
+   "id": "api:http:ledger/api/app.py:app",
+   "kind": "api",
+   "parent": "api:"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "status": "added"
+    },
+    "role": "source",
+    "status": "added",
+    "totals": {
+     "added": 0,
+     "files": 0,
+     "gone": 0,
+     "new": 1,
+     "removed": 0
+    }
+   },
+   "id": "api:http:ledger/api/app.py:app/alerts/overdue#GET",
+   "kind": "endpoint",
+   "parent": "api:http:ledger/api/app.py:app"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "status": "removed"
+    },
+    "role": "source",
+    "status": "removed",
+    "totals": {
+     "added": 0,
+     "files": 0,
+     "gone": 3,
+     "new": 0,
+     "removed": 0
+    }
+   },
+   "id": "api:http:ledger/api/app.py:app/customers/{}",
+   "kind": "resource",
+   "parent": "api:http:ledger/api/app.py:app"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "status": "removed"
+    },
+    "role": "source",
+    "status": "removed",
+    "totals": {
+     "added": 0,
+     "files": 0,
+     "gone": 1,
+     "new": 0,
+     "removed": 0
+    }
+   },
+   "id": "api:http:ledger/api/app.py:app/customers/{}/balance#GET",
+   "kind": "endpoint",
+   "parent": "api:http:ledger/api/app.py:app/customers/{}"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "status": "removed"
+    },
+    "role": "source",
+    "status": "removed",
+    "totals": {
+     "added": 0,
+     "files": 0,
+     "gone": 1,
+     "new": 0,
+     "removed": 0
+    }
+   },
+   "id": "api:http:ledger/api/app.py:app/customers/{}/export#POST",
+   "kind": "endpoint",
+   "parent": "api:http:ledger/api/app.py:app/customers/{}"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "status": "added"
+    },
+    "role": "source",
+    "status": "added",
+    "totals": {
+     "added": 0,
+     "files": 0,
+     "gone": 0,
+     "new": 1,
+     "removed": 0
+    }
+   },
+   "id": "api:http:ledger/api/app.py:app/customers/{}/summary#GET",
+   "kind": "endpoint",
+   "parent": "api:http:ledger/api/app.py:app"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 42,
+     "files": 6,
+     "gone": 1,
+     "new": 4,
+     "removed": 19
+    }
+   },
+   "id": "repo:ledger",
+   "kind": "directory",
+   "parent": null
+  },
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 10,
+     "files": 1,
+     "gone": 0,
+     "new": 0,
+     "removed": 9
+    }
+   },
+   "id": "repo:ledger/api",
+   "kind": "directory",
+   "parent": "repo:ledger"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 10,
+     "classes": [],
+     "git": "M",
+     "hunks": [
+      {
+       "added": 1,
+       "link": null,
+       "new": [
+        3,
+        1
+       ],
+       "old": [
+        2,
+        0
+       ],
+       "removed": 0
+      },
+      {
+       "added": 1,
+       "link": null,
+       "new": [
+        5,
+        1
+       ],
+       "old": [
+        4,
+        1
+       ],
+       "removed": 1
+      },
+      {
+       "added": 2,
+       "link": null,
+       "new": [
+        12,
+        2
+       ],
+       "old": [
+        11,
+        1
+       ],
+       "removed": 1
+      },
+      {
+       "added": 3,
+       "link": null,
+       "new": [
+        16,
+        3
+       ],
+       "old": [
+        14,
+        3
+       ],
+       "removed": 3
+      },
+      {
+       "added": 3,
+       "link": null,
+       "new": [
+        21,
+        3
+       ],
+       "old": [
+        19,
+        4
+       ],
+       "removed": 4
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 9,
+     "status": "same"
+    },
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 10,
+     "files": 1,
+     "gone": 0,
+     "new": 0,
+     "removed": 9
+    }
+   },
+   "id": "repo:ledger/api/routes.py",
+   "kind": "file",
+   "parent": "repo:ledger/api"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 14,
+     "files": 3,
+     "gone": 1,
+     "new": 2,
+     "removed": 10
+    }
+   },
+   "id": "repo:ledger/services",
+   "kind": "directory",
+   "parent": "repo:ledger"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 9,
+     "classes": [
+      {
+       "added": 6,
+       "name": "OverdueAlerts",
+       "removed": 0,
+       "status": "added"
+      }
+     ],
+     "git": "A",
+     "hunks": [
+      {
+       "added": 9,
+       "link": null,
+       "new": [
+        1,
+        9
+       ],
+       "old": [
+        0,
+        0
+       ],
+       "removed": 0
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 0,
+     "status": "added"
+    },
+    "role": "source",
+    "status": "added",
+    "totals": {
+     "added": 9,
+     "files": 1,
+     "gone": 0,
+     "new": 2,
+     "removed": 0
+    }
+   },
+   "id": "repo:ledger/services/alerts.py",
+   "kind": "file",
+   "parent": "repo:ledger/services"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 5,
+     "classes": [
+      {
+       "added": 4,
+       "name": "Billing",
+       "removed": 1,
+       "status": "same"
+      }
+     ],
+     "git": "M",
+     "hunks": [
+      {
+       "added": 1,
+       "link": null,
+       "new": [
+        1,
+        1
+       ],
+       "old": [
+        0,
+        0
+       ],
+       "removed": 0
+      },
+      {
+       "added": 0,
+       "link": null,
+       "new": [
+        2,
+        0
+       ],
+       "old": [
+        2,
+        1
+       ],
+       "removed": 1
+      },
+      {
+       "added": 1,
+       "link": null,
+       "new": [
+        6,
+        1
+       ],
+       "old": [
+        6,
+        1
+       ],
+       "removed": 1
+      },
+      {
+       "added": 3,
+       "link": null,
+       "new": [
+        12,
+        3
+       ],
+       "old": [
+        11,
+        0
+       ],
+       "removed": 0
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 2,
+     "status": "same"
+    },
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 5,
+     "files": 1,
+     "gone": 0,
+     "new": 0,
+     "removed": 2
+    }
+   },
+   "id": "repo:ledger/services/billing.py",
+   "kind": "file",
+   "parent": "repo:ledger/services"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 0,
+     "classes": [],
+     "git": "D",
+     "hunks": [
+      {
+       "added": 0,
+       "link": null,
+       "new": [
+        0,
+        0
+       ],
+       "old": [
+        1,
+        8
+       ],
+       "removed": 8
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 8,
+     "status": "removed"
+    },
+    "role": "source",
+    "status": "removed",
+    "totals": {
+     "added": 0,
+     "files": 1,
+     "gone": 1,
+     "new": 0,
+     "removed": 8
+    }
+   },
+   "id": "repo:ledger/services/legacy_export.py",
+   "kind": "file",
+   "parent": "repo:ledger/services"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 18,
+     "files": 2,
+     "gone": 0,
+     "new": 2,
+     "removed": 0
+    }
+   },
+   "id": "repo:ledger/storage",
+   "kind": "directory",
+   "parent": "repo:ledger"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 14,
+     "classes": [
+      {
+       "added": 11,
+       "name": "CachedInvoices",
+       "removed": 0,
+       "status": "added"
+      }
+     ],
+     "git": "A",
+     "hunks": [
+      {
+       "added": 14,
+       "link": null,
+       "new": [
+        1,
+        14
+       ],
+       "old": [
+        0,
+        0
+       ],
+       "removed": 0
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 0,
+     "status": "added"
+    },
+    "role": "source",
+    "status": "added",
+    "totals": {
+     "added": 14,
+     "files": 1,
+     "gone": 0,
+     "new": 2,
+     "removed": 0
+    }
+   },
+   "id": "repo:ledger/storage/cache.py",
+   "kind": "file",
+   "parent": "repo:ledger/storage"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 4,
+     "classes": [
+      {
+       "added": 3,
+       "name": "Database",
+       "removed": 0,
+       "status": "same"
+      }
+     ],
+     "git": "M",
+     "hunks": [
+      {
+       "added": 1,
+       "link": null,
+       "new": [
+        2,
+        1
+       ],
+       "old": [
+        1,
+        0
+       ],
+       "removed": 0
+      },
+      {
+       "added": 3,
+       "link": null,
+       "new": [
+        11,
+        3
+       ],
+       "old": [
+        9,
+        0
+       ],
+       "removed": 0
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 0,
+     "status": "same"
+    },
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 4,
+     "files": 1,
+     "gone": 0,
+     "new": 0,
+     "removed": 0
+    }
+   },
+   "id": "repo:ledger/storage/db.py",
+   "kind": "file",
+   "parent": "repo:ledger/storage"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 14,
+     "files": 3,
+     "gone": 0,
+     "new": 1,
+     "removed": 8
+    }
+   },
+   "id": "repo:web",
+   "kind": "directory",
+   "parent": null
+  },
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 14,
+     "files": 3,
+     "gone": 0,
+     "new": 1,
+     "removed": 8
+    }
+   },
+   "id": "repo:web/src",
+   "kind": "directory",
+   "parent": "repo:web"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 5,
+     "classes": [],
+     "git": "M",
+     "hunks": [
+      {
+       "added": 3,
+       "link": null,
+       "new": [
+        1,
+        3
+       ],
+       "old": [
+        1,
+        3
+       ],
+       "removed": 3
+      },
+      {
+       "added": 2,
+       "link": null,
+       "new": [
+        6,
+        2
+       ],
+       "old": [
+        6,
+        2
+       ],
+       "removed": 2
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 5,
+     "status": "same"
+    },
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 5,
+     "files": 1,
+     "gone": 0,
+     "new": 0,
+     "removed": 5
+    }
+   },
+   "id": "repo:web/src/client.ts",
+   "kind": "file",
+   "parent": "repo:web/src"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 9,
+     "files": 2,
+     "gone": 0,
+     "new": 1,
+     "removed": 3
+    }
+   },
+   "id": "repo:web/src/views",
+   "kind": "directory",
+   "parent": "repo:web/src"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 3,
+     "classes": [],
+     "git": "M",
+     "hunks": [
+      {
+       "added": 1,
+       "link": null,
+       "new": [
+        1,
+        1
+       ],
+       "old": [
+        1,
+        1
+       ],
+       "removed": 1
+      },
+      {
+       "added": 2,
+       "link": null,
+       "new": [
+        4,
+        2
+       ],
+       "old": [
+        4,
+        2
+       ],
+       "removed": 2
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 3,
+     "status": "same"
+    },
+    "role": "source",
+    "status": "changed",
+    "totals": {
+     "added": 3,
+     "files": 1,
+     "gone": 0,
+     "new": 0,
+     "removed": 3
+    }
+   },
+   "id": "repo:web/src/views/account.ts",
+   "kind": "file",
+   "parent": "repo:web/src/views"
+  },
+  {
+   "change": {
+    "internal": 0,
+    "own": {
+     "added": 6,
+     "classes": [],
+     "git": "A",
+     "hunks": [
+      {
+       "added": 6,
+       "link": null,
+       "new": [
+        1,
+        6
+       ],
+       "old": [
+        0,
+        0
+       ],
+       "removed": 0
+      }
+     ],
+     "link": null,
+     "more_hunks": 0,
+     "removed": 0,
+     "status": "added"
+    },
+    "role": "source",
+    "status": "added",
+    "totals": {
+     "added": 6,
+     "files": 1,
+     "gone": 0,
+     "new": 1,
+     "removed": 0
+    }
+   },
+   "id": "repo:web/src/views/alerts.ts",
+   "kind": "file",
+   "parent": "repo:web/src/views"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "api:http:ledger/api/app.py:app/alerts/overdue#GET",
+      "fact": "provide|repo:ledger/api/routes.py|api:http:ledger/api/app.py:app/alerts/overdue#GET|route",
+      "head": 1,
+      "kind": "provide",
+      "line": 21,
+      "link": null,
+      "path": "ledger/api/routes.py",
+      "src": "repo:ledger/api/routes.py",
+      "status": "added",
+      "subkind": "route"
+     }
+    ],
+    "facts": [
+     "provide|repo:ledger/api/routes.py|api:http:ledger/api/app.py:app/alerts/overdue#GET|route"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "repo:ledger/api/routes.py",
+   "id": "provide|api:http:ledger/api/app.py:app/alerts/overdue#GET|repo:ledger/api/routes.py|route",
+   "kind": "provide",
+   "src": "api:http:ledger/api/app.py:app/alerts/overdue#GET",
+   "subkind": "route"
+  },
+  {
+   "change": {
+    "base": 1,
+    "changes": [
+     {
+      "base": 1,
+      "dst": "api:http:ledger/api/app.py:app/customers/{}/balance#GET",
+      "fact": "provide|repo:ledger/api/routes.py|api:http:ledger/api/app.py:app/customers/{}/balance#GET|route",
+      "head": 0,
+      "kind": "provide",
+      "line": 14,
+      "link": null,
+      "path": "ledger/api/routes.py",
+      "src": "repo:ledger/api/routes.py",
+      "status": "removed",
+      "subkind": "route"
+     }
+    ],
+    "facts": [
+     "provide|repo:ledger/api/routes.py|api:http:ledger/api/app.py:app/customers/{}/balance#GET|route"
+    ],
+    "head": 0,
+    "more": 0,
+    "role": "source",
+    "status": "removed"
+   },
+   "dst": "repo:ledger/api/routes.py",
+   "id": "provide|api:http:ledger/api/app.py:app/customers/{}/balance#GET|repo:ledger/api/routes.py|route",
+   "kind": "provide",
+   "src": "api:http:ledger/api/app.py:app/customers/{}/balance#GET",
+   "subkind": "route"
+  },
+  {
+   "change": {
+    "base": 1,
+    "changes": [
+     {
+      "base": 1,
+      "dst": "api:http:ledger/api/app.py:app/customers/{}/export#POST",
+      "fact": "provide|repo:ledger/api/routes.py|api:http:ledger/api/app.py:app/customers/{}/export#POST|route",
+      "head": 0,
+      "kind": "provide",
+      "line": 19,
+      "link": null,
+      "path": "ledger/api/routes.py",
+      "src": "repo:ledger/api/routes.py",
+      "status": "removed",
+      "subkind": "route"
+     }
+    ],
+    "facts": [
+     "provide|repo:ledger/api/routes.py|api:http:ledger/api/app.py:app/customers/{}/export#POST|route"
+    ],
+    "head": 0,
+    "more": 0,
+    "role": "source",
+    "status": "removed"
+   },
+   "dst": "repo:ledger/api/routes.py",
+   "id": "provide|api:http:ledger/api/app.py:app/customers/{}/export#POST|repo:ledger/api/routes.py|route",
+   "kind": "provide",
+   "src": "api:http:ledger/api/app.py:app/customers/{}/export#POST",
+   "subkind": "route"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "api:http:ledger/api/app.py:app/customers/{}/summary#GET",
+      "fact": "provide|repo:ledger/api/routes.py|api:http:ledger/api/app.py:app/customers/{}/summary#GET|route",
+      "head": 1,
+      "kind": "provide",
+      "line": 16,
+      "link": null,
+      "path": "ledger/api/routes.py",
+      "src": "repo:ledger/api/routes.py",
+      "status": "added",
+      "subkind": "route"
+     }
+    ],
+    "facts": [
+     "provide|repo:ledger/api/routes.py|api:http:ledger/api/app.py:app/customers/{}/summary#GET|route"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "repo:ledger/api/routes.py",
+   "id": "provide|api:http:ledger/api/app.py:app/customers/{}/summary#GET|repo:ledger/api/routes.py|route",
+   "kind": "provide",
+   "src": "api:http:ledger/api/app.py:app/customers/{}/summary#GET",
+   "subkind": "route"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "repo:ledger/services/alerts.py#OverdueAlerts",
+      "fact": "use|repo:ledger/api/routes.py|repo:ledger/services/alerts.py#OverdueAlerts|ref",
+      "head": 1,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/api/routes.py",
+      "src": "repo:ledger/api/routes.py",
+      "status": "added",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:ledger/api/routes.py|repo:ledger/services/alerts.py#OverdueAlerts|ref"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "repo:ledger/services/alerts.py",
+   "id": "use|repo:ledger/api/routes.py|repo:ledger/services/alerts.py|import",
+   "kind": "use",
+   "src": "repo:ledger/api/routes.py",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 1,
+    "changes": [
+     {
+      "base": 1,
+      "dst": "repo:ledger/services/legacy_export.py",
+      "fact": "use|repo:ledger/api/routes.py|repo:ledger/services/legacy_export.py|ref",
+      "head": 0,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/api/routes.py",
+      "src": "repo:ledger/api/routes.py",
+      "status": "removed",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:ledger/api/routes.py|repo:ledger/services/legacy_export.py|ref"
+    ],
+    "head": 0,
+    "more": 0,
+    "role": "source",
+    "status": "removed"
+   },
+   "dst": "repo:ledger/services/legacy_export.py",
+   "id": "use|repo:ledger/api/routes.py|repo:ledger/services/legacy_export.py|import",
+   "kind": "use",
+   "src": "repo:ledger/api/routes.py",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "repo:ledger/storage/cache.py#CachedInvoices",
+      "fact": "use|repo:ledger/api/routes.py|repo:ledger/storage/cache.py#CachedInvoices|ref",
+      "head": 1,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/api/routes.py",
+      "src": "repo:ledger/api/routes.py",
+      "status": "added",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:ledger/api/routes.py|repo:ledger/storage/cache.py#CachedInvoices|ref"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "repo:ledger/storage/cache.py",
+   "id": "use|repo:ledger/api/routes.py|repo:ledger/storage/cache.py|import",
+   "kind": "use",
+   "src": "repo:ledger/api/routes.py",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "repo:ledger/storage/db.py#Database",
+      "fact": "use|repo:ledger/services/alerts.py#OverdueAlerts|repo:ledger/storage/db.py#Database|ref",
+      "head": 1,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/services/alerts.py",
+      "src": "repo:ledger/services/alerts.py#OverdueAlerts",
+      "status": "added",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:ledger/services/alerts.py#OverdueAlerts|repo:ledger/storage/db.py#Database|ref"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "repo:ledger/storage",
+   "id": "use|repo:ledger/services/alerts.py|repo:ledger/storage|import",
+   "kind": "use",
+   "src": "repo:ledger/services/alerts.py",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 2,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "repo:ledger/storage/cache.py#CachedInvoices",
+      "fact": "use|repo:ledger/services/billing.py#Billing|repo:ledger/storage/cache.py#CachedInvoices|ref",
+      "head": 1,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/services/billing.py",
+      "src": "repo:ledger/services/billing.py#Billing",
+      "status": "added",
+      "subkind": "ref"
+     },
+     {
+      "base": 1,
+      "dst": "repo:ledger/storage/invoices.py#InvoiceStore",
+      "fact": "use|repo:ledger/services/billing.py#Billing|repo:ledger/storage/invoices.py#InvoiceStore|ref",
+      "head": 0,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/services/billing.py",
+      "src": "repo:ledger/services/billing.py#Billing",
+      "status": "removed",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:ledger/services/billing.py#Billing|repo:ledger/storage/cache.py#CachedInvoices|ref",
+     "use|repo:ledger/services/billing.py#Billing|repo:ledger/storage/invoices.py#InvoiceStore|ref"
+    ],
+    "head": 2,
+    "more": 0,
+    "role": "source",
+    "status": "changed"
+   },
+   "dst": "repo:ledger/storage",
+   "id": "use|repo:ledger/services/billing.py|repo:ledger/storage|import",
+   "kind": "use",
+   "src": "repo:ledger/services/billing.py",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 1,
+    "changes": [
+     {
+      "base": 1,
+      "dst": "repo:ledger/storage/invoices.py#InvoiceStore",
+      "fact": "use|repo:ledger/services/legacy_export.py|repo:ledger/storage/invoices.py#InvoiceStore|ref",
+      "head": 0,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/services/legacy_export.py",
+      "src": "repo:ledger/services/legacy_export.py",
+      "status": "removed",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:ledger/services/legacy_export.py|repo:ledger/storage/invoices.py#InvoiceStore|ref"
+    ],
+    "head": 0,
+    "more": 0,
+    "role": "source",
+    "status": "removed"
+   },
+   "dst": "repo:ledger/storage",
+   "id": "use|repo:ledger/services/legacy_export.py|repo:ledger/storage|import",
+   "kind": "use",
+   "src": "repo:ledger/services/legacy_export.py",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "repo:ledger/storage/invoices.py#InvoiceStore",
+      "fact": "use|repo:ledger/storage/cache.py#CachedInvoices|repo:ledger/storage/invoices.py#InvoiceStore|ref",
+      "head": 1,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/storage/cache.py",
+      "src": "repo:ledger/storage/cache.py#CachedInvoices",
+      "status": "added",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:ledger/storage/cache.py#CachedInvoices|repo:ledger/storage/invoices.py#InvoiceStore|ref"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "repo:ledger/storage/invoices.py",
+   "id": "use|repo:ledger/storage/cache.py|repo:ledger/storage/invoices.py|import",
+   "kind": "use",
+   "src": "repo:ledger/storage/cache.py",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "repo:ledger/services/alerts.py#OverdueAlerts",
+      "fact": "use|repo:ledger/storage/db.py#Database|repo:ledger/services/alerts.py#OverdueAlerts|ref",
+      "head": 1,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "ledger/storage/db.py",
+      "src": "repo:ledger/storage/db.py#Database",
+      "status": "added",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:ledger/storage/db.py#Database|repo:ledger/services/alerts.py#OverdueAlerts|ref"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "repo:ledger/services/alerts.py",
+   "id": "use|repo:ledger/storage/db.py|repo:ledger/services/alerts.py|import",
+   "kind": "use",
+   "src": "repo:ledger/storage/db.py",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "api:http:ledger/api/app.py:app/alerts/overdue#GET",
+      "fact": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/alerts/overdue#GET|http",
+      "head": 1,
+      "kind": "use",
+      "line": 7,
+      "link": null,
+      "path": "web/src/client.ts",
+      "src": "repo:web/src/client.ts",
+      "status": "added",
+      "subkind": "http"
+     }
+    ],
+    "facts": [
+     "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/alerts/overdue#GET|http"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "api:http:ledger/api/app.py:app/alerts/overdue#GET",
+   "id": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/alerts/overdue#GET|http",
+   "kind": "use",
+   "src": "repo:web/src/client.ts",
+   "subkind": "http"
+  },
+  {
+   "change": {
+    "base": 1,
+    "changes": [
+     {
+      "base": 1,
+      "dst": "api:http:ledger/api/app.py:app/customers/{}/balance#GET",
+      "fact": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/balance#GET|http",
+      "head": 0,
+      "kind": "use",
+      "line": 2,
+      "link": null,
+      "path": "web/src/client.ts",
+      "src": "repo:web/src/client.ts",
+      "status": "removed",
+      "subkind": "http"
+     }
+    ],
+    "facts": [
+     "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/balance#GET|http"
+    ],
+    "head": 0,
+    "more": 0,
+    "role": "source",
+    "status": "removed"
+   },
+   "dst": "api:http:ledger/api/app.py:app/customers/{}/balance#GET",
+   "id": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/balance#GET|http",
+   "kind": "use",
+   "src": "repo:web/src/client.ts",
+   "subkind": "http"
+  },
+  {
+   "change": {
+    "base": 1,
+    "changes": [
+     {
+      "base": 1,
+      "dst": "api:http:ledger/api/app.py:app/customers/{}/export#POST",
+      "fact": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/export#POST|http",
+      "head": 0,
+      "kind": "use",
+      "line": 7,
+      "link": null,
+      "path": "web/src/client.ts",
+      "src": "repo:web/src/client.ts",
+      "status": "removed",
+      "subkind": "http"
+     }
+    ],
+    "facts": [
+     "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/export#POST|http"
+    ],
+    "head": 0,
+    "more": 0,
+    "role": "source",
+    "status": "removed"
+   },
+   "dst": "api:http:ledger/api/app.py:app/customers/{}/export#POST",
+   "id": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/export#POST|http",
+   "kind": "use",
+   "src": "repo:web/src/client.ts",
+   "subkind": "http"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "api:http:ledger/api/app.py:app/customers/{}/summary#GET",
+      "fact": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/summary#GET|http",
+      "head": 1,
+      "kind": "use",
+      "line": 2,
+      "link": null,
+      "path": "web/src/client.ts",
+      "src": "repo:web/src/client.ts",
+      "status": "added",
+      "subkind": "http"
+     }
+    ],
+    "facts": [
+     "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/summary#GET|http"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "api:http:ledger/api/app.py:app/customers/{}/summary#GET",
+   "id": "use|repo:web/src/client.ts|api:http:ledger/api/app.py:app/customers/{}/summary#GET|http",
+   "kind": "use",
+   "src": "repo:web/src/client.ts",
+   "subkind": "http"
+  },
+  {
+   "change": {
+    "base": 2,
+    "changes": [
+     {
+      "base": 2,
+      "dst": "repo:web/src/client.ts",
+      "fact": "use|repo:web/src/views/account.ts|repo:web/src/client.ts|ref",
+      "head": 1,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "web/src/views/account.ts",
+      "src": "repo:web/src/views/account.ts",
+      "status": "changed",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:web/src/views/account.ts|repo:web/src/client.ts|ref"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "changed"
+   },
+   "dst": "repo:web/src/client.ts",
+   "id": "use|repo:web/src/views/account.ts|repo:web/src/client.ts|import",
+   "kind": "use",
+   "src": "repo:web/src/views/account.ts",
+   "subkind": "import"
+  },
+  {
+   "change": {
+    "base": 0,
+    "changes": [
+     {
+      "base": 0,
+      "dst": "repo:web/src/client.ts",
+      "fact": "use|repo:web/src/views/alerts.ts|repo:web/src/client.ts|ref",
+      "head": 1,
+      "kind": "use",
+      "line": null,
+      "link": null,
+      "path": "web/src/views/alerts.ts",
+      "src": "repo:web/src/views/alerts.ts",
+      "status": "added",
+      "subkind": "ref"
+     }
+    ],
+    "facts": [
+     "use|repo:web/src/views/alerts.ts|repo:web/src/client.ts|ref"
+    ],
+    "head": 1,
+    "more": 0,
+    "role": "source",
+    "status": "added"
+   },
+   "dst": "repo:web/src/client.ts",
+   "id": "use|repo:web/src/views/alerts.ts|repo:web/src/client.ts|import",
+   "kind": "use",
+   "src": "repo:web/src/views/alerts.ts",
+   "subkind": "import"
+  }
+ ]
+}
