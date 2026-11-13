@@ -47,7 +47,7 @@ def _describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = ()
         elif not (nd.get("new") or nd.get("gone")) and nd.get("internal"):
             lines.append(prose.say("Changed: {} between what it holds", prose.count(nd["internal"], "dependency", "dependencies")))
         if (nd.get("new") or nd.get("gone")) and nd["status"] == "changed":
-            bits = ([prose.count(nd["new"], "new part")] if nd.get("new") else []) + ([prose.count(nd["gone"], "removed part")] if nd.get("gone") else [])
+            bits = ([prose.count(nd["new"], "new entity")] if nd.get("new") else []) + ([prose.count(nd["gone"], "removed entity")] if nd.get("gone") else [])
             lines.append(prose.say("Inside: " + " and ".join("{}" for _ in bits), *bits))
         if nd.get("old_path"):
             lines.append(prose.say("Renamed from {}", nd["old_path"]))

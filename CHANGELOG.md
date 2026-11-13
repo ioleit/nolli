@@ -36,7 +36,8 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
   - The changes preset unfolds towards every change in the roles shown (`r=`), not only those in
     source code, and draws a dependency the way the projection does: changes between modules
     bundled into one edge to an unfolded box are one row.
-  - A hover card counts the verdicts from inside a box without the number of changes there.
+  - A hover card counts the verdicts from inside a box without the number of changes there, and
+    says entities for what changed inside it ("Inside: 3 new entities") instead of parts.
   - `changes.json` beside a change's dataset is that table.
   - The `brief`, `viewer` and `report` formatters say where they read the model a projection was
     drawn from; `formatters.source_of` is gone.
