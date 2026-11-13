@@ -309,3 +309,58 @@ def test_a_server_without_a_repository_shows_githubs_paths_only(tmp_path, src):
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+# ---------- golden answers on the browser tests' fixtures ----------
+#
+# Each case asks the server one question on a fixture (tests/fixtures/: ledger-review, tasks) and
+# compares the whole JSON answer with tests/golden/<case>.json. After a deliberate change, remake
+# them with NOLLI_UPDATE_GOLDEN=1 pytest tests/test_server.py -k golden, and read the diff before
+# committing it. To add a case, add a line to GOLDEN.
+
+GOLDEN_DIR = Path(__file__).parent / "golden"
+ALL_ROLES = "source,mixed,test,docs,config,markup,data,asset,other"
+GOLDEN = [  # (case, fixture, the /api/scene query after k=)
+    ("ledger-review-changes", "ledger-review", f"f=table&required_overlay=change&overlays=change&p=changes&r={ALL_ROLES}"),
+    ("ledger-review-verdicts", "ledger-review", "f=table&required_overlay=verdicts&overlays=verdicts&p=none"),
+]
+
+
+@pytest.fixture(scope="module")
+def fixtures_served(tmp_path_factory):
+    """Serve the browser tests' fixtures as serve_fixture.py does: build each dataset, import it
+    into a store and serve the viewer on it. Yield the server's URL, each fixture's model key by
+    its dataset's name, and the directory everything was built in."""
+    import sys
+
+    from nolli.cli import import_dataset
+    from nolli.logic.formats.dataset import read_key
+
+    sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
+    import nav_repo
+    import review_repo
+
+    tmp = tmp_path_factory.mktemp("fixtures")
+    stores = RepoStoreProvider(tmp / "store")
+    keys = {}
+    for ds in (review_repo.build(tmp), nav_repo.build(tmp)):
+        keys[ds.name] = import_dataset(stores.open(read_key(ds).repo), ds).format_key()
+    srv = make_local_server(tmp / "store", None, port=0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", keys, tmp
+    srv.shutdown()
+    srv.server_close()
+
+
+@pytest.mark.parametrize(("case", "fixture", "query"), GOLDEN, ids=[c for c, _, _ in GOLDEN])
+def test_golden(fixtures_served, case, fixture, query):
+    url, keys, tmp = fixtures_served
+    status, body = get(f"{url}/api/scene?k={quote(keys[fixture])}&{query}")
+    assert status == 200, body
+    answer = json.dumps(json.loads(body.replace(str(tmp.resolve()), "<tmp>").replace(str(tmp), "<tmp>")), indent=1, sort_keys=True) + "\n"
+    golden = GOLDEN_DIR / f"{case}.json"
+    if os.environ.get("NOLLI_UPDATE_GOLDEN"):
+        GOLDEN_DIR.mkdir(exist_ok=True)
+        golden.write_text(answer)
+    assert golden.exists(), f"no {golden.name}: make it with NOLLI_UPDATE_GOLDEN=1 pytest tests/test_server.py -k golden"
+    assert answer == golden.read_text(), f"{case} differs from {golden.name}; if that is intended, remake it with NOLLI_UPDATE_GOLDEN=1"
