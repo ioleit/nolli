@@ -54,8 +54,34 @@ jobs:
         working-directory: viewer
       - run: npx playwright test
         working-directory: viewer
+      # On failure: one page with every failed screenshot comparison (expected, actual, diff),
+      # uploaded unzipped so it opens with one click, and linked from the job summary; the
+      # raw test results go in a zip beside it.
       - if: failure()
+        run: node e2e/diff_page.mjs test-results test-results/screenshot-diffs.html
+        working-directory: viewer
+      - if: failure()
+        id: diff_page
+        uses: actions/upload-artifact@v7
+        with:
+          path: viewer/test-results/screenshot-diffs.html
+          archive: false
+          if-no-files-found: ignore
+      - if: failure()
+        id: results
         uses: actions/upload-artifact@v4
         with:
           name: browser-test-results
           path: viewer/test-results/
+      - if: failure()
+        env:
+          DIFF_PAGE: ${{ steps.diff_page.outputs.artifact-url }}
+          RESULTS: ${{ steps.results.outputs.artifact-url }}
+        run: |
+          {
+            echo "## Browser tests failed"
+            if [ -n "$DIFF_PAGE" ]; then echo "- [Screenshot diffs: expected, actual and diff of each failed screenshot]($DIFF_PAGE)"; fi
+            if [ -n "$RESULTS" ]; then echo "- [All test results (zip)]($RESULTS)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Screenshot diffs: ${DIFF_PAGE:-none}"
+          echo "All test results: ${RESULTS:-none}"
