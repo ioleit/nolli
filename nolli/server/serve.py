@@ -48,8 +48,9 @@ another's by mistake.
 A service built on this one passes make_server() (and main()) parts of its own: a Token (one
 per repository, say a GitHub App's installation token for each installation), a store
 provider and sources (which may decide per request who may read what), an ``APIRouter`` of
-pages and routes of its own (tried before nolli's), and a subclass of Services for what those
-need. A build runs in the context (contextvars) of the request that started it, so a provider
+pages and routes of its own (tried before nolli's), middleware around every request (say, to
+tell who is asking), and a subclass of Services for what those need, which may also draw
+nolli's own pages (``Services.render_page``, a ``Page`` of a kind in ``PAGE_KINDS``). A build runs in the context (contextvars) of the request that started it, so a provider
 that checks who asks sees that request when the build opens its repository's store.
 """
 
@@ -68,7 +69,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -78,6 +79,7 @@ from fastapi import APIRouter, FastAPI, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
+from starlette.middleware import Middleware
 from pydantic import BaseModel, ConfigDict
 
 import nolli.viewer  # noqa: E402  (the page, its scripts and styles)
@@ -95,7 +97,7 @@ from nolli.logic.transformations import merge, projection  # noqa: E402
 from nolli.logic.transformations.merge import presets  # noqa: E402
 
 from ..logic.transformations.projection import ProjectionSpec  # noqa: E402
-from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed  # noqa: E402
+from ..model.keys import ChangeKey, CommitKey, ModelKey, NotAllowed, Repo  # noqa: E402
 from ..model.scene import Scene  # noqa: E402
 from ..progress import Progress  # noqa: E402
 from nolli.store import ModelStore, RepoStoreProvider  # noqa: E402
@@ -432,11 +434,31 @@ class Site:
             self.tidying.release()
 
 
-def page(title: str, body: str, *, status: str = "", job: str = "") -> bytes:
-    """hosted.html with a title and body (HTML), and the build it follows, if any."""
+@dataclass
+class Page:
+    """A page the server answers with, other than the viewer: what it says (``kind``, one of
+    ``PAGE_KINDS``), its title and body (HTML), its status code, ``detail`` (why it cannot show
+    what was asked for, as text) and, for a build's page, the build it follows (``job``, its
+    first ``status``). ``Services.render_page`` draws it."""
+
+    kind: str
+    title: str
+    body: str
+    code: int = 200
+    detail: str = ""
+    job: str = ""
+    status: dict | None = None
+
+
+PAGE_KINDS = ("landing", "building", "not_found", "too_large", "github_error", "nothing", "not_a_page")
+
+
+def render_page(page: Page) -> bytes:
+    """Fill hosted.html with ``page``: its title and body, and the build it follows, if any."""
     t = (HERE / "hosted.html").read_text()
-    return (t.replace("{{title}}", html.escape(title)).replace("{{body}}", body)
-            .replace("{{job}}", html.escape(job, quote=True)).replace("{{status}}", status)).encode()
+    status = html.escape(json.dumps(page.status), quote=True) if page.status is not None else ""
+    return (t.replace("{{title}}", html.escape(page.title)).replace("{{body}}", page.body)
+            .replace("{{job}}", html.escape(page.job, quote=True)).replace("{{status}}", status)).encode()
 
 
 def viewer_page(key: ModelKey, title: str) -> bytes:
@@ -526,6 +548,18 @@ class Services:
             return None
         return (key, sc, store) if sc is not None else None
 
+    def render_page(self, request: Request, page: Page) -> Response:
+        """Answer ``page`` to ``request``. A service overrides this to draw nolli's pages its own way."""
+        return html_response(render_page(page), page.code)
+
+    def may_read(self, repo: Repo) -> bool:
+        """Say whether the current request may read ``repo`` (``RepoStoreProvider.allow``)."""
+        try:
+            self.stores.allow(repo)
+        except NotAllowed:
+            return False
+        return True
+
 
 # ---------- responses ----------
 
@@ -563,26 +597,29 @@ def static_file(path: str) -> Path | None:
     return f if f.is_file() and f.is_relative_to(HERE) and f.suffix in (".js", ".css", ".html", ".svg", ".png") else None
 
 
-def show(site: Site, text: str | None, what: str) -> Response:
+def show(request: Request, text: str | None, what: str) -> Response:
     """Answer the page for the target ``text``: the viewer if it is built, else a page that follows
     its build, or an error page saying why it cannot be shown."""
-    github_path = text is not None and text.startswith("https://github.com/")
+    services = services_of(request)
+    site, github_path = services.site, text is not None and text.startswith("https://github.com/")
     try:
         target = site.plan(text)
         found = site.find_built(target)
     except (github.NotFound, NotAllowed):
-        return html_response(page("Not found, or private", PRIVATE.format(what=html.escape(what))), 404)
+        return services.render_page(request, Page("not_found", "Not found, or private", PRIVATE.format(what=html.escape(what)), 404))
     except TooLarge as exc:
-        return html_response(page("Too large for this host", f"<h1>Too large for this host</h1><p>{html.escape(str(exc))}.</p>"), 413)
+        return services.render_page(request, Page("too_large", "Too large for this host",
+                                                  f"<h1>Too large for this host</h1><p>{html.escape(str(exc))}.</p>", 413, str(exc)))
     except (ChangeError, GitError, KeyError) as exc:
         if github_path and "nolli builds" not in str(exc):
-            return html_response(page("GitHub did not answer", f"<p>{html.escape(str(exc))}</p>"), 502)
-        return html_response(page("Nothing to show", NOTHING.format(what=html.escape(what), why=html.escape(str(exc)))), 404)
+            return services.render_page(request, Page("github_error", "GitHub did not answer", f"<p>{html.escape(str(exc))}</p>", 502, str(exc)))
+        return services.render_page(request, Page("nothing", "Nothing to show",
+                                                  NOTHING.format(what=html.escape(what), why=html.escape(str(exc))), 404, str(exc)))
     if found is not None:
         return html_response(viewer_page(found[0], describe(target)))
     job = site.start(target)
-    return html_response(page(describe(target), BUILDING.format(title=html.escape(describe(target))), job=job.name,
-                              status=html.escape(json.dumps(job.status()), quote=True)))
+    return services.render_page(request, Page("building", describe(target), BUILDING.format(title=html.escape(describe(target))),
+                                              job=job.name, status=job.status()))
 
 
 # ---------- the routes ----------
@@ -597,16 +634,21 @@ def landing(request: Request) -> Response:
     """Answer the landing page, or with ``?t=<target>`` that target's page (nolli view)."""
     q = query_of(request)
     if "t" in q:
-        return show(services_of(request).site, q["t"] or None, q["t"])
-    return html_response(page("nolli", LANDING))
+        return show(request, q["t"] or None, q["t"])
+    return services_of(request).render_page(request, Page("landing", "nolli", LANDING))
 
 
 @router.get("/api/job")
 def job_status(request: Request) -> Response:
-    """Answer a build's progress: ``?j=<build>``, the name a building page follows."""
-    site, name = services_of(request).site, query_of(request).get("j", "")
-    job = site.jobs.get(name)
-    return json_response(job.status() if job else {"state": "done" if name in site.built else "unknown"})
+    """Answer a build's progress: ``?j=<build>``, the name a building page follows. A build of a
+    repository the request may not read is unknown, as one that never was."""
+    services, name = services_of(request), query_of(request).get("j", "")
+    site = services.site
+    job, built = site.jobs.get(name), site.built.get(name)
+    repo = (job.key or job.target.key or job.target).repo if job else built.repo if built else None
+    if repo is None or not services.may_read(repo):
+        return json_response({"state": "unknown"})
+    return json_response(job.status() if job else {"state": "done"})
 
 
 @router.get("/api/scene")
@@ -643,14 +685,15 @@ def any_path(path: str, request: Request) -> Response:
     if f is not None:
         return FileResponse(f)
     if path.count("/") >= 1 and not path.startswith("/"):  # <owner>/<repo>…: GitHub's path
-        return show(services_of(request).site, "https://github.com/" + path.rstrip("/"), path.strip("/"))
-    return html_response(page("Not a nolli page", NOT_A_PAGE), 404)
+        return show(request, "https://github.com/" + path.rstrip("/"), path.strip("/"))
+    return services_of(request).render_page(request, Page("not_a_page", "Not a nolli page", NOT_A_PAGE, 404))
 
 
-def make_app(services: Services, routes: APIRouter | None = None) -> FastAPI:
+def make_app(services: Services, routes: APIRouter | None = None, middleware: Sequence[Middleware] = ()) -> FastAPI:
     """Make the server's app on ``services``: a service's own ``routes`` first (they may stand in for
-    nolli's), then nolli's. No response is cached by the browser."""
-    app = FastAPI(title="nolli", docs_url=None, redoc_url=None, openapi_url=None)
+    nolli's), then nolli's; a service's ``middleware`` around every route, its own and nolli's. No
+    response is cached by the browser."""
+    app = FastAPI(title="nolli", docs_url=None, redoc_url=None, openapi_url=None, middleware=list(middleware))
     app.state.services = services
 
     @app.exception_handler(RequestValidationError)
@@ -741,17 +784,20 @@ NOT_A_PAGE = """<h1>Not a nolli page</h1>
 def make_server(stores: RepoStoreProvider, sources: Sources, work: Path, host: str = "127.0.0.1", port: int = 8730, *,
                 here: bool = False, local: Path | None = None, budget: int = 34, keep: int | None = None, builds: int = BUILDS,
                 timeout: float | None = TIMEOUT, max_repo: int | None = MAX_REPO, token: Token | None = None,
-                routes: APIRouter | None = None, services: type[Services] = Services, **more: Any) -> Server:
+                routes: APIRouter | None = None, middleware: Sequence[Middleware] = (), services: type[Services] = Services,
+                **more: Any) -> Server:
     """Make a server for the models of the stores ``stores`` opens, built from ``sources``, but do not start serving.
     Temporary files go under ``work``. Port 0 picks a free port. ``here`` and ``local`` mean the
     same as for Site. ``routes`` are a service's own routes (a FastAPI ``APIRouter``;
-    ``services_of(request)`` is the server's Services), tried before nolli's; ``services`` is a
-    subclass of Services, given ``more`` of its fields."""
+    ``services_of(request)`` is the server's Services), tried before nolli's; ``middleware``
+    (Starlette's ``Middleware``) runs around every request, say to tell who is asking before
+    ``RepoStoreProvider.allow`` is asked; ``services`` is a subclass of Services, given ``more`` of
+    its fields."""
     site = Site(stores, sources, work, here=here, local=local, budget=budget, keep=keep, builds=builds, timeout=timeout,
                 max_repo=max_repo, token=token)
     threading.Thread(target=site.tidy, daemon=True).start()  # a smaller --keep than last time takes effect now
     svc = services(stores, site, **more)
-    return Server(make_app(svc, routes), host, port)
+    return Server(make_app(svc, routes, middleware), host, port)
 
 
 def make_local_server(data: Path, local: Path | None, host: str = "127.0.0.1", port: int = 8720, budget: int = 34) -> Server:
@@ -764,7 +810,7 @@ def make_local_server(data: Path, local: Path | None, host: str = "127.0.0.1", p
 
 
 def main(argv: list[str] | None = None, token: Token | None = None, routes: APIRouter | None = None,
-         stores: RepoStoreProvider | None = None, sources: Sources | None = None,
+         middleware: Sequence[Middleware] = (), stores: RepoStoreProvider | None = None, sources: Sources | None = None,
          services: type[Services] = Services, **more: Any) -> int:
     """``nolli serve``: its options from ``argv``; the rest as make_server() takes them. ``stores``
     and ``sources`` default to directories under --cache (``data/``, ``repos/``)."""
@@ -792,7 +838,7 @@ def main(argv: list[str] | None = None, token: Token | None = None, routes: APIR
     sources = sources or CloneCache(cache / "repos", lambda owner, name: holder[0].find_token(owner, name))
     srv = make_server(stores, sources, cache, args.host, args.port, budget=args.budget, keep=args.keep, builds=args.builds,
                       timeout=args.timeout, max_repo=args.max_repo or None, token=token, routes=routes,
-                      services=services, **more)
+                      middleware=middleware, services=services, **more)
     holder.append(srv.services.site)
     print(f"nolli serve: http://{args.host}:{srv.server_address[1]}/  (cache {cache}; {token.describe()})",
           file=sys.stderr, flush=True)
