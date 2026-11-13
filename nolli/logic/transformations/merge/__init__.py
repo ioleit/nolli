@@ -1,8 +1,8 @@
 """Merges the models of two commits into the model of their change.
 
 It also says what the change did: per node and edge in the ``change`` overlay, and as a
-whole in the change's totals and its links on GitHub. ``items`` numbers the changes and says
-which box and edge shows each (the ``items`` overlay); ``reading`` reads a change's scene for it.
+whole in the change's totals and its links on GitHub. ``reading`` reads a change's scene for
+it, and ``presets`` holds the viewer's preset that unfolds every change.
 """
 
 from __future__ import annotations
@@ -224,7 +224,47 @@ def _sum_box(el: Element) -> dict | None:
     for k in ("git", "old_path", "renamed_to"):
         if own.get(k):
             out[k] = own[k]
+    same = el.find_same("source")
+    if same is not None:
+        out["role"] = _find_role(same)
+        out.update(_describe_own_change(same, own))
     return out
+
+
+MAX_HUNKS = 30  # a file's change lists this many hunks; ``more_hunks`` counts the rest
+
+
+def _find_role(el: Element) -> str:
+    """Return the role of the file or directory a change's node belongs to (source, test, docs,
+    …). Nodes outside the file tree (services, endpoints, packages) count as source, and so
+    does mixed."""
+    cur: Element | None = el
+    while cur is not None:
+        role = (cur.get(vocabulary.FILES) or {}).get("role")
+        if role and cur.kind in ("file", "directory"):
+            return "source" if role == "mixed" else role
+        cur = cur.parent
+    return "source"
+
+
+def _describe_own_change(el: Element, own: dict) -> dict:
+    """Describe what a change did to a node itself (``own``: its record), for its row in a list of
+    changes: where to see it (``link``), a file's hunks with their links and the lines changed in
+    each class it holds (``classes``). Empty for a directory or a node the change did not touch."""
+    if not own or not el.key.is_repo or el.kind not in ("file", *schema.SYMBOL_KINDS):
+        return {}
+    links = Links(el.scene.model.meta.get("change") or {})
+    path, st = el.key.path, own.get("status")
+    if el.kind != "file":
+        a = el.get(vocabulary.SYMBOLS) or {}
+        return {"link": links.blob(path, "base" if st == "removed" else "head", a.get("line"), a.get("end_line"))
+                if st in ("added", "removed") else links.diff(path)}
+    hunks = [{"new": h["new"], "old": h["old"], "added": len(h["added"]), "removed": len(h["removed"]),
+              "link": links.diff(path, (h["added"] or [None])[0] or (h["removed"] or [None])[0], "head" if h["added"] else "base")}
+             for h in own.get("hunks", [])]
+    classes = [{"name": (c.get("names") or {}).get("name", c.key), "status": rec["status"], "added": rec.get("added", 0), "removed": rec.get("removed", 0)}
+               for c in el.children if c.kind in schema.SYMBOL_KINDS and (rec := c.get("change"))]
+    return {"link": links.diff(path), "hunks": hunks[:MAX_HUNKS], "more_hunks": max(0, len(hunks) - MAX_HUNKS), "classes": classes}
 
 
 def _compare_edge(key: Relation, meta: dict, refs: Mapping[str, list | bool]) -> dict | None:
@@ -269,8 +309,9 @@ def _sum_edge(el: Element) -> dict | None:
         if rec:
             changes.extend(rec["changes"] if "changes" in rec else [rec["fact"]])
     changes.sort(key=lambda c: c["fact"])
+    src = el.src.find_same("source")
     return {"status": p["status"], "base": p.get("base", 0), "head": p.get("head", 0), "facts": [c["fact"] for c in changes],
-            "changes": changes[:40], "more": max(0, len(changes) - 40)}
+            "changes": changes[:40], "more": max(0, len(changes) - 40), "role": _find_role(src) if src is not None else "source"}
 
 
 class SidesSaid(Overlay):

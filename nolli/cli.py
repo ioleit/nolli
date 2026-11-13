@@ -77,7 +77,7 @@ model.json (its structure) and overlays/ (what each extractor said); for a chang
 change.json, base/ and head/ (its commits) and its own overlays/ (git's hunks, a review's
 verdicts, which the viewer shows). Beside them, what is made from the model: report.json
 (counts, unresolved references, extractor notes, nolli/logic/formats/report.py); for a change
-also changes.json (the numbered changes), review.mmd (Mermaid with every change in source
+also changes.json (the changed boxes and edges of the changes preset, as a table), review.mmd (Mermaid with every change in source
 code unfolded) and review.md (what a review agent gets: that diagram, how to answer, and the
 change's description, from --description).
 """
@@ -341,7 +341,9 @@ def write_extras(store: ModelStore, key: ModelKey, out: Path, budget: int | None
     from nolli.logic.formats import dataset
     from nolli.logic.formats import report as report_format
     from nolli.logic.transformations import merge, projection
-    from nolli.logic.transformations.merge import items
+    from nolli.logic.formats import table
+    from nolli.logic.formats.options import TableFormatOptions
+    from nolli.logic.transformations.merge import presets
     from nolli.review import brief
 
     scene = operations.open_scene(store, key)
@@ -355,7 +357,9 @@ def write_extras(store: ModelStore, key: ModelKey, out: Path, budget: int | None
     dataset.remove(out, dataset.EXTRAS)
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
     if merge.is_change(scene):
-        (out / "changes.json").write_text(json.dumps(items.list_changes(scene), indent=1))
+        changed = transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=presets.Changes())))
+        rows = table.export_table(changed, TableFormatOptions(overlays=["change", "label"], required_overlay="change"))
+        (out / "changes.json").write_text(json.dumps(rows, indent=1, default=str))
         mmd = brief.make_review_diagram(scene)
         (out / "review.mmd").write_text(mmd)
         (out / "review.md").write_text(brief.make_brief(scene, mmd))

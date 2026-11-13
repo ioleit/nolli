@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nolli.logic.formats.descriptions import names
+from nolli.model import schema
 from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene
 
@@ -40,9 +41,17 @@ def format_prose(el: Element, named: dict) -> str:
     return " ".join(icons + ([name] if name else []))
 
 
+def _format_path(s: Element, named: dict) -> str | None:
+    """Return where in the repository the node is, as a list of changes names it: a file's or
+    directory's path, a class (or other symbol) as path#Name; None outside the file tree."""
+    if not s.key.is_repo or s.key.is_own_code:
+        return None
+    return f"{s.key.path}#{named['name']}" if s.kind in schema.SYMBOL_KINDS else s.key.path
+
+
 def _describe(s: Element, named: dict) -> dict:
     """Build the label of a box that stands for the node ``s``."""
-    return {"text": _format_label(s, named), "icons": named["icons"], "prose": format_prose(s, named)}
+    return {"text": _format_label(s, named), "icons": named["icons"], "prose": format_prose(s, named), "path": _format_path(s, named)}
 
 
 class Label(Overlay):
@@ -51,8 +60,8 @@ class Label(Overlay):
     The icons show what kind of thing the box is. ``D`` is a directory, ``m`` a module,
     ``C``, ``I``, ``T`` and ``E`` a class, interface, type and enum, ``svc`` and ``img`` a
     service and an image, ``API`` an API, ``/`` a step in an API path, and HTTP verbs an
-    operation. ``text`` is the name shown after the icons, and ``prose`` is the name as used
-    in a sentence."""
+    operation. ``text`` is the name shown after the icons, ``prose`` is the name as used in a
+    sentence, and ``path`` where in the repository it is (None outside the file tree)."""
 
     name = "label"
 
@@ -68,7 +77,7 @@ class Label(Overlay):
         out: dict[Key, dict] = {}
         for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
             if kind == "anchor":
-                out[x] = {"text": "", "icons": [], "prose": ""}  # an anchor stands inside its node's box and has no label of its own
+                out[x] = {"text": "", "icons": [], "prose": "", "path": None}  # an anchor stands inside its node's box and has no label of its own
                 continue
             el = scene.find_element(x)
             s = el.find_same("source")

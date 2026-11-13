@@ -6,7 +6,6 @@ from collections import Counter
 from collections.abc import Mapping
 
 from nolli.logic.formats.descriptions import prose
-from nolli.logic.transformations.merge.items import ChangeItems
 from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene
 from nolli.review import verdicts as verdicts_lib
@@ -15,26 +14,26 @@ from nolli.store.maps import MapStore
 FULL_VERDICTS = 3  # a card lists this many verdicts in full; beyond, it sums up those from inside
 
 
-def _list_verdict_lines(verdicts: list[dict], inside: list[dict] = (), items: int = 0, where: str = "") -> list[str]:
+def _list_verdict_lines(verdicts: list[dict], inside: list[dict] = (), where: str = "") -> list[str]:
     """One line per verdict, worst first: [!] reason. Verdicts rolled up from inside a folded box
-    or bundled edge (``inside``) become one line that counts them like the review panel does,
-    "15 changes in this directory · verdicts: [??] 1 [✓] 8", once there are more than a card
-    lists (FULL_VERDICTS in all) and more than one of them."""
+    or bundled edge (``inside``) become one line that counts them, "Verdicts in this directory:
+    [??] 1 [✓] 8", once there are more than a card lists (FULL_VERDICTS in all) and more than
+    one of them."""
     if len(verdicts) + len(inside) <= FULL_VERDICTS or len(inside) < 2:
         verdicts, inside = [*verdicts, *inside], []
     lines = [prose.mark(v["verdict"]) + " " + prose.one_line(v["reason"]) for v in sorted(verdicts, key=lambda v: -verdicts_lib.VERDICT_RANK[v["verdict"]])]
     if inside:
         n = Counter(v["verdict"] for v in inside)
-        line = prose.say(f"{{}} {where} · verdicts:", prose.count(items, "change")) if items else f"Verdicts {where}:"
+        line = f"Verdicts {where}:"
         for v in sorted(n, key=lambda v: -verdicts_lib.VERDICT_RANK[v]):
             line += " " + prose.mark(v) + " " + prose.code(n[v])
         lines.insert(0, line)
     return lines
 
 
-def _describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0, kind: str = "box") -> str:
+def _describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = (), kind: str = "box") -> str:
     """Sentences on a box's hover card in a review: what happened to it, the verdicts on it, and
-    those on what it holds (``inside``, summed up when there are several; ``items`` changes)."""
+    those on what it holds (``inside``, summed up when there are several)."""
     lines: list[str] = []
     if nd:
         lines_changed = nd["added"] or nd["removed"]
@@ -54,11 +53,10 @@ def _describe_box(nd: dict | None, verdicts: list[dict], inside: list[dict] = ()
             lines.append(prose.say("Renamed from {}", nd["old_path"]))
         if nd.get("renamed_to"):
             lines.append(prose.say("Renamed to {}", nd["renamed_to"]))
-    return prose.paragraphs(lines + _list_verdict_lines(verdicts, inside, items, f"in this {kind}"))
+    return prose.paragraphs(lines + _list_verdict_lines(verdicts, inside, f"in this {kind}"))
 
 
-def _describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (), items: int = 0,
-                  names: dict[str, str] | None = None) -> str:
+def _describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (), names: dict[str, str] | None = None) -> str:
     """Sentences on top of an edge's hover card in a review: how its references changed, which
     names came or went, and the verdicts on it and on the dependencies it bundles."""
     lines: list[str] = []
@@ -76,13 +74,12 @@ def _describe_edge(ed: dict | None, verdicts: list[dict], inside: list[dict] = (
             lines.append(prose.listing("Now uses {}", came, "more", limit=4))
         if went:
             lines.append(prose.listing("No longer uses {}", went, "more", limit=4))
-    return prose.paragraphs(lines + _list_verdict_lines(verdicts, inside, items, "on this edge"))
+    return prose.paragraphs(lines + _list_verdict_lines(verdicts, inside, "on this edge"))
 
 
 class Review(Overlay):
     """The ``review`` overlay. On a drawn box or edge of a change: the second part of its hover
-    card, under a line: what happened to it and the verdicts on it (``card``, Markdown). Which
-    numbered changes it shows is the ``items`` overlay's (``merge.items.ChangeItems``)."""
+    card, under a line: what happened to it and the verdicts on it (``card``, Markdown)."""
 
     name = "review"
 
@@ -95,17 +92,17 @@ class Review(Overlay):
         if "change" not in scene.model.meta or "source" not in scene.sources:
             return {}
         named = scene.sources["source"].read_all("names")
-        verdicts, changed, shown = scene.read_all("verdicts"), scene.read_all("change"), scene.read_all(ChangeItems.name)
+        verdicts, changed = scene.read_all("verdicts"), scene.read_all("change")
         out: dict[Key, dict] = {}
         for e in scene.model.list_edges():
             el = scene.find_element(e.id)
-            v, items = verdicts.get(e.id) or {}, (shown.get(e.id) or {}).get("items", [])
+            v = verdicts.get(e.id) or {}
             names = {s.relation.dst: named[s.relation.dst]["name"] for s in el.sources.get("source", ()) if s.is_edge}
-            out[e.id] = {"card": _describe_edge(changed.get(e.id), v.get("own", []), v.get("inside", []), len(items), names)}
+            out[e.id] = {"card": _describe_edge(changed.get(e.id), v.get("own", []), v.get("inside", []), names)}
         for x, kind in ((n.id, n.kind) for n in scene.model.entities.values()):
-            v, items = verdicts.get(x) or {}, (shown.get(x) or {}).get("items", [])
+            v = verdicts.get(x) or {}
             kind = kind if kind != "anchor" else "box"
-            out[x] = {"card": _describe_box(changed.get(x), v.get("own", []), v.get("inside", []), len(items), kind.replace("_", " "))}
+            out[x] = {"card": _describe_box(changed.get(x), v.get("own", []), v.get("inside", []), kind.replace("_", " "))}
         return out
 
 

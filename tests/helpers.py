@@ -15,7 +15,7 @@ from nolli.model.keys import ModelKey, StringKey
 from nolli.model.model import Model
 from nolli.model.scene import Scene
 from nolli.review import card
-from nolli.logic.transformations.merge import items as changes
+from nolli.logic.transformations.merge import presets as changes
 from nolli.store import MemoryStore
 from nolli.store.maps import Maps
 
@@ -73,3 +73,13 @@ def open_change(repo: Path, base: str, head: str, **about) -> Scene:
 
 def find_node(sc: dict, x: str) -> dict:
     return next(n for n in sc["nodes"] if n["id"] == x)
+
+
+def list_changes(scene: Scene, **state) -> list[dict]:
+    """Return the review panel's rows for a change: the changed boxes and edges of the changes
+    preset (or of ``spec(**state)``), as ``f=table&required_overlay=change&overlays=change,label``."""
+    from nolli.logic.formats import table
+    from nolli.logic.formats.options import TableFormatOptions
+
+    drawn = transformations.apply(scene, projection.fold(spec(**(state or {"preset": "changes"}))))
+    return table.export_table(drawn, TableFormatOptions(overlays=["change", "label"], required_overlay="change"))["rows"]

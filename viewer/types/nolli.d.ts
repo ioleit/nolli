@@ -22,6 +22,10 @@ export interface NodeDiff {
   new: number; gone: number;  // entities added / removed
   internal: number;  // changed facts between its own children
   git?: string; old_path?: string; renamed_to?: string;
+  role?: string;  // of the file or directory it is in: source (or mixed), test, docs, …
+  link?: string | null;  // a file or class the change touched itself: where to see it
+  hunks?: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[]; more_hunks?: number;  // a file's
+  classes?: { name: string; status: Status | "same"; added: number; removed: number }[];  // a file's classes the change touched
 }
 
 /** One stored fact that changed, with a link to where. */
@@ -30,7 +34,7 @@ export interface FactChange {
   base: number; head: number; path: string | null; line: number | null; link: string | null;
 }
 
-export interface EdgeDiff { status: Status; base: number; head: number; facts: string[]; changes: FactChange[]; more: number }
+export interface EdgeDiff { status: Status; base: number; head: number; facts: string[]; changes: FactChange[]; more: number; role?: string }
 
 /** The diff summary of a scene: the two commits and the change as a whole. */
 export interface SceneDiff {
@@ -39,25 +43,23 @@ export interface SceneDiff {
   drawn: Partial<Record<Status, number>>; changed_entities: number;
 }
 
-/** A numbered review item (GET /api/changes). */
+/** A row of a table of a scene (GET /api/scene?f=table, nolli/logic/formats/table.py): a box (parent) or an edge
+ * (src, dst), with the value of each overlay asked for under its name. */
+export interface TableRow {
+  id: string; kind: string; parent?: string | null; subkind?: string; src?: string; dst?: string;
+  change?: NodeDiff | EdgeDiff | null; label?: Label | null; verdicts?: { starting: ReviewVerdict[] } | null;
+}
+
+/** A change in the review panel's list: a changed box or edge of the changes preset (TableRow). */
 export interface ReviewItem {
-  id: string;
+  id: string;  // the box's or edge's id
   category: "component" | "dependency" | "content";
   status: Status;
   title: string;
-  area: string;
+  area: string;  // the top-level box it is in
   role: string;
-  link: string | null;
-  entities: string[];
-  facts: string[];
   reveal: string[];  // boxes to unfold so it can be seen
-  focus: string[];
-  classes?: (string | { name: string; added: number; removed: number })[];
-  lines?: number;
-  added?: number; removed?: number;
-  base?: number; head?: number; targets?: string[];
-  changes?: FactChange[]; more?: number;  // dependency: the references that changed, with links
-  hunks?: { new: [number, number]; old: [number, number]; added: number; removed: number; link: string | null }[]; more_hunks?: number;  // edited file
+  change: NodeDiff | EdgeDiff;
 }
 
 /** A review agent's verdict on a node or edge of the review diagram (review.mmd), resolved. */
@@ -103,15 +105,11 @@ export interface Label {
   text: string;
   icons: string[];  // what it is, drawn before the label: "D", "m", "C", "svc", "img", "API", "/", verbs ("GET", "WS")
   prose: string;
+  path: string | null;  // where in the repository: a file's or directory's path, a class as path#Name; null outside the file tree
 }
 
 /** The review's verdicts that land on a box or edge (nolli/review/verdicts.py). */
 export interface Verdicts { verdicts: string[]; verdict: Verdict | null }
-
-/** The numbered changes a box or edge shows (nolli/logic/transformations/merge/items.py). */
-export interface Items {
-  items: string[];  // ids of the numbered changes shown on it (C1, C2, …)
-}
 
 /** What a review shows on a box or edge (nolli/review/card.py). */
 export interface Review {
@@ -122,7 +120,6 @@ interface Overlays {
   label: Label;
   hover: { text: Info };
   change?: NodeDiff | null;  // review mode only
-  items?: Items;
   verdicts?: Verdicts;
   review?: Review;
 }
@@ -167,7 +164,6 @@ export interface SceneEdge {
   projection: EdgeProjection;
   hover?: { text: Info };
   change?: EdgeDiff | null;  // review mode only
-  items?: Items;
   verdicts?: Verdicts;
   review?: Review;
 }

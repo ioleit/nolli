@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
 from nolli.model.schema import EntityId
-from nolli.logic.transformations.merge import items
+from nolli.logic.transformations.merge import reading
 from nolli.logic.transformations.merge.reading import Reader
 from nolli.store.maps import MapStore
 
@@ -125,19 +125,19 @@ def _parse_verdicts(values) -> list[dict]:
     return sorted(out, key=lambda v: int(v["id"][1:]))
 
 
-def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
+def _describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
     """Each verdict with what the viewer says about it: ``edge``, ``reveal`` (what to unfold
     to see its target) and ``label`` (how the diagram names it)."""
     g = Reader(scene)
     out = []
     for v in verdicts:
         ends = [EntityId(x) for x in v.get("ends") or []]
-        name = lambda x: items.format_name(g, x.owner) + (" (own code)" if x.is_own_code else "")
+        name = lambda x: reading.format_name(g, x.owner) + (" (own code)" if x.is_own_code else "")
         reveal: list[str] = []
         for x in ends:
             if not g.has(x.owner):
                 continue
-            for a in items.list_ancestors_to_unfold(g, x.owner) + ([x.owner] if x.is_own_code else []):
+            for a in reading.list_ancestors_to_unfold(g, x.owner) + ([x.owner] if x.is_own_code else []):
                 if a not in reveal:
                     reveal.append(a)
         out.append(v | {"ends": ends, "edge": len(ends) == 2, "reveal": reveal,
@@ -145,7 +145,7 @@ def describe_verdicts(scene: Scene, verdicts: list[dict]) -> list[dict]:
     return out
 
 
-def load_verdicts(maps: MapStore, key) -> list[dict]:
+def _load_verdicts(maps: MapStore, key) -> list[dict]:
     """Load a change's kept verdicts, in their order."""
     return _parse_verdicts(maps.open_maps("verdicts").load(key.format_key()))
 
@@ -176,8 +176,9 @@ def _keep_verdicts_file(maps: MapStore, key, scene: Scene, text: str, by: dict) 
 
 class Verdicts(Overlay):
     """On a change's node: the verdicts that start there (on the node, on its own code, or on an
-    edge from it), as kept. On a drawn box or edge: the verdicts that land on it, from what it
-    and what it holds stand for (``land``), and the worst of them. Any projection of the change
+    edge from it), as kept and described (``_describe_verdicts``): a table of the change with
+    this overlay lists them all. On a drawn box or edge: the verdicts that land on it, from what
+    it and what it holds stand for (``land``), and the worst of them. Any projection of the change
     shows each verdict on the drawn box that stands for its target, or on the drawn edge that
     carries the edge between its two ends."""
 
@@ -193,9 +194,10 @@ class Verdicts(Overlay):
         return self.stored.load_about(scene.model.key.format_key())
 
     def group(self, scene: Scene) -> dict[str, list[dict]]:
-        """Group a change's verdicts by the node their first end belongs to."""
+        """Group a change's verdicts, each described (``_describe_verdicts``), by the node their
+        first end belongs to."""
         out: dict[str, list[dict]] = defaultdict(list)
-        for v in self.load(scene):
+        for v in _describe_verdicts(scene, self.load(scene)):
             if v.get("ends"):
                 out[v["ends"][0].owner].append(v)
         return dict(out)
@@ -243,7 +245,7 @@ def _land(scene: Scene, v: dict) -> object | None:
     fan bundling draw an edge between boxes that contain its ends (a folded box, or the
     unfolded box a bundle ends at). An edge that falls inside one box is shown on that box,
     and one drawn as a badge on its source."""
-    ends = [items.find_box(scene, x) for x in v["ends"]]
+    ends = [reading.find_box(scene, x) for x in v["ends"]]
     if not ends or None in ends:
         return None
     if len(ends) == 2 and ends[0] != ends[1]:

@@ -242,12 +242,9 @@ def _make_kept_overlays(maps: MapStore, key: ModelKey) -> list[Overlay]:
 
 def _make_change_overlays(maps: MapStore) -> list[Overlay]:
     """Make the overlays that compute what a change says about itself from its sides: what changed
-    (``change``) and its numbered changes, with which of them each node and edge is about
-    (``items``). Their values are kept with the change at diff time (``precompute_scene``) and
+    (``change``). Its values are kept with the change at diff time (``precompute_scene``) and
     read back from there (``_open_change_scene``)."""
-    from nolli.logic.transformations.merge.items import ChangeItems
-
-    return [merge.Change(maps.open_maps("content")), ChangeItems()]
+    return [merge.Change(maps.open_maps("content"))]
 
 
 def _describe_scene_meta(base: Model, head: Model, about: dict, content: Mapping[Key, dict]) -> dict:

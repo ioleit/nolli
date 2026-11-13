@@ -30,10 +30,11 @@ state says (``ProjectionParams``, the viewer's location-hash keys;
 nolli/logic/transformations/projection/spec.py; ``p=none``: not projected), in a format
 (``FORMATS``: ``viewer`` by default, the viewer's JSON with every overlay; ``table``, rows of the
 overlays named; ``mermaid``; ``brief``, what a review agent gets; ``report``) with that format's
-options (``FormatSceneRequest``, nolli/logic/formats/options.py);
-``/api/changes`` a change's numbered changes and the review's verdicts; ``POST /api/verdicts`` stores a review's verdicts (``nolli view``
-only); ``/api/review`` says where the verdicts came from and whether a review agent can run
-here, ``POST /api/review`` starts one (it needs ANTHROPIC_API_KEY, reviews.py) and ``POST
+options (``FormatSceneRequest``, nolli/logic/formats/options.py). A change's list of changes is
+read off a table of the changes preset (``f=table&overlays=change,label&p=changes``), its
+verdicts off a table of the change itself (``f=table&required_overlay=verdicts&p=none``).
+``POST /api/verdicts`` stores a review's verdicts (``nolli view`` only); ``/api/review`` says
+where the verdicts came from and whether a review agent can run here, ``POST /api/review`` starts one (it needs ANTHROPIC_API_KEY, reviews.py) and ``POST
 /api/review/cancel`` stops it. ``/api/job?j=`` is a build's progress.
 
 GitHub's API is asked with a token (``Token``): for ``nolli serve`` ``NOLLI_GITHUB_TOKEN`` if
@@ -97,7 +98,7 @@ from ..logic.sources import CloneCache, FetchError, LocalFirst, Sources, github 
 from ..logic.sources.git import ChangeError, GitError  # noqa: E402
 from nolli.logic import transformations  # noqa: E402
 from nolli.logic.transformations import merge, projection  # noqa: E402
-from nolli.logic.transformations.merge import items  # noqa: E402
+from nolli.logic.transformations.merge import presets  # noqa: E402
 from nolli.review import brief, card, verdicts  # noqa: E402
 
 from ..logic.transformations.projection import ProjectionSpec  # noqa: E402
@@ -456,8 +457,8 @@ def viewer_page(key: ModelKey, title: str) -> bytes:
 
 def parse_spec(q: dict[str, str]) -> ProjectionSpec:
     """Parse the viewer's URL parameters (the same keys as its location hash) into a scene state,
-    with every preset the viewer offers (``items.PRESETS``)."""
-    return ProjectionSpec.from_query(q, items.PRESETS)
+    with every preset the viewer offers (``presets.PRESETS``)."""
+    return ProjectionSpec.from_query(q, presets.PRESETS)
 
 
 # ---------- the scene request ----------
@@ -472,7 +473,7 @@ class ProjectionParams(BaseModel):
     no projection at all."""
 
     x: str | None = None  # the unfolded containers, comma-separated
-    p: str | None = None  # a preset (items.PRESETS, the named expansions), or "none"
+    p: str | None = None  # a preset (presets.PRESETS, the named expansions), or "none"
     d: str | None = None  # p=dirs: the directory under which
     b: int | None = None  # the default cut's budget
     r: str | None = None  # the roles shown, comma-separated ("" for none)
@@ -660,19 +661,6 @@ def scene(request: Request, q: Annotated[FormatSceneRequest, Query()]) -> Respon
     response.headers["Server-Timing"] = ", ".join(f"{name};dur={(b - a) * 1000:.0f}" for name, a, b in
                                                   (("load", t0, t1), ("project", t1, t2), ("format", t2, t3)))
     return response
-
-
-@router.get("/api/changes")
-def changes(request: Request) -> Response:
-    """Answer a change's numbered changes and the review's verdicts on them; nothing for a snapshot."""
-    q = query_of(request)
-    found = services_of(request).open_model(q.get("k"))
-    if found is None:
-        return no_model(q)
-    key, sc, store = found
-    is_change = merge.is_change(sc)
-    return json_response({"items": items.list_changes(sc) if is_change else [],
-                          "verdicts": verdicts.describe_verdicts(sc, verdicts.load_verdicts(store, key)) if is_change else []})
 
 
 @router.get("/api/review")

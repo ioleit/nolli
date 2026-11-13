@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import open_extracted
+from helpers import list_changes, open_extracted
 
 from nolli.operations import _extract_commit, _fetch_change, _run_here
 from nolli.logic import transformations
@@ -20,7 +20,7 @@ from nolli.logic.sources import CloneCache, FetchError, LocalRepository
 from nolli.logic.transformations import projection
 from nolli.model.keys import ModelKey, Repo, StringKey
 from nolli.progress import Quiet
-from nolli.logic.transformations.merge import items as changes
+from nolli.logic.transformations.merge import presets as changes
 from nolli.review import brief
 from nolli.review import verdicts as review_verdicts
 from nolli.operations import _open_change_scene, open_scene
@@ -115,7 +115,7 @@ def test_a_change_is_built_once_and_its_commits_are_reused(src, tmp_path):
     assert sc.model.meta["change"]["title"] == "a cache" and sc.model.meta["change"]["base"] == shas[0]
     assert sc.find_element("repo:shop/cache.py").get("change")["status"] == "added"
     assert sorted(f.name for f in store._locate(first).iterdir()) == ["change.json", "key.json", "model.json", "overlays"]
-    assert sorted(f.name for f in (store._locate(first) / "overlays").iterdir()) == ["change.json", "content.json", "items.json", "names.json"]
+    assert sorted(f.name for f in (store._locate(first) / "overlays").iterdir()) == ["change.json", "content.json", "names.json"]
     assert "refs" not in json.loads((store._locate(first) / "model.json").read_text())  # union says what it refers to
     added = sc.find_element("repo:shop/cache.py")
     assert added.find_same("head") is not None and added.find_same("base") is None  # each node its namesake on each side
@@ -144,12 +144,11 @@ def _draw(scene, spec):
 
 
 def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, tmp_path):
-    """What a change says about itself (change, items) and its merged model are kept at diff
+    """What a change says about itself (change) and its merged model are kept at diff
     time and read back; a change kept without them (an older nolli) is computed on every read."""
     from helpers import spec
 
     from nolli.logic.transformations.merge import Change
-    from nolli.logic.transformations.merge.items import ChangeItems
 
     path, shas = src
     change = Repo(str(path)).make_change(shas[0], shas[2])
@@ -157,14 +156,13 @@ def test_a_change_opened_from_what_was_kept_draws_the_same_as_one_computed(src, 
     _fetch_change(store, sources, change, about={"title": "kept"})
     kept = _open_change_scene(store, change)
     assert type(kept.overlays["change"]).__name__ == "PrecomputedOverlay" and kept.overlays["change"].find_kept(change.format_key())
-    assert store.open_maps("items").load_about(change.format_key())["overlay"] == "items"
-    computed = kept.with_overlays(Change(store.open_maps("content")), ChangeItems())  # the same scene, its own overlays computing
+    computed = kept.with_overlays(Change(store.open_maps("content")))  # the same scene, its own overlays computing
     for preset in ("folded", "changes", "unfolded"):
         assert viewer.export_scene(_draw(kept, spec(preset=preset))) == viewer.export_scene(_draw(computed, spec(preset=preset)))
-    assert kept.read_all("change") == computed.read_all("change") and kept.read_all("items") == computed.read_all("items")
-    assert changes.list_changes(kept) == changes.list_changes(computed) and changes.list_changes(kept)
+    assert kept.read_all("change") == computed.read_all("change")
+    assert list_changes(kept) == list_changes(computed) and list_changes(kept)
 
-    for f in ("model.json", "overlays/change.json", "overlays/items.json"):  # a change kept by an older nolli
+    for f in ("model.json", "overlays/change.json"):  # a change kept by an older nolli
         (store._locate(change) / f).unlink()
     older = open_store(tmp_path, change.repo)
     assert older.load_model(change) is None and older.open_maps("change").load(change.format_key()) == {}
@@ -251,8 +249,7 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
     unfolded = viewer.export_scene(_draw(sc, spec(expanded=["repo:", "repo:shop"])))
     assert {n["id"] for n in unfolded["nodes"]} >= {"repo:shop/helpers.py", "repo:shop/api.py", "repo:shop/store.py"}
 
-    items = changes.list_changes(sc)
-    assert items and any("repo:shop/helpers.py" in it["focus"] for it in items)
+    assert any(r["id"] == "repo:shop/helpers.py" for r in list_changes(sc))
 
     told = brief.make_brief(sc)
     assert "helpers" in told
@@ -264,7 +261,7 @@ def test_a_kept_change_opened_from_disk_serves_everything_the_viewer_asks(renami
 
     again = open_store(tmp_path, change.repo)  # the verdicts read back from JSON too
     sc2 = open_scene(again, change)
-    described = review_verdicts.describe_verdicts(sc2, review_verdicts.load_verdicts(again, change))
+    described = review_verdicts._describe_verdicts(sc2, review_verdicts._load_verdicts(again, change))
     assert len(described) == len(kept) and all(type(x) is EntityId for v in described for x in v["ends"])
     assert viewer.export_scene(_draw(sc2, spec(preset="changes")))["nodes"]
 

@@ -9,7 +9,7 @@ from nolli.model.model import Key
 from nolli.model.scene import Scene
 
 FORMAT = 1
-SHOWN = ("projection", "label", "hover", "change", "items", "verdicts", "review")  # the overlays the viewer draws, in this order
+SHOWN = ("projection", "label", "hover", "change", "verdicts", "review")  # the overlays the viewer draws, in this order
 
 
 def _describe(key: Key, said: dict[str, Mapping[Key, dict]]) -> dict:

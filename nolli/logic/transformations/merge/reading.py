@@ -6,10 +6,10 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 
-from nolli.model import vocabulary
+from nolli.model import schema, vocabulary
 from nolli.model.model import Entity, Key, Relation
 from nolli.model.scene import Scene
-from nolli.model.schema import RelationKind
+from nolli.model.schema import EntityId, RelationKind
 
 
 @dataclass
@@ -105,3 +105,40 @@ class Reader:
             out.append(ChangedEdge(e, sum(r["count"] for r in references.get(e.id, ())),
                                    d if d and d.get("status") in ("added", "removed", "changed") else None))
         return out
+
+
+def find_module(g: Reader, x: str) -> str:
+    """Return the module (file) a node belongs to; a node outside files is returned as it is."""
+    cur: str | None = x
+    while cur is not None:
+        if g.has(cur) and g.kind(cur) == "file":
+            return cur
+        cur = g.parent(cur)
+    return x
+
+
+def format_name(g: Reader, x: str) -> str:
+    """Return a readable name for a node. Files and directories are named by their path, classes
+    (and the other symbols) by path#Name."""
+    if not g.has(x):
+        return x
+    kind, a = g.kind(x), g.attrs(x)
+    if kind in ("file", "directory"):
+        return a.get("path") or g.name(x)
+    if kind in schema.SYMBOL_KINDS:
+        return f"{a.get('path')}#{g.name(x)}"
+    return g.name(x)
+
+
+def list_ancestors_to_unfold(g: Reader, x: str) -> list[str]:
+    """List the boxes to unfold so that x itself is drawn, outermost first."""
+    return list(g.ancestors(x))[::-1]
+
+
+def find_box(scene: Scene, x: str) -> str | None:
+    """Find the drawn box that stands for ``x``: ``x`` itself if it is drawn (a module's own code
+    too), else the box holding it (or its owner), or None. ``x`` may be text (an address)."""
+    x = EntityId(x)
+    if scene.has(x):
+        return x
+    return scene.find_holder(x) or scene.find_holder(x.owner)

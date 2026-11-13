@@ -9,16 +9,16 @@ from nolli.logic.formats import formatters
 from nolli.logic.formats import mermaid as mermaid_format
 from nolli.logic.transformations import projection
 from nolli.logic.transformations import merge
-from nolli.logic.transformations.merge import Links, items
+from nolli.logic.transformations.merge import Links, presets
 from nolli.model.scene import Scene
 
 
 def make_review_diagram(scene: Scene) -> str:
     """Render the review diagram (``review.mmd``) as Mermaid: the change with every area that
-    changed in source code unfolded (``items.Changes``), the rest of the projection as it is by
+    changed in source code unfolded (``presets.Changes``), the rest of the projection as it is by
     default. It is the same for the same change and version of nolli, so verdicts on its ids stay
     valid."""
-    return mermaid_format.render(transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=items.Changes()))))
+    return mermaid_format.render(transformations.apply(scene, projection.fold(projection.ProjectionSpec(expand=presets.Changes()))))
 
 
 def make_brief(scene: Scene, mermaid: str | None = None, description: str | None = None) -> str:

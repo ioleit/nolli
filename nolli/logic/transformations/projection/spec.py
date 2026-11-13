@@ -149,7 +149,7 @@ class ProjectionSpec:
     @classmethod
     def from_query(cls, q: Mapping[str, str], presets: Mapping[str, type[Expansion]] = PRESETS) -> ProjectionSpec:
         """Read a spec from URL parameters as ``to_query`` (and the viewer) writes them. ``p``
-        names one of ``presets`` (a caller adds its own, as ``merge.items.PRESETS`` does) or of
+        names one of ``presets`` (a caller adds its own, as ``merge.presets.PRESETS`` does) or of
         this module's named expansions; an unknown one, like none, gives the default cut."""
         st = cls()
         named = {**_NAMED, **presets}
