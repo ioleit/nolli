@@ -124,8 +124,3 @@ class Reading:
             out.append(Rel(e, sum(r["count"] for r in refs), conf, refs,
                            d if d and d.get("status") in ("added", "removed", "changed") else None))
         return out
-
-    def find_unresolved_language(self, x: str) -> str:
-        """Return the language an unresolved reference was written in, as its extractor says, else the
-        sort of reference its address names (``http``)."""
-        return vocabulary.read_external(self.scene.find_element(x)).get("language") or x.split(":")[1]

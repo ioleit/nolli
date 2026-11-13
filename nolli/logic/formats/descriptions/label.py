@@ -17,8 +17,7 @@ def _module_stem(file_name: str) -> str:
 
 
 def _format_path(el: Element, drawn: Element) -> str:
-    """Return the directory's path relative to the directory box it is drawn in. A chain of
-    directories folded into one box shows the whole chain."""
+    """Return the directory's path relative to the directory box it is drawn in."""
     path = el.key.path
     parent = drawn.parent
     if parent is not None and parent.key.is_repo and not parent.key.is_own_code:

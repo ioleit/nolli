@@ -11,7 +11,7 @@ const GROUP_HELP = {
   config: "Settings the code reads at runtime (environment variables), as one box you can unfold. Readers point into it, and from it to the services that set them. Hidden: the readers' hover text counts what they read.",
   runtime: "What runs: Compose services and the hosts outside they reach, as one box you can unfold. Hidden: the hover text of the code they touch says so.",
   pkg: "Artifacts: third-party packages and the images built here, as one box you can unfold. Hidden: the importers' hover text names them.",
-  unresolved: "References the extractors saw but could not bind, as one box you can unfold. References into it are never drawn: the residue counts them, by language.",
+  unresolved: "References the extractors saw but could not bind, as one box you can unfold. References point into it. Hidden: the referrers' hover text counts them.",
 };
 
 /** @type {Record<string, string>} how nolli/logic/extractors/fs.py assigns each role */
