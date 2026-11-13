@@ -6,6 +6,52 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
 ### Changed
 
+- **`nolli serve --keep` limits the clones only.** Models in the store are no longer deleted to
+  make room: one size for both let a large clone push out extracted models, and the models'
+  "used" time was really when they were built. What the store keeps is
+  `RepoStoreProvider.cleanup`'s to bound, called after each build; it keeps everything for now.
+  The provider and its stores no longer hand out paths (`locate` is gone).
+- **A store per repository, opened once per request** (`nolli/store/repo_directory.py`):
+  - `RepoStoreProvider(root).open(repo)` decides whether the current request may read `repo`
+    (`allow`, the one method a service overrides) and returns a `RepoDirectoryStore`, which keeps
+    that repository's models only. A key of another repository, or of none, raises
+    `NotAllowed`. The server holds a `RepoStoreProvider` (a service subclasses it for its own
+    `allow`; `make_server(stores, …)`, `Services.stores`, `serve.main(stores=…)`) and opens a model's
+    store once per request; builds and reviews get that store. `ModelStore` loses `check` and
+    `find_key`.
+  - Where a model is kept follows from its key alone:
+    `<root>/github.com/<owner>/<repo>/<rest of the key>/`, or `local/<path>/…` for a repository
+    not on GitHub. Any key of the repository can be kept (a projection's maps, `save_scene`), and
+    nothing is scanned. A change's commits are kept beside it, not copied into it.
+  - `DirectoryStore` is gone. Models kept under the old layout (`<owner>_<repo>-<sha7>`) are not
+    read: they are built again, and review verdicts kept there are not carried over.
+  - Every key a repository's store is asked about names that repository; one of another
+    repository, or of none, raises `NotAllowed`. `StringKey` takes an optional `repo`
+    (`StringKey(text, repo)`, written `<repo>@~<text>`) for a model made in code; its text has
+    no `@`, so every key's text reads back as the key it was (`ModelKey.parse` raises
+    `ValueError` for an `@` that marks no commit, change or repository).
+    `operations.build_files` has no default key: name what you build (`nolli extract` uses
+    `Repo(path).make_commit("worktree")`), and `select`
+    keys the part it keeps with a `SelectionKey` (`<source>~select:<digest of the kept ids>`)
+    in place of a `StringKey` of no repository.
+  - The store's JSON forms of a model and a map are its own (`nolli/model/serialized.py` is
+    gone), so they can change without changing the files the command line exchanges.
+- **Files go in and out of the store only as dataset directories**
+  (`nolli/logic/formats/dataset.py`, a frozen format of its own):
+  - `cli.export_dataset(store, key, dir)` and `cli.import_dataset(store, dir)` work with any
+    `ModelStore`; the format module only reads and writes files (`read_dataset`,
+    `write_dataset`). A dataset directory keeps the shape `-o` wrote before, so existing ones import.
+  - `nolli build` prints the model's key, not a directory. With `-o DIR` (and `diff`/`extract
+    -o`), it builds into the data directory as usual, reusing a fresh build (`--rebuild` to
+    force), then exports it with its report and review files; it no longer always rebuilds.
+  - `nolli view DIR`, `nolli build DIR` and `nolli agent check DIR` import a dataset directory
+    into the data directory first. A model's key works as a target too.
+  - `nolli agent brief` prints `key`, and its `check` and `view` commands name the key (with
+    `--data` when one was given). `dataset` stays, deprecated, with the same value, so a skill
+    from before 0.10 still works (a key goes wherever a dataset directory did); `dataset_note`
+    asks an agent following such a skill to tell the user to update it (`nolli agent skill
+    --install`). The agent's directory under `.agent/` holds
+    the key in a file `key`, so `agent check <verdicts file>` still finds the change.
 - **A projection spec has one text form, and a projected model is keyed by it**:
   - `ProjectionSpec.to_query()` / `from_query(q, presets)` write and read it as the viewer's URL
     parameters, defaults left out and lists sorted; `format()` / `parse()` as text
@@ -56,15 +102,14 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
     their values. It replaces `keep_commit_scene` and `keep_change_scene` and their `by`, which
     nothing read.
   - `datasets.parse_target`, `resolve_target`, `Asked` and the server's `Plan` are gone; the
-    extractor run is `extractors.facts.extract_facts`, `build.extract` is
-    `operations.extract_files`.
-- **`ModelStore.find_key(name)`**: `nolli view` shows a dataset of its store by its name
-  (`/?t=ledger-review`), asking the store, not the filesystem.
+    extractor run is `extractors.facts.extract_facts`.
+  - The extraction steps are private: `build.extract` and `extract_commit`, `list_content`,
+    `describe_change_meta` and `version` (now `operations._extract_files`, `_extract_commit`, …).
+    Build with `build_target` or `build_files`, which keep the result in a store.
 - **A model's key is a target**: `<repo>@<sha>` or `<repo>@<base>..<head>`, full shas. A pinned
   pull request, `<repo>@<base>...<head>`, is one too.
-- **A dataset directory is the command line's**: `nolli view <dir>` serves the store the
-  directory is in and opens the viewer on its key. The viewer's `?t=` no longer takes a path;
-  under `nolli view` it takes a dataset's name in the store.
+- **A dataset directory is the command line's**: `nolli view <dir>` imports it into the data
+  directory and opens the viewer on its key. The viewer's `?t=` no longer takes a path.
 - **`nolli/datasets.py` is gone**: the command line and the server call `nolli.operations`, the
   store, the formats and `nolli.review` directly. The review diagram is
   `review.brief.make_review_diagram`; `review.brief.make_brief(scene)` makes the diagram and reads

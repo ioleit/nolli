@@ -104,5 +104,5 @@ def test_a_root_path_from_the_pages_directory(model):
 
 
 def test_pages_are_shown_by_default(model):
-    g = Graph(open_extracted(*model.split(StringKey("test@0"))))
+    g = Graph(open_extracted(*model.split(StringKey("test"))))
     assert "repo:site/index.html" not in hidden_by_role(g), "a page's edges would be dropped with it"

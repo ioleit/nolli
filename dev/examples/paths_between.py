@@ -12,11 +12,12 @@ from nolli.logic.formats import mermaid
 from nolli.logic.transformations import projection
 from nolli.logic.transformations.select import select
 from nolli.model.scene import Scene
+from nolli.model.keys import Repo
 from nolli.store import MemoryStore
 
 repo = Path(sys.argv[1])
 files = MemoryStore()
-scene = operations.open_scene(files, operations.build_files(files, repo))                     # the files as they are, with nolli's overlays
+scene = operations.open_scene(files, operations.build_files(files, repo, Repo(str(repo.resolve())).make_commit("worktree")))                     # the files as they are, with nolli's overlays
 
 
 spec = projection.ProjectionSpec(expand=projection.Dirs("nolli"), groups=[], utilities=0)   # module level under nolli/, no classes

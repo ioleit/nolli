@@ -146,7 +146,7 @@ def test_lift_ends_when_provide_lines_cannot_merge():
     for mod in modules:
         m.add_entity(EntityFact(mod, "file", mod.rsplit("/", 1)[-1], {}, Provenance("fs")))
         m.contain("repo:app", mod, "fs")
-    g = Graph(open_extracted(*m.split(StringKey("test@0"))))
+    g = Graph(open_extracted(*m.split(StringKey("test"))))
     edges = [RolledEdge("provide", "api:", mod, "route", count=1) for mod in modules]
     lines = lift(g, edges, {"repo:", "repo:app"}, max_lines=4)
     assert sorted((e.src, e.dst) for e in lines) == [("api:", mod) for mod in modules]
@@ -308,7 +308,7 @@ def test_directory_with_source_inside_stays_shown():
         m.add_entity(EntityFact(eid, kind, eid.rsplit("/", 1)[-1], {"role": role, **({"root": True} if eid == "repo:" else {})}, Provenance("fs")))
     for parent, child in [("repo:", "repo:evals"), ("repo:evals", "repo:evals/probe.py"), ("repo:evals", "repo:evals/runs.json"), ("repo:", "repo:docs"), ("repo:docs", "repo:docs/a.md")]:
         m.contain(parent, child, "fs")
-    assert hidden_by_role(Graph(open_extracted(*m.split(StringKey("test@0"))))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
+    assert hidden_by_role(Graph(open_extracted(*m.split(StringKey("test"))))) == {"repo:evals/runs.json", "repo:docs", "repo:docs/a.md"}
 
 
 def test_box_names_are_icons_then_a_name(repo: Path):

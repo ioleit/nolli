@@ -31,13 +31,14 @@ nolli agent brief <change>
 
 Run it in the repository (or add `--repo <path>`). If `nolli` is not found, tell the user
 it needs installing (`pipx install nolli-review`) and stop. It builds the
-change's dataset (a few seconds; reused if it exists) and prints JSON on stdout (what it
+change (a few seconds; reused if it is built already) and prints JSON on stdout (what it
 resolved and its progress go to stderr):
 
 - `brief`: `review.md`, your instructions, the diagram and the change's description;
 - `verdicts`: where your answer goes (`verdicts.json`); `has_verdicts`: one exists already;
 - `inspect`: the `git diff` command for exactly this change;
-- `check`, `view`: the commands for steps 4 and 5.
+- `key`: what nolli calls the change;
+- `check`, `view`: the commands for steps 4 and 5, naming it by its key.
 
 If `has_verdicts` is true and the user did not ask for a new review, go to step 5.
 
@@ -55,7 +56,7 @@ Write your verdicts to the `verdicts` path: a JSON list of
 ## 4. Check
 
 ```
-nolli agent check <dataset>
+nolli agent check <key>
 ```
 
 Use the `check` command the brief printed. It prints one line per problem (a node id not in the diagram, an edge the diagram does not
@@ -64,10 +65,11 @@ draw or draws the other way round, a missing reason, …) and exits 1. Fix each 
 
 ## 5. Show it
 
-Start the viewer in the background; it serves until stopped:
+Start the viewer in the background with the `view` command the brief printed, adding
+`--no-open`; it serves until stopped:
 
 ```
-nolli view <dataset> --no-open
+nolli view <key> --no-open
 ```
 
 It prints `viewer: http://127.0.0.1:<port>/?t=…` (to stderr; redirect it to a file to

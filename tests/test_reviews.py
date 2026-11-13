@@ -11,6 +11,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
@@ -18,12 +19,12 @@ import pytest
 
 from nolli.operations import _fetch_change
 from nolli.logic.sources import CloneCache, LocalRepository
-from nolli.model.keys import Repo
+from nolli.model.keys import ChangeKey, Repo
 from nolli.review import agent as reviewer
 from nolli.review.verdicts import _keep_verdicts_file, _parse_verdicts
 from nolli.operations import _open_change_scene
 from nolli.server import serve
-from nolli.store import DirectoryStore
+from nolli.store import RepoStoreProvider
 
 GOOD = json.dumps([{"target": "n_repo_shop_cache_py", "verdict": "good", "reason": "ok"}])
 
@@ -32,9 +33,21 @@ def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
+@dataclass
+class Built:
+    """A change built into the store under ``data``, from the repository ``repo``."""
+
+    data: Path
+    key: ChangeKey
+    repo: Path
+
+    def store(self):
+        return RepoStoreProvider(self.data).open(self.key.repo)
+
+
 @pytest.fixture
-def dataset(tmp_path: Path) -> Path:
-    """A change's dataset as built for PR #7 of me/shop, in <tmp>/data; the
+def dataset(tmp_path: Path) -> Built:
+    """A change as built for PR #7 of me/shop, in the store under <tmp>/data; the
     repository it came from in <tmp>/shop."""
     r = tmp_path / "shop"
     (r / "shop").mkdir(parents=True)
@@ -51,24 +64,23 @@ def dataset(tmp_path: Path) -> Path:
     git(r, "add", ".")
     git(r, "commit", "-q", "-m", "Add a cache")
     key = Repo("github.com/me/shop").make_change(base, git(r, "rev-parse", "HEAD"))  # as if built from '#7' on GitHub
-    store = DirectoryStore(tmp_path / "data")
-    _fetch_change(store, LocalRepository(r), key, about={"pr": 7, "title": "Add a cache"})
-    return store.locate(key)
+    built = Built(tmp_path / "data", key, r)
+    _fetch_change(built.store(), LocalRepository(r), key, about={"pr": 7, "title": "Add a cache"})
+    return built
 
 
-def open_dataset(ds: Path):
-    """The dataset's store, key and scene."""
-    store = DirectoryStore(ds.parent)
-    key = store.find_key(ds.name)
-    return store, key, _open_change_scene(store, key)
+def open_dataset(ds: Built):
+    """The change's store, key and scene."""
+    store = ds.store()
+    return store, ds.key, _open_change_scene(store, ds.key)
 
 
-def k(ds: Path) -> str:
-    """The dataset's key, as the viewer's API takes it."""
-    return quote(open_dataset(ds)[1].format_key(), safe="")
+def k(ds: Built) -> str:
+    """The change's key, as the viewer's API takes it."""
+    return quote(ds.key.format_key(), safe="")
 
 
-def kept_verdicts(ds: Path) -> list[dict]:
+def kept_verdicts(ds: Built) -> list[dict]:
     store, key, _ = open_dataset(ds)
     return _parse_verdicts(store.open_maps("verdicts").load(key.format_key()))
 
@@ -84,7 +96,7 @@ def call(srv, path: str, method: str = "GET", body: bytes | None = None) -> tupl
 
 @pytest.fixture
 def server(dataset):
-    srv = serve.make_local_server(dataset.parent, dataset.parent.parent / "shop", port=0)  # nolli view's
+    srv = serve.make_local_server(dataset.data, dataset.repo, port=0)  # nolli view's
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv
     srv.shutdown()
@@ -164,12 +176,12 @@ def test_a_failed_run_keeps_the_verdicts_shown(server, dataset, monkeypatch):
 
 
 def test_serve_stores_no_uploads(tmp_path, dataset):
-    shutil.copytree(dataset, tmp_path / "cache" / "data" / dataset.name)
     data = tmp_path / "cache" / "data"
-    srv = serve.make_server(DirectoryStore(data), CloneCache(tmp_path / "cache" / "repos"), tmp_path / "cache", port=0)
+    shutil.copytree(dataset.data, data)
+    srv = serve.make_server(RepoStoreProvider(data), CloneCache(tmp_path / "cache" / "repos"), tmp_path / "cache", port=0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        key = k(data / dataset.name)
+        key = k(dataset)
         assert call(srv, f"/api/verdicts?k={key}", "POST", b"[]")[0] == 405
         st = call(srv, f"/api/review?k={key}")[1]
         assert st["server"] == "serve" and st["uploads"] is False and st["verdicts"] is None
@@ -199,7 +211,7 @@ def test_a_service_brings_its_own_reviewer(tmp_path, dataset, monkeypatch):
             return reviewer.Run(turns=1, model="mine-1")
 
     mine = Mine()
-    srv = serve.make_server(DirectoryStore(dataset.parent), LocalRepository(dataset.parent.parent / "shop"), dataset.parent.parent,
+    srv = serve.make_server(RepoStoreProvider(dataset.data), LocalRepository(dataset.repo), dataset.data.parent,
                             port=0, token=serve.Token(), reviewer=mine)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:

@@ -9,11 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from helpers import draw
+from helpers import draw, open_dataset
 from nolli.operations import open_scene
 from nolli.review import card
 from nolli.cli import main
-from nolli.store import DirectoryStore
 
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
 import nav_repo  # noqa: E402
@@ -35,7 +34,7 @@ def test_verdicts_pass_the_check(dataset, capsys):
     (["repo:tasks/jobs", "repo:tasks/store", "repo:tasks/store/users"], ("repo:tasks/jobs/worker.py", "repo:tasks/store/users/repo.py")),
 ])
 def test_a_verdict_follows_its_edge_when_rolled_up(dataset, unfolded, edge):
-    store = DirectoryStore(dataset.parent)
-    sc = draw(open_scene(store, store.find_key(dataset.name), card.make_overlays(store)), expanded=["repo:", "repo:tasks", *unfolded])
+    store, key = open_dataset(dataset)
+    sc = draw(open_scene(store, key, card.make_overlays(store)), expanded=["repo:", "repo:tasks", *unfolded])
     assert [(e["src"], e["dst"]) for e in sc["edges"] if "V1" in e["verdicts"]["verdicts"]] == [edge]
     assert not [n["id"] for n in sc["nodes"] if n["verdicts"]["verdicts"]]

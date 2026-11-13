@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -12,7 +13,8 @@ import pytest
 
 from nolli.cli import main
 from nolli.review.verdicts import _parse_verdicts
-from nolli.store import DirectoryStore
+from nolli.model.keys import ModelKey
+from nolli.store import RepoStoreProvider
 
 
 def git(repo: Path, *args: str) -> None:
@@ -44,10 +46,11 @@ def test_brief(change):
     assert change["title"] == "Add a cache in front of the store"
     assert Path(change["brief"]).read_text().startswith("# Architecture review: Add a cache in front of the store")
     assert not change["has_verdicts"]
-    work = Path(change["verdicts"]).parent  # the agent's own directory, beside the store
-    assert work == Path(change["brief"]).parent and work.parent.name == ".agent" and work.name == Path(change["dataset"]).name
-    # the dataset holds what the store keeps of a change, nothing of the agent's
-    assert sorted(f.name for f in Path(change["dataset"]).iterdir()) == ["base", "change.json", "head", "key.json", "model.json", "overlays"]
+    work = Path(change["verdicts"]).parent  # the agent's own directory, beside the store, with the change's key
+    assert work == Path(change["brief"]).parent and work.parent.name == ".agent" and (work / "key").read_text().strip() == change["key"]
+    assert isinstance(ModelKey.parse(change["key"]), ModelKey) and change["base"] in change["key"]
+    assert shlex.split(change["check"])[:4] == ["nolli", "agent", "check", change["key"]] and "--data" in change["check"]
+    assert change["dataset"] == change["key"] and "out of date" in change["dataset_note"]  # what a skill from before 0.10 reads
 
 
 def test_check(change, capsys):
@@ -56,12 +59,12 @@ def test_check(change, capsys):
     good = [{"target": "n_repo_shop_cache_py", "verdict": "fine", "reason": "a cache module"},
             {"target": f"{edge[1]} --> {edge[2]}", "verdict": "question", "reason": "why?"}]
     Path(change["verdicts"]).write_text(json.dumps(good))
-    assert main(["agent", "check", change["dataset"]]) == 0
+    assert main(shlex.split(change["check"])[1:]) == 0  # the command brief printed
     assert json.loads(capsys.readouterr().out) == {"ok": True, "verdicts": 2, "blunder": 0, "problem": 0, "question": 1,
                                                     "brilliant": 0, "good": 0, "fine": 1, "errors": 0}
-    ds = Path(change["dataset"])  # passing verdicts are the dataset's review
-    store = DirectoryStore(ds.parent)
-    key = store.find_key(ds.name).format_key()
+    data = Path(change["verdicts"]).parent.parent.parent  # passing verdicts are the change's review, in the store
+    key = change["key"]
+    store = RepoStoreProvider(data).open(ModelKey.parse(key).repo)
     assert store.open_maps("verdicts").load_about(key)["by"] == "agent"
     assert [v["verdict"] for v in _parse_verdicts(store.open_maps("verdicts").load(key))] == ["fine", "question"]
     bad = [{"target": f"{edge[2]} --> {edge[1]}", "verdict": "fine", "reason": "x"},

@@ -41,7 +41,7 @@ from nolli.store.maps import Maps, MapStore
 
 
 # run(fn, *args, progress=…) calls fn(*args, progress=…), here or elsewhere (in a process of
-# its own). The steps that take time (extract_commit, list_content) take paths and return
+# its own). The steps that take time (_extract_commit, _list_content) take paths and return
 # data, so that a caller can run them elsewhere.
 Run = Callable[..., Any]
 
@@ -50,7 +50,7 @@ def _run_here(fn: Callable[..., Any], *args: Any, progress: Progress) -> Any:
     return fn(*args, progress=progress)
 
 
-def version() -> str:
+def _version() -> str:
     from importlib.metadata import PackageNotFoundError
     from importlib.metadata import version as pkg_version
 
@@ -64,7 +64,7 @@ def is_fresh(m: Model | dict | None) -> bool:
     """Tell whether ``m`` (a model, or a change's record) was built by this version of nolli; an
     older one is built again when it is asked for."""
     meta = m.meta if isinstance(m, Model) else (m or {})
-    return meta.get("nolli") == version()
+    return meta.get("nolli") == _version()
 
 
 @dataclass(frozen=True)
@@ -213,11 +213,11 @@ def build_target(store: ModelStore, target: Target, sources: Sources, *, about: 
     return key
 
 
-def build_files(store: ModelStore, path: Path, key: ModelKey = StringKey("files@worktree"), progress: Progress | None = None) -> ModelKey:
+def build_files(store: ModelStore, path: Path, key: ModelKey, progress: Progress | None = None) -> ModelKey:
     """Build the files under ``path`` as they are (a working tree, a checkout, a directory that is
     no git repository) into ``store`` under ``key``, and return the key. They are built every
     time: they are no commit, so nothing says a kept model of them is fresh."""
-    model, maps = extract_files(path, progress=progress, key=key)
+    model, maps = _extract_files(path, progress=progress, key=key)
     store.save_model(key, model, maps)  # type: ignore[arg-type]  # a store keeps a model under any key it can hold
     return key
 
@@ -251,7 +251,7 @@ def _make_change_overlays(maps: MapStore) -> list[Overlay]:
 
 
 def _describe_scene_meta(base: Model, head: Model, about: dict, content: Mapping[Key, dict]) -> dict:
-    return {**describe_change_meta(base, head, about), "change": merge.describe_change(about, content)}
+    return {**_describe_change_meta(base, head, about), "change": merge.describe_change(about, content)}
 
 
 def _make_overlays(maps: MapStore) -> list[Overlay]:
@@ -318,7 +318,7 @@ def _fetch_commit_model(store: ModelStore, clone: Path, commit: CommitKey, *, ru
     m = None if rebuild else store.load_model(commit)
     if m is not None and is_fresh(m):
         return m, _load_maps(store, m)
-    m, maps = run(extract_commit, clone, commit.sha, commit.repo.format_name(), progress=progress)
+    m, maps = run(_extract_commit, clone, commit.sha, commit.repo.format_name(), progress=progress)
     m.key = commit
     return m, maps
 
@@ -352,56 +352,35 @@ def _fetch_change(store: ModelStore, sources: Sources, change: ChangeKey, *, abo
     with sources.open_commits(change.repo, change.base, change.head) as clone:
         sides = {side: _fetch_commit_model(store, clone, c, run=run, progress=progress.under(side), rebuild=rebuild)
                  for c, side in zip(change.list_sides(), ("base", "head"), strict=True)}
-        content = run(list_content, clone, change.base, change.head, progress=progress)
+        content = run(_list_content, clone, change.base, change.head, progress=progress)
     record = {k: v for k, v in (about or {}).items() if v}
-    record.update({"base": change.base, "head": change.head, "remote": change.repo.format_remote(), "nolli": version()})
+    record.update({"base": change.base, "head": change.head, "remote": change.repo.format_remote(), "nolli": _version()})
     with progress.step("keeping the change"):
-        meta = describe_change_meta(sides["base"][0], sides["head"][0], record)
+        meta = _describe_change_meta(sides["base"][0], sides["head"][0], record)
         store.save_change(change, record, sides, {"content": content}, merge.merge_models(change, sides["base"][0], sides["head"][0], meta))
         precompute_scene(store, change)
     return record
 
 
-# -- building into a standalone directory: public for now, to be made private or dropped --
-#
-# Besides building into the data directory, where nolli keeps every model it builds
-# (``build_target`` into a ``DirectoryStore``), the command line can build a target into a
-# directory the user names: ``nolli build <target> -o <dir>``, and the older shorthands
-# ``nolli diff <repo> <base> <head> -o <dir>`` and ``nolli extract <repo> -o <dir>`` (which also
-# takes a directory that is no git repository, its files as they are). Such a directory holds
-# one dataset, as the data directory holds many (key.json, model.json, overlays/, and for a
-# change base/, head/ and change.json), and beside it files to read without nolli: report.json
-# (what was found, and the size of the default projection), and for a change changes.json (its
-# numbered changes), review.mmd (the review diagram) and review.md (the brief a review agent
-# reads). ``nolli view <dir>`` and ``nolli agent check <dir>`` take such a directory back; CI
-# and scripts use it to get those files.
-#
-# nolli/cli.py (``write_dataset``, ``cmd_extract``) builds these directories by hand from the
-# functions below, not through ``build_target``: it extracts each commit, lists git's changes,
-# merges the two sides, writes the directory and precomputes its overlays. That is the only
-# reason they are public. The plan: build into a ``DirectoryStore`` through ``build_target``
-# (rebuilding), then write the extra files, so that these become private again. That would also
-# stop the directory from being opened through a store over its parent directory, which picks
-# either of two directories there that hold the same key. Whether the feature stays at all is
-# still open.
+# -- extraction: the steps that take time ---------------------------------------------
 
 
-def extract_files(repo: Path, config: dict | None = None, progress: Progress | None = None, key: ModelKey = StringKey()) -> tuple[Model, Maps]:
+def _extract_files(repo: Path, config: dict | None = None, progress: Progress | None = None, key: ModelKey = StringKey()) -> tuple[Model, Maps]:
     """Extract the model of the files under ``repo`` as they are (a working tree, or a checkout),
     and return it with what each extractor said about its nodes and edges."""
     found = facts.extract_facts(repo, git.list_tracked_files(repo), config, progress)
     head = git.find_head(repo)
-    found.meta.update({"repo": str(repo), "commit": head[:7] if head else None, "nolli": version()})
+    found.meta.update({"repo": str(repo), "commit": head[:7] if head else None, "nolli": _version()})
     return found.split(key)
 
 
-def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple[Model, Maps]:
+def _extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple[Model, Maps]:
     """Extract the model of commit ``sha`` of the git repository ``repo`` from its files, not
     from a working tree, and name its root ``name``."""
     with tempfile.TemporaryDirectory(prefix="nolli-commit-") as tmp:
         with progress.step("checking out the commit"):
             git.export_commit(repo, sha, Path(tmp))
-        m, maps = extract_files(Path(tmp), progress=progress)
+        m, maps = _extract_files(Path(tmp), progress=progress)
     for values in maps.values():  # the root is the temporary directory
         if EntityId.REPO_ROOT in values and "name" in values[EntityId.REPO_ROOT]:
             values[EntityId.REPO_ROOT]["name"] = name
@@ -409,14 +388,14 @@ def extract_commit(repo: Path, sha: str, name: str, progress: Progress) -> tuple
     return m, maps
 
 
-def list_content(repo: Path, base: str, head: str, progress: Progress) -> dict[Key, dict]:
+def _list_content(repo: Path, base: str, head: str, progress: Progress) -> dict[Key, dict]:
     """Return the ``content`` map of a change from ``base`` to ``head``. It gives what git says
     changed in each file, keyed by the file's address (its head path; its base path for a deletion)."""
     with progress.step("comparing the commits"):
         return {EntityId.from_path(path): c.to_dict() for path, c in git.list_file_changes(repo, base, head).items()}
 
 
-def describe_change_meta(base: Model, head: Model, about: dict) -> dict:
+def _describe_change_meta(base: Model, head: Model, about: dict) -> dict:
     """Build the ``meta`` of a change's merged model from its sides: the repository, the head
     commit, its files and languages. What the change says about itself (``about``, kept as
     change.json) is not included; it is added as ``meta["change"]`` by ``merge.describe_change``

@@ -81,15 +81,18 @@ def build(out: Path) -> Path:
 
 
 def keep_verdicts(ds: Path) -> None:
-    """VERDICTS as the dataset's review (verdicts.json beside it, as an agent leaves it)."""
+    """Make VERDICTS the dataset's review (verdicts.json beside it, as an agent leaves it): import
+    the dataset into memory, keep the verdicts there and write it back."""
+    from nolli import cli
     from nolli.operations import _open_change_scene
     from nolli.review.verdicts import _keep_verdicts_file
-    from nolli.store import DirectoryStore
+    from nolli.store import MemoryStore
 
     (ds / "verdicts.json").write_text(json.dumps(VERDICTS, indent=1))
-    store = DirectoryStore(ds.parent)
-    key = store.find_key(ds.name)
+    store = MemoryStore()
+    key = cli.import_dataset(store, ds)
     _keep_verdicts_file(store, key, _open_change_scene(store, key), (ds / "verdicts.json").read_text(), {"by": "unknown"})
+    cli.export_dataset(store, key, ds)
 
 
 if __name__ == "__main__":

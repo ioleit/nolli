@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from nolli.model.keys import ChangeKey, ModelKey, Repo
+from nolli.model.keys import ChangeKey, ModelKey
 from nolli.model.model import Key, Model
 from nolli.store.maps import MemoryHandle
 from nolli.store.precomputed import OverlayStore
@@ -13,7 +13,7 @@ from nolli.store.precomputed import OverlayStore
 
 class MemoryStore(OverlayStore):
     """Commits' and changes' models, what changes say about themselves, and every map kept for
-    them, in memory. Anyone may read anything (``check``)."""
+    them, in memory, under any key."""
 
     def __init__(self) -> None:
         self.maps: dict[str, dict[str, dict[Key, dict]]] = {}  # name -> model key -> values
@@ -21,18 +21,11 @@ class MemoryStore(OverlayStore):
         self.models: dict[ModelKey, Model] = {}
         self.changes: dict[ChangeKey, dict] = {}
 
-    def check(self, repo: Repo) -> None:
-        pass
-
     def open_maps(self, name: str) -> MemoryHandle:
         return MemoryHandle(self, name)  # type: ignore[arg-type]  # it reads and writes .maps and .about, as on MemoryMaps
 
     def list_map_names(self, model_key: str) -> list[str]:
         return sorted(n for n, by_model in self.maps.items() if model_key in by_model)
-
-    def find_key(self, name: str) -> ModelKey | None:
-        """Return None: models in memory have keys, not names."""
-        return None
 
     def load_model(self, key: ModelKey) -> Model | None:
         return self.models.get(key)
