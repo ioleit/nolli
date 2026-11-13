@@ -272,7 +272,7 @@ body.dim .edge.d-same { opacity: .18; }
 .rr-tally { text-transform: none; letter-spacing: 0; display: inline-flex; gap: 6px; align-items: center; color: var(--ink); }
 .rr-tally .vd { margin-right: 2px; }
 .rr-head { text-transform: none; letter-spacing: 0; display: contents; }
-.rr-head a { color: var(--e-http); text-decoration: none; } .rr-head a:hover { color: var(--e-http); text-decoration: underline; }
+.rr-head a { color: var(--muted); text-decoration: none; } .rr-head a:hover { color: var(--e-http); text-decoration: underline; }
 .rr-tools { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; }
 .rr-again, .rr-link { font: inherit; font-size: 11px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 1px 5px; cursor: pointer;
   display: inline-flex; gap: 4px; align-items: center; }
@@ -280,6 +280,7 @@ body.dim .edge.d-same { opacity: .18; }
 .rr-again .ricon { width: 12px; height: 12px; }
 .rr-again:hover:not(:disabled), .rr-link:hover { background: var(--hover-bg); color: var(--ink); }
 .rr-link[aria-expanded="true"] { color: var(--ink); }
+#rr-ways { color: var(--e-http); }
 .rr { display: flex; flex-direction: column; gap: 5px; font-size: 12px; padding: 2px 12px 8px; border-bottom: 1px solid var(--line); }
 .rr:empty { display: none; }
 .rr a { color: var(--e-http); }
