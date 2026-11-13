@@ -39,9 +39,7 @@ from nolli.model import schema
 from nolli.model.keys import ChangeKey, ModelKey, NotAllowed, Repo
 from nolli.model.model import Entity, Key, Model, Relation
 from nolli.model.schema import EntityId, RelationId
-from nolli.model.scene import Scene
 from nolli.store import precomputed
-from nolli.store.precomputed import OverlayStore
 
 FORMAT = 1  # of key.json, change.json and comments.json
 COMMENTS = "comments.json"  # what was said about a model, in its directory
@@ -272,7 +270,7 @@ def _write_json(f: Path, value: dict, indent: int | None = None) -> None:
     tmp.replace(f)
 
 
-class RepoDirectoryStore(OverlayStore):
+class RepoDirectoryStore:
     """The models of one repository, any key of it, with the maps kept for them; in the
     directory ``path`` (``RepoStoreProvider.open`` gives one). Every method refuses a key of
     another repository, or of none (``NotAllowed``)."""
@@ -333,12 +331,6 @@ class RepoDirectoryStore(OverlayStore):
             _keep_comments(out, tmp)
 
         _swap(out, write)
-
-    def save_scene(self, scene: Scene, about: dict | None = None) -> None:
-        """Keep the scene's model under its key, and what every overlay on it says about it."""
-        self.save_model(scene.model.key, scene.model, {})
-        for o in scene.overlays.values():
-            self.precompute_overlay_values(scene, o, about)
 
     def _write_key(self, d: Path, key: ModelKey) -> None:
         _write_json(d / "key.json", {"format": FORMAT, **key.to_dict()})

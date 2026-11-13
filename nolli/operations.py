@@ -33,7 +33,8 @@ from nolli.model.scene import Overlay, Scene
 from nolli.model.schema import EntityId
 from nolli.progress import Progress, Quiet
 from nolli.store import ModelStore
-from nolli.store.maps import Maps, MapStore
+from nolli.store import precomputed
+from nolli.store.maps import Maps
 
 
 # -- targets, and building them ---------------------------------------------------------
@@ -237,40 +238,40 @@ def _make_derived_overlays() -> list[Overlay]:
     return [Names()]
 
 
-def _make_kept_overlays(maps: MapStore, key: ModelKey) -> list[Overlay]:
+def _make_kept_overlays(store: ModelStore, key: ModelKey) -> list[Overlay]:
     """Make the overlays a stored model keeps the values of (``precompute_scene``) and answers from
     when it is opened: what nolli derives from any model's facts, and for a change what it says
     about itself."""
-    return [*_make_derived_overlays(), *(_make_change_overlays(maps) if isinstance(key, ChangeKey) else [])]
+    return [*_make_derived_overlays(), *(_make_change_overlays(store) if isinstance(key, ChangeKey) else [])]
 
 
-def _make_change_overlays(maps: MapStore) -> list[Overlay]:
+def _make_change_overlays(store: ModelStore) -> list[Overlay]:
     """Make the overlays that compute what a change says about itself from its sides: what changed
     (``change``). Its values are kept with the change at diff time (``precompute_scene``) and
     read back from there (``_open_change_scene``)."""
-    return [Change(maps.open_maps("content"))]
+    return [Change(store.open_maps("content"))]
 
 
 def _describe_scene_meta(base: Model, head: Model, about: dict, content: Mapping[Key, dict]) -> dict:
     return {**_describe_change_meta(base, head, about), "change": merge.describe_change(about, content)}
 
 
-def _make_overlays(maps: MapStore) -> list[Overlay]:
+def _make_overlays(store: ModelStore) -> list[Overlay]:
     """Make the overlays nolli shows on any scene, on top of what extraction said: among them the
-    comments kept in ``maps``."""
+    comments kept in ``store``."""
     from nolli.logic.formats.descriptions.hover import Hover
     from nolli.logic.formats.descriptions.label import Label
 
-    derived = [maps.caching_overlay(o) for o in _make_derived_overlays()]
-    return [*derived, Change(maps.open_maps("content")), comments_lib.Comments(maps.load_comments), Label(), Hover()]
+    derived = [precomputed.caching_overlay(store, o) for o in _make_derived_overlays()]
+    return [*derived, Change(store.open_maps("content")), comments_lib.Comments(store.load_comments), Label(), Hover()]
 
 
-def _open_scene(model: Model, maps: MapStore) -> Scene:
+def _open_scene(model: Model, store: ModelStore) -> Scene:
     """Open a model as a scene with overlays for what extraction said, by shape and read by
     address, followed by nolli's own overlays. A shape never extracted for this model says
     nothing; a model made from this one answers for a namesake with the same values."""
-    said = [maps.precomputed_overlay(n) for n in vocabulary.SHAPES]
-    return Scene(model, [*said, *_make_overlays(maps)])
+    said = [precomputed.precomputed_overlay(store, n) for n in vocabulary.SHAPES]
+    return Scene(model, [*said, *_make_overlays(store)])
 
 
 def _open_commit_scene(store: ModelStore, commit: CommitKey) -> Scene | None:
@@ -292,7 +293,7 @@ def _open_change_scene(store: ModelStore, change: ChangeKey) -> Scene | None:
         return None
     meta = _describe_scene_meta(base.model, head.model, about, store.open_maps("content").load(change.format_key()))
     scene = transformations.apply({"base": base, "head": head}, merge.union(change, meta, store.load_model(change)))
-    return scene.with_overlays(*[store.caching_overlay(o) for o in _make_kept_overlays(store, change)])
+    return scene.with_overlays(*[precomputed.caching_overlay(store, o) for o in _make_kept_overlays(store, change)])
 
 
 def open_scene(store: ModelStore, key: ModelKey, overlays: Sequence[Overlay] = ()) -> Scene | None:
@@ -342,7 +343,7 @@ def add_comments(store: ModelStore, observed: ModelKey, raw: str, by: str, *, ve
 # -- from the store, or built --------------------------------------------------------------
 
 
-def _load_maps(store: MapStore, m: Model) -> Maps:
+def _load_maps(store: ModelStore, m: Model) -> Maps:
     return {n: dict(store.open_maps(n).load(m.key.format_key())) for n in store.list_map_names(m.key.format_key())}
 
 
@@ -450,4 +451,4 @@ def precompute_scene(store: ModelStore, key: ModelKey) -> None:
     if scene is None:
         raise KeyError(f"no model {key.format_key()} to precompute")
     for o in _make_kept_overlays(store, key):
-        store.precompute_overlay_values(scene, o)
+        precomputed.precompute_overlay_values(store, scene, o)

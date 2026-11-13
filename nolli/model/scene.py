@@ -33,7 +33,7 @@ class Overlay:
     with that.
 
     An overlay decides for itself where its knowledge comes from: maps kept in a store
-    (``StoredMaps``, by model key: what extraction said, a review's verdicts), other overlays
+    (``StoredMaps``, by model key: what extraction said, git's hunks), other overlays
     (``element.get``), or what the element stands for in the models it was made from
     (``element.sources``).
 
@@ -74,7 +74,7 @@ class Overlay:
 
 class StoredMaps(Protocol):
     """What an overlay reads kept maps from: the maps of one name in a store, by model key
-    (``nolli/store/``, ``MapStore.open_maps(name)``), and nothing else of the store. An
+    (``nolli/store/``, ``ModelStore.open_maps(name)``), and nothing else of the store. An
     overlay only reads; the store writes (``nolli/store/precomputed.py``)."""
 
     def load(self, model_key: str) -> Mapping[Key, dict]: ...

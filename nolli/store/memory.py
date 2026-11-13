@@ -8,10 +8,9 @@ from collections.abc import Mapping
 from nolli.model.keys import ChangeKey, ModelKey
 from nolli.model.model import Key, Model
 from nolli.store.maps import MemoryHandle
-from nolli.store.precomputed import OverlayStore
 
 
-class MemoryStore(OverlayStore):
+class MemoryStore:
     """Commits' and changes' models, what changes say about themselves, and every map kept for
     them, in memory, under any key."""
 
@@ -23,7 +22,7 @@ class MemoryStore(OverlayStore):
         self.comments: dict[ModelKey, list[dict]] = {}
 
     def open_maps(self, name: str) -> MemoryHandle:
-        return MemoryHandle(self, name)  # type: ignore[arg-type]  # it reads and writes .maps and .about, as on MemoryMaps
+        return MemoryHandle(self, name)
 
     def list_map_names(self, model_key: str) -> list[str]:
         return sorted(n for n, by_model in self.maps.items() if model_key in by_model)

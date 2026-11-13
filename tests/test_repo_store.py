@@ -17,10 +17,10 @@ from nolli.logic.formats import dataset
 from nolli.logic.sources import LocalRepository
 from nolli.model.keys import ModelKey, NotAllowed, ProjectionKey, Repo, SelectionKey, StringKey
 from nolli.model.model import Model
-from nolli.model.scene import FixedOverlay
+from nolli.model.scene import FixedOverlay, Scene
 from nolli.operations import open_scene
 from nolli.server import serve
-from nolli.store import MemoryStore, RepoStoreProvider, repo_directory
+from nolli.store import MemoryStore, RepoStoreProvider, precomputed, repo_directory
 from nolli.store.repo_directory import _format_key_path, _format_repo_path, _parse_key_path
 
 REPO = Repo("github.com/O/R")
@@ -170,10 +170,10 @@ def test_a_scene_is_saved_and_opened_whole(tmp_path):
     built = MemoryStore()
     scene = open_scene(built, operations.build_files(built, Path(__file__).parent / "fixtures", key))
     store = RepoStoreProvider(tmp_path / "data").open(REPO)
-    store.save_scene(scene.with_overlays(FixedOverlay("mine", {"repo:": {"n": 1}})), {"by": "test"})
+    precomputed.save_scene(store, scene.with_overlays(FixedOverlay("mine", {"repo:": {"n": 1}})), {"by": "test"})
     assert store.load_model(key).entities.keys() == scene.model.entities.keys()
     assert {"mine", "files"} <= set(store.list_map_names(key.format_key()))
-    opened = store.open_scene(key)
+    opened = Scene(store.load_model(key), [precomputed.strictly_precomputed_overlay(store, n) for n in store.list_map_names(key.format_key())])
     assert opened.find_element("repo:").get("mine") == {"n": 1}
     assert opened.read_all("files") == scene.read_all("files") and opened.read_all("files")
 

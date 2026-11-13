@@ -1,4 +1,5 @@
-"""Overlays answered from values a store keeps, and keeping them there.
+"""Overlays answered from values a store keeps, and keeping them there: functions over any
+``ModelStore``, which only has to keep the maps (``open_maps``, ``list_map_names``).
 
 An overlay's values for one model can be computed once for the whole scene and kept in the
 store under the overlay's name and the model's key, together with the overlay's version
@@ -17,13 +18,15 @@ acceptable. Otherwise it falls back in one of three ways.
 from __future__ import annotations
 
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from enum import Enum
+from typing import TYPE_CHECKING, Protocol
 
-from typing import Protocol
-
-from nolli.model.model import Key, Model
+from nolli.model.model import Key
 from nolli.model.scene import Element, Overlay, Scene, StoredMaps
+
+if TYPE_CHECKING:
+    from nolli.store import ModelStore
 
 
 class KeptMaps(StoredMaps, Protocol):
@@ -140,60 +143,38 @@ class PrecomputedOverlay(Overlay):
         return {} if self.fallback is None else self.fallback.compute_all(scene)
 
 
-class OverlayStore:
-    """What a store that keeps maps (``open_maps``) does with precomputed overlays: the methods
-    every store shares, over its handles."""
+# -- over a store ---------------------------------------------------------------------------
 
-    def open_maps(self, name: str) -> KeptMaps:  # the store's own
-        raise NotImplementedError
 
-    def list_map_names(self, model_key: str) -> list[str]:
-        """Return the names of the maps kept for a model."""
-        raise NotImplementedError
+def precompute_overlay_values(store: ModelStore, scene: Scene, overlay: Overlay, about: dict | None = None) -> Mapping[Key, dict]:
+    """Keep in ``store`` what ``overlay`` says about ``scene``'s model, for a precomputed overlay
+    to answer from, and return the values."""
+    return _precompute(store.open_maps(overlay.name), scene, overlay, about)
 
-    def precompute_overlay_values(self, scene: Scene, overlay: Overlay, about: dict | None = None) -> Mapping[Key, dict]:
-        """Keep what ``overlay`` says about ``scene``'s model, for a precomputed overlay to
-        answer from."""
-        return _precompute(self.open_maps(overlay.name), scene, overlay, about)
 
-    def strictly_precomputed_overlay(self, name: str) -> PrecomputedOverlay:
-        """Return an overlay that answers with what was kept under ``name`` for an element's model,
-        and nothing else."""
-        return PrecomputedOverlay(name, self.open_maps(name))
+def strictly_precomputed_overlay(store: ModelStore, name: str) -> PrecomputedOverlay:
+    """Return an overlay that answers with what ``store`` kept under ``name`` for an element's
+    model, and nothing else."""
+    return PrecomputedOverlay(name, store.open_maps(name))
 
-    def precomputed_overlay(self, name: str) -> PrecomputedOverlay:
-        """Return an overlay that answers with what was kept under ``name`` for an element's model,
-        or else with what its namesake has in the one scene the model was made from
-        (``SourceElementOverlay``). Use it for values that are facts about an address, such as
-        what extraction said."""
-        return PrecomputedOverlay(name, self.open_maps(name), SourceElementOverlay(name))
 
-    def caching_overlay(self, overlay: Overlay, strategy: CachingStrategy = CachingStrategy.USE_PRECOMPUTED_VALUES) -> PrecomputedOverlay:
-        """``overlay``, answered from what this store kept for a model where it is this
-        version's, computed elsewhere."""
-        return PrecomputedOverlay(overlay.name, self.open_maps(overlay.name), overlay, strategy)
+def precomputed_overlay(store: ModelStore, name: str) -> PrecomputedOverlay:
+    """Return an overlay that answers with what ``store`` kept under ``name`` for an element's
+    model, or else with what its namesake has in the one scene the model was made from
+    (``SourceElementOverlay``). Use it for values that are facts about an address, such as
+    what extraction said."""
+    return PrecomputedOverlay(name, store.open_maps(name), SourceElementOverlay(name))
 
-    def load_model(self, key) -> Model | None:  # the store's own, by its kind of key
-        raise NotImplementedError
 
-    def load_comments(self, key) -> list[dict]:
-        """Return the comments kept on the model of ``key``: none, unless the store keeps them."""
-        return []
+def caching_overlay(store: ModelStore, overlay: Overlay,
+                    strategy: CachingStrategy = CachingStrategy.USE_PRECOMPUTED_VALUES) -> PrecomputedOverlay:
+    """Return ``overlay`` answered from what ``store`` kept for a model where this version of it
+    kept it, and computed otherwise."""
+    return PrecomputedOverlay(overlay.name, store.open_maps(overlay.name), overlay, strategy)
 
-    def open_scene(self, key, overlays: Iterable[Overlay] = ()) -> Scene | None:
-        """Open a kept model as a scene, or return None if the store does not have it. Each of
-        ``overlays`` is attached as a caching overlay, and every other map kept for the model as
-        a strictly precomputed overlay."""
-        model = self.load_model(key)
-        if model is None:
-            return None
-        own = [self.caching_overlay(o) for o in overlays]
-        named = {o.name for o in own}
-        kept = [self.strictly_precomputed_overlay(n) for n in self.list_map_names(model.key.format_key()) if n not in named]
-        return Scene(model, [*kept, *own])
 
-    def save_scene(self, scene: Scene, about: dict | None = None) -> None:
-        """Keep the scene's model (``save_model``) and what every overlay on it says about it."""
-        self.save_model(scene.model)  # type: ignore[attr-defined]
-        for o in scene.overlays.values():
-            self.precompute_overlay_values(scene, o, about)
+def save_scene(store: ModelStore, scene: Scene, about: dict | None = None) -> None:
+    """Keep the scene's model in ``store`` under its key, and what every overlay on it says about it."""
+    store.save_model(scene.model.key, scene.model, {})
+    for o in scene.overlays.values():
+        precompute_overlay_values(store, scene, o, about)
