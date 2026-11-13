@@ -2,10 +2,150 @@
 
 Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 
-## Unreleased
+## 0.10.0
 
-### Changed
+The largest release since nolli went public: reviews become **comments** kept in the store,
+the viewer's server runs on **FastAPI** with one scene endpoint for every format, and the store
+keeps **one directory per repository**. Models built by earlier versions are not read: they are
+built again on first use, and verdicts kept with them are not carried over.
 
+### Upgrading
+
+- **Rebuild, re-review.** The store has a new layout (`<data>/github.com/<owner>/<repo>/…`).
+  Models under the old layout (`<owner>_<repo>-<sha7>`) are ignored and can be deleted; review
+  verdicts kept there are gone: review the change again.
+- **Update the review skill** with `nolli agent skill --install`. A skill from before 0.10 still
+  works (the brief keeps its `dataset` field, deprecated), and the brief asks the agent to tell
+  you to update it.
+- **No more extras.** `pip install nolli-review` is all there is; `[api]` and `[serve]` are gone
+  with the review agent in the viewer. FastAPI, uvicorn and pydantic are plain dependencies.
+
+### Reviews are comments
+
+- A review agent's verdicts are now **comments**: a statement about one node or edge of the
+  model it looked at, with an optional verdict (`fine`, `good`, `question`, `problem`, …). They
+  are kept on the change itself (`comments.json`), survive rebuilding it, and show on every
+  scene drawn from it: on the same box or edge, or rolled up onto the box or edge that holds it.
+- `nolli comments add <model> <file>` and `nolli comments list <model>`. Targets can be ids,
+  Mermaid node ids or `a --> b`. A new batch from the same author on the same model replaces
+  the last one; nothing is kept if any comment is wrong.
+- `nolli agent check` keeps the agent's verdicts as its comments; `nolli agent brief` prints the
+  key it reviews (`observed`).
+- The **"Review structural changes" button is gone** from the viewer, with its runs, uploads and
+  `/api/review*`. Reviews come from your own agent with the skill.
+
+### The viewer
+
+- **The list of changes names what changed**: changed entities and relations, grouped, each by
+  its id, instead of numbered changes C1, C2, …. An entity that changed only inside is left out
+  of the list. Comment ids are `c-…` instead of V1, V2, ….
+- Hover cards count verdicts from inside a box and say which entities are new inside it
+  ("Inside: 3 new entities").
+- **Simpler drawings**: references into unresolved code are drawn like any other edge; a chain of
+  directories that each hold one directory is no longer merged into one box; an image that runs
+  as a service is its own box with its `runs_as` edge.
+- "review.md" saves the review brief as a file.
+
+### The server and its API
+
+- `nolli serve` and `nolli view` run on **FastAPI and uvicorn**. nolli drawing itself now shows
+  its own API, and binds the viewer's calls to it.
+- **One scene endpoint**: `GET /api/scene?k=<key>&f=<format>&…` with the formats `viewer` (default),
+  `table` (new: one row per drawn box or edge, with the overlay values you name), `mermaid`,
+  `brief`, `report` and `comments`. `p=none` gives the scene unprojected. Wrong or unknown
+  parameters are answered 422 with the reason in `error`. Timings are in a `Server-Timing` header.
+- Removed: `/api/mermaid`, `/api/brief` (use `f=mermaid`, `f=brief`), `/api/changes` (a table of
+  the changes preset), `/api/review*`, `/api/verdicts`.
+- **`nolli serve --keep` limits clones only.** Built models are no longer deleted to make room;
+  they are small, and a model's "last used" time was really its build time.
+
+### The command line
+
+- A **model's key is a target**: `nolli view <repo>@<sha>` or `<repo>@<base>..<head>`.
+- `nolli build` prints the model's key. With `-o DIR` it reuses a fresh build (use `--rebuild` to
+  force it) and exports it with its report and review files.
+- `nolli view DIR`, `nolli build DIR` and `nolli agent check DIR` import a dataset directory
+  into the data directory first. Existing dataset directories still import.
+- A comparison built from the command line no longer makes up a title from its commits.
+
+### Extractors
+
+- More HTTP calls are read from TypeScript and JavaScript: a URL held in a local `const`,
+  returned by a function in the same file, or chosen by a conditional (one call per branch).
+- A call binds to the most specific routes it matches, as a router would choose
+  (`GET /api/scene` no longer also binds to a catch-all `GET /{path:path}`).
+
+### For services built on `nolli serve`
+
+Breaking for anything that subclassed the old server:
+
+- Routes are a FastAPI `APIRouter` (`make_server(routes=…)`, `main(routes=…)`), tried before
+  nolli's; `serve.services_of(request)` is the server's `Services`. `Handler` and `handler=` are
+  gone; `open_model` moved to `Services`.
+- **Access control is one method**: subclass `RepoStoreProvider` and override `allow(repo)`
+  (raise `NotAllowed`). The server opens one repository's store per request, and the store
+  refuses keys of any other repository. Builds run in the context of the request that started
+  them, so `allow` sees who asked. `make_server(stores, sources, work, …)`.
+- `reviewer=`, `uploads=` and the `Reviewer` extension point are gone.
+- **Middleware**: `make_server(middleware=…)` and `main(middleware=…)` take Starlette
+  `Middleware` that runs around every request, nolli's routes included: the place to tell who
+  is asking before `allow` is asked.
+- **A service's look for nolli's pages**: the landing, building, not-found, too-large and error
+  pages are a `Page` (its `kind`, one of `PAGE_KINDS`, title, body, status code, `detail`, and
+  for a build its `job` and first `status`), drawn by `Services.render_page(request, page)`,
+  which a service overrides. `serve.page()` is `serve.render_page(page)`.
+- **`/api/job` asks `allow`**: a build of a repository the request may not read answers
+  `unknown`, as one that never was (`Services.may_read`).
+- **A page asks `allow` first**: before GitHub is asked about the repository, and before a build
+  starts, also for a pull request not built yet.
+- `RepoStoreProvider.delete(repo)` deletes everything kept of a repository (say, when a service
+  may no longer keep it).
+
+### For library users
+
+The package was reorganised; most imports change.
+
+- `nolli.extractors`, `nolli.sources`, `nolli.transformations` and `nolli.formats` moved under
+  `nolli.logic`. `nolli.review` and `nolli.datasets` are gone.
+- **`nolli.operations`** is what the command line and the server share: `Target.from_string`,
+  `Target.pin`, `resolve_target`, `build_target(store, target, sources)`, `build_files`,
+  `open_scene(store, key)`, `add_comments`, `precompute_scene`.
+- **Stores**: `ModelStore` is one flat protocol (models, changes, maps, comments);
+  `DirectoryStore`, `MapStore`, `OverlayStore` and `MemoryMaps` are gone (use
+  `RepoStoreProvider` / `RepoDirectoryStore`, `MemoryStore`). Overlay caching is functions in
+  `nolli.store.precomputed`. Values are kept with `open_maps(name).save(key, values, about)`.
+- **Datasets** go in and out of a store only as directories: `cli.export_dataset`,
+  `cli.import_dataset`.
+- **Keys**: a projected model is a `ProjectionKey(source, spec)` (`<source>~project:<spec>`), a
+  selection a `SelectionKey`; `StringKey(text, repo)` takes a repository; `ModelKey.parse` reads
+  them all back. An edge is keyed by its `RelationId` (`kind|src|dst|subkind`); overlays and maps
+  take ids, never `Relation` objects.
+- **Projection**: `ProjectionSpec` has one text form (`to_query`/`from_query`, `format`/`parse`);
+  which containers unfold is one rule, `expand` (`Ids`, `Dirs`, `Root`, `All`, `AtMost`,
+  `Changes`). `Where(predicate)` is gone.
+- What describes a change lives in `nolli.logic.transformations.merge` (`reading`, `presets`,
+  `change`).
+
+### In detail
+
+Every change, with the modules and names it touches.
+
+#### Changed
+
+- **What a service built on `nolli serve` adds** (`nolli/server/serve.py`):
+  - `make_app`, `make_server` and `main` take `middleware`, Starlette's `Middleware` run around
+    every request, nolli's routes included.
+  - nolli's own pages (landing, building, not found, too large, GitHub's errors, nothing to show,
+    not a nolli page) are a `Page`, drawn by `Services.render_page(request, page)`; `PAGE_KINDS`
+    names their kinds. `serve.page(title, body, …)` is `serve.render_page(page)`, and `show`
+    takes the request instead of the site.
+  - `GET /api/job` answers `{"state": "unknown"}` for a build of a repository the request may
+    not read (`Services.may_read`, which asks `RepoStoreProvider.allow`).
+  - A page asks `RepoStoreProvider.allow` about a target's repository before GitHub is asked
+    anything about it (`Site.plan`: not even its size shows on a page) and before it starts a
+    build, also for a pull request whose model's key is not known yet (`Site.find_built`).
+  - `RepoStoreProvider.delete(repo)` deletes everything kept of a repository, without asking
+    `allow`.
 - **Comments instead of a review package** (`nolli/logic/comments.py`). A review agent's verdicts
   are now comments: statements made on one model (`observed`, any model by its key, a projection's
   too) about one of its nodes or edges (`target`, that model's id), with a `verdict` if they judge
@@ -237,11 +377,12 @@ Releases of [nolli-review](https://pypi.org/project/nolli-review/) on PyPI.
 - **`Target.pin(adds=True)`** (was `review=True`): a single revision R means what R adds. It no
   longer refuses a snapshot; `nolli agent brief` does, and `Target.is_change` says which it is.
 
-### Added
+#### Added
 
 - **`dev/examples/annotations.py`**: annotations handed in as JSON (element id → value), kept as
   the `annotations` map of a projection, some on lines that only the projection draws, and read
   back on the same projection drawn again.
+
 
 ## 0.9.0
 
