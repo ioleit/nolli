@@ -124,3 +124,13 @@ def test_the_provider_deletes_what_it_kept_of_a_repository(tmp_path):
         assert stores.open(other).load_comments(other.make_commit("a" * 40)) == [{"id": "c-1"}]
     finally:
         WHO.reset(token)
+
+
+def test_github_is_not_asked_about_a_repository_the_request_may_not_read(tmp_path, monkeypatch):
+    """Not even its size: a page for it is "not found" before GitHub is asked anything."""
+    asked = []
+    monkeypatch.setattr(serve.github, "api", lambda path, tok: asked.append(path) or {"full_name": "o/secret", "size": 1 << 30})
+    with run_server(tmp_path) as (srv, url):
+        assert get(f"{url}/o/secret/pull/1") == (404, {"kind": "not_found", "title": "Not found, or private", "code": 404, "who": ""})
+        assert asked == []
+        assert get(f"{url}/o/secret/pull/1", "alice")[1]["kind"] == "too_large" and asked == ["repos/o/secret"]

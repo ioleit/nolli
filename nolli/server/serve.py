@@ -314,8 +314,9 @@ class Site:
 
     def plan(self, text: str | None) -> operations.Target:
         """Work out what the target ``text`` names now and return it pinned (``operations.Target.pin``).
-        Raise github.NotFound for a repository the token cannot read, TooLarge, and ChangeError for
-        a target this server cannot show or GitHub cannot be asked about."""
+        Raise NotAllowed for a repository on GitHub this request may not read (asked first),
+        github.NotFound for one the token cannot read, TooLarge, and ChangeError for a target this
+        server cannot show or GitHub cannot be asked about."""
         t = operations.Target.from_string(text, self.local)
         if t.kind == "github":
             return self.plan_github(t.github)
@@ -326,6 +327,7 @@ class Site:
         return t.pin()
 
     def plan_github(self, t: github.Target) -> operations.Target:
+        self.stores.allow(Repo(f"github.com/{t.owner}/{t.name}"))  # before GitHub says anything about it: its size, its pulls
         info = self.api(t.owner, t.name)
         owner, name = info["full_name"].split("/")  # GitHub's spelling (paths are case-insensitive)
         if self.max_repo is not None and info.get("size", 0) * 1024 > self.max_repo:

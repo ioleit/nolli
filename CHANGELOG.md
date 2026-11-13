@@ -96,7 +96,8 @@ Breaking for anything that subclassed the old server:
   which a service overrides. `serve.page()` is `serve.render_page(page)`.
 - **`/api/job` asks `allow`**: a build of a repository the request may not read answers
   `unknown`, as one that never was (`Services.may_read`).
-- **A page asks `allow` before it starts a build**, also for a pull request not built yet.
+- **A page asks `allow` first**: before GitHub is asked about the repository, and before a build
+  starts, also for a pull request not built yet.
 - `RepoStoreProvider.delete(repo)` deletes everything kept of a repository (say, when a service
   may no longer keep it).
 
@@ -140,8 +141,9 @@ Every change, with the modules and names it touches.
     takes the request instead of the site.
   - `GET /api/job` answers `{"state": "unknown"}` for a build of a repository the request may
     not read (`Services.may_read`, which asks `RepoStoreProvider.allow`).
-  - A page asks `RepoStoreProvider.allow` about a target's repository before it starts a build,
-    also for a pull request whose model's key is not known yet (`Site.find_built`).
+  - A page asks `RepoStoreProvider.allow` about a target's repository before GitHub is asked
+    anything about it (`Site.plan`: not even its size shows on a page) and before it starts a
+    build, also for a pull request whose model's key is not known yet (`Site.find_built`).
   - `RepoStoreProvider.delete(repo)` deletes everything kept of a repository, without asking
     `allow`.
 - **Comments instead of a review package** (`nolli/logic/comments.py`). A review agent's verdicts
